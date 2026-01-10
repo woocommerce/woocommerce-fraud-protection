@@ -7,7 +7,9 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
 
+use Automattic\WooCommerce\Internal\FraudProtection\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtection\CheckoutEventTracker;
+use Automattic\WooCommerce\Internal\FraudProtection\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionDispatcher;
 use Automattic\WooCommerce\Internal\FraudProtection\SessionDataCollector;
@@ -41,13 +43,6 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 	private $mock_controller;
 
 	/**
-	 * Mock session data collector.
-	 *
-	 * @var SessionDataCollector|\PHPUnit\Framework\MockObject\MockObject
-	 */
-	private $mock_data_collector;
-
-	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
@@ -59,16 +54,14 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 		}
 
 		// Create mocks.
-		$this->mock_dispatcher     = $this->createMock( FraudProtectionDispatcher::class );
-		$this->mock_controller     = $this->createMock( FraudProtectionController::class );
-		$this->mock_data_collector = $this->createMock( SessionDataCollector::class );
+		$this->mock_dispatcher = $this->createMock( FraudProtectionDispatcher::class );
+		$this->mock_controller = $this->createMock( FraudProtectionController::class );
 
 		// Create system under test.
 		$this->sut = new CheckoutEventTracker();
 		$this->sut->init(
 			$this->mock_dispatcher,
-			$this->mock_controller,
-			$this->mock_data_collector
+			$this->mock_controller
 		);
 	}
 
@@ -106,60 +99,21 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 
 	/**
 	 * Test track_blocks_checkout_update dispatches event with session data.
+	 * The CheckoutEventTracker::track_blocks_checkout_update does not add any event data.
+	 * The data collection is handled by the SessionDataCollector.
+	 * So we only need to test if the dispatcher is called with no event data.
 	 */
-	public function test_track_blocks_checkout_update_dispatches_event_with_session_data(): void {
-		// Mock data collector to return session data.
-		$session_data = array(
-			'session_id'       => 'test_session_123',
-			'billing_email'    => 'test@example.com',
-			'billing_address'  => array(
-				'first_name' => 'John',
-				'last_name'  => 'Doe',
-			),
-			'shipping_address' => array(
-				'city' => 'New York',
-			),
-		);
-		$this->mock_data_collector
-			->expects( $this->once() )
-			->method( 'collect' )
-			->with(
-				$this->equalTo( 'checkout_update' ),
-				$this->equalTo( array() )
-			)
-			->willReturn( $session_data );
-
-		// Mock dispatcher to verify event is dispatched.
+	public function test_track_blocks_checkout_update_dispatches_event_with_empty_session_data(): void {
+		// Mock dispatcher to verify event is dispatched with empty event data.
 		$this->mock_dispatcher
 			->expects( $this->once() )
 			->method( 'dispatch_event' )
 			->with(
 				$this->equalTo( 'checkout_update' ),
-				$this->equalTo( $session_data )
+				$this->equalTo( array() )
 			);
 
 		// Call the method.
-		$this->sut->track_blocks_checkout_update();
-	}
-
-	/**
-	 * Test track_blocks_checkout_update can be called directly without hooks.
-	 */
-	public function test_track_blocks_checkout_update_works_without_hooks(): void {
-		// Mock data collector to return minimal session data.
-		$session_data = array(
-			'session_id' => 'test_session_456',
-		);
-		$this->mock_data_collector
-			->method( 'collect' )
-			->willReturn( $session_data );
-
-		// Mock dispatcher to verify event is dispatched.
-		$this->mock_dispatcher
-			->expects( $this->once() )
-			->method( 'dispatch_event' );
-
-		// Call the method directly (as done from CartUpdateCustomer endpoint).
 		$this->sut->track_blocks_checkout_update();
 	}
 
