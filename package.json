@@ -7,8 +7,8 @@
 	"scripts": {
 		"build": "wp-scripts build",
 		"start": "wp-scripts start",
-		"lint:js": "wp-scripts lint-js",
-		"lint:css": "wp-scripts lint-style",
+		"lint:js": "wp-scripts lint-js assets/js",
+		"lint:css": "wp-scripts lint-style assets/css",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
 		"test:js": "wp-scripts test-unit-js"
 	},
@@ -17,5 +17,10 @@
 	},
 	"engines": {
 		"node": ">=20"
+	},
+	"jest": {
+		"testMatch": [
+			"**/tests/js/**/*.test.js"
+		]
 	}
 }
