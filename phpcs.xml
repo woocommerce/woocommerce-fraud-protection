@@ -1,21 +1,39 @@
 <?xml version="1.0"?>
-<ruleset name="WooCommerce Fraud Protection">
-	<description>WooCommerce Fraud Protection coding standards.</description>
+<ruleset name="WooCommerce Fraud Protection Coding Standards">
+	<description>WooCommerce Fraud Protection PHP_CodeSniffer ruleset.</description>
+
+	<file>.</file>
 
 	<!-- Exclude paths -->
 	<exclude-pattern>*/vendor/*</exclude-pattern>
 	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<exclude-pattern>*/tests/*</exclude-pattern>
+
+	<!-- Only check PHP files. -->
+	<arg name="extensions" value="php" />
+
+	<!-- Show progress, show the error codes for each message (source). -->
+	<arg value="ps" />
+
+	<!-- Strip the filepaths in reports down to the relevant bit. -->
+	<arg name="basepath" value="./" />
+
+	<!-- Check up to 8 files simultaneously. -->
+	<arg name="parallel" value="8" />
 
 	<!-- Configs -->
 	<config name="minimum_supported_wp_version" value="6.4" />
 	<config name="testVersion" value="7.4-" />
 
 	<!-- Rules -->
-	<rule ref="WordPress-Core">
-		<exclude name="Generic.Commenting.DocComment.MissingShort" />
-	</rule>
+	<rule ref="WooCommerce-Core" />
 
-	<rule ref="WordPress-Docs" />
+	<rule ref="WooCommerce.Functions.InternalInjectionMethod">
+		<include-pattern>src/</include-pattern>
+		<properties>
+			<property name="injectionMethod" value="init"/>
+		</properties>
+	</rule>
 
 	<rule ref="WordPress.WP.I18n">
 		<properties>
@@ -25,6 +43,29 @@
 		</properties>
 	</rule>
 
-	<!-- Check for PHP cross-version compatibility. -->
-	<rule ref="PHPCompatibilityWP" />
+	<rule ref="PHPCompatibility" />
+
+	<rule ref="WordPress.Files.FileName.InvalidClassFileName">
+		<exclude-pattern>src/</exclude-pattern>
+	</rule>
+
+	<rule ref="Squiz.Classes.ClassFileName">
+		<include-pattern>src/</include-pattern>
+	</rule>
+
+	<rule ref="Squiz.Classes.ValidClassName">
+		<include-pattern>src/</include-pattern>
+	</rule>
+
+	<rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
+		<exclude-pattern>src/</exclude-pattern>
+	</rule>
+
+	<rule ref="Squiz.Commenting.FileComment.MissingPackageTag">
+		<exclude-pattern>src/</exclude-pattern>
+	</rule>
+
+	<rule ref="Squiz.Commenting.FileComment.Missing">
+		<exclude-pattern>src/</exclude-pattern>
+	</rule>
 </ruleset>
