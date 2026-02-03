@@ -1,0 +1,111 @@
+name: WooCommerce/WordPress Compatibility
+
+on:
+  pull_request:
+    branches:
+      - trunk
+      - develop
+      - 'release/**'
+  push:
+    branches:
+      - trunk
+  schedule:
+    # Run weekly on Sundays at midnight
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: WP ${{ matrix.wp }} / WC ${{ matrix.wc }} / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Minimum supported versions
+          - php: '7.4'
+            wp: '6.4'
+            wc: '8.0.0'
+          # Current stable
+          - php: '8.1'
+            wp: 'latest'
+            wc: 'latest'
+          # Latest PHP with latest WP/WC
+          - php: '8.5'
+            wp: 'latest'
+            wc: 'latest'
+          # WooCommerce L-1 (previous stable)
+          - php: '8.4'
+            wp: 'latest'
+            wc: '9.5.0'
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer
+          extensions: mysqli, pdo_mysql
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-php${{ matrix.php }}-${{ hashFiles('**/composer.lock', '**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-php${{ matrix.php }}-
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Install WordPress test suite
+        run: bash tests/bin/install-wp-tests.sh wordpress_test root root 127.0.0.1 ${{ matrix.wp }} true
+
+      - name: Install specific WooCommerce version
+        if: matrix.wc != 'latest'
+        run: |
+          mkdir -p /tmp/wordpress/wp-content/plugins
+          curl -L "https://github.com/woocommerce/woocommerce/releases/download/${{ matrix.wc }}/woocommerce.zip" -o /tmp/woocommerce.zip
+          unzip -q /tmp/woocommerce.zip -d /tmp/wordpress/wp-content/plugins/
+
+      - name: Install latest WooCommerce
+        if: matrix.wc == 'latest'
+        run: |
+          mkdir -p /tmp/wordpress/wp-content/plugins
+          LATEST_WC=$(curl -s https://api.github.com/repos/woocommerce/woocommerce/releases/latest | jq -r '.tag_name')
+          curl -L "https://github.com/woocommerce/woocommerce/releases/download/${LATEST_WC}/woocommerce.zip" -o /tmp/woocommerce.zip
+          unzip -q /tmp/woocommerce.zip -d /tmp/wordpress/wp-content/plugins/
+
+      - name: Run PHPUnit
+        run: composer test
+        env:
+          WP_TESTS_DIR: /tmp/wordpress-tests-lib
+          WP_CORE_DIR: /tmp/wordpress

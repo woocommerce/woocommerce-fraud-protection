@@ -34,7 +34,7 @@
 	},
 	"scripts": {
 		"test": "phpunit",
-		"test:coverage": "phpunit --coverage-text",
+		"test:coverage": "phpunit --coverage-text --coverage-html=coverage",
 		"phpcs": "phpcs",
 		"phpcbf": "phpcbf"
 	}
