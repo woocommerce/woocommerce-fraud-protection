@@ -1,0 +1,41 @@
+{
+	"name": "automattic/woocommerce-fraud-protection",
+	"description": "A plugin to protect WooCommerce from fraud.",
+	"type": "wordpress-plugin",
+	"license": "GPL-3.0-or-later",
+	"authors": [
+		{
+			"name": "Automattic"
+		}
+	],
+	"require": {
+		"php": ">=7.4"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^9.6",
+		"yoast/phpunit-polyfills": "^2.0",
+		"wp-coding-standards/wpcs": "^3.0",
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+	},
+	"autoload": {
+		"psr-4": {
+			"Automattic\\WooCommerce\\FraudProtection\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"Automattic\\WooCommerce\\FraudProtection\\Tests\\": "tests/php/"
+		}
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"test": "phpunit",
+		"test:coverage": "phpunit --coverage-text",
+		"phpcs": "phpcs",
+		"phpcbf": "phpcbf"
+	}
+}
