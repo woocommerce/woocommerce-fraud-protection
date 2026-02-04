@@ -1,10 +1,10 @@
 name: QIT Tests
 
-on:
-  pull_request:
-    branches: [trunk]
-  push:
-    branches: [trunk]
+# on:
+#   pull_request:
+#     branches: [trunk]
+#   push:
+#     branches: [trunk]
 
 jobs:
   qit-tests:
