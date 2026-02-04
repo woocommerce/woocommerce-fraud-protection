@@ -25,7 +25,7 @@ WP_CORE_DIR=${WP_CORE_DIR-$TMPDIR/wordpress/}
 
 download() {
 	if [ $(which curl) ]; then
-		curl -s "$1" > "$2";
+		curl -sL "$1" > "$2";
 	elif [ $(which wget) ]; then
 		wget -nv -O "$2" "$1"
 	fi
@@ -220,8 +220,22 @@ install_woocommerce() {
 	wp cron event run --due-now
 }
 
+install_dummy_gateway() {
+	# Install WooCommerce Dummy Gateway for testing payments
+	DUMMY_GATEWAY_URL="https://github.com/woocommerce/woocommerce-gateway-dummy/releases/download/1.10.0/woocommerce-gateway-dummy.zip"
+	DUMMY_GATEWAY_ZIP="$TMPDIR/woocommerce-gateway-dummy.zip"
+
+	if [ ! -d "$WP_CORE_DIR/wp-content/plugins/woocommerce-gateway-dummy" ]; then
+		echo "Installing WooCommerce Dummy Gateway..."
+		download "$DUMMY_GATEWAY_URL" "$DUMMY_GATEWAY_ZIP"
+		unzip -q "$DUMMY_GATEWAY_ZIP" -d "$WP_CORE_DIR/wp-content/plugins/"
+		wp plugin activate woocommerce-gateway-dummy
+	fi
+}
+
 install_wp
 install_db
 configure_wp
 install_test_suite
 install_woocommerce
+install_dummy_gateway

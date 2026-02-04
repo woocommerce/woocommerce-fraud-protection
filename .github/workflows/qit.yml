@@ -1,0 +1,73 @@
+name: QIT Tests
+
+# on:
+#   pull_request:
+#     branches: [trunk]
+#   push:
+#     branches: [trunk]
+
+jobs:
+  qit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock', '**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-dev --no-progress
+
+      - name: Build plugin zip
+        run: |
+          # Create a clean build directory
+          mkdir -p build
+
+          # Copy plugin files (excluding dev files)
+          rsync -av --progress . build/woocommerce-fraud-protection \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.ai' \
+            --exclude='build' \
+            --exclude='tests' \
+            --exclude='node_modules' \
+            --exclude='.phpunit.result.cache' \
+            --exclude='phpunit.xml' \
+            --exclude='phpcs.xml' \
+            --exclude='composer.lock' \
+            --exclude='coverage' \
+            --exclude='*.md'
+
+          # Create the zip file
+          cd build && zip -r ../woocommerce-fraud-protection.zip woocommerce-fraud-protection
+
+      - name: Install QIT CLI
+        run: composer require woocommerce/qit-cli
+
+      - name: Authenticate QIT
+        run: ./vendor/bin/qit partner:add --user='${{ secrets.QIT_USER }}' --application_password='${{ secrets.QIT_APP_PASS }}'
+
+      - name: Run Activation Test
+        run: ./vendor/bin/qit run:activation woocommerce-fraud-protection --zip=../woocommerce-fraud-protection.zip --wait
+
+      - name: Run Security Test
+        run: ./vendor/bin/qit run:security woocommerce-fraud-protection --zip=../woocommerce-fraud-protection.zip --wait

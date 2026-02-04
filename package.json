@@ -1,0 +1,26 @@
+{
+	"name": "woocommerce-fraud-protection",
+	"version": "1.0.0",
+	"description": "A plugin to protect WooCommerce from fraud.",
+	"author": "Automattic",
+	"license": "GPL-3.0-or-later",
+	"scripts": {
+		"build": "wp-scripts build",
+		"start": "wp-scripts start",
+		"lint:js": "wp-scripts lint-js assets/js",
+		"lint:css": "wp-scripts lint-style assets/css",
+		"lint:pkg-json": "wp-scripts lint-pkg-json",
+		"test:js": "wp-scripts test-unit-js"
+	},
+	"devDependencies": {
+		"@wordpress/scripts": "^28.0.0"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"jest": {
+		"testMatch": [
+			"**/tests/js/**/*.test.js"
+		]
+	}
+}

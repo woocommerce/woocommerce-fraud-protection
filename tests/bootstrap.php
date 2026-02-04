@@ -38,14 +38,32 @@ require_once "{$_tests_dir}/includes/functions.php";
 function _manually_load_plugins() {
 	// Load WooCommerce first.
 	$wc_dir = getenv( 'WC_DIR' );
+
 	if ( ! $wc_dir ) {
-		$wc_dir = dirname( __DIR__, 2 ) . '/woocommerce/plugins/woocommerce';
+		// Check common locations for WooCommerce.
+		$possible_paths = array(
+			// CI environment (install-wp-tests.sh).
+			rtrim( sys_get_temp_dir(), '/\\' ) . '/wordpress/wp-content/plugins/woocommerce',
+			// Local development (sibling directory).
+			dirname( __DIR__, 2 ) . '/woocommerce/plugins/woocommerce',
+			// WordPress plugins directory.
+			dirname( __DIR__, 2 ) . '/woocommerce',
+		);
+
+		foreach ( $possible_paths as $path ) {
+			if ( file_exists( $path . '/woocommerce.php' ) ) {
+				$wc_dir = $path;
+				break;
+			}
+		}
 	}
 
-	if ( file_exists( $wc_dir . '/woocommerce.php' ) ) {
+	if ( $wc_dir && file_exists( $wc_dir . '/woocommerce.php' ) ) {
 		require $wc_dir . '/woocommerce.php';
 	} else {
-		echo "Could not find WooCommerce at {$wc_dir}/woocommerce.php" . PHP_EOL; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo "Could not find WooCommerce. Searched paths:" . PHP_EOL; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo "- " . rtrim( sys_get_temp_dir(), '/\\' ) . '/wordpress/wp-content/plugins/woocommerce' . PHP_EOL; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo "- " . dirname( __DIR__, 2 ) . '/woocommerce/plugins/woocommerce' . PHP_EOL; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo 'Set the WC_DIR environment variable to the WooCommerce plugin directory.' . PHP_EOL; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		exit( 1 );
 	}
