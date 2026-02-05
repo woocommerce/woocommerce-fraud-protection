@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtection;
 
-use Automattic\WooCommerce\Internal\RegisterHooksInterface;
+// use Automattic\WooCommerce\Internal\RegisterHooksInterface;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
  * @since 10.5.0
  * @internal This class is part of the internal API and is subject to change without notice.
  */
-class BlockedSessionNotice implements RegisterHooksInterface {
+class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 
 	/**
 	 * Session clearance manager instance.
