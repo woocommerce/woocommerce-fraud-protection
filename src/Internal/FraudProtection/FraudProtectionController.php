@@ -268,9 +268,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		if ( ! did_action( 'init' ) ) {
 			return false;
 		}
-		/* Always enabled as MU-plugin.
-		return $this->features_controller->feature_is_enabled( 'fraud_protection' );
-		*/
+		// Always enabled as MU-plugin.
 		return true;
 	}
 
