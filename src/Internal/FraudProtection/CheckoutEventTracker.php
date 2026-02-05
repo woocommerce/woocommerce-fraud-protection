@@ -262,4 +262,34 @@ class CheckoutEventTracker {
 
 		$this->session_data_collector->collect( 'order_placed', $event_data );
 	}
+
+	/**
+	 * Adapter for woocommerce_checkout_order_processed hook.
+	 *
+	 * This hook provides ($order_id, $posted_data, $order) but we only need order_id and order.
+	 *
+	 * @internal
+	 *
+	 * @param int       $order_id    The order ID.
+	 * @param array     $posted_data The posted checkout data (unused).
+	 * @param \WC_Order $order       The order object.
+	 * @return void
+	 */
+	public function track_order_placed_from_shortcode( int $order_id, array $posted_data, \WC_Order $order ): void {
+		$this->track_order_placed( $order_id, $order );
+	}
+
+	/**
+	 * Adapter for woocommerce_store_api_checkout_order_processed hook.
+	 *
+	 * This hook only provides the order object, we extract the order_id from it.
+	 *
+	 * @internal
+	 *
+	 * @param \WC_Order $order The order object.
+	 * @return void
+	 */
+	public function track_order_placed_from_store_api( \WC_Order $order ): void {
+		$this->track_order_placed( $order->get_id(), $order );
+	}
 }
