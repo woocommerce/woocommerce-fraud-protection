@@ -7,8 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtection;
 
-// use Automattic\WooCommerce\Internal\RegisterHooksInterface;
-
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -120,7 +118,7 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 		if ( 'purchase' === $context ) {
 			return sprintf(
 				/* translators: %1$s: mailto link, %2$s: email address */
-				__( 'We are unable to process this request online. Please <a href="%1$s">contact support (%2$s)</a> to complete your purchase.', 'woocommerce' ),
+				__( 'We are unable to process this request online. Please <a href="%1$s">contact support (%2$s)</a> to complete your purchase.', 'woocommerce-fraud-protection' ),
 				esc_url( 'mailto:' . $email ),
 				esc_html( $email )
 			);
@@ -128,7 +126,7 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 
 		return sprintf(
 			/* translators: %1$s: mailto link, %2$s: email address */
-			__( 'We are unable to process this request online. Please <a href="%1$s">contact support (%2$s)</a> for assistance.', 'woocommerce' ),
+			__( 'We are unable to process this request online. Please <a href="%1$s">contact support (%2$s)</a> for assistance.', 'woocommerce-fraud-protection' ),
 			esc_url( 'mailto:' . $email ),
 			esc_html( $email )
 		);
@@ -148,14 +146,14 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 		if ( 'purchase' === $context ) {
 			return sprintf(
 				/* translators: %s: support email address */
-				__( 'We are unable to process this request online. Please contact support (%s) to complete your purchase.', 'woocommerce' ),
+				__( 'We are unable to process this request online. Please contact support (%s) to complete your purchase.', 'woocommerce-fraud-protection' ),
 				$email
 			);
 		}
 
 		return sprintf(
 			/* translators: %s: support email address */
-			__( 'We are unable to process this request online. Please contact support (%s) for assistance.', 'woocommerce' ),
+			__( 'We are unable to process this request online. Please contact support (%s) for assistance.', 'woocommerce-fraud-protection' ),
 			$email
 		);
 	}

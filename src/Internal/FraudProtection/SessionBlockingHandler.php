@@ -82,7 +82,7 @@ class SessionBlockingHandler {
 	 * @param array $_variations   Variation attributes (unused).
 	 * @return bool False if session is blocked, original value otherwise.
 	 */
-	public function validate_add_to_cart( $passed, $_product_id, $_quantity, $_variation_id = 0, $_variations = array() ): bool {
+	public function validate_add_to_cart( $passed, $_product_id, $_quantity, $_variation_id = 0, $_variations = array() ): bool { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Parameters required by hook signature.
 		if ( $this->session_manager->is_session_blocked() ) {
 			wc_add_notice( $this->blocked_notice->get_message_html( 'purchase' ), 'error' );
 			return false;

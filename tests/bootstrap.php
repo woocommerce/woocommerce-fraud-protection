@@ -56,6 +56,8 @@ function _manually_load_plugins() {
 	// over WooCommerce's versions (prevents "Cannot redeclare class" errors).
 	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionClearanceManager.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionDataCollector.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/ApiClient.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/DecisionHandler.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/CartEventTracker.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/CheckoutEventTracker.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/PaymentMethodEventTracker.php';

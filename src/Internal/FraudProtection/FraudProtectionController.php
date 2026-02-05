@@ -7,9 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtection;
 
-// use Automattic\WooCommerce\Internal\Features\FeaturesController;
-// use Automattic\WooCommerce\Internal\Jetpack\JetpackConnection;
-// use Automattic\WooCommerce\Internal\RegisterHooksInterface;
+use Automattic\WooCommerce\Internal\Jetpack\JetpackConnection;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -24,12 +22,6 @@ defined( 'ABSPATH' ) || exit;
  */
 class FraudProtectionController /* implements RegisterHooksInterface */ {
 
-	/**
-	 * Features controller instance.
-	 *
-	 * @var FeaturesController
-	 */
-	// private FeaturesController $features_controller;
 
 	/**
 	 * Blocked session notice instance.
@@ -85,10 +77,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 */
 	public function register(): void {
 		add_action( 'init', array( $this, 'on_init' ) );
-		/* TODO: Re-enable when JetpackConnection is available.
-		add_action( 'admin_notices', array( $this, 'on_admin_notices' ) );
-		add_action( FeaturesController::FEATURE_ENABLED_CHANGED_ACTION, array( $this, 'maybe_register_jetpack_connection' ), 10, 2 );
-		*/
 	}
 
 	/**
@@ -105,7 +93,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * * @param BlocksCheckoutProtector $blocks_checkout_protector The instance of BlocksCheckoutProtector to use.
 	 */
 	final public function init(
-		// FeaturesController $features_controller,
 		BlockedSessionNotice $blocked_session_notice,
 		BlackboxScriptHandler $blackbox_script_handler,
 		CartEventTracker $cart_event_tracker,
@@ -114,7 +101,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		SessionBlockingHandler $session_blocking_handler,
 		BlocksCheckoutProtector $blocks_checkout_protector
 	): void {
-		// $this->features_controller     = $features_controller;
 		$this->blocked_session_notice       = $blocked_session_notice;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
 		$this->cart_event_tracker           = $cart_event_tracker;
@@ -182,78 +168,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 			$this->checkout_event_tracker->track_checkout_page_loaded();
 		}
 	}
-
-	/**
-	 * Display admin notice when Jetpack connection is not available.
-	 *
-	 * @internal
-	 */
-	/* TODO: Re-enable when JetpackConnection is available.
-	public function on_admin_notices(): void {
-		// Only show if feature is enabled.
-		if ( ! $this->feature_is_enabled() || JetpackConnection::get_manager()->is_connected() ) {
-			return;
-		}
-
-		// Only show on WooCommerce settings page.
-		$screen = get_current_screen();
-
-		if ( ! $screen || 'woocommerce_page_wc-settings' !== $screen->id ) {
-			return;
-		}
-
-		?>
-		<div class="notice notice-warning is-dismissible">
-			<p>
-				<?php
-				printf(
-					/* translators: %s: Getting Started with Jetpack documentation URL */
-	/*
-					wp_kses_post( __( 'Your site failed to connect to Jetpack automatically. Fraud protection will fail open and allow all sessions until your site is connected to Jetpack. <a href="%s">How to connect to Jetpack</a>', 'woocommerce' ) ),
-					esc_url( 'https://jetpack.com/support/getting-started-with-jetpack/' )
-				);
-				?>
-			</p>
-		</div>
-		<?php
-	}
-	*/
-
-	/**
-	 * Maybe register Jetpack connection when fraud protection is enabled.
-	 *
-	 * Attempts to automatically register the site with Jetpack when the fraud protection
-	 * feature is enabled and the site is not already connected.
-	 *
-	 * @since 10.5.0
-	 *
-	 * @internal
-	 *
-	 * @param string $feature_id The feature ID being toggled.
-	 * @param bool   $is_enabled Whether the feature is being enabled or disabled.
-	 */
-	/* TODO: Re-enable when JetpackConnection is available.
-	public function maybe_register_jetpack_connection( string $feature_id, bool $is_enabled ): void {
-		if ( 'fraud_protection' !== $feature_id || ! $is_enabled ) {
-			return;
-		}
-
-		$manager = JetpackConnection::get_manager();
-
-		if ( $manager->is_connected() ) {
-			return;
-		}
-
-		$result = $manager->try_registration();
-
-		if ( is_wp_error( $result ) ) {
-			$this->log( 'error', 'Failed to register Jetpack connection: ' . $result->get_error_message() );
-			return;
-		}
-
-		$this->log( 'info', 'Jetpack connection registered successfully' );
-	}
-	*/
 
 	/**
 	 * Check if fraud protection feature is enabled.
