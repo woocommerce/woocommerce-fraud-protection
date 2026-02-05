@@ -13,10 +13,10 @@
 		"test:js": "wp-scripts test-unit-js"
 	},
 	"devDependencies": {
-		"@wordpress/scripts": "^28.0.0"
+		"@wordpress/scripts": "30.6.0"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": "^20.11.1"
 	},
 	"jest": {
 		"testMatch": [
