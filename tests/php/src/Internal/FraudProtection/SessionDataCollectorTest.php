@@ -699,11 +699,20 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertIsArray( $result['billing_address'] );
 		$this->assertIsArray( $result['collected_events'] );
 
-		$this->assertCount( 1, $result['collected_events'] );
-		$event = $result['collected_events'][0];
-		$this->assertEquals( 'checkout_started', $event['event_type'] );
-		$this->assertIsString( $event['timestamp'] );
-		$this->assertEquals( array( 'test' => 'data' ), $event['event_data'] );
+		// At least one event should be collected (may have more due to hook-based tracking).
+		$this->assertGreaterThanOrEqual( 1, count( $result['collected_events'] ) );
+
+		// Find the checkout_started event we explicitly collected.
+		$checkout_event = null;
+		foreach ( $result['collected_events'] as $event ) {
+			if ( 'checkout_started' === $event['event_type'] ) {
+				$checkout_event = $event;
+				break;
+			}
+		}
+		$this->assertNotNull( $checkout_event, 'checkout_started event should be present' );
+		$this->assertIsString( $checkout_event['timestamp'] );
+		$this->assertEquals( array( 'test' => 'data' ), $checkout_event['event_data'] );
 	}
 
 	/**
@@ -764,12 +773,20 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 
 		$this->assertArrayHasKey( 'wc_version', $result );
 		$this->assertArrayHasKey( 'collected_events', $result );
-		$this->assertCount( 1, $result['collected_events'] );
 
-		$event = $result['collected_events'][0];
+		// At least one event should be collected (may have more due to hook-based cart tracking).
+		$this->assertGreaterThanOrEqual( 1, count( $result['collected_events'] ) );
 
-		$this->assertEquals( 'payment_attempt', $event['event_type'] );
-		$this->assertNotEmpty( $event['timestamp'] );
+		// Find the payment_attempt event we explicitly collected.
+		$payment_event = null;
+		foreach ( $result['collected_events'] as $event ) {
+			if ( 'payment_attempt' === $event['event_type'] ) {
+				$payment_event = $event;
+				break;
+			}
+		}
+		$this->assertNotNull( $payment_event, 'payment_attempt event should be present' );
+		$this->assertNotEmpty( $payment_event['timestamp'] );
 
 		$this->assertNotEmpty( $result['session']['session_id'] );
 		$this->assertEquals( 'e2e-test@example.com', $result['session']['email'] );
@@ -788,7 +805,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertEquals( '456 Ship St', $result['shipping_address']['address_1'] );
 		$this->assertEquals( 'Ship City', $result['shipping_address']['city'] );
 
-		$this->assertEquals( array( 'gateway' => 'stripe' ), $event['event_data'] );
+		$this->assertEquals( array( 'gateway' => 'stripe' ), $payment_event['event_data'] );
 	}
 
 	/**

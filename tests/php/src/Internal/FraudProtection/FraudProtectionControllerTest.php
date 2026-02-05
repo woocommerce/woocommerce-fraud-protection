@@ -98,28 +98,34 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test that on_init does nothing when feature is disabled.
+	 * Test that event tracking hooks are registered (always enabled as standalone plugin).
 	 */
-	public function test_no_hooks_when_feature_disabled(): void {
-		// Ensure feature is disabled.
-		update_option( 'woocommerce_feature_fraud_protection_enabled', 'no' );
+	public function test_event_tracking_hooks_are_registered(): void {
+		// Verify that cart event tracking hooks are registered.
+		$this->assertNotFalse(
+			has_action( 'woocommerce_add_to_cart' ),
+			'woocommerce_add_to_cart hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_cart_item_removed' ),
+			'woocommerce_cart_item_removed hook should be registered'
+		);
 
-		// Get a fresh controller instance.
-		$controller = $this->get_fresh_controller();
+		// Verify checkout event tracking hooks are registered.
+		$this->assertNotFalse(
+			has_action( 'woocommerce_checkout_order_processed' ),
+			'woocommerce_checkout_order_processed hook should be registered'
+		);
 
-		// Count hooks before calling on_init.
-		global $wp_filter;
-		$hook_count_before = count( $wp_filter );
-
-		// Call on_init.
-		$controller->on_init();
-
-		// Count hooks after - should be the same (no new hooks registered).
-		$hook_count_after = count( $wp_filter );
-
-		// Note: This is a basic test. In a full implementation, we would check
-		// for specific hooks that should be registered when enabled.
-		$this->assertEquals( $hook_count_before, $hook_count_after );
+		// Verify blocking hooks are registered.
+		$this->assertNotFalse(
+			has_filter( 'woocommerce_add_to_cart_validation' ),
+			'woocommerce_add_to_cart_validation filter should be registered'
+		);
+		$this->assertNotFalse(
+			has_filter( 'woocommerce_available_payment_gateways' ),
+			'woocommerce_available_payment_gateways filter should be registered'
+		);
 	}
 
 	/**
@@ -154,17 +160,20 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test that feature_is_enabled returns false when feature is disabled.
+	 * Test that feature_is_enabled returns true (always enabled as standalone plugin).
+	 *
+	 * Note: As a standalone plugin, fraud protection is always enabled.
+	 * The feature flag only applies when integrated into WooCommerce core.
 	 */
-	public function test_feature_is_enabled_returns_false_when_disabled(): void {
-		// Disable the feature.
+	public function test_feature_is_enabled_always_returns_true_as_standalone_plugin(): void {
+		// Even with the option set to 'no', the standalone plugin is always enabled.
 		update_option( 'woocommerce_feature_fraud_protection_enabled', 'no' );
 
-		// Get a fresh controller instance to pick up the option change.
+		// Get a fresh controller instance.
 		$controller = $this->get_fresh_controller();
 
-		// Check if the method returns false.
-		$this->assertFalse( $controller->feature_is_enabled() );
+		// Standalone plugin is always enabled.
+		$this->assertTrue( $controller->feature_is_enabled() );
 	}
 
 	/**

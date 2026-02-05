@@ -50,6 +50,20 @@ function _get_wc_dir() {
  * Manually load the plugin and WooCommerce for testing.
  */
 function _manually_load_plugins() {
+	$plugin_dir = dirname( __DIR__ );
+
+	// Load our plugin's class files BEFORE WooCommerce so they take precedence
+	// over WooCommerce's versions (prevents "Cannot redeclare class" errors).
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionClearanceManager.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionDataCollector.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/CartEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/CheckoutEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/PaymentMethodEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/BlackboxScriptHandler.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/BlockedSessionNotice.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionBlockingHandler.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/FraudProtectionController.php';
+
 	$wc_dir = _get_wc_dir();
 
 	if ( $wc_dir && file_exists( $wc_dir . '/woocommerce.php' ) ) {
@@ -59,8 +73,8 @@ function _manually_load_plugins() {
 		exit( 1 );
 	}
 
-	// Load this plugin.
-	require dirname( __DIR__ ) . '/woocommerce-fraud-protection.php';
+	// Load this plugin (hooks registration only, classes already loaded above).
+	require $plugin_dir . '/woocommerce-fraud-protection.php';
 }
 
 tests_add_filter( 'muplugins_loaded', '_manually_load_plugins' );
