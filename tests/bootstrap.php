@@ -84,59 +84,57 @@ tests_add_filter( 'muplugins_loaded', '_manually_load_plugins' );
 // Start up the WP testing environment.
 require $_tests_dir . '/includes/bootstrap.php';
 
-// Load WooCommerce test framework.
-$wc_dir = _get_wc_dir();
+// Load WooCommerce test framework if available (when WC is installed from GitHub).
+$wc_dir              = _get_wc_dir();
+$wc_test_framework   = false;
+$plugin_test_helpers = dirname( __FILE__ ) . '/php/helpers';
 
 if ( $wc_dir ) {
-	// Autoloader for WooCommerce testing tools (TestingContainer, MockableLegacyProxy).
-	spl_autoload_register(
-		function ( $class ) use ( $wc_dir ) {
-			$tests_directory   = $wc_dir . '/tests';
-			$helpers_directory = $tests_directory . '/php/helpers';
+	$wc_test_case_file = $wc_dir . '/tests/legacy/framework/class-wc-unit-test-case.php';
+	if ( file_exists( $wc_test_case_file ) ) {
+		$wc_test_framework = true;
 
-			if ( false === strpos( $class, '\\' ) ) {
-				$helper_path = "$helpers_directory/$class.php";
-				if ( file_exists( $helper_path ) ) {
-					require $helper_path;
-					return;
-				}
-			}
-
-			$prefix   = 'Automattic\\WooCommerce\\Testing\\Tools\\';
-			$base_dir = $tests_directory . '/Tools/';
-			$len      = strlen( $prefix );
-			if ( strncmp( $prefix, $class, $len ) === 0 ) {
-				$relative_class = substr( $class, $len );
-				$file           = $base_dir . str_replace( '\\', '/', $relative_class ) . '.php';
-				if ( file_exists( $file ) ) {
-					require $file;
-				}
-			}
+		// Full WC test framework is available.
+		$wp_http_testcase = $wc_dir . '/tests/legacy/includes/wp-http-testcase.php';
+		if ( file_exists( $wp_http_testcase ) ) {
+			require_once $wp_http_testcase;
 		}
-	);
+		require_once $wc_dir . '/tests/legacy/framework/class-wc-unit-test-factory.php';
+		require_once $wc_test_case_file;
 
-	// Load WC test framework classes.
-	require_once $wc_dir . '/tests/legacy/includes/wp-http-testcase.php';
-	require_once $wc_dir . '/tests/legacy/framework/class-wc-unit-test-factory.php';
-	require_once $wc_dir . '/tests/legacy/framework/class-wc-unit-test-case.php';
+		// Load WC test helpers.
+		foreach ( glob( $wc_dir . '/tests/legacy/framework/helpers/*.php' ) as $helper ) {
+			require_once $helper;
+		}
 
-	// Load test helpers.
-	foreach ( glob( $wc_dir . '/tests/legacy/framework/helpers/*.php' ) as $helper ) {
-		require_once $helper;
+		// Load LoggerSpyTrait from WC's modern test helpers.
+		$logger_spy_trait = $wc_dir . '/tests/php/helpers/LoggerSpyTrait.php';
+		if ( file_exists( $logger_spy_trait ) ) {
+			require_once $logger_spy_trait;
+		}
+
+		// Initialize TestingContainer if available.
+		if ( class_exists( \Automattic\WooCommerce\Testing\Tools\TestingContainer::class ) ) {
+			$inner_container_property = new \ReflectionProperty( \Automattic\WooCommerce\Container::class, 'container' );
+			$inner_container_property->setAccessible( true );
+			$container       = wc_get_container();
+			$inner_container = $inner_container_property->getValue( $container );
+			$inner_container = new \Automattic\WooCommerce\Testing\Tools\TestingContainer( $inner_container );
+			$inner_container_property->setValue( $container, $inner_container );
+			$GLOBALS['wc_container'] = $inner_container;
+		}
 	}
+}
 
-	// Load LoggerSpyTrait.
-	$logger_spy_trait = $wc_dir . '/tests/php/helpers/LoggerSpyTrait.php';
-	if ( file_exists( $logger_spy_trait ) ) {
-		require_once $logger_spy_trait;
-	}
+// Load our fallback test helpers if WC test framework is not available.
+if ( ! $wc_test_framework ) {
+	require_once $plugin_test_helpers . '/class-wc-helper-product.php';
+	require_once $plugin_test_helpers . '/class-wc-helper-order.php';
+	require_once $plugin_test_helpers . '/LoggerSpyTrait.php';
+}
 
-	// Initialize TestingContainer with MockableLegacyProxy (enables LegacyProxy::reset()).
-	$inner_container_property = new \ReflectionProperty( \Automattic\WooCommerce\Container::class, 'container' );
-	$inner_container_property->setAccessible( true );
-	$container       = wc_get_container();
-	$inner_container = $inner_container_property->getValue( $container );
-	$inner_container = new \Automattic\WooCommerce\Testing\Tools\TestingContainer( $inner_container );
-	$inner_container_property->setValue( $container, $inner_container );
-	$GLOBALS['wc_container'] = $inner_container;
+// Provide a fallback WC_Unit_Test_Case if WooCommerce test framework is not available.
+if ( ! class_exists( 'WC_Unit_Test_Case' ) ) {
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WC_Unit_Test_Case extends \WP_UnitTestCase {}
 }
