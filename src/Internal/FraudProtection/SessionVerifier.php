@@ -67,12 +67,16 @@ class SessionVerifier {
 	 * Collects session/order data, calls the Blackbox verify API, and applies
 	 * the decision (including filter overrides and session status updates).
 	 *
-	 * @param string $session_id The Blackbox session ID from collect().
-	 * @param int    $order_id   The WooCommerce order ID.
+	 * @param string $session_id   The Blackbox session ID from collect().
+	 * @param int    $order_id     The WooCommerce order ID.
+	 * @param array  $request_data Optional request data from the request being verified.
 	 * @return string The final decision after filters: 'allow' or 'block'.
 	 */
-	public function verify_session( string $session_id, int $order_id ): string {
-		$payload  = $this->data_collector->get_collected_data( $order_id );
+	public function verify_session( string $session_id, int $order_id, array $request_data = array() ): string {
+		$payload = $this->data_collector->get_collected_data( $order_id );
+
+		$payload['request_data'] = $request_data;
+
 		$decision = $this->api_client->verify( $session_id, $payload );
 
 		return $this->decision_handler->apply_decision( $decision, $payload );

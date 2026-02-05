@@ -17,11 +17,11 @@ defined( 'ABSPATH' ) || exit;
  *
  * Handles the collect -> verify -> verdict flow:
  * 1. Registers Store API extension data namespace for blackbox_session_id
- * 2. Extracts session_id from the checkout POST request
+ * 2. Extracts request data (including session_id) from the checkout POST request
  * 3. Calls verify() before payment processing, blocking on BLOCK decisions
  * 4. Enqueues the blocks-checkout.js script for collect + setExtensionData
  *
- * All hooks fire within the same HTTP request, so the session_id is stored
+ * All hooks fire within the same HTTP request, so request data is stored
  * as a class property (no WC session or DB storage needed).
  *
  * @internal
@@ -48,14 +48,17 @@ class BlocksCheckoutProtector {
 	private BlockedSessionNotice $blocked_session_notice;
 
 	/**
-	 * Blackbox session ID extracted from the current checkout request.
+	 * Request data extracted from the current checkout request.
 	 *
-	 * Transient storage during a single HTTP request: set in extract_session_id(),
+	 * Transient storage during a single HTTP request: set in extract_request_data(),
 	 * consumed in verify_and_block(). Both hooks fire in the same request.
 	 *
-	 * @var string
+	 * Contains checkout fields (billing_address, payment_method, extensions, etc.)
+	 * and the blackbox_session_id is extracted from extensions when needed.
+	 *
+	 * @var array
 	 */
-	private string $blackbox_session_id = '';
+	private array $request_data = array();
 
 	/**
 	 * Initialize with dependencies.
@@ -88,16 +91,16 @@ class BlocksCheckoutProtector {
 		// so we register the extension data directly.
 		$this->register_store_api_extension();
 
-		add_action( 'woocommerce_store_api_checkout_update_order_from_request', array( $this, 'extract_session_id' ), 10, 2 );
+		add_action( 'woocommerce_store_api_checkout_update_order_from_request', array( $this, 'extract_request_data' ), 10, 2 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'verify_and_block' ) );
 		add_action( 'woocommerce_blocks_checkout_enqueue_data', array( $this, 'enqueue_blocks_checkout_script' ) );
 	}
 
 	/**
-	 * Extract the Blackbox session ID from the checkout request.
+	 * Extract request data from the checkout request.
 	 *
 	 * Called during `woocommerce_store_api_checkout_update_order_from_request`.
-	 * Stores the session_id as a class property for use in verify_and_block().
+	 * Stores request data as a class property for use in verify_and_block().
 	 *
 	 * @internal
 	 *
@@ -105,18 +108,16 @@ class BlocksCheckoutProtector {
 	 * @param \WP_REST_Request $request The checkout REST request.
 	 * @return void
 	 */
-	public function extract_session_id( \WC_Order $order, \WP_REST_Request $request ): void {
-		$extensions = $request->get_param( 'extensions' );
-
-		if ( ! is_array( $extensions ) || ! isset( $extensions[ self::EXTENSION_NAMESPACE ] ) ) {
-			return;
-		}
-
-		$fraud_data = $extensions[ self::EXTENSION_NAMESPACE ];
-
-		if ( is_array( $fraud_data ) && ! empty( $fraud_data['blackbox_session_id'] ) ) {
-			$this->blackbox_session_id = sanitize_text_field( $fraud_data['blackbox_session_id'] );
-		}
+	public function extract_request_data( \WC_Order $order, \WP_REST_Request $request ): void {
+		$this->request_data = array(
+			'billing_address'   => $request->get_param( 'billing_address' ),
+			'shipping_address'  => $request->get_param( 'shipping_address' ),
+			'payment_method'    => sanitize_text_field( $request->get_param( 'payment_method' ) ?? '' ),
+			'payment_data'      => $request->get_param( 'payment_data' ),
+			'create_account'    => (bool) $request->get_param( 'create_account' ),
+			'additional_fields' => $request->get_param( 'additional_fields' ),
+			'extensions'        => $request->get_param( 'extensions' ),
+		);
 	}
 
 	/**
@@ -137,7 +138,11 @@ class BlocksCheckoutProtector {
 	 * @throws RouteException When Blackbox returns a BLOCK decision.
 	 */
 	public function verify_and_block( \WC_Order $order ): void {
-		$decision = $this->session_verifier->verify_session( $this->blackbox_session_id, $order->get_id() );
+		$decision = $this->session_verifier->verify_session(
+			$this->get_blackbox_session_id(),
+			$order->get_id(),
+			$this->request_data
+		);
 
 		if ( ApiClient::DECISION_BLOCK === $decision ) {
 			throw new RouteException(
@@ -198,5 +203,26 @@ class BlocksCheckoutProtector {
 				},
 			)
 		);
+	}
+
+	/**
+	 * Get the Blackbox session ID from the stored request data.
+	 *
+	 * @return string The session ID, or empty string if not found.
+	 */
+	private function get_blackbox_session_id(): string {
+		$extensions = $this->request_data['extensions'] ?? array();
+
+		if ( ! is_array( $extensions ) || ! isset( $extensions[ self::EXTENSION_NAMESPACE ] ) ) {
+			return '';
+		}
+
+		$fraud_data = $extensions[ self::EXTENSION_NAMESPACE ];
+
+		if ( is_array( $fraud_data ) && ! empty( $fraud_data['blackbox_session_id'] ) ) {
+			return sanitize_text_field( $fraud_data['blackbox_session_id'] );
+		}
+
+		return '';
 	}
 }

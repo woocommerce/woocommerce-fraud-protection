@@ -67,35 +67,42 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox verify_session() passes collected data and session_id through the full pipeline.
+	 * @testdox verify_session() passes collected data, session_id, and request_data through the full pipeline.
 	 */
 	public function test_verify_session_wires_pipeline_correctly(): void {
-		$session_id = 'test-session-abc';
-		$order_id   = 42;
-		$payload    = array(
+		$session_id    = 'test-session-abc';
+		$order_id      = 42;
+		$collected_data = array(
 			'event_type' => 'checkout',
-			'amount' => 100
+			'amount'     => 100,
+		);
+		$request_data = array(
+			'billing_address'  => array( 'first_name' => 'John' ),
+			'payment_method'   => 'woocommerce_payments',
+			'create_account'   => false,
 		);
 
 		$this->data_collector
 			->expects( $this->once() )
 			->method( 'get_collected_data' )
 			->with( $order_id )
-			->willReturn( $payload );
+			->willReturn( $collected_data );
+
+		$expected_payload = array_merge( $collected_data, array( 'request_data' => $request_data ) );
 
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->with( $session_id, $payload )
+			->with( $session_id, $expected_payload )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( ApiClient::DECISION_ALLOW, $payload )
+			->with( ApiClient::DECISION_ALLOW, $expected_payload )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
-		$result = $this->sut->verify_session( $session_id, $order_id );
+		$result = $this->sut->verify_session( $session_id, $order_id, $request_data );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 	}
