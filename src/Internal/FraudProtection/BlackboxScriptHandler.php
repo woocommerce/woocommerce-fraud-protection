@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtection;
 
-use Automattic\Jetpack\Constants;
+// use Automattic\Jetpack\Constants;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -109,14 +109,16 @@ class BlackboxScriptHandler {
 			array( 'in_footer' => true )
 		);
 
-		$suffix = Constants::is_true( 'SCRIPT_DEBUG' ) ? '' : '.min';
+		// $suffix = Constants::is_true( 'SCRIPT_DEBUG' ) ? '' : '.min';
 
 		// Enqueue the Woo Fraud Protection init script.
 		wp_enqueue_script(
 			'wc-fraud-protection-blackbox-init',
-			plugins_url( 'assets/js/frontend/fraud-protection/blackbox-init' . $suffix . '.js', WC_PLUGIN_FILE ),
+			// plugins_url( 'assets/js/frontend/fraud-protection/blackbox-init' . $suffix . '.js', WC_PLUGIN_FILE ),
+			WC_FRAUD_PROTECTION_PLUGIN_URL . 'assets/js/blackbox-init.js',
 			array( 'wc-fraud-protection-blackbox' ),
-			WC_VERSION,
+			// WC_VERSION,
+			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )
 		);
 
