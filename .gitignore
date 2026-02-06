@@ -54,3 +54,5 @@ node_modules/
 # PHPUnit
 .phpunit.result.cache
 coverage/
+woocommerce-fraud-protection.zip
+.DS_Store
