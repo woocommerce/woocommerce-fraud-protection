@@ -1,0 +1,11 @@
+*** WooCommerce Fraud Protection Changelog ***
+
+2026-02-06 - version 1.0.0
+* Added - Fraud protection integration with Blackbox API
+* Added - Session-based clearance management
+* Added - Cart event tracking (add, remove, update, restore)
+* Added - Checkout event tracking (page load, field updates, order placed)
+* Added - Payment method event tracking
+* Added - Blocked session notices with customizable messaging
+* Added - Cart restrictions for blocked sessions
+* Added - Filter hooks for customizing fraud protection behavior
