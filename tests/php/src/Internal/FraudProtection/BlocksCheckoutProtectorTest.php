@@ -124,6 +124,23 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox verify_and_block() fails open when verify_session() throws a Throwable.
+	 */
+	public function test_verify_fails_open_when_verify_session_throws(): void {
+		$order = $this->create_mock_order( 789 );
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->willThrowException( new \TypeError( 'Unexpected type in collected data' ) );
+
+		// Should not throw — fail-open allows checkout to proceed.
+		$this->sut->verify_and_block( $order );
+
+		$this->assertLogged( 'error', 'verify_and_block failed, allowing checkout: Unexpected type in collected data' );
+	}
+
+	/**
 	 * @testdox verify_and_block() fails open with empty session_id (still calls verify).
 	 */
 	public function test_verify_fails_open_with_empty_session_id(): void {

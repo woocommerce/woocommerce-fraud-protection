@@ -138,11 +138,20 @@ class BlocksCheckoutProtector {
 	 * @throws RouteException When Blackbox returns a BLOCK decision.
 	 */
 	public function verify_and_block( \WC_Order $order ): void {
-		$decision = $this->session_verifier->verify_session(
-			$this->get_blackbox_session_id(),
-			$order->get_id(),
-			$this->request_data
-		);
+		try {
+			$decision = $this->session_verifier->verify_session(
+				$this->get_blackbox_session_id(),
+				$order->get_id(),
+				$this->request_data
+			);
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'error',
+				'verify_and_block failed, allowing checkout: ' . $e->getMessage(),
+				array( 'exception' => $e )
+			);
+			return;
+		}
 
 		if ( ApiClient::DECISION_BLOCK === $decision ) {
 			throw new RouteException(
