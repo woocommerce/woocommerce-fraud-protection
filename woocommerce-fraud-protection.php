@@ -16,10 +16,10 @@ define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // Require class files (no autoloader).
 // Order matters: typed properties require dependencies to be loaded first.
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/SessionClearanceManager.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/BlackboxScriptHandler.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/BlockedSessionNotice.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/FraudProtectionController.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/SessionClearanceManager.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/BlackboxScriptHandler.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/BlockedSessionNotice.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtectionController.php';
 
 // Bootstrap after WooCommerce loads (MU-plugins load before regular plugins).
 add_action( 'woocommerce_loaded', function () {
