@@ -67,7 +67,7 @@ jobs:
         run: ./vendor/bin/qit partner:add --user='${{ secrets.QIT_USER }}' --application_password='${{ secrets.QIT_APP_PASS }}'
 
       - name: Run Activation Test
-        run: ./vendor/bin/qit run:activation woocommerce-fraud-protection --zip=../woocommerce-fraud-protection.zip --wait
+        run: ./vendor/bin/qit run:activation woocommerce-fraud-protection --zip=woocommerce-fraud-protection.zip --wait
 
       - name: Run Security Test
-        run: ./vendor/bin/qit run:security woocommerce-fraud-protection --zip=../woocommerce-fraud-protection.zip --wait
+        run: ./vendor/bin/qit run:security woocommerce-fraud-protection --zip=woocommerce-fraud-protection.zip --wait
