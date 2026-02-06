@@ -22,15 +22,18 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/BlockedSessionNotic
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtectionController.php';
 
 // Bootstrap after WooCommerce loads (MU-plugins load before regular plugins).
-add_action( 'woocommerce_loaded', function () {
-	$session_manager = new \Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager();
+add_action(
+	'woocommerce_loaded',
+	function () {
+		$session_manager = new \Automattic\WooCommerceFraudProtection\Internal\SessionClearanceManager();
 
-	$blocked_notice = new \Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice();
-	$blocked_notice->init( $session_manager );
+		$blocked_notice = new \Automattic\WooCommerceFraudProtection\Internal\BlockedSessionNotice();
+		$blocked_notice->init( $session_manager );
 
-	$blackbox_handler = new \Automattic\WooCommerce\Internal\FraudProtection\BlackboxScriptHandler();
+		$blackbox_handler = new \Automattic\WooCommerceFraudProtection\Internal\BlackboxScriptHandler();
 
-	$controller = new \Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController();
-	$controller->init( $blocked_notice, $blackbox_handler );
-	$controller->register();
-} );
+		$controller = new \Automattic\WooCommerceFraudProtection\Internal\FraudProtectionController();
+		$controller->init( $blocked_notice, $blackbox_handler );
+		$controller->register();
+	}
+);

@@ -5,16 +5,16 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerceFraudProtection\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerceFraudProtection\Internal\BlackboxScriptHandler;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
 /**
  * Tests for BlackboxScriptHandler.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\BlackboxScriptHandler
+ * @covers \Automattic\WooCommerceFraudProtection\Internal\BlackboxScriptHandler
  */
 class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 

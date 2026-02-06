@@ -7,15 +7,15 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerceFraudProtection\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\PaymentMethodEventTracker;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionDataCollector;
+use Automattic\WooCommerceFraudProtection\Internal\PaymentMethodEventTracker;
+use Automattic\WooCommerceFraudProtection\Internal\SessionDataCollector;
 
 /**
  * Tests for the PaymentMethodEventTracker class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\PaymentMethodEventTracker
+ * @covers \Automattic\WooCommerceFraudProtection\Internal\PaymentMethodEventTracker
  */
 class PaymentMethodEventTrackerTest extends \WC_Unit_Test_Case {
 

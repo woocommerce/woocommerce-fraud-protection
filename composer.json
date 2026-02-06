@@ -21,12 +21,12 @@
 	},
 	"autoload": {
 		"psr-4": {
-			"Automattic\\WooCommerce\\FraudProtection\\": "src/"
+			"Automattic\\WooCommerceFraudProtection\\": "src/"
 		}
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"Automattic\\WooCommerce\\FraudProtection\\Tests\\": "tests/php/"
+			"Automattic\\WooCommerceFraudProtection\\Tests\\": "tests/php/"
 		}
 	},
 	"config": {

@@ -2,10 +2,9 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerceFraudProtection\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\Features\FeaturesController;
-use Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController;
+use Automattic\WooCommerceFraudProtection\Internal\FraudProtectionController;
 
 /**
  * Tests for the FraudProtectionController class.
@@ -29,9 +28,12 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	 * @return FraudProtectionController
 	 */
 	private function get_fresh_controller(): FraudProtectionController {
-		$container = wc_get_container();
-		$container->reset_all_resolved();
-		return $container->get( FraudProtectionController::class );
+		$controller = new FraudProtectionController();
+		$controller->init(
+			$this->createMock( \Automattic\WooCommerceFraudProtection\Internal\BlockedSessionNotice::class ),
+			$this->createMock( \Automattic\WooCommerceFraudProtection\Internal\BlackboxScriptHandler::class )
+		);
+		return $controller;
 	}
 
 	/**
@@ -98,31 +100,6 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test that on_init does nothing when feature is disabled.
-	 */
-	public function test_no_hooks_when_feature_disabled(): void {
-		// Ensure feature is disabled.
-		update_option( 'woocommerce_feature_fraud_protection_enabled', 'no' );
-
-		// Get a fresh controller instance.
-		$controller = $this->get_fresh_controller();
-
-		// Count hooks before calling on_init.
-		global $wp_filter;
-		$hook_count_before = count( $wp_filter );
-
-		// Call on_init.
-		$controller->on_init();
-
-		// Count hooks after - should be the same (no new hooks registered).
-		$hook_count_after = count( $wp_filter );
-
-		// Note: This is a basic test. In a full implementation, we would check
-		// for specific hooks that should be registered when enabled.
-		$this->assertEquals( $hook_count_before, $hook_count_after );
-	}
-
-	/**
 	 * Test that register method registers init action.
 	 */
 	public function test_register_registers_init_action(): void {
@@ -154,17 +131,20 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test that feature_is_enabled returns false when feature is disabled.
+	 * Test that feature_is_enabled returns false before init has fired.
 	 */
-	public function test_feature_is_enabled_returns_false_when_disabled(): void {
-		// Disable the feature.
-		update_option( 'woocommerce_feature_fraud_protection_enabled', 'no' );
+	public function test_feature_is_enabled_returns_false_before_init(): void {
+		// Simulate init not having fired yet.
+		global $wp_actions;
+		$original_init_count = $wp_actions['init'] ?? 0;
+		$wp_actions['init']  = 0;
 
-		// Get a fresh controller instance to pick up the option change.
 		$controller = $this->get_fresh_controller();
 
-		// Check if the method returns false.
 		$this->assertFalse( $controller->feature_is_enabled() );
+
+		// Restore.
+		$wp_actions['init'] = $original_init_count;
 	}
 
 	/**
@@ -181,7 +161,5 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 		// Remove any init hooks registered by the controller.
 		remove_all_actions( 'init' );
 
-		// Reset container.
-		wc_get_container()->reset_all_resolved();
 	}
 }
