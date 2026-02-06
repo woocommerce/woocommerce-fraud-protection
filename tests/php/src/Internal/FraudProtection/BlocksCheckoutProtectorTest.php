@@ -10,6 +10,9 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
 use Automattic\WooCommerce\Internal\FraudProtection\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtection\BlocksCheckoutProtector;
+use Automattic\WooCommerce\Internal\FraudProtection\PaymentDataResolver;
+use Automattic\WooCommerce\Internal\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
@@ -46,6 +49,13 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 	private $blocked_session_notice;
 
 	/**
+	 * Mock payment data resolver.
+	 *
+	 * @var PaymentDataResolver
+	 */
+	private $payment_data_resolver;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -53,15 +63,21 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
+		$this->payment_data_resolver  = $this->createMock( PaymentDataResolver::class );
 
 		$this->blocked_session_notice
 			->method( 'get_message_plaintext' )
 			->willReturn( 'We are unable to process this request online. Please contact support (test@example.com) to complete your purchase.' );
 
+		$this->payment_data_resolver
+			->method( 'resolve' )
+			->willReturn( null );
+
 		$this->sut = new BlocksCheckoutProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice
+			$this->blocked_session_notice,
+			$this->payment_data_resolver
 		);
 	}
 
@@ -251,6 +267,85 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->assertArrayNotHasKey( 'customer_password', $request_data );
 		$this->assertSame( array( 'first_name' => 'Jane' ), $request_data['billing_address'] );
 		$this->assertTrue( $request_data['create_account'] );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| Payment Data Resolution Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox extract_request_data() includes resolved_payment_data when resolver returns data.
+	 */
+	public function test_extract_includes_resolved_payment_data(): void {
+		$resolved = new PaymentMethodData(
+			'woocommerce_payments',
+			'card',
+			false,
+			new CardPaymentMethodData( 'visa', 'credit', '4242' )
+		);
+
+		$resolver = $this->createMock( PaymentDataResolver::class );
+		$resolver
+			->expects( $this->once() )
+			->method( 'resolve' )
+			->with(
+				'woocommerce_payments',
+				$this->callback(
+					function ( $data ) {
+						return is_array( $data );
+					}
+				)
+			)
+			->willReturn( $resolved );
+
+		$sut = new BlocksCheckoutProtector();
+		$sut->init( $this->session_verifier, $this->blocked_session_notice, $resolver );
+
+		$request = $this->create_mock_request(
+			'test-session-600',
+			array(
+				'payment_method' => 'woocommerce_payments',
+				'payment_data'   => array(
+					array(
+						'key'   => 'wcpay-payment-method',
+						'value' => 'pm_123',
+					),
+				),
+			)
+		);
+		$order = $this->create_mock_order( 600 );
+
+		$sut->extract_request_data( $order, $request );
+
+		$property = new \ReflectionProperty( BlocksCheckoutProtector::class, 'request_data' );
+		$property->setAccessible( true );
+		$request_data = $property->getValue( $sut );
+
+		$this->assertArrayHasKey( 'resolved_payment_data', $request_data );
+		$this->assertSame( 'card', $request_data['resolved_payment_data']['payment_type'] );
+		$this->assertSame( 'visa', $request_data['resolved_payment_data']['card']['brand'] );
+	}
+
+	/**
+	 * @testdox extract_request_data() does not include resolved_payment_data when resolver returns null.
+	 */
+	public function test_extract_omits_resolved_payment_data_when_null(): void {
+		$request = $this->create_mock_request(
+			'test-session-601',
+			array(
+				'payment_method' => 'unknown_gateway',
+				'payment_data'   => array(),
+			)
+		);
+		$order = $this->create_mock_order( 601 );
+
+		$this->sut->extract_request_data( $order, $request );
+
+		$request_data = $this->get_request_data();
+
+		$this->assertNull( $request_data['resolved_payment_data'] );
 	}
 
 	/*

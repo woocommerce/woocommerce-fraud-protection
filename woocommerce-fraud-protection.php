@@ -22,6 +22,11 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Api
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/DecisionHandler.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/BlackboxScriptHandler.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/BlockedSessionNotice.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Schemas/CardPaymentMethodData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Schemas/PaymentMethodData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/PaymentDataResolver.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Compat/StripePaymentDataCompat.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Compat/SquarePaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/SessionVerifier.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/BlocksCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/FraudProtectionController.php';
@@ -48,8 +53,16 @@ add_action(
 		$session_verifier = new \Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier();
 		$session_verifier->init( $data_collector, $api_client, $decision_handler );
 
+		$payment_data_resolver = new \Automattic\WooCommerce\Internal\FraudProtection\PaymentDataResolver();
+
+		$stripe_compat = new \Automattic\WooCommerce\Internal\FraudProtection\Compat\StripePaymentDataCompat();
+		$stripe_compat->register();
+
+		$square_compat = new \Automattic\WooCommerce\Internal\FraudProtection\Compat\SquarePaymentDataCompat();
+		$square_compat->register();
+
 		$blocks_checkout_protector = new \Automattic\WooCommerce\Internal\FraudProtection\BlocksCheckoutProtector();
-		$blocks_checkout_protector->init( $session_verifier, $blocked_notice );
+		$blocks_checkout_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
 
 		$controller = new \Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController();
 		$controller->init( $blocked_notice, $blackbox_handler, $blocks_checkout_protector );
