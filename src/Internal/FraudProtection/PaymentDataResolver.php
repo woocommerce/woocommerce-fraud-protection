@@ -116,6 +116,10 @@ class PaymentDataResolver {
 			return null;
 		}
 
+		if ( $token->get_user_id() !== get_current_user_id() ) {
+			return null;
+		}
+
 		return new PaymentMethodData(
 			$token->get_gateway_id(),
 			'card',

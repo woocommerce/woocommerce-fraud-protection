@@ -64,7 +64,7 @@ class StripePaymentDataCompat {
 
 		$pm_details = \WC_Stripe_API::get_payment_method( $pm_id );
 
-		if ( ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
+		if ( is_wp_error( $pm_details ) || ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
 			return $resolved;
 		}
 

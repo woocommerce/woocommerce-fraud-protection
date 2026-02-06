@@ -305,6 +305,33 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Pre-resolution returns null when token belongs to a different user.
+	 */
+	public function test_token_preresolution_returns_null_for_other_users_token(): void {
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'stripe' );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '4242' );
+		$token->set_expiry_month( '12' );
+		$token->set_expiry_year( '2028' );
+		$token->set_token( 'tok_other_user' );
+		$token->set_user_id( 99999 );
+		$token->save();
+
+		$result = $this->sut->resolve(
+			'stripe',
+			array(
+				array(
+					'key'   => 'token',
+					'value' => (string) $token->get_id(),
+				),
+			)
+		);
+
+		$this->assertNull( $result );
+	}
+
+	/**
 	 * @testdox Pre-resolution returns null for invalid or missing token IDs.
 	 */
 	public function test_token_preresolution_returns_null_for_invalid_token(): void {

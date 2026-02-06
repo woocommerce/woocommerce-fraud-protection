@@ -24,20 +24,12 @@ if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 		private static $mock_response;
 
 		/**
-		 * Mock exception to throw from get_payment_method().
-		 *
-		 * @var \Exception|null
-		 */
-		private static $mock_exception;
-
-		/**
 		 * Reset mock state.
 		 *
 		 * @return void
 		 */
 		public static function reset(): void {
-			self::$mock_response  = null;
-			self::$mock_exception = null;
+			self::$mock_response = null;
 		}
 
 		/**
@@ -50,28 +42,14 @@ if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 		}
 
 		/**
-		 * Set an exception to throw.
-		 *
-		 * @param \Exception $exception The exception to throw.
-		 */
-		public static function set_mock_exception( \Exception $exception ): void {
-			self::$mock_exception = $exception;
-		}
-
-		/**
 		 * Retrieve a payment method by ID.
 		 *
 		 * Mirrors the real WC_Stripe_API static method signature.
 		 *
 		 * @param string $payment_method_id The payment method ID.
 		 * @return mixed
-		 * @throws \Exception When a mock exception is set.
 		 */
 		public static function get_payment_method( string $payment_method_id ) {
-			if ( null !== self::$mock_exception ) {
-				throw self::$mock_exception;
-			}
-
 			return self::$mock_response;
 		}
 	}
@@ -290,6 +268,21 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		$this->assertNull( $result );
 	}
 
+
+	/**
+	 * @testdox Returns resolved when API returns a WP_Error.
+	 */
+	public function test_returns_resolved_when_api_returns_wp_error(): void {
+		\WC_Stripe_API::set_mock_response( new \WP_Error( 'stripe_error', 'Connection failed' ) );
+
+		$result = $this->sut->resolve(
+			null,
+			'stripe',
+			array( 'wc-stripe-payment-method' => 'pm_123' )
+		);
+
+		$this->assertNull( $result );
+	}
 
 	/**
 	 * @testdox Does not match 'stripe_something' incorrectly as non-Stripe gateway.

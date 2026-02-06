@@ -348,6 +348,43 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->assertNull( $request_data['resolved_payment_data'] );
 	}
 
+	/**
+	 * @testdox extract_request_data() fails open when payment data resolution throws.
+	 */
+	public function test_extract_request_data_fails_open_when_resolver_throws(): void {
+		$resolver = $this->createMock( PaymentDataResolver::class );
+		$resolver
+			->expects( $this->once() )
+			->method( 'resolve' )
+			->willThrowException( new \RuntimeException( 'Compat layer exploded' ) );
+
+		$sut = new BlocksCheckoutProtector();
+		$sut->init( $this->session_verifier, $this->blocked_session_notice, $resolver );
+
+		$request = $this->create_mock_request(
+			'test-session-700',
+			array(
+				'payment_method' => 'stripe',
+				'payment_data'   => array(
+					array(
+						'key'   => 'wc-stripe-payment-method',
+						'value' => 'pm_123',
+					),
+				),
+			)
+		);
+		$order = $this->create_mock_order( 700 );
+
+		$sut->extract_request_data( $order, $request );
+
+		$property = new \ReflectionProperty( BlocksCheckoutProtector::class, 'request_data' );
+		$property->setAccessible( true );
+		$request_data = $property->getValue( $sut );
+
+		$this->assertNull( $request_data['resolved_payment_data'] );
+		$this->assertLogged( 'warning', 'Payment data resolution failed: Compat layer exploded' );
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Helpers
