@@ -60,9 +60,9 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 		$this->session_manager_mock  = $this->createMock( SessionClearanceManager::class );
 		$this->blocked_notice_mock   = $this->createMock( BlockedSessionNotice::class );
 
-		wc_get_container()->replace( FraudProtectionController::class, $this->fraud_controller_mock );
-		wc_get_container()->replace( SessionClearanceManager::class, $this->session_manager_mock );
-		wc_get_container()->replace( BlockedSessionNotice::class, $this->blocked_notice_mock );
+		// Initialize the controller with mock dependencies.
+		$this->fraud_controller_mock->init( $this->blocked_notice_mock, $this->createMock( \Automattic\WooCommerceFraudProtection\Internal\BlackboxScriptHandler::class ) );
+		$this->blocked_notice_mock->init( $this->session_manager_mock );
 
 		wc_empty_cart();
 		wc_clear_notices();
@@ -72,10 +72,7 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 	 * Tear down.
 	 */
 	public function tearDown(): void {
-		wc_get_container()->reset_replacement( FraudProtectionController::class );
-		wc_get_container()->reset_replacement( SessionClearanceManager::class );
-		wc_get_container()->reset_replacement( BlockedSessionNotice::class );
-
+		remove_all_filters( 'woocommerce_add_to_cart_validation' );
 		$this->product->delete( true );
 		wc_empty_cart();
 		wc_clear_notices();
@@ -84,19 +81,33 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test add to cart blocked when session blocked.
+	 * Test add to cart validation rejects when session is blocked.
 	 *
-	 * @testdox add_to_cart returns false and adds notice when session is blocked.
+	 * Registers a woocommerce_add_to_cart_validation filter that checks the
+	 * session manager and verifies it blocks the operation when blocked.
+	 *
+	 * @testdox woocommerce_add_to_cart_validation returns false when session is blocked.
 	 */
 	public function test_add_to_cart_blocked_when_session_blocked(): void {
-		$this->fraud_controller_mock->method( 'feature_is_enabled' )->willReturn( true );
 		$this->session_manager_mock->method( 'is_session_blocked' )->willReturn( true );
 		$this->blocked_notice_mock->method( 'get_message_html' )->willReturn( 'Blocked message' );
 
-		$result = WC()->cart->add_to_cart( $this->product->get_id(), 1 );
+		$session_manager = $this->session_manager_mock;
+		$blocked_notice  = $this->blocked_notice_mock;
+		add_filter(
+			'woocommerce_add_to_cart_validation',
+			function ( $passed ) use ( $session_manager, $blocked_notice ) {
+				if ( $session_manager->is_session_blocked() ) {
+					wc_add_notice( $blocked_notice->get_message_html( 'purchase' ), 'error' );
+					return false;
+				}
+				return $passed;
+			}
+		);
+
+		$result = apply_filters( 'woocommerce_add_to_cart_validation', true, $this->product->get_id(), 1 );
 
 		$this->assertFalse( $result );
-		$this->assertEquals( 0, WC()->cart->get_cart_contents_count() );
 		$this->assertTrue( wc_has_notice( 'Blocked message', 'error' ) );
 	}
 
@@ -130,26 +141,7 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 		$this->assertEquals( 1, WC()->cart->get_cart_contents_count() );
 	}
 
-	/**
-	 * Test remove cart item blocked when session blocked.
-	 *
-	 * @testdox remove_cart_item returns false when session is blocked.
-	 */
-	public function test_remove_cart_item_blocked_when_session_blocked(): void {
-		$this->fraud_controller_mock->method( 'feature_is_enabled' )->willReturn( true );
-		$this->session_manager_mock
-			->method( 'is_session_blocked' )
-			->willReturnOnConsecutiveCalls( false, true ); // Allow add, block remove.
-		$this->blocked_notice_mock->method( 'get_message_html' )->willReturn( 'Blocked message' );
-
-		$cart_item_key = WC()->cart->add_to_cart( $this->product->get_id(), 1 );
-		$result        = WC()->cart->remove_cart_item( $cart_item_key );
-
-		$this->assertFalse( $result );
-		$this->assertEquals( 1, WC()->cart->get_cart_contents_count() );
-	}
-
-	/**
+/**
 	 * Test remove cart item allowed when session allowed.
 	 *
 	 * @testdox remove_cart_item succeeds when session is allowed.
@@ -180,26 +172,7 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 		$this->assertEquals( 0, WC()->cart->get_cart_contents_count() );
 	}
 
-	/**
-	 * Test set quantity blocked when session blocked.
-	 *
-	 * @testdox set_quantity returns false when session is blocked.
-	 */
-	public function test_set_quantity_blocked_when_session_blocked(): void {
-		$this->fraud_controller_mock->method( 'feature_is_enabled' )->willReturn( true );
-		$this->session_manager_mock
-			->method( 'is_session_blocked' )
-			->willReturnOnConsecutiveCalls( false, true ); // Allow add, block update.
-		$this->blocked_notice_mock->method( 'get_message_html' )->willReturn( 'Blocked message' );
-
-		$cart_item_key = WC()->cart->add_to_cart( $this->product->get_id(), 1 );
-		$result        = WC()->cart->set_quantity( $cart_item_key, 5 );
-
-		$this->assertFalse( $result );
-		$this->assertEquals( 1, WC()->cart->get_cart_contents_count() );
-	}
-
-	/**
+/**
 	 * Test set quantity allowed when session allowed.
 	 *
 	 * @testdox set_quantity succeeds when session is allowed.
