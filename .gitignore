@@ -56,3 +56,6 @@ node_modules/
 coverage/
 woocommerce-fraud-protection.zip
 .DS_Store
+
+# Claude local config files
+.claude/*local*.json
