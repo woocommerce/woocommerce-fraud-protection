@@ -58,10 +58,11 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			null,
 			'square_credit_card',
 			array(
-				'wc-square-credit-card-card-type'  => 'visa',
-				'wc-square-credit-card-last-four'  => '1234',
-				'wc-square-credit-card-exp-month'  => '6',
-				'wc-square-credit-card-exp-year'   => '2028',
+				'wc-square-credit-card-card-type'         => 'visa',
+				'wc-square-credit-card-last-four'         => '1234',
+				'wc-square-credit-card-exp-month'         => '6',
+				'wc-square-credit-card-exp-year'          => '2028',
+				'wc-square-credit-card-payment-postcode'  => '90210',
 			)
 		);
 
@@ -79,31 +80,11 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 					'country'          => null,
 					'exp_month'        => 6,
 					'exp_year'         => 2028,
-					'billing_postcode' => null,
+					'billing_postcode' => '90210',
 				),
 			),
 			$result->to_array()
 		);
-	}
-
-	/**
-	 * @testdox Extracts billing postcode from payment_data keys.
-	 */
-	public function test_extracts_billing_postcode(): void {
-		$result = $this->sut->resolve(
-			null,
-			'square_credit_card',
-			array(
-				'wc-square-credit-card-card-type'         => 'visa',
-				'wc-square-credit-card-last-four'         => '1234',
-				'wc-square-credit-card-exp-month'         => '6',
-				'wc-square-credit-card-exp-year'          => '2028',
-				'wc-square-credit-card-payment-postcode'  => '90210',
-			)
-		);
-
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
-		$this->assertSame( '90210', $result->to_array()['card']['billing_postcode'] );
 	}
 
 	/**
