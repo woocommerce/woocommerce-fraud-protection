@@ -65,6 +65,9 @@ add_action(
 		$session_blocking_handler = new \Automattic\WooCommerce\Internal\FraudProtection\SessionBlockingHandler();
 		$session_blocking_handler->init( $session_manager, $blocked_notice );
 
+		$session_verifier = new \Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier();
+		$session_verifier->init( $session_data_collector, $api_client, $decision_handler );
+
 		$blocks_checkout_protector = new \Automattic\WooCommerce\Internal\FraudProtection\BlocksCheckoutProtector();
 		$blocks_checkout_protector->init( $session_verifier, $blocked_notice );
 
@@ -77,7 +80,7 @@ add_action(
 			$checkout_event_tracker,
 			$payment_method_event_tracker,
 			$session_blocking_handler,
-			 $blocks_checkout_protector
+			$blocks_checkout_protector
 		);
 		$controller->register();
 	}

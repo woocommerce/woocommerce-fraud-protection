@@ -90,7 +90,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param CheckoutEventTracker      $checkout_event_tracker       The instance of CheckoutEventTracker to use.
 	 * @param PaymentMethodEventTracker $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
 	 * @param SessionBlockingHandler    $session_blocking_handler     The instance of SessionBlockingHandler to use.
-	 * * @param BlocksCheckoutProtector $blocks_checkout_protector The instance of BlocksCheckoutProtector to use.
+	 * @param BlocksCheckoutProtector   $blocks_checkout_protector The instance of BlocksCheckoutProtector to use.
 	 */
 	final public function init(
 		BlockedSessionNotice $blocked_session_notice,
@@ -107,7 +107,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->checkout_event_tracker       = $checkout_event_tracker;
 		$this->payment_method_event_tracker = $payment_method_event_tracker;
 		$this->session_blocking_handler     = $session_blocking_handler;
-		$this->blocks_checkout_protector = $blocks_checkout_protector;
+		$this->blocks_checkout_protector    = $blocks_checkout_protector;
 	}
 
 	/**
