@@ -4,7 +4,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
 
-use Automattic\WooCommerce\Internal\Features\FeaturesController;
 use Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController;
 
 /**
@@ -24,14 +23,12 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Get a fresh controller instance with reset container.
+	 * Create a new controller instance.
 	 *
 	 * @return FraudProtectionController
 	 */
-	private function get_fresh_controller(): FraudProtectionController {
-		$container = wc_get_container();
-		$container->reset_all_resolved();
-		return $container->get( FraudProtectionController::class );
+	private function create_controller(): FraudProtectionController {
+		return new FraudProtectionController();
 	}
 
 	/**
@@ -132,10 +129,7 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	 * Test that register method registers init action.
 	 */
 	public function test_register_registers_init_action(): void {
-		// Get a fresh controller instance.
-		$controller = $this->get_fresh_controller();
-
-		// Call register.
+		$controller = $this->create_controller();
 		$controller->register();
 
 		// Check if the init action is registered for our callback.
@@ -152,8 +146,7 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 		// Enable the feature.
 		update_option( 'woocommerce_feature_fraud_protection_enabled', 'yes' );
 
-		// Get a fresh controller instance to pick up the option change.
-		$controller = $this->get_fresh_controller();
+		$controller = $this->create_controller();
 
 		// Check if the method returns true.
 		$this->assertTrue( $controller->feature_is_enabled() );
@@ -169,8 +162,7 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 		// Even with the option set to 'no', the standalone plugin is always enabled.
 		update_option( 'woocommerce_feature_fraud_protection_enabled', 'no' );
 
-		// Get a fresh controller instance.
-		$controller = $this->get_fresh_controller();
+		$controller = $this->create_controller();
 
 		// Standalone plugin is always enabled.
 		$this->assertTrue( $controller->feature_is_enabled() );
@@ -189,8 +181,5 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 
 		// Remove any init hooks registered by the controller.
 		remove_all_actions( 'init' );
-
-		// Reset container.
-		wc_get_container()->reset_all_resolved();
 	}
 }
