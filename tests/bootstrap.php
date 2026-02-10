@@ -63,6 +63,8 @@ function _manually_load_plugins() {
 	require_once $plugin_dir . '/src/Internal/FraudProtection/PaymentMethodEventTracker.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/BlackboxScriptHandler.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/BlockedSessionNotice.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionVerifier.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/BlocksCheckoutProtector.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionBlockingHandler.php';
 	require_once $plugin_dir . '/src/Internal/FraudProtection/FraudProtectionController.php';
 
