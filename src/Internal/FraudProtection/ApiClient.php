@@ -168,16 +168,16 @@ class ApiClient {
 			return self::DECISION_ALLOW;
 		}
 
-		if ( ! isset( $response['decision'] ) ) {
+		if ( ! isset( $response['data'] ) ) {
 			FraudProtectionController::log(
 				'error',
-				'Response missing "decision" field. Failing open with "allow" decision.',
+				'Response missing "data" field. Failing open with "allow" decision.',
 				array( 'response' => $response )
 			);
 			return self::DECISION_ALLOW;
 		}
 
-		$decision = $response['decision'];
+		$decision = \strtolower( $response['data'] );
 
 		if ( ! in_array( $decision, self::VALID_DECISIONS, true ) ) {
 			FraudProtectionController::log(
@@ -242,7 +242,7 @@ class ApiClient {
 			array(
 				'session_id'  => $session_id,
 				'private_key' => '', // Woo will not use private keys for now.
-				'extra'       => $payload,
+				'context'     => $payload,
 			)
 		);
 
@@ -254,7 +254,7 @@ class ApiClient {
 			);
 		}
 
-		$url = self::BLACKBOX_API_BASE_URL . $path;
+		$url = self::BLACKBOX_API_BASE_URL . $path . '/' . $session_id;
 
 		// Use Jetpack Connection Client to make a signed request.
 		// This authenticates with the blog token automatically.
