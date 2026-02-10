@@ -23,7 +23,11 @@
 
 		window.Blackbox.collect()
 			.then( function ( sessionId ) {
-				if ( ! window.wp || ! window.wp.data || ! window.wp.data.dispatch ) {
+				if (
+					! window.wp ||
+					! window.wp.data ||
+					! window.wp.data.dispatch
+				) {
 					return;
 				}
 				const checkout = window.wp.data.dispatch( STORE_KEY );
