@@ -64,11 +64,39 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test cart page loaded collects data.
-	 *
-	 * @testdox track_cart_page_loaded() collects session data with empty event data.
+	 * @testdox register() registers all cart event tracking hooks.
 	 */
-	public function test_track_cart_page_loaded_collects_data(): void {
+	public function test_register_registers_hooks(): void {
+		$this->sut->register();
+
+		$this->assertNotFalse(
+			has_action( 'woocommerce_add_to_cart', array( $this->sut, 'track_cart_item_added' ) ),
+			'woocommerce_add_to_cart hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_cart_item_removed', array( $this->sut, 'track_cart_item_removed' ) ),
+			'woocommerce_cart_item_removed hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_cart_item_restored', array( $this->sut, 'track_cart_item_restored' ) ),
+			'woocommerce_cart_item_restored hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_after_cart_item_quantity_update', array( $this->sut, 'track_cart_item_updated' ) ),
+			'woocommerce_after_cart_item_quantity_update hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'template_redirect', array( $this->sut, 'track_cart_page_loaded' ) ),
+			'template_redirect hook should be registered'
+		);
+	}
+
+	/**
+	 * @testdox track_cart_page_loaded() collects session data when on cart page.
+	 */
+	public function test_track_cart_page_loaded_collects_data_on_cart(): void {
+		add_filter( 'woocommerce_is_cart', '__return_true' );
+
 		$this->mock_collector
 			->expects( $this->once() )
 			->method( 'collect' )
@@ -76,6 +104,19 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 				$this->equalTo( 'cart_page_loaded' ),
 				$this->equalTo( array() )
 			);
+
+		$this->sut->track_cart_page_loaded();
+
+		remove_filter( 'woocommerce_is_cart', '__return_true' );
+	}
+
+	/**
+	 * @testdox track_cart_page_loaded() does not collect session data when not on cart page.
+	 */
+	public function test_track_cart_page_loaded_does_not_collect_when_not_cart(): void {
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
 
 		$this->sut->track_cart_page_loaded();
 	}
@@ -248,5 +289,6 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 		}
 
 		WC()->cart->empty_cart();
+		remove_all_filters( 'woocommerce_is_cart' );
 	}
 }

@@ -34,6 +34,9 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 	 * @testdox from_cart() builds OrderData with all 11 keys.
 	 */
 	public function test_from_cart_builds_order_data(): void {
+		wp_set_current_user( 0 );
+		WC()->customer = new \WC_Customer( 0, true );
+
 		$product = \WC_Helper_Product::create_simple_product();
 		$product->set_regular_price( 50.00 );
 		$product->save();

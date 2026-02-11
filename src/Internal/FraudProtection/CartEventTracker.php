@@ -16,7 +16,6 @@ defined( 'ABSPATH' ) || exit;
  * for fraud protection. Event-specific data is passed
  * to the SessionDataCollector which handles session data storage internally.
  *
- * @since 10.5.0
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CartEventTracker {
@@ -40,6 +39,20 @@ class CartEventTracker {
 	}
 
 	/**
+	 * Register all cart event tracking hooks.
+	 *
+	 * @internal
+	 * @return void
+	 */
+	public function register(): void {
+		add_action( 'woocommerce_add_to_cart', array( $this, 'track_cart_item_added' ), 10, 4 );
+		add_action( 'woocommerce_cart_item_removed', array( $this, 'track_cart_item_removed' ), 10, 2 );
+		add_action( 'woocommerce_cart_item_restored', array( $this, 'track_cart_item_restored' ), 10, 2 );
+		add_action( 'woocommerce_after_cart_item_quantity_update', array( $this, 'track_cart_item_updated' ), 10, 4 );
+		add_action( 'template_redirect', array( $this, 'track_cart_page_loaded' ), 10, 0 );
+	}
+
+	/**
 	 * Track cart page loaded event.
 	 *
 	 * Collects session data when the cart page is initially loaded.
@@ -49,7 +62,9 @@ class CartEventTracker {
 	 * @return void
 	 */
 	public function track_cart_page_loaded(): void {
-		$this->session_data_collector->collect( 'cart_page_loaded', array() );
+		if ( function_exists( 'is_cart' ) && is_cart() ) {
+			$this->session_data_collector->collect( 'cart_page_loaded', array() );
+		}
 	}
 
 	/**
