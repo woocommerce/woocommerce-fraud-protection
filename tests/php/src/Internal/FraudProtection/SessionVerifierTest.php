@@ -88,7 +88,13 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			->with( $order_id )
 			->willReturn( $collected_data );
 
-		$expected_payload = array_merge( $collected_data, array( 'request_data' => $request_data ) );
+		$expected_payload = array_merge(
+			$collected_data,
+			array(
+				'request_data' => $request_data,
+				'payment'      => null,
+			)
+		);
 
 		$this->api_client
 			->expects( $this->once() )

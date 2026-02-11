@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtection;
 
+use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentMethodData;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -67,15 +69,17 @@ class SessionVerifier {
 	 * Collects session/order data, calls the Blackbox verify API, and applies
 	 * the decision (including filter overrides and session status updates).
 	 *
-	 * @param string $session_id   The Blackbox session ID from collect().
-	 * @param int    $order_id     The WooCommerce order ID.
-	 * @param array  $request_data Optional request data from the request being verified.
+	 * @param string             $session_id   The Blackbox session ID from collect().
+	 * @param int                $order_id     The WooCommerce order ID.
+	 * @param array              $request_data Optional request data from the request being verified.
+	 * @param ?PaymentMethodData $payment_data Optional resolved payment data.
 	 * @return string The final decision after filters: 'allow' or 'block'.
 	 */
-	public function verify_session( string $session_id, int $order_id, array $request_data = array() ): string {
+	public function verify_session( string $session_id, int $order_id, array $request_data = array(), ?PaymentMethodData $payment_data = null ): string {
 		$payload = $this->data_collector->get_collected_data( $order_id );
 
 		$payload['request_data'] = $request_data;
+		$payload['payment']      = $payment_data ? $payment_data->to_array() : null;
 
 		$decision = $this->api_client->verify( $session_id, $payload );
 
