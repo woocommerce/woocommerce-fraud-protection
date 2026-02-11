@@ -133,7 +133,7 @@ class SessionBlockingHandler {
 		$route = $request->get_route();
 
 		// Only intercept Store API routes.
-		if ( strpos( $route, '/wc/store/v1/' ) !== 0 ) {
+		if ( 0 !== strpos( $route, '/wc/store/v1/' ) ) {
 			return $result;
 		}
 
