@@ -48,7 +48,7 @@ class CheckoutEventTracker {
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'track_order_placed_from_shortcode' ), 10, 3 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'track_order_placed_from_store_api' ), 10, 1 );
 		add_action( 'woocommerce_checkout_update_order_review', array( $this, 'track_shortcode_checkout_field_update' ), 10, 1 );
-		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this, 'track_blocks_checkout_update' ), 10, 2 );
+		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this, 'track_blocks_checkout_update' ), 10, 0 );
 		add_action( 'template_redirect', array( $this, 'track_checkout_page_loaded' ), 10, 0 );
 	}	
 
