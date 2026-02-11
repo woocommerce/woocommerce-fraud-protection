@@ -74,7 +74,6 @@ describe( 'blocks-checkout', () => {
 		// subscribe was called; invoke the callback to simulate store readiness.
 		expect( subscribeCallback ).toBeInstanceOf( Function );
 		subscribeCallback();
-
 		await flushPromises();
 
 		expect( mockCollect ).toHaveBeenCalledTimes( 1 );
@@ -93,7 +92,6 @@ describe( 'blocks-checkout', () => {
 		} );
 
 		subscribeCallback();
-		await flushPromises();
 
 		expect( mockCollect ).toHaveBeenCalledTimes( 1 );
 		expect( mockSetExtensionData ).not.toHaveBeenCalled();
@@ -107,7 +105,6 @@ describe( 'blocks-checkout', () => {
 		} );
 
 		subscribeCallback();
-		await flushPromises();
 
 		expect( mockCollect ).toHaveBeenCalledTimes( 1 );
 		expect( mockSetExtensionData ).not.toHaveBeenCalled();
@@ -160,7 +157,6 @@ describe( 'blocks-checkout', () => {
 		} );
 
 		subscribeCallback();
-		await flushPromises();
 
 		expect( mockCollect ).toHaveBeenCalledTimes( 1 );
 		expect( mockSetExtensionData ).not.toHaveBeenCalled();
@@ -233,7 +229,6 @@ describe( 'blocks-checkout', () => {
 
 		// Let reset() rejection settle so catch handler fires collect.
 		await flushPromises();
-		await flushPromises();
 
 		expect( mockCollect ).toHaveBeenCalledTimes( 2 );
 	} );
@@ -278,7 +273,6 @@ describe( 'blocks-checkout', () => {
 
 			// Trigger initial collect.
 			subscribeCallback();
-			await flushPromises();
 
 			// Invoke the validation callback.
 			const validationCallback = mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
