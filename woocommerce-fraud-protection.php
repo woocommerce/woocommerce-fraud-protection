@@ -70,6 +70,7 @@ add_action(
 		$blocked_notice->init( $session_manager );
 
 		$blackbox_handler = new \Automattic\WooCommerce\Internal\FraudProtection\BlackboxScriptHandler();
+		$blackbox_handler->init( $session_manager );
 
 		// Session blocking handler.
 		$session_blocking_handler = new \Automattic\WooCommerce\Internal\FraudProtection\SessionBlockingHandler();

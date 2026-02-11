@@ -163,16 +163,16 @@ class ApiClient {
 			return self::DECISION_ALLOW;
 		}
 
-		if ( ! isset( $response['decision'] ) ) {
+		if ( ! isset( $response['data'] ) ) {
 			FraudProtectionController::log(
 				'error',
-				'Response missing "decision" field. Failing open with "allow" decision.',
+				'Response missing "data" field. Failing open with "allow" decision.',
 				array( 'response' => $response )
 			);
 			return self::DECISION_ALLOW;
 		}
 
-		$decision = $response['decision'];
+		$decision = \strtolower( $response['data'] );
 
 		if ( ! in_array( $decision, self::VALID_DECISIONS, true ) ) {
 			FraudProtectionController::log(
@@ -188,13 +188,13 @@ class ApiClient {
 
 		$session    = is_array( $event_data['session'] ?? null ) ? $event_data['session'] : array();
 		$session_id = $session['wc_session_id'] ?? 'unknown';
-		$event_type = $event_data['event_type'] ?? 'unknown';
+		$source     = $event_data['source'] ?? 'unknown';
 		FraudProtectionController::log(
 			'info',
 			sprintf(
-				'Fraud decision received: %s | Event: %s | Session: %s',
+				'Fraud decision received: %s | Source: %s | Session: %s',
 				$decision,
-				$event_type,
+				$source,
 				$session_id
 			),
 			array( 'response' => $response )
@@ -237,7 +237,7 @@ class ApiClient {
 			array(
 				'session_id'  => $session_id,
 				'private_key' => '', // Woo will not use private keys for now.
-				'extra'       => $payload,
+				'context'     => $payload,
 			)
 		);
 
@@ -249,7 +249,7 @@ class ApiClient {
 			);
 		}
 
-		$url = self::BLACKBOX_API_BASE_URL . $path;
+		$url = self::BLACKBOX_API_BASE_URL . $path . '/' . $session_id;
 
 		// Use Jetpack Connection Client to make a signed request.
 		// This authenticates with the blog token automatically.

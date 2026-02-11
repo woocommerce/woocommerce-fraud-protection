@@ -18,6 +18,5 @@
 
 	window.Blackbox.configure( {
 		apiKey: config.apiKey,
-		blogId: config.blogId,
 	} );
 } )();

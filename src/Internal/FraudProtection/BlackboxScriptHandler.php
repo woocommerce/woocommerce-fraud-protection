@@ -27,9 +27,27 @@ class BlackboxScriptHandler {
 	private const BLACKBOX_JS_URL = 'https://blackbox-api.wp.com/v1/dist/v.js';
 
 	/**
-	 * API key identifying WooCommerce as a Blackbox client.
+	 * API key prefix identifying WooCommerce as a Blackbox client.
 	 */
-	private const API_KEY = 'woocommerce';
+	private const API_KEY_PREFIX = 'woo';
+
+	/**
+	 * Session clearance manager.
+	 *
+	 * @var SessionClearanceManager
+	 */
+	private SessionClearanceManager $session_clearance_manager;
+
+	/**
+	 * Initialize dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param SessionClearanceManager $session_clearance_manager Session clearance manager.
+	 */
+	final public function init( SessionClearanceManager $session_clearance_manager ): void {
+		$this->session_clearance_manager = $session_clearance_manager;
+	}
 
 	/**
 	 * Register hooks for Blackbox script loading.
@@ -116,12 +134,13 @@ class BlackboxScriptHandler {
 			array( 'in_footer' => true )
 		);
 
+		$wc_session_id = $this->session_clearance_manager->get_session_id();
+
 		wp_localize_script(
 			'wc-fraud-protection-blackbox-init',
 			'wcBlackboxConfig',
 			array(
-				'apiKey' => self::API_KEY,
-				'blogId' => $blog_id,
+				'apiKey' => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_session_id,
 			)
 		);
 	}

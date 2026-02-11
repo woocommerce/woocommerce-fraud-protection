@@ -75,20 +75,20 @@ class ApiClientTest extends WC_Unit_Test_Case {
 				$captured_url  = $url;
 				return array(
 					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'decision' => 'allow' ) ),
+					'body'     => wp_json_encode( array( 'data' => 'ALLOW' ) ),
 				);
 			},
 			10,
 			3
 		);
 
-		$this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify', $captured_url );
+		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
-		$this->assertArrayHasKey( 'extra', $captured_body );
-		$this->assertArrayHasKey( 'blog_id', $captured_body['extra'] );
-		$this->assertSame( 12345, $captured_body['extra']['blog_id'] );
+		$this->assertArrayHasKey( 'context', $captured_body );
+		$this->assertArrayHasKey( 'blog_id', $captured_body['context'] );
+		$this->assertSame( 12345, $captured_body['context']['blog_id'] );
 	}
 
 	/**
@@ -101,11 +101,11 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			'pre_http_request',
 			fn() => array(
 				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'decision' => 'allow' ) ),
+				'body'     => wp_json_encode( array( 'data' => 'ALLOW' ) ),
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 	}
@@ -120,11 +120,11 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			'pre_http_request',
 			fn() => array(
 				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'decision' => 'block' ) ),
+				'body'     => wp_json_encode( array( 'data' => 'BLOCK' ) ),
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
 	}
@@ -137,7 +137,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 	public function test_verify_fails_open_when_blog_id_not_found(): void {
 		update_option( 'jetpack_options', array( 'id' => null ) );
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
@@ -154,7 +154,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			fn() => new WP_Error( 'http_error', 'Connection timeout' )
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Connection timeout' );
@@ -174,7 +174,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'status code 500' );
@@ -194,18 +194,18 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
 	/**
-	 * Test verify fails open when decision field missing.
+	 * Test verify fails open when data field missing.
 	 *
-	 * @testdox verify() fails open with allow when response missing decision field
+	 * @testdox verify() fails open with allow when response missing data field
 	 */
-	public function test_verify_fails_open_when_missing_decision(): void {
+	public function test_verify_fails_open_when_missing_data(): void {
 		add_filter(
 			'pre_http_request',
 			fn() => array(
@@ -214,10 +214,10 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
-		$this->assertLogged( 'error', 'missing "decision" field' );
+		$this->assertLogged( 'error', 'missing "data" field' );
 	}
 
 	/**
@@ -230,11 +230,11 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			'pre_http_request',
 			fn() => array(
 				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'decision' => 'unknown_value' ) ),
+				'body'     => wp_json_encode( array( 'data' => 'UNKNOWN_VALUE' ) ),
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Invalid decision value' );
@@ -272,11 +272,11 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$this->sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
 
-		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/report', $captured_url );
+		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/report/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
-		$this->assertArrayHasKey( 'extra', $captured_body );
-		$this->assertArrayHasKey( 'blog_id', $captured_body['extra'] );
-		$this->assertSame( 12345, $captured_body['extra']['blog_id'] );
+		$this->assertArrayHasKey( 'context', $captured_body );
+		$this->assertArrayHasKey( 'blog_id', $captured_body['context'] );
+		$this->assertSame( 12345, $captured_body['context']['blog_id'] );
 	}
 
 	/**
