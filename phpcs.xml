@@ -26,7 +26,9 @@
 	<config name="testVersion" value="7.4-" />
 
 	<!-- Rules -->
-	<rule ref="WooCommerce-Core" />
+	<rule ref="WooCommerce-Core">
+		<exclude name="WooCommerce.Commenting.CommentHooks.MissingSinceComment" />
+	</rule>
 
 	<rule ref="WooCommerce.Functions.InternalInjectionMethod">
 		<include-pattern>src/</include-pattern>
