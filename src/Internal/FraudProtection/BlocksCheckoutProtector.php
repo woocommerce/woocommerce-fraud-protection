@@ -48,6 +48,13 @@ class BlocksCheckoutProtector {
 	private BlockedSessionNotice $blocked_session_notice;
 
 	/**
+	 * Payment data resolver instance.
+	 *
+	 * @var PaymentDataResolver
+	 */
+	private PaymentDataResolver $payment_data_resolver;
+
+	/**
 	 * Request data extracted from the current checkout request.
 	 *
 	 * Transient storage during a single HTTP request: set in extract_request_data(),
@@ -67,13 +74,16 @@ class BlocksCheckoutProtector {
 	 *
 	 * @param SessionVerifier      $session_verifier       The session verifier instance.
 	 * @param BlockedSessionNotice $blocked_session_notice The blocked session notice instance.
+	 * @param PaymentDataResolver  $payment_data_resolver  The payment data resolver instance.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionNotice $blocked_session_notice
+		BlockedSessionNotice $blocked_session_notice,
+		PaymentDataResolver $payment_data_resolver
 	): void {
 		$this->session_verifier       = $session_verifier;
 		$this->blocked_session_notice = $blocked_session_notice;
+		$this->payment_data_resolver  = $payment_data_resolver;
 	}
 
 	/**
@@ -109,15 +119,32 @@ class BlocksCheckoutProtector {
 	 * @return void
 	 */
 	public function extract_request_data( \WC_Order $order, \WP_REST_Request $request ): void {
-		$this->request_data = array(
-			'billing_address'   => $request->get_param( 'billing_address' ),
-			'shipping_address'  => $request->get_param( 'shipping_address' ),
-			'payment_method'    => sanitize_text_field( $request->get_param( 'payment_method' ) ?? '' ),
-			'payment_data'      => $request->get_param( 'payment_data' ),
-			'create_account'    => (bool) $request->get_param( 'create_account' ),
-			'additional_fields' => $request->get_param( 'additional_fields' ),
-			'extensions'        => $request->get_param( 'extensions' ),
-		);
+		try {
+			$this->request_data = array(
+				'billing_address'   => $request->get_param( 'billing_address' ),
+				'shipping_address'  => $request->get_param( 'shipping_address' ),
+				'payment_method'    => sanitize_text_field( $request->get_param( 'payment_method' ) ?? '' ),
+				'payment_data'      => $request->get_param( 'payment_data' ),
+				'create_account'    => (bool) $request->get_param( 'create_account' ),
+				'additional_fields' => $request->get_param( 'additional_fields' ),
+				'extensions'        => $request->get_param( 'extensions' ),
+			);
+
+			$resolved_payment_data = $this->payment_data_resolver->resolve(
+				$this->request_data['payment_method'],
+				$this->request_data['payment_data'] ?? array()
+			);
+
+			$this->request_data['resolved_payment_data'] = $resolved_payment_data ? $resolved_payment_data->to_array() : null;
+		} catch ( \Throwable $e ) {
+			// Fail-open: payment data resolution is enrichment only.
+			FraudProtectionController::log(
+				'warning',
+				sprintf( 'Payment data resolution failed: %s', $e->getMessage() ),
+				array( 'error' => $e )
+			);
+			$this->request_data['resolved_payment_data'] = null;
+		}
 	}
 
 	/**
