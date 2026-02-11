@@ -59,6 +59,20 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox register should add all notice hooks.
+	 */
+	public function test_register_adds_all_hooks(): void {
+		$this->assertNotFalse(
+			has_action( 'wp', array( $this->sut, 'maybe_add_blocked_purchase_notice' ) ),
+			'Should register wp action for purchase notices'
+		);
+		$this->assertNotFalse(
+			has_action( 'before_woocommerce_add_payment_method', array( $this->sut, 'maybe_display_generic_blocked_notice' ) ),
+			'Should register before_woocommerce_add_payment_method action'
+		);
+	}
+
+	/**
 	 * Test blocked purchase notice added on checkout.
 	 *
 	 * @testdox maybe_add_blocked_purchase_notice should add notice when session is blocked and on checkout page.

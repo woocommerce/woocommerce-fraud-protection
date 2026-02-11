@@ -83,6 +83,27 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox register should add all blocking hooks.
+	 */
+	public function test_register_adds_all_hooks(): void {
+		$this->sut = $this->create_handler( false );
+		$this->sut->register();
+
+		$this->assertNotFalse(
+			has_filter( 'woocommerce_add_to_cart_validation', array( $this->sut, 'validate_add_to_cart' ) ),
+			'Should register woocommerce_add_to_cart_validation filter'
+		);
+		$this->assertNotFalse(
+			has_filter( 'woocommerce_available_payment_gateways', array( $this->sut, 'filter_payment_gateways' ) ),
+			'Should register woocommerce_available_payment_gateways filter'
+		);
+		$this->assertNotFalse(
+			has_filter( 'rest_pre_dispatch', array( $this->sut, 'filter_store_api_requests' ) ),
+			'Should register rest_pre_dispatch filter'
+		);
+	}
+
+	/**
 	 * @testdox validate_add_to_cart returns false and adds notice when session is blocked.
 	 */
 	public function test_add_to_cart_blocked_when_session_blocked(): void {

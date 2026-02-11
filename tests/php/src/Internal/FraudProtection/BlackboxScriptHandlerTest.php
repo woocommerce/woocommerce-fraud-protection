@@ -59,6 +59,16 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox register should add wp_enqueue_scripts hook.
+	 */
+	public function test_register_adds_enqueue_scripts_hook(): void {
+		$this->assertNotFalse(
+			has_action( 'wp_enqueue_scripts', array( $this->sut, 'maybe_enqueue_scripts' ) ),
+			'Should register wp_enqueue_scripts action'
+		);
+	}
+
+	/**
 	 * @testdox Should enqueue Blackbox scripts on checkout page.
 	 */
 	public function test_enqueues_scripts_on_checkout(): void {
