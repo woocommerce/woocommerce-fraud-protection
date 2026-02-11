@@ -17,6 +17,11 @@ define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 // Require class files (no autoloader).
 // Order matters: typed properties require dependencies to be loaded first.
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/SessionClearanceManager.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Schemas/Address.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Schemas/CartItem.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Schemas/OrderData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Schemas/SessionInfo.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/Schemas/CustomerData.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/SessionDataCollector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/ApiClient.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtection/DecisionHandler.php';

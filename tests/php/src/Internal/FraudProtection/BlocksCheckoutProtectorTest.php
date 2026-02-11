@@ -105,7 +105,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-123', 123, $request_data )
+			->with( 'test-session-123', 123, $request_data, null )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		// Should not throw.
@@ -128,7 +128,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-456', 456, $request_data )
+			->with( 'test-session-456', 456, $request_data, null )
 			->willReturn( ApiClient::DECISION_BLOCK );
 
 		$order = $this->create_mock_order( 456 );
@@ -166,7 +166,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( '', 101, array() )
+			->with( '', 101, array(), null )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		// Should not throw.
@@ -276,9 +276,9 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 	*/
 
 	/**
-	 * @testdox extract_request_data() includes resolved_payment_data when resolver returns data.
+	 * @testdox verify_and_block() passes resolved PaymentMethodData to SessionVerifier.
 	 */
-	public function test_extract_includes_resolved_payment_data(): void {
+	public function test_verify_passes_resolved_payment_data(): void {
 		$resolved = new PaymentMethodData(
 			'woocommerce_payments',
 			'card',
@@ -290,15 +290,18 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$resolver
 			->expects( $this->once() )
 			->method( 'resolve' )
-			->with(
-				'woocommerce_payments',
-				$this->callback(
-					function ( $data ) {
-						return is_array( $data );
-					}
-				)
-			)
 			->willReturn( $resolved );
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with(
+				'test-session-600',
+				600,
+				$this->isType( 'array' ),
+				$this->identicalTo( $resolved )
+			)
+			->willReturn( ApiClient::DECISION_ALLOW );
 
 		$sut = new BlocksCheckoutProtector();
 		$sut->init( $this->session_verifier, $this->blocked_session_notice, $resolver );
@@ -318,20 +321,19 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$order = $this->create_mock_order( 600 );
 
 		$sut->extract_request_data( $order, $request );
-
-		$property = new \ReflectionProperty( BlocksCheckoutProtector::class, 'request_data' );
-		$property->setAccessible( true );
-		$request_data = $property->getValue( $sut );
-
-		$this->assertArrayHasKey( 'resolved_payment_data', $request_data );
-		$this->assertSame( 'card', $request_data['resolved_payment_data']['payment_type'] );
-		$this->assertSame( 'visa', $request_data['resolved_payment_data']['card']['brand'] );
+		$sut->verify_and_block( $order );
 	}
 
 	/**
-	 * @testdox extract_request_data() does not include resolved_payment_data when resolver returns null.
+	 * @testdox verify_and_block() passes null payment when resolver returns null.
 	 */
-	public function test_extract_omits_resolved_payment_data_when_null(): void {
+	public function test_verify_passes_null_payment_when_resolver_returns_null(): void {
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( 'test-session-601', 601, $this->isType( 'array' ), null )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
 		$request = $this->create_mock_request(
 			'test-session-601',
 			array(
@@ -342,21 +344,24 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$order = $this->create_mock_order( 601 );
 
 		$this->sut->extract_request_data( $order, $request );
-
-		$request_data = $this->get_request_data();
-
-		$this->assertNull( $request_data['resolved_payment_data'] );
+		$this->sut->verify_and_block( $order );
 	}
 
 	/**
-	 * @testdox extract_request_data() fails open when payment data resolution throws.
+	 * @testdox verify_and_block() fails open when payment data resolution throws, still calls verify.
 	 */
-	public function test_extract_request_data_fails_open_when_resolver_throws(): void {
+	public function test_verify_fails_open_when_resolver_throws(): void {
 		$resolver = $this->createMock( PaymentDataResolver::class );
 		$resolver
 			->expects( $this->once() )
 			->method( 'resolve' )
 			->willThrowException( new \RuntimeException( 'Compat layer exploded' ) );
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( 'test-session-700', 700, $this->isType( 'array' ), null )
+			->willReturn( ApiClient::DECISION_ALLOW );
 
 		$sut = new BlocksCheckoutProtector();
 		$sut->init( $this->session_verifier, $this->blocked_session_notice, $resolver );
@@ -376,12 +381,8 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$order = $this->create_mock_order( 700 );
 
 		$sut->extract_request_data( $order, $request );
+		$sut->verify_and_block( $order );
 
-		$property = new \ReflectionProperty( BlocksCheckoutProtector::class, 'request_data' );
-		$property->setAccessible( true );
-		$request_data = $property->getValue( $sut );
-
-		$this->assertNull( $request_data['resolved_payment_data'] );
 		$this->assertLogged( 'warning', 'Payment data resolution failed: Compat layer exploded' );
 	}
 

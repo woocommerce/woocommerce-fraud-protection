@@ -119,32 +119,15 @@ class BlocksCheckoutProtector {
 	 * @return void
 	 */
 	public function extract_request_data( \WC_Order $order, \WP_REST_Request $request ): void {
-		try {
-			$this->request_data = array(
-				'billing_address'   => $request->get_param( 'billing_address' ),
-				'shipping_address'  => $request->get_param( 'shipping_address' ),
-				'payment_method'    => sanitize_text_field( $request->get_param( 'payment_method' ) ?? '' ),
-				'payment_data'      => $request->get_param( 'payment_data' ),
-				'create_account'    => (bool) $request->get_param( 'create_account' ),
-				'additional_fields' => $request->get_param( 'additional_fields' ),
-				'extensions'        => $request->get_param( 'extensions' ),
-			);
-
-			$resolved_payment_data = $this->payment_data_resolver->resolve(
-				$this->request_data['payment_method'],
-				$this->request_data['payment_data'] ?? array()
-			);
-
-			$this->request_data['resolved_payment_data'] = $resolved_payment_data ? $resolved_payment_data->to_array() : null;
-		} catch ( \Throwable $e ) {
-			// Fail-open: payment data resolution is enrichment only.
-			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Payment data resolution failed: %s', $e->getMessage() ),
-				array( 'error' => $e )
-			);
-			$this->request_data['resolved_payment_data'] = null;
-		}
+		$this->request_data = array(
+			'billing_address'   => $request->get_param( 'billing_address' ),
+			'shipping_address'  => $request->get_param( 'shipping_address' ),
+			'payment_method'    => sanitize_text_field( $request->get_param( 'payment_method' ) ?? '' ),
+			'payment_data'      => $request->get_param( 'payment_data' ),
+			'create_account'    => (bool) $request->get_param( 'create_account' ),
+			'additional_fields' => $request->get_param( 'additional_fields' ),
+			'extensions'        => $request->get_param( 'extensions' ),
+		);
 	}
 
 	/**
@@ -165,11 +148,27 @@ class BlocksCheckoutProtector {
 	 * @throws RouteException When Blackbox returns a BLOCK decision.
 	 */
 	public function verify_and_block( \WC_Order $order ): void {
+		$payment_data = null;
+		try {
+			$payment_data = $this->payment_data_resolver->resolve(
+				$this->request_data['payment_method'] ?? '',
+				$this->request_data['payment_data'] ?? array()
+			);
+		} catch ( \Throwable $e ) {
+			// Fail-open: resolve is enrichment only, verify still runs.
+			FraudProtectionController::log(
+				'warning',
+				'Payment data resolution failed: ' . $e->getMessage(),
+				array( 'exception' => $e )
+			);
+		}
+
 		try {
 			$decision = $this->session_verifier->verify_session(
 				$this->get_blackbox_session_id(),
 				$order->get_id(),
-				$this->request_data
+				$this->request_data,
+				$payment_data
 			);
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
