@@ -26,7 +26,10 @@
 
 		collectPromise = window.Blackbox.collect()
 			.then( function ( response ) {
-				const sessionId = response && response.data && response.data.session_id ? response.data.session_id : '';
+				const sessionId =
+					response && response.data && response.data.session_id
+						? response.data.session_id
+						: '';
 				if ( ! sessionId ) {
 					return;
 				}
@@ -106,14 +109,21 @@
 
 	// Gate checkout on session_id readiness.
 	// The checkout events API is exposed at wc.blocksCheckoutEvents.checkoutEvents.
-	const checkoutEvents = window.wc && window.wc.blocksCheckoutEvents && window.wc.blocksCheckoutEvents.checkoutEvents;
+	const checkoutEvents =
+		window.wc &&
+		window.wc.blocksCheckoutEvents &&
+		window.wc.blocksCheckoutEvents.checkoutEvents;
 	if ( checkoutEvents && checkoutEvents.onCheckoutValidation ) {
 		checkoutEvents.onCheckoutValidation( function () {
 			// Wait for in-flight collect(), with a timeout so we don't block forever (fail-open).
 			return Promise.race( [
-				collectPromise.then( function () { return true; } ),
+				collectPromise.then( function () {
+					return true;
+				} ),
 				new Promise( function ( resolve ) {
-					setTimeout( function () { resolve( true ); }, 5000 );
+					setTimeout( function () {
+						resolve( true );
+					}, 5000 );
 				} ),
 			] );
 		} );
