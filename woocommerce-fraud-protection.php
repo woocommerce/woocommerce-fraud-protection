@@ -54,6 +54,7 @@ add_action(
 		$blocked_notice->init( $session_manager );
 
 		$blackbox_handler = new \Automattic\WooCommerce\Internal\FraudProtection\BlackboxScriptHandler();
+		$blackbox_handler->init( $session_manager );
 
 		$session_verifier = new \Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier();
 		$session_verifier->init( $data_collector, $api_client, $decision_handler );

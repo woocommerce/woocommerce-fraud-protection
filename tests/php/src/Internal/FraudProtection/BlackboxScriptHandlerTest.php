@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
 
 use Automattic\WooCommerce\Internal\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
@@ -28,12 +29,23 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	private $sut;
 
 	/**
+	 * Mock session clearance manager.
+	 *
+	 * @var SessionClearanceManager&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $mock_session_manager;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
+		$this->mock_session_manager = $this->createMock( SessionClearanceManager::class );
+		$this->mock_session_manager->method( 'get_session_id' )->willReturn( 'mock-session-id' );
+
 		$this->sut = new BlackboxScriptHandler();
+		$this->sut->init( $this->mock_session_manager );
 		$this->sut->register();
 	}
 
@@ -146,8 +158,7 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 		do_action( 'wp_enqueue_scripts' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
 
 		$data = wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
-		$this->assertStringContainsString( '"woocommerce"', $data, 'Should contain API key' );
-		$this->assertStringContainsString( '"42"', $data, 'Should contain blog ID' );
+		$this->assertStringContainsString( '"woo:42:mock-session-id"', $data, 'Should contain API key with blog ID and session ID' );
 	}
 
 	/**
