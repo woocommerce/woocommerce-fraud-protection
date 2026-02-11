@@ -38,6 +38,17 @@ class PaymentMethodEventTracker {
 	final public function init( SessionDataCollector $session_data_collector ): void {
 		$this->session_data_collector = $session_data_collector;
 	}
+	
+	/**
+	 * Register payment method event tracking hooks.
+	 *
+	 * @internal
+	 * @return void
+	 */
+	public function register(): void {
+		add_action( 'woocommerce_new_payment_token', array( $this, 'track_payment_method_added' ), 10, 2 );
+		add_action( 'before_woocommerce_add_payment_method', array( $this, 'track_add_payment_method_page_loaded' ), 10, 0 );
+	}
 
 	/**
 	 * Track add payment method page loaded event.

@@ -125,48 +125,9 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->blackbox_script_handler->register();
 		$this->blocks_checkout_protector->register();
 		$this->session_blocking_handler->register();
-		$this->register_event_tracking_hooks();
-	}
-
-	/**
-	 * Register all event tracking hooks.
-	 *
-	 * @internal
-	 */
-	private function register_event_tracking_hooks(): void {
-		// Cart event tracking.
-		add_action( 'woocommerce_add_to_cart', array( $this->cart_event_tracker, 'track_cart_item_added' ), 10, 4 );
-		add_action( 'woocommerce_cart_item_removed', array( $this->cart_event_tracker, 'track_cart_item_removed' ), 10, 2 );
-		add_action( 'woocommerce_cart_item_restored', array( $this->cart_event_tracker, 'track_cart_item_restored' ), 10, 2 );
-		add_action( 'woocommerce_after_cart_item_quantity_update', array( $this->cart_event_tracker, 'track_cart_item_updated' ), 10, 4 );
-
-		// Checkout event tracking.
-		add_action( 'woocommerce_checkout_order_processed', array( $this->checkout_event_tracker, 'track_order_placed_from_shortcode' ), 10, 3 );
-		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this->checkout_event_tracker, 'track_order_placed_from_store_api' ), 10, 1 );
-		add_action( 'woocommerce_checkout_update_order_review', array( $this->checkout_event_tracker, 'track_shortcode_checkout_field_update' ), 10, 1 );
-		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this->checkout_event_tracker, 'track_blocks_checkout_update' ), 10, 2 );
-
-		// Payment method event tracking.
-		add_action( 'woocommerce_new_payment_token', array( $this->payment_method_event_tracker, 'track_payment_method_added' ), 10, 2 );
-		add_action( 'before_woocommerce_add_payment_method', array( $this->payment_method_event_tracker, 'track_add_payment_method_page_loaded' ), 10, 0 );
-
-		// Page load tracking.
-		add_action( 'template_redirect', array( $this, 'track_page_load_events' ), 10, 0 );
-	}
-
-	/**
-	 * Track page load events for cart and checkout pages.
-	 *
-	 * @internal
-	 */
-	public function track_page_load_events(): void {
-		if ( function_exists( 'is_cart' ) && is_cart() ) {
-			$this->cart_event_tracker->track_cart_page_loaded();
-		}
-
-		if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
-			$this->checkout_event_tracker->track_checkout_page_loaded();
-		}
+		$this->cart_event_tracker->register();
+		$this->checkout_event_tracker->register();
+		$this->payment_method_event_tracker->register();
 	}
 
 	/**

@@ -39,6 +39,20 @@ class CheckoutEventTracker {
 	}
 
 	/**
+	 * Register checkout event tracking hooks.
+	 *
+	 * @internal
+	 * @return void
+	 */
+	public function register(): void {
+		add_action( 'woocommerce_checkout_order_processed', array( $this, 'track_order_placed_from_shortcode' ), 10, 3 );
+		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'track_order_placed_from_store_api' ), 10, 1 );
+		add_action( 'woocommerce_checkout_update_order_review', array( $this, 'track_shortcode_checkout_field_update' ), 10, 1 );
+		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this, 'track_blocks_checkout_update' ), 10, 2 );
+		add_action( 'template_redirect', array( $this, 'track_checkout_page_loaded' ), 10, 0 );
+	}	
+
+	/**
 	 * Track checkout page loaded event.
 	 *
 	 * Collects session data when the checkout page is initially loaded.
@@ -48,7 +62,9 @@ class CheckoutEventTracker {
 	 * @return void
 	 */
 	public function track_checkout_page_loaded(): void {
-		$this->session_data_collector->collect( 'checkout_page_loaded', array() );
+		if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
+			$this->session_data_collector->collect( 'checkout_page_loaded', array() );
+		}
 	}
 
 	/**
