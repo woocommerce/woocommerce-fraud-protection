@@ -167,9 +167,6 @@ class SessionBlockingHandler {
 			return $result;
 		}
 
-		// Ensure session is loaded before checking status.
-		$this->session_manager->ensure_cart_loaded();
-
 		if ( $this->session_manager->is_session_blocked() ) {
 			return new \WP_Error(
 				'woocommerce_rest_forbidden',
