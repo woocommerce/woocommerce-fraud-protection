@@ -29,27 +29,10 @@ class CustomerDataTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox from_wc_customer() builds CustomerData with all 4 keys.
+	 * @testdox from_wc_customer() builds CustomerData with all 4 keys and nested addresses.
 	 */
 	public function test_from_wc_customer_builds_data(): void {
 		WC()->customer->set_billing_email( 'john@example.com' );
-
-		$billing  = Address::from_wc_customer_billing( WC()->customer );
-		$shipping = Address::from_wc_customer_shipping( WC()->customer );
-		$data     = CustomerData::from_wc_customer( WC()->customer, $billing, $shipping );
-		$arr      = $data->to_array();
-
-		$this->assertCount( 4, $arr );
-		$this->assertEquals( 'john@example.com', $arr['billing_email'] );
-		$this->assertIsInt( $arr['lifetime_order_count'] );
-		$this->assertIsArray( $arr['billing_address'] );
-		$this->assertIsArray( $arr['shipping_address'] );
-	}
-
-	/**
-	 * @testdox to_array() nests billing_address and shipping_address as sub-arrays.
-	 */
-	public function test_addresses_nested_as_sub_arrays(): void {
 		WC()->customer->set_billing_address_1( '123 Main St' );
 		WC()->customer->set_billing_country( 'US' );
 		WC()->customer->set_shipping_address_1( '456 Oak Ave' );
@@ -60,6 +43,12 @@ class CustomerDataTest extends \WC_Unit_Test_Case {
 		$data     = CustomerData::from_wc_customer( WC()->customer, $billing, $shipping );
 		$arr      = $data->to_array();
 
+		$this->assertEquals( 'john@example.com', $arr['billing_email'] );
+		$this->assertIsInt( $arr['lifetime_order_count'] );
+		$this->assertIsArray( $arr['billing_address'] );
+		$this->assertIsArray( $arr['shipping_address'] );
+
+		// Verify nested address values.
 		$this->assertEquals( '123 Main St', $arr['billing_address']['address_1'] );
 		$this->assertEquals( 'US', $arr['billing_address']['country'] );
 		$this->assertEquals( '456 Oak Ave', $arr['shipping_address']['address_1'] );
@@ -107,18 +96,30 @@ class CustomerDataTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox to_array() has correct top-level keys.
+	 * @testdox from_wc_customer() returns lifetime_order_count > 0 for customer with completed orders.
 	 */
-	public function test_to_array_keys(): void {
-		$data = CustomerData::empty();
-		$arr  = $data->to_array();
-
-		$expected_keys = array(
-			'billing_email',
-			'lifetime_order_count',
-			'billing_address',
-			'shipping_address',
+	public function test_lifetime_order_count_with_completed_orders(): void {
+		$user_id = $this->factory->user->create(
+			array( 'user_email' => 'orders-test@example.com' )
 		);
-		$this->assertEquals( $expected_keys, array_keys( $arr ) );
+		wp_set_current_user( $user_id );
+		WC()->customer = new \WC_Customer( $user_id, true );
+
+		// Create completed orders for this customer.
+		$order = wc_create_order( array( 'customer_id' => $user_id ) );
+		$order->set_status( 'completed' );
+		$order->save();
+
+		$order2 = wc_create_order( array( 'customer_id' => $user_id ) );
+		$order2->set_status( 'completed' );
+		$order2->save();
+
+		$billing  = Address::from_wc_customer_billing( WC()->customer );
+		$shipping = Address::from_wc_customer_shipping( WC()->customer );
+		$data     = CustomerData::from_wc_customer( WC()->customer, $billing, $shipping );
+		$arr      = $data->to_array();
+
+		$this->assertIsInt( $arr['lifetime_order_count'] );
+		$this->assertGreaterThan( 0, $arr['lifetime_order_count'] );
 	}
 }

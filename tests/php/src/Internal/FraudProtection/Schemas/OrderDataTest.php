@@ -47,9 +47,16 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 		$data = OrderData::from_cart( $order->get_id(), WC()->cart, WC()->customer );
 		$arr  = $data->to_array();
 
-		$this->assertCount( 11, $arr );
 		$this->assertEquals( $order->get_id(), $arr['order_id'] );
+		$this->assertEquals( 'guest', $arr['customer_id'] );
+		$this->assertEquals( 100.00, $arr['total'] );
 		$this->assertEquals( 100.00, $arr['items_total'] );
+		$this->assertEquals( 0.0, $arr['shipping_total'] );
+		$this->assertEquals( 0.0, $arr['tax_total'] );
+		$this->assertNull( $arr['shipping_tax_rate'] );
+		$this->assertEquals( 0.0, $arr['discount_total'] );
+		$this->assertIsString( $arr['currency'] );
+		$this->assertIsString( $arr['cart_hash'] );
 		$this->assertIsArray( $arr['items'] );
 		$this->assertCount( 1, $arr['items'] );
 	}
@@ -127,26 +134,4 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 		$this->assertArrayHasKey( 'quantity', $arr['items'][0] );
 	}
 
-	/**
-	 * @testdox to_array() includes all required keys.
-	 */
-	public function test_to_array_keys(): void {
-		$data = OrderData::empty();
-		$arr  = $data->to_array();
-
-		$expected_keys = array(
-			'order_id',
-			'customer_id',
-			'total',
-			'items_total',
-			'shipping_total',
-			'tax_total',
-			'shipping_tax_rate',
-			'discount_total',
-			'currency',
-			'cart_hash',
-			'items',
-		);
-		$this->assertEquals( $expected_keys, array_keys( $arr ) );
-	}
 }

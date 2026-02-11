@@ -72,7 +72,12 @@ class AddressTest extends \WC_Unit_Test_Case {
 		$arr     = $address->to_array();
 
 		$this->assertEquals( 'Jane', $arr['first_name'] );
+		$this->assertEquals( 'Smith', $arr['last_name'] );
 		$this->assertEquals( '456 Oak Ave', $arr['address_1'] );
+		$this->assertEquals( 'Suite 100', $arr['address_2'] );
+		$this->assertEquals( 'Los Angeles', $arr['city'] );
+		$this->assertEquals( 'CA', $arr['state'] );
+		$this->assertEquals( '90001', $arr['postcode'] );
 		$this->assertEquals( 'US', $arr['country'] );
 		$this->assertNull( $arr['phone'] );
 	}
@@ -113,24 +118,4 @@ class AddressTest extends \WC_Unit_Test_Case {
 		$this->assertEquals( 'CA', $address->get_country() );
 	}
 
-	/**
-	 * @testdox to_array() has exactly 9 keys.
-	 */
-	public function test_to_array_has_nine_keys(): void {
-		$address = Address::from_wc_customer_billing( WC()->customer );
-		$arr     = $address->to_array();
-
-		$expected_keys = array(
-			'first_name',
-			'last_name',
-			'address_1',
-			'address_2',
-			'city',
-			'state',
-			'postcode',
-			'country',
-			'phone',
-		);
-		$this->assertEquals( $expected_keys, array_keys( $arr ) );
-	}
 }

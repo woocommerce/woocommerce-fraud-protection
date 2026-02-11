@@ -42,6 +42,8 @@ class CartItemTest extends \WC_Unit_Test_Case {
 		$product->set_regular_price( 25.00 );
 		$product->save();
 
+		wp_set_object_terms( $product->get_id(), 'Electronics', 'product_cat' );
+
 		WC()->cart->add_to_cart( $product->get_id(), 3 );
 		WC()->cart->calculate_totals();
 
@@ -51,12 +53,14 @@ class CartItemTest extends \WC_Unit_Test_Case {
 		$item = CartItem::from_cart_entry( $cart_item, $cart_item['data'] );
 		$arr  = $item->to_array();
 
-		$this->assertCount( 12, $arr );
 		$this->assertEquals( 'Test Widget', $arr['name'] );
 		$this->assertEquals( 'A test widget', $arr['description'] );
+		$this->assertEquals( 'Electronics', $arr['category'] );
 		$this->assertEquals( 'WDG-001', $arr['sku'] );
 		$this->assertEquals( 3, $arr['quantity'] );
 		$this->assertEquals( 25.00, $arr['unit_price'] );
+		$this->assertIsFloat( $arr['unit_tax_amount'] );
+		$this->assertIsFloat( $arr['unit_discount_amount'] );
 		$this->assertEquals( 'simple', $arr['product_type'] );
 		$this->assertFalse( $arr['is_virtual'] );
 		$this->assertFalse( $arr['is_downloadable'] );
@@ -86,39 +90,4 @@ class CartItemTest extends \WC_Unit_Test_Case {
 		$this->assertIsFloat( $arr['unit_discount_amount'] );
 	}
 
-	/**
-	 * @testdox to_array() includes all required keys.
-	 */
-	public function test_to_array_keys(): void {
-		WC()->cart->empty_cart();
-
-		$product = \WC_Helper_Product::create_simple_product();
-		$product->set_regular_price( 10.00 );
-		$product->save();
-
-		WC()->cart->add_to_cart( $product->get_id(), 1 );
-		WC()->cart->calculate_totals();
-
-		$cart_contents = WC()->cart->get_cart();
-		$cart_item     = reset( $cart_contents );
-
-		$item = CartItem::from_cart_entry( $cart_item, $cart_item['data'] );
-		$arr  = $item->to_array();
-
-		$expected_keys = array(
-			'name',
-			'description',
-			'category',
-			'sku',
-			'quantity',
-			'unit_price',
-			'unit_tax_amount',
-			'unit_discount_amount',
-			'product_type',
-			'is_virtual',
-			'is_downloadable',
-			'attributes',
-		);
-		$this->assertEquals( $expected_keys, array_keys( $arr ) );
-	}
 }
