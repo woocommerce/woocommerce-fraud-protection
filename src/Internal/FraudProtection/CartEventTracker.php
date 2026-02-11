@@ -16,7 +16,6 @@ defined( 'ABSPATH' ) || exit;
  * for fraud protection. Event-specific data is passed
  * to the SessionDataCollector which handles session data storage internally.
  *
- * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CartEventTracker {
@@ -41,9 +40,9 @@ class CartEventTracker {
 
 	/**
 	 * Register all cart event tracking hooks.
-	 * 
+	 *
 	 * @internal
-	 * @return void 
+	 * @return void
 	 */
 	public function register(): void {
 		add_action( 'woocommerce_add_to_cart', array( $this, 'track_cart_item_added' ), 10, 4 );
@@ -52,7 +51,7 @@ class CartEventTracker {
 		add_action( 'woocommerce_after_cart_item_quantity_update', array( $this, 'track_cart_item_updated' ), 10, 4 );
 		add_action( 'template_redirect', array( $this, 'track_cart_page_loaded' ), 10, 0 );
 	}
-	
+
 	/**
 	 * Track cart page loaded event.
 	 *

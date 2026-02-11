@@ -19,7 +19,6 @@ defined( 'ABSPATH' ) || exit;
  * Note: Store API (block checkout) and payment gateway filtering are handled
  * directly in WC Core classes (Checkout.php and WC_Payment_Gateways).
  *
- * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class BlockedSessionNotice /* implements RegisterHooksInterface */ {

@@ -18,7 +18,6 @@ defined( 'ABSPATH' ) || exit;
  * degrade gracefully when fields are unavailable, ensuring checkout never fails due to
  * missing fraud protection data.
  *
- * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class SessionDataCollector {
@@ -47,8 +46,6 @@ class SessionDataCollector {
 	 * This method is called manually at specific points in the checkout/payment flow
 	 * to gather all relevant data for fraud analysis. It returns data in the nested
 	 * format expected by the WPCOM fraud protection service.
-	 *
-	 * 
 	 *
 	 * @param string|null $event_type Optional event type identifier (e.g., 'checkout_started', 'payment_attempt').
 	 * @param array       $event_data Optional event-specific additional context data.
@@ -92,8 +89,6 @@ class SessionDataCollector {
 	 * Retrieves the array of collected event data stored during this session.
 	 * Returns an empty array if no data has been collected or session is unavailable.
 	 *
-	 * 
-	 *
 	 * @param int|null $order_id Optional order ID to include order data in the response.
 	 * @return array Array of collected fraud protection event data.
 	 */
@@ -132,8 +127,6 @@ class SessionDataCollector {
 	 * Reuses the same logic as get_billing_address() but returns only the country.
 	 * Tries WC_Customer first, falls back to session data, with graceful error handling.
 	 *
-	 * 
-	 *
 	 * @return string|null Current billing country code or null if unavailable.
 	 */
 	public function get_current_billing_country(): ?string {
@@ -158,8 +151,6 @@ class SessionDataCollector {
 	 *
 	 * Reuses the same logic as get_shipping_address() but returns only the country.
 	 * Tries WC_Customer first, falls back to session data, with graceful error handling.
-	 *
-	 * 
 	 *
 	 * @return string|null Current shipping country code or null if unavailable.
 	 */
@@ -186,8 +177,6 @@ class SessionDataCollector {
 	 * Collects session identification and tracking data with graceful degradation
 	 * for unavailable fields. Email collection follows the fallback chain:
 	 * logged-in user email → session customer data → WC_Customer billing email.
-	 *
-	 * 
 	 *
 	 * @return array Session data array with 6 keys.
 	 */
@@ -231,8 +220,6 @@ class SessionDataCollector {
 	 * Collects customer identification and history data with graceful degradation.
 	 * Tries WC_Customer object first, then falls back to session data if values are empty.
 	 * Includes lifetime_order_count which counts all orders regardless of status.
-	 *
-	 * 
 	 *
 	 * @return array Customer data array with 4 keys.
 	 */
@@ -291,8 +278,6 @@ class SessionDataCollector {
 	 * Collects comprehensive order information from the cart with graceful degradation.
 	 * Calculates shipping_tax_rate from shipping tax and shipping total. Sets customer_id
 	 * to 'guest' for non-logged-in users.
-	 *
-	 * 
 	 *
 	 * @param int|null $order_id_from_event Optional order ID from event data.
 	 * @return array Order data array with 11 keys including items array.
@@ -375,8 +360,6 @@ class SessionDataCollector {
 	 * name, description, category, SKU, pricing, quantities, and WooCommerce-specific
 	 * attributes. Returns array of item objects with 12 fields each.
 	 *
-	 * 
-	 *
 	 * @return array Array of cart item objects with detailed product information.
 	 */
 	private function get_cart_items(): array {
@@ -437,8 +420,6 @@ class SessionDataCollector {
 	 *
 	 * Collects billing address fields from WC_Customer object with graceful degradation.
 	 * Returns array with 6 address fields, sanitized with sanitize_text_field().
-	 *
-	 * 
 	 *
 	 * @return array Billing address array with 6 keys.
 	 */
@@ -507,8 +488,6 @@ class SessionDataCollector {
 	 * Collects shipping address fields from WC_Customer object with graceful degradation.
 	 * Returns array with 6 address fields, sanitized with sanitize_text_field().
 	 *
-	 * 
-	 *
 	 * @return array Shipping address array with 6 keys.
 	 */
 	private function get_shipping_address(): array {
@@ -567,8 +546,6 @@ class SessionDataCollector {
 	/**
 	 * Get client IP address using WooCommerce geolocation utility.
 	 *
-	 * 
-	 *
 	 * @return string|null IP address or null if not available.
 	 */
 	private function get_ip_address(): ?string {
@@ -584,8 +561,6 @@ class SessionDataCollector {
 	 *
 	 * Tries logged-in user email first, then WC_Customer billing email,
 	 * then session customer data as fallback.
-	 *
-	 * 
 	 *
 	 * @return string|null Email address or null if not available.
 	 */
@@ -620,8 +595,6 @@ class SessionDataCollector {
 	/**
 	 * Get user agent string from HTTP headers.
 	 *
-	 * 
-	 *
 	 * @return string|null User agent or null if not available.
 	 */
 	private function get_user_agent(): ?string {
@@ -636,8 +609,6 @@ class SessionDataCollector {
 	 *
 	 * Uses WooCommerce helper with caching for better performance.
 	 * Returns all categories for the product, not just the primary one.
-	 *
-	 * 
 	 *
 	 * @param \WC_Product $product The product object.
 	 * @return string|null Comma-separated category names or null if none.
@@ -661,8 +632,6 @@ class SessionDataCollector {
 	 *
 	 * Removes oldest entries from the array until the serialized size is under the limit.
 	 * Always keeps at least one entry (the most recent).
-	 *
-	 * 
 	 *
 	 * @param array $data      Array of collected event data.
 	 * @param int   $base_size Size in bytes of additional data that will be combined with this array.

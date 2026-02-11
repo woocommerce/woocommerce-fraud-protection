@@ -16,7 +16,6 @@ defined( 'ABSPATH' ) || exit;
  * for fraud protection. Event-specific data is passed to the SessionDataCollector which
  * handles session data storage internally.
  *
- * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class PaymentMethodEventTracker {
@@ -38,7 +37,7 @@ class PaymentMethodEventTracker {
 	final public function init( SessionDataCollector $session_data_collector ): void {
 		$this->session_data_collector = $session_data_collector;
 	}
-	
+
 	/**
 	 * Register payment method event tracking hooks.
 	 *

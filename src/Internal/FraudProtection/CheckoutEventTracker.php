@@ -16,7 +16,6 @@ defined( 'ABSPATH' ) || exit;
  * shortcode checkout events for fraud protection. Event-specific data is passed to the
  * SessionDataCollector which handles session data storage internally.
  *
- * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CheckoutEventTracker {
@@ -50,7 +49,7 @@ class CheckoutEventTracker {
 		add_action( 'woocommerce_checkout_update_order_review', array( $this, 'track_shortcode_checkout_field_update' ), 10, 1 );
 		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this, 'track_blocks_checkout_update' ), 10, 0 );
 		add_action( 'template_redirect', array( $this, 'track_checkout_page_loaded' ), 10, 0 );
-	}	
+	}
 
 	/**
 	 * Track checkout page loaded event.

@@ -17,7 +17,6 @@ defined( 'ABSPATH' ) || exit;
  * with WooCommerce sessions and uses the FraudProtectionController logging helper
  * to maintain consistent audit logs.
  *
- * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class SessionClearanceManager {
