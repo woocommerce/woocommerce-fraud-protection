@@ -12,7 +12,6 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Immutable record object representing a billing or shipping address.
  *
- * @since 10.5.0
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class Address {

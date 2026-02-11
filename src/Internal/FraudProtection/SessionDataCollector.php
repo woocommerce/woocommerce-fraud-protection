@@ -23,7 +23,6 @@ defined( 'ABSPATH' ) || exit;
  * degrade gracefully when fields are unavailable, ensuring checkout never fails due to
  * missing fraud protection data.
  *
- * @since 10.5.0
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class SessionDataCollector {
@@ -52,8 +51,6 @@ class SessionDataCollector {
 	 * This method is called manually at specific points in the checkout/payment flow
 	 * to gather all relevant data for fraud analysis. It returns data in the nested
 	 * format expected by the WPCOM fraud protection service.
-	 *
-	 * @since 10.5.0
 	 *
 	 * @param string|null $event_type Optional event type identifier (e.g., 'checkout_started', 'payment_attempt').
 	 * @param array       $event_data Optional event-specific additional context data.
@@ -97,8 +94,6 @@ class SessionDataCollector {
 	 * Retrieves the array of collected event data stored during this session.
 	 * Returns an empty array if no data has been collected or session is unavailable.
 	 *
-	 * @since 10.5.0
-	 *
 	 * @param int|null $order_id Optional order ID to include order data in the response.
 	 * @return array Array of collected fraud protection event data.
 	 */
@@ -128,8 +123,6 @@ class SessionDataCollector {
 	/**
 	 * Get current billing country from customer data.
 	 *
-	 * @since 10.5.0
-	 *
 	 * @return string|null Current billing country code or null if unavailable.
 	 */
 	public function get_current_billing_country(): ?string {
@@ -139,8 +132,6 @@ class SessionDataCollector {
 	/**
 	 * Get current shipping country from customer data.
 	 *
-	 * @since 10.5.0
-	 *
 	 * @return string|null Current shipping country code or null if unavailable.
 	 */
 	public function get_current_shipping_country(): ?string {
@@ -149,8 +140,6 @@ class SessionDataCollector {
 
 	/**
 	 * Get session data as a SessionInfo schema object.
-	 *
-	 * @since 10.5.0
 	 *
 	 * @return SessionInfo
 	 */
@@ -164,8 +153,6 @@ class SessionDataCollector {
 
 	/**
 	 * Get customer data as a CustomerData schema object.
-	 *
-	 * @since 10.5.0
 	 *
 	 * @return CustomerData
 	 */
@@ -186,8 +173,6 @@ class SessionDataCollector {
 	/**
 	 * Get billing address as an Address schema object.
 	 *
-	 * @since 10.5.0
-	 *
 	 * @return Address
 	 */
 	private function get_billing_address(): Address {
@@ -204,8 +189,6 @@ class SessionDataCollector {
 	/**
 	 * Get shipping address as an Address schema object.
 	 *
-	 * @since 10.5.0
-	 *
 	 * @return Address
 	 */
 	private function get_shipping_address(): Address {
@@ -221,8 +204,6 @@ class SessionDataCollector {
 
 	/**
 	 * Get order data as an OrderData schema object.
-	 *
-	 * @since 10.5.0
 	 *
 	 * @param int|null $order_id_from_event Optional order ID from event data.
 	 * @return OrderData
@@ -244,8 +225,6 @@ class SessionDataCollector {
 	 *
 	 * Removes oldest entries from the array until the serialized size is under the limit.
 	 * Always keeps at least one entry (the most recent).
-	 *
-	 * @since 10.5.0
 	 *
 	 * @param array $data      Array of collected event data.
 	 * @param int   $base_size Size in bytes of additional data that will be combined with this array.
