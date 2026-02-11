@@ -34,6 +34,11 @@ class BlocksCheckoutProtector {
 	private const EXTENSION_NAMESPACE = 'woocommerce/fraud-protection';
 
 	/**
+	 * Source identifier for verify requests from this protector.
+	 */
+	private const SOURCE = 'blocks_checkout';
+
+	/**
 	 * Session verifier instance.
 	 *
 	 * @var SessionVerifier
@@ -167,6 +172,7 @@ class BlocksCheckoutProtector {
 			$decision = $this->session_verifier->verify_session(
 				$this->get_blackbox_session_id(),
 				$order->get_id(),
+				self::SOURCE,
 				$this->request_data,
 				$payment_data
 			);

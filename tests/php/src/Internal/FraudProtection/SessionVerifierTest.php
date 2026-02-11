@@ -73,8 +73,8 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$session_id    = 'test-session-abc';
 		$order_id      = 42;
 		$collected_data = array(
-			'event_type' => 'checkout',
-			'amount'     => 100,
+			'session'  => array( 'wc_session_id' => 'abc' ),
+			'customer' => array(),
 		);
 		$request_data = array(
 			'billing_address'  => array( 'first_name' => 'John' ),
@@ -91,6 +91,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$expected_payload = array_merge(
 			$collected_data,
 			array(
+				'source'       => 'blocks_checkout',
 				'request_data' => $request_data,
 				'payment'      => null,
 			)
@@ -108,7 +109,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			->with( ApiClient::DECISION_ALLOW, $expected_payload )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
-		$result = $this->sut->verify_session( $session_id, $order_id, $request_data );
+		$result = $this->sut->verify_session( $session_id, $order_id, 'blocks_checkout', $request_data );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 	}
@@ -119,7 +120,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 	public function test_verify_session_returns_filtered_decision(): void {
 		$this->data_collector
 			->method( 'get_collected_data' )
-			->willReturn( array( 'event_type' => 'checkout' ) );
+			->willReturn( array( 'session' => array(), 'customer' => array() ) );
 
 		// API returns BLOCK, but a filter overrides to ALLOW.
 		$this->api_client
@@ -130,7 +131,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			->method( 'apply_decision' )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
-		$result = $this->sut->verify_session( 'session-123', 99 );
+		$result = $this->sut->verify_session( 'session-123', 99, 'blocks_checkout' );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 	}

@@ -193,13 +193,13 @@ class ApiClient {
 
 		$session    = is_array( $event_data['session'] ?? null ) ? $event_data['session'] : array();
 		$session_id = $session['wc_session_id'] ?? 'unknown';
-		$event_type = $event_data['event_type'] ?? 'unknown';
+		$source     = $event_data['source'] ?? 'unknown';
 		FraudProtectionController::log(
 			'info',
 			sprintf(
-				'Fraud decision received: %s | Event: %s | Session: %s',
+				'Fraud decision received: %s | Source: %s | Session: %s',
 				$decision,
-				$event_type,
+				$source,
 				$session_id
 			),
 			array( 'response' => $response )

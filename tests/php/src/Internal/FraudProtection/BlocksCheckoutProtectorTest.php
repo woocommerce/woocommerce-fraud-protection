@@ -105,7 +105,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-123', 123, $request_data, null )
+			->with( 'test-session-123', 123, 'blocks_checkout', $request_data, null )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		// Should not throw.
@@ -128,7 +128,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-456', 456, $request_data, null )
+			->with( 'test-session-456', 456, 'blocks_checkout', $request_data, null )
 			->willReturn( ApiClient::DECISION_BLOCK );
 
 		$order = $this->create_mock_order( 456 );
@@ -166,7 +166,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( '', 101, array(), null )
+			->with( '', 101, 'blocks_checkout', array(), null )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		// Should not throw.
@@ -298,6 +298,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 			->with(
 				'test-session-600',
 				600,
+				'blocks_checkout',
 				$this->isType( 'array' ),
 				$this->identicalTo( $resolved )
 			)
@@ -331,7 +332,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-601', 601, $this->isType( 'array' ), null )
+			->with( 'test-session-601', 601, 'blocks_checkout', $this->isType( 'array' ), null )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		$request = $this->create_mock_request(
@@ -360,7 +361,7 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-700', 700, $this->isType( 'array' ), null )
+			->with( 'test-session-700', 700, 'blocks_checkout', $this->isType( 'array' ), null )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		$sut = new BlocksCheckoutProtector();

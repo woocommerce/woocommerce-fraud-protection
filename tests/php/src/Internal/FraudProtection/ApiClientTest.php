@@ -82,7 +82,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			3
 		);
 
-		$this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
@@ -105,7 +105,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 	}
@@ -124,7 +124,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
 	}
@@ -137,7 +137,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 	public function test_verify_fails_open_when_blog_id_not_found(): void {
 		update_option( 'jetpack_options', array( 'id' => null ) );
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
@@ -154,7 +154,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			fn() => new WP_Error( 'http_error', 'Connection timeout' )
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Connection timeout' );
@@ -174,7 +174,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'status code 500' );
@@ -194,7 +194,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
@@ -214,7 +214,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'missing "data" field' );
@@ -234,7 +234,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'event_type' => 'checkout_started' ) );
+		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Invalid decision value' );
