@@ -34,7 +34,7 @@ jobs:
           # Latest PHP with latest WP/WC
           - php: '8.5'
             wp: 'latest'
-            wc: 'latest'
+            wc: '10.4.0' #'latest'
           # WooCommerce L-1 (previous stable)
           - php: '8.5'
             wp: 'latest'
