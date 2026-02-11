@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  * - Payment gateway availability
  * - Store API request filtering
  *
- * @since 10.5.0
+ * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class SessionBlockingHandler {

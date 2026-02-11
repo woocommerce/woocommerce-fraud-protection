@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
  * - Applying extension override filters for whitelisting
  * - Coordinating with SessionClearanceManager to apply decisions
  *
- * @since 10.5.0
+ * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class DecisionHandler {
@@ -52,7 +52,7 @@ class DecisionHandler {
 	 * 2. Validate the filtered decision (third-party filters may return invalid values)
 	 * 3. Update session status via SessionClearanceManager
 	 *
-	 * @since 10.5.0
+	 * 
 	 *
 	 * @param string               $decision     The decision from the API (allow, block).
 	 * @param array<string, mixed> $session_data The session data that was sent to the API.
@@ -83,7 +83,7 @@ class DecisionHandler {
 		 * Note: This filter can only change the decision to ApiClient::VALID_DECISIONS.
 		 * Any other value will be rejected and the original decision will be used.
 		 *
-		 * @since 10.5.0
+		 * 
 		 *
 		 * @param string               $decision     The decision from the API (allow, block).
 		 * @param array<string, mixed> $session_data The session data that was analyzed.

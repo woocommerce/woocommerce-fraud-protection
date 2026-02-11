@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
  * for fraud protection. Event-specific data is passed
  * to the SessionDataCollector which handles session data storage internally.
  *
- * @since 10.5.0
+ * 
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CartEventTracker {
