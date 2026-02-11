@@ -48,6 +48,22 @@ class PaymentMethodEventTrackerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox register() registers all payment method event tracking hooks.
+	 */
+	public function test_register_registers_hooks(): void {
+		$this->sut->register();
+
+		$this->assertNotFalse(
+			has_action( 'woocommerce_new_payment_token', array( $this->sut, 'track_payment_method_added' ) ),
+			'woocommerce_new_payment_token hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'before_woocommerce_add_payment_method', array( $this->sut, 'track_add_payment_method_page_loaded' ) ),
+			'before_woocommerce_add_payment_method hook should be registered'
+		);
+	}
+
+	/**
 	 * Test add payment method page loaded collects data.
 	 *
 	 * @testdox track_add_payment_method_page_loaded() collects session data with empty event data.

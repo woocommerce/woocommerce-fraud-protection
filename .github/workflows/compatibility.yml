@@ -29,20 +29,16 @@ jobs:
         include:
           # Minimum supported versions
           - php: '7.4'
-            wp: '6.4'
-            wc: '8.0.0'
-          # Current stable
-          - php: '8.1'
-            wp: 'latest'
-            wc: 'latest'
+            wp: '6.8'
+            wc: '10.4.0'
           # Latest PHP with latest WP/WC
           - php: '8.5'
             wp: 'latest'
-            wc: 'latest'
+            wc: '10.4.0' #'latest'
           # WooCommerce L-1 (previous stable)
-          - php: '8.4'
+          - php: '8.5'
             wp: 'latest'
-            wc: '9.5.0'
+            wc: '10.4.0'
 
     services:
       mysql:

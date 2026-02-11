@@ -7,10 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtection;
 
-// use Automattic\WooCommerce\Internal\Features\FeaturesController;
-// use Automattic\WooCommerce\Internal\Jetpack\JetpackConnection;
-// use Automattic\WooCommerce\Internal\RegisterHooksInterface;
-
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -19,17 +15,10 @@ defined( 'ABSPATH' ) || exit;
  * This class orchestrates all fraud protection components and ensures
  * zero-impact when the feature flag is disabled.
  *
- * @since 10.5.0
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class FraudProtectionController /* implements RegisterHooksInterface */ {
 
-	/**
-	 * Features controller instance.
-	 *
-	 * @var FeaturesController
-	 */
-	// private FeaturesController $features_controller;
 
 	/**
 	 * Blocked session notice instance.
@@ -53,14 +42,38 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private BlocksCheckoutProtector $blocks_checkout_protector;
 
 	/**
+	 * Cart event tracker instance.
+	 *
+	 * @var CartEventTracker
+	 */
+	private CartEventTracker $cart_event_tracker;
+
+	/**
+	 * Checkout event tracker instance.
+	 *
+	 * @var CheckoutEventTracker
+	 */
+	private CheckoutEventTracker $checkout_event_tracker;
+
+	/**
+	 * Payment method event tracker instance.
+	 *
+	 * @var PaymentMethodEventTracker
+	 */
+	private PaymentMethodEventTracker $payment_method_event_tracker;
+
+	/**
+	 * Session blocking handler instance.
+	 *
+	 * @var SessionBlockingHandler
+	 */
+	private SessionBlockingHandler $session_blocking_handler;
+
+	/**
 	 * Register hooks.
 	 */
 	public function register(): void {
 		add_action( 'init', array( $this, 'on_init' ) );
-		/* TODO: Re-enable when JetpackConnection is available.
-		add_action( 'admin_notices', array( $this, 'on_admin_notices' ) );
-		add_action( FeaturesController::FEATURE_ENABLED_CHANGED_ACTION, array( $this, 'maybe_register_jetpack_connection' ), 10, 2 );
-		*/
 	}
 
 	/**
@@ -68,20 +81,30 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @internal
 	 *
-	 * @param BlockedSessionNotice    $blocked_session_notice    The instance of BlockedSessionNotice to use.
-	 * @param BlackboxScriptHandler  $blackbox_script_handler   The instance of BlackboxScriptHandler to use.
-	 * @param BlocksCheckoutProtector $blocks_checkout_protector The instance of BlocksCheckoutProtector to use.
+	 * @param BlockedSessionNotice      $blocked_session_notice       The instance of BlockedSessionNotice to use.
+	 * @param BlackboxScriptHandler     $blackbox_script_handler      The instance of BlackboxScriptHandler to use.
+	 * @param CartEventTracker          $cart_event_tracker           The instance of CartEventTracker to use.
+	 * @param CheckoutEventTracker      $checkout_event_tracker       The instance of CheckoutEventTracker to use.
+	 * @param PaymentMethodEventTracker $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
+	 * @param SessionBlockingHandler    $session_blocking_handler     The instance of SessionBlockingHandler to use.
+	 * @param BlocksCheckoutProtector   $blocks_checkout_protector The instance of BlocksCheckoutProtector to use.
 	 */
 	final public function init(
-		// FeaturesController $features_controller,
 		BlockedSessionNotice $blocked_session_notice,
 		BlackboxScriptHandler $blackbox_script_handler,
+		CartEventTracker $cart_event_tracker,
+		CheckoutEventTracker $checkout_event_tracker,
+		PaymentMethodEventTracker $payment_method_event_tracker,
+		SessionBlockingHandler $session_blocking_handler,
 		BlocksCheckoutProtector $blocks_checkout_protector
 	): void {
-		// $this->features_controller      = $features_controller;
-		$this->blocked_session_notice    = $blocked_session_notice;
-		$this->blackbox_script_handler   = $blackbox_script_handler;
-		$this->blocks_checkout_protector = $blocks_checkout_protector;
+		$this->blocked_session_notice       = $blocked_session_notice;
+		$this->blackbox_script_handler      = $blackbox_script_handler;
+		$this->cart_event_tracker           = $cart_event_tracker;
+		$this->checkout_event_tracker       = $checkout_event_tracker;
+		$this->payment_method_event_tracker = $payment_method_event_tracker;
+		$this->session_blocking_handler     = $session_blocking_handler;
+		$this->blocks_checkout_protector    = $blocks_checkout_protector;
 	}
 
 	/**
@@ -98,79 +121,11 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->blocked_session_notice->register();
 		$this->blackbox_script_handler->register();
 		$this->blocks_checkout_protector->register();
+		$this->session_blocking_handler->register();
+		$this->cart_event_tracker->register();
+		$this->checkout_event_tracker->register();
+		$this->payment_method_event_tracker->register();
 	}
-
-	/**
-	 * Display admin notice when Jetpack connection is not available.
-	 *
-	 * @internal
-	 */
-	/* TODO: Re-enable when JetpackConnection is available.
-	public function on_admin_notices(): void {
-		// Only show if feature is enabled.
-		if ( ! $this->feature_is_enabled() || JetpackConnection::get_manager()->is_connected() ) {
-			return;
-		}
-
-		// Only show on WooCommerce settings page.
-		$screen = get_current_screen();
-
-		if ( ! $screen || 'woocommerce_page_wc-settings' !== $screen->id ) {
-			return;
-		}
-
-		?>
-		<div class="notice notice-warning is-dismissible">
-			<p>
-				<?php
-				printf(
-					/* translators: %s: Getting Started with Jetpack documentation URL */
-	/*
-					wp_kses_post( __( 'Your site failed to connect to Jetpack automatically. Fraud protection will fail open and allow all sessions until your site is connected to Jetpack. <a href="%s">How to connect to Jetpack</a>', 'woocommerce' ) ),
-					esc_url( 'https://jetpack.com/support/getting-started-with-jetpack/' )
-				);
-				?>
-			</p>
-		</div>
-		<?php
-	}
-	*/
-
-	/**
-	 * Maybe register Jetpack connection when fraud protection is enabled.
-	 *
-	 * Attempts to automatically register the site with Jetpack when the fraud protection
-	 * feature is enabled and the site is not already connected.
-	 *
-	 * @since 10.5.0
-	 *
-	 * @internal
-	 *
-	 * @param string $feature_id The feature ID being toggled.
-	 * @param bool   $is_enabled Whether the feature is being enabled or disabled.
-	 */
-	/* TODO: Re-enable when JetpackConnection is available.
-	public function maybe_register_jetpack_connection( string $feature_id, bool $is_enabled ): void {
-		if ( 'fraud_protection' !== $feature_id || ! $is_enabled ) {
-			return;
-		}
-
-		$manager = JetpackConnection::get_manager();
-
-		if ( $manager->is_connected() ) {
-			return;
-		}
-
-		$result = $manager->try_registration();
-
-		if ( is_wp_error( $result ) ) {
-			$this->log( 'error', 'Failed to register Jetpack connection: ' . $result->get_error_message() );
-			return;
-		}
-
-		$this->log( 'info', 'Jetpack connection registered successfully' );
-	}
-	*/
 
 	/**
 	 * Check if fraud protection feature is enabled.
@@ -185,9 +140,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		if ( ! did_action( 'init' ) ) {
 			return false;
 		}
-		/* Always enabled as MU-plugin.
-		return $this->features_controller->feature_is_enabled( 'fraud_protection' );
-		*/
+		// Always enabled as MU-plugin.
 		return true;
 	}
 

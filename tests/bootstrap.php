@@ -50,6 +50,24 @@ function _get_wc_dir() {
  * Manually load the plugin and WooCommerce for testing.
  */
 function _manually_load_plugins() {
+	$plugin_dir = dirname( __DIR__ );
+
+	// Load our plugin's class files BEFORE WooCommerce so they take precedence
+	// over WooCommerce's versions (prevents "Cannot redeclare class" errors).
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionClearanceManager.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionDataCollector.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/ApiClient.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/DecisionHandler.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/CartEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/CheckoutEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/PaymentMethodEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/BlackboxScriptHandler.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/BlockedSessionNotice.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionVerifier.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/BlocksCheckoutProtector.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionBlockingHandler.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtection/FraudProtectionController.php';
+
 	$wc_dir = _get_wc_dir();
 
 	if ( $wc_dir && file_exists( $wc_dir . '/woocommerce.php' ) ) {
@@ -59,8 +77,8 @@ function _manually_load_plugins() {
 		exit( 1 );
 	}
 
-	// Load this plugin.
-	require dirname( __DIR__ ) . '/woocommerce-fraud-protection.php';
+	// Load this plugin (hooks registration only, classes already loaded above).
+	require $plugin_dir . '/woocommerce-fraud-protection.php';
 }
 
 tests_add_filter( 'muplugins_loaded', '_manually_load_plugins' );
@@ -68,59 +86,14 @@ tests_add_filter( 'muplugins_loaded', '_manually_load_plugins' );
 // Start up the WP testing environment.
 require $_tests_dir . '/includes/bootstrap.php';
 
-// Load WooCommerce test framework.
-$wc_dir = _get_wc_dir();
+$plugin_test_helpers = dirname( __FILE__ ) . '/php/helpers';
 
-if ( $wc_dir ) {
-	// Autoloader for WooCommerce testing tools (TestingContainer, MockableLegacyProxy).
-	spl_autoload_register(
-		function ( $class ) use ( $wc_dir ) {
-			$tests_directory   = $wc_dir . '/tests';
-			$helpers_directory = $tests_directory . '/php/helpers';
+require_once $plugin_test_helpers . '/class-wc-helper-product.php';
+require_once $plugin_test_helpers . '/class-wc-helper-order.php';
+require_once $plugin_test_helpers . '/LoggerSpyTrait.php';
 
-			if ( false === strpos( $class, '\\' ) ) {
-				$helper_path = "$helpers_directory/$class.php";
-				if ( file_exists( $helper_path ) ) {
-					require $helper_path;
-					return;
-				}
-			}
-
-			$prefix   = 'Automattic\\WooCommerce\\Testing\\Tools\\';
-			$base_dir = $tests_directory . '/Tools/';
-			$len      = strlen( $prefix );
-			if ( strncmp( $prefix, $class, $len ) === 0 ) {
-				$relative_class = substr( $class, $len );
-				$file           = $base_dir . str_replace( '\\', '/', $relative_class ) . '.php';
-				if ( file_exists( $file ) ) {
-					require $file;
-				}
-			}
-		}
-	);
-
-	// Load WC test framework classes.
-	require_once $wc_dir . '/tests/legacy/includes/wp-http-testcase.php';
-	require_once $wc_dir . '/tests/legacy/framework/class-wc-unit-test-factory.php';
-	require_once $wc_dir . '/tests/legacy/framework/class-wc-unit-test-case.php';
-
-	// Load test helpers.
-	foreach ( glob( $wc_dir . '/tests/legacy/framework/helpers/*.php' ) as $helper ) {
-		require_once $helper;
-	}
-
-	// Load LoggerSpyTrait.
-	$logger_spy_trait = $wc_dir . '/tests/php/helpers/LoggerSpyTrait.php';
-	if ( file_exists( $logger_spy_trait ) ) {
-		require_once $logger_spy_trait;
-	}
-
-	// Initialize TestingContainer with MockableLegacyProxy (enables LegacyProxy::reset()).
-	$inner_container_property = new \ReflectionProperty( \Automattic\WooCommerce\Container::class, 'container' );
-	$inner_container_property->setAccessible( true );
-	$container       = wc_get_container();
-	$inner_container = $inner_container_property->getValue( $container );
-	$inner_container = new \Automattic\WooCommerce\Testing\Tools\TestingContainer( $inner_container );
-	$inner_container_property->setValue( $container, $inner_container );
-	$GLOBALS['wc_container'] = $inner_container;
+// Provide a fallback WC_Unit_Test_Case if WooCommerce test framework is not available.
+if ( ! class_exists( 'WC_Unit_Test_Case' ) ) {
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WC_Unit_Test_Case extends \WP_UnitTestCase {}
 }

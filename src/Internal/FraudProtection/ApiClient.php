@@ -22,7 +22,6 @@ defined( 'ABSPATH' ) || exit;
  * times out, or returns an error, it returns an "allow" decision to ensure
  * legitimate transactions are never blocked due to service issues.
  *
- * @since 10.5.0
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class ApiClient {
@@ -82,8 +81,6 @@ class ApiClient {
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,
 	 * returns "allow" decision and logs the error.
 	 *
-	 * @since 10.5.0
-	 *
 	 * @param string               $session_id Session ID to verify.
 	 * @param array<string, mixed> $payload    Event data to send to the endpoint.
 	 * @return string Decision: "allow" or "block".
@@ -109,8 +106,6 @@ class ApiClient {
 	 * Used for reporting outcomes and feedback to improve fraud detection.
 	 * This is a fire-and-forget operation - errors are logged but do not
 	 * affect the checkout flow.
-	 *
-	 * @since 10.5.0
 	 *
 	 * @param string               $session_id Session ID to report.
 	 * @param array<string, mixed> $payload    Event data to send to the endpoint.

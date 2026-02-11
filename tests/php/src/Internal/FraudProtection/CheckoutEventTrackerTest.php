@@ -51,15 +51,47 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 	}
 
 	// ========================================
+	// Hook Registration Tests
+	// ========================================
+
+	/**
+	 * @testdox register() registers all checkout event tracking hooks.
+	 */
+	public function test_register_registers_hooks(): void {
+		$this->sut->register();
+
+		$this->assertNotFalse(
+			has_action( 'woocommerce_checkout_order_processed', array( $this->sut, 'track_order_placed_from_shortcode' ) ),
+			'woocommerce_checkout_order_processed hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_store_api_checkout_order_processed', array( $this->sut, 'track_order_placed_from_store_api' ) ),
+			'woocommerce_store_api_checkout_order_processed hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_checkout_update_order_review', array( $this->sut, 'track_shortcode_checkout_field_update' ) ),
+			'woocommerce_checkout_update_order_review hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this->sut, 'track_blocks_checkout_update' ) ),
+			'woocommerce_store_api_checkout_update_customer_from_request hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'template_redirect', array( $this->sut, 'track_checkout_page_loaded' ) ),
+			'template_redirect hook should be registered'
+		);
+	}
+
+	// ========================================
 	// Checkout Page Load Tests
 	// ========================================
 
 	/**
-	 * Test checkout page loaded collects data.
-	 *
-	 * @testdox track_checkout_page_loaded() collects session data with empty event data.
+	 * @testdox track_checkout_page_loaded() collects session data when on checkout page.
 	 */
-	public function test_track_checkout_page_loaded_collects_data(): void {
+	public function test_track_checkout_page_loaded_collects_data_on_checkout(): void {
+		add_filter( 'woocommerce_is_checkout', '__return_true' );
+
 		$this->mock_collector
 			->expects( $this->once() )
 			->method( 'collect' )
@@ -67,6 +99,19 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 				$this->equalTo( 'checkout_page_loaded' ),
 				$this->equalTo( array() )
 			);
+
+		$this->sut->track_checkout_page_loaded();
+
+		remove_filter( 'woocommerce_is_checkout', '__return_true' );
+	}
+
+	/**
+	 * @testdox track_checkout_page_loaded() does not collect session data when not on checkout page.
+	 */
+	public function test_track_checkout_page_loaded_does_not_collect_when_not_checkout(): void {
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
 
 		$this->sut->track_checkout_page_loaded();
 	}
