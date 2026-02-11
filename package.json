@@ -18,8 +18,9 @@
 		"lint:js": "wp-scripts lint-js assets/js",
 		"lint:css": "wp-scripts lint-style assets/css",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
+		"plugin-zip": "composer install --no-dev && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip package.json README.md && composer install",
 		"test:js": "wp-scripts test-unit-js",
-		"plugin-zip": "composer install --no-dev && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip package.json README.md && composer install"
+		"test:php:env": "./vendor/bin/phpunit"
 	},
 	"devDependencies": {
 		"@babel/runtime": "^7.24.0",
