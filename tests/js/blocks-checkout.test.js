@@ -191,9 +191,6 @@ describe( 'blocks-checkout', () => {
 		subscribeCallback();
 		expect( mockCollect ).toHaveBeenCalledTimes( 1 );
 
-		// Clear the initial collect from the order log.
-		callOrder.length = 0;
-
 		// Third call: processing ends → reset then re-collect.
 		processingState = false;
 		subscribeCallback();
@@ -201,7 +198,7 @@ describe( 'blocks-checkout', () => {
 
 		expect( mockReset ).toHaveBeenCalledTimes( 1 );
 		expect( mockCollect ).toHaveBeenCalledTimes( 2 );
-		expect( callOrder ).toEqual( [ 'reset', 'collect' ] );
+		expect( callOrder ).toEqual( [ 'collect', 'reset', 'collect' ] );
 	} );
 
 	it( 'calls collect even when reset() fails (fail-open)', async () => {
