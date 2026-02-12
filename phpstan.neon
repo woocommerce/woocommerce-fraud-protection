@@ -1,0 +1,21 @@
+includes:
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+	- vendor/phpstan/phpstan-phpunit/extension.neon
+	- phpstan-baseline.neon
+
+parameters:
+	level: 9
+	phpVersion: 80100
+	paths:
+		- src
+		- tests/php
+	bootstrapFiles:
+		- vendor/autoload.php
+	scanFiles:
+		- vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+		- vendor/php-stubs/wordpress-tests-stubs/wordpress-tests-stubs.php
+		- woocommerce-fraud-protection.php
+		- stubs/wc-unit-test-case.stub
+	tmpDir: .phpstan-cache
+	ignoreErrors:
+		- identifier: missingType.iterableValue

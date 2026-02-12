@@ -17,7 +17,12 @@
 		"wp-coding-standards/wpcs": "^3.0",
 		"dealerdirect/phpcodesniffer-composer-installer": "^1.0",
 		"phpcompatibility/phpcompatibility-wp": "^2.1",
-		"woocommerce/woocommerce-sniffs": "^1.0"
+		"woocommerce/woocommerce-sniffs": "^1.0",
+		"phpstan/phpstan": "^2.1",
+		"phpstan/phpstan-phpunit": "^2.0",
+		"szepeviktor/phpstan-wordpress": "^2.0",
+		"php-stubs/woocommerce-stubs": "^9.8",
+		"php-stubs/wordpress-tests-stubs": "^6.8"
 	},
 	"autoload": {
 		"psr-4": {
@@ -41,6 +46,8 @@
 		"test": "phpunit",
 		"test:coverage": "phpunit --coverage-text --coverage-html=coverage",
 		"phpcs": "phpcs",
-		"phpcbf": "phpcbf"
+		"phpcbf": "phpcbf",
+		"phpstan": "phpstan analyse --memory-limit=2G",
+		"phpstan:php7": "phpstan analyse -c phpstan-7.neon --memory-limit=2G"
 	}
 }
