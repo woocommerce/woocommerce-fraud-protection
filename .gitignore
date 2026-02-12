@@ -52,7 +52,7 @@ vendor/
 node_modules/
 
 # PHPStan
-.phpstan-cache/
+tmp/
 
 # PHPUnit
 .phpunit.result.cache
