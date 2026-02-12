@@ -38,13 +38,14 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 		WC()->customer = new \WC_Customer( 0, true );
 
 		$product = \WC_Helper_Product::create_simple_product();
-		$product->set_regular_price( 50.00 );
+		$product->set_regular_price( '50.00' );
 		$product->save();
 
 		WC()->cart->add_to_cart( $product->get_id(), 2 );
 		WC()->cart->calculate_totals();
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$data = OrderData::from_cart( $order->get_id(), WC()->cart, WC()->customer );
@@ -86,6 +87,7 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_logged_in_customer_id(): void {
 		$user_id = $this->factory->user->create();
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 		WC()->customer = new \WC_Customer( $user_id, true );
 
@@ -118,11 +120,11 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_to_array_serializes_cart_items(): void {
 		$product1 = \WC_Helper_Product::create_simple_product();
-		$product1->set_regular_price( 10.00 );
+		$product1->set_regular_price( '10.00' );
 		$product1->save();
 
 		$product2 = \WC_Helper_Product::create_simple_product();
-		$product2->set_regular_price( 20.00 );
+		$product2->set_regular_price( '20.00' );
 		$product2->save();
 
 		WC()->cart->add_to_cart( $product1->get_id(), 1 );

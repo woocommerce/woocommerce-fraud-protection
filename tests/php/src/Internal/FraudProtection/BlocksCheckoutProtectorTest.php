@@ -37,21 +37,21 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 	/**
 	 * Mock session verifier.
 	 *
-	 * @var SessionVerifier
+	 * @var SessionVerifier&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $session_verifier;
 
 	/**
 	 * Mock blocked session notice.
 	 *
-	 * @var BlockedSessionNotice
+	 * @var BlockedSessionNotice&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $blocked_session_notice;
 
 	/**
 	 * Mock payment data resolver.
 	 *
-	 * @var PaymentDataResolver
+	 * @var PaymentDataResolver&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $payment_data_resolver;
 

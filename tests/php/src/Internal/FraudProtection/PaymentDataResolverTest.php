@@ -114,14 +114,14 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 		$token->set_user_id( get_current_user_id() );
 		$token->save();
 
-		add_filter(
+		add_filter( // @phpstan-ignore return.missing
 			'woocommerce_fraud_protection_resolved_payment_data',
 			function () {
 				throw new \RuntimeException( 'Compat layer crashed' );
 			}
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->sut->resolve( // @phpstan-ignore deadCode.unreachable
 			'stripe',
 			array(
 				array(
@@ -140,14 +140,14 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	 * @testdox Returns null when filter throws and no pre-resolved data exists.
 	 */
 	public function test_returns_null_when_filter_throws_without_preresolved(): void {
-		add_filter(
+		add_filter( // @phpstan-ignore return.missing
 			'woocommerce_fraud_protection_resolved_payment_data',
 			function () {
 				throw new \RuntimeException( 'Compat layer crashed' );
 			}
 		);
 
-		$result = $this->sut->resolve( 'stripe', array() );
+		$result = $this->sut->resolve( 'stripe', array() ); // @phpstan-ignore deadCode.unreachable
 
 		$this->assertNull( $result );
 	}
@@ -220,7 +220,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 				return null;
 			},
 			10,
-			3
+			2
 		);
 
 		$this->sut->resolve( 'woocommerce_payments', array() );

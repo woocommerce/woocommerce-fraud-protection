@@ -133,20 +133,6 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Should not enqueue Blackbox scripts on non-payment pages.
-	 */
-	public function test_does_not_enqueue_scripts_on_other_pages(): void {
-		$this->markTestSkipped( 'Flaky in full suite due to is_checkout returning true (despite the resets).' );
-
-		$this->mock_jetpack_blog_id( 12345 );
-
-		do_action( 'wp_enqueue_scripts' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
-
-		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox', 'enqueued' ), 'Blackbox SDK should not be enqueued on non-payment pages' );
-		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'Blackbox init script should not be enqueued on non-payment pages' );
-	}
-
-	/**
 	 * @testdox Should not enqueue scripts and log error when Jetpack blog ID is unavailable.
 	 */
 	public function test_does_not_enqueue_scripts_without_blog_id(): void {
@@ -238,6 +224,7 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 						'post_title' => 'My account',
 					)
 				);
+				$this->assertIsInt( $page_id );
 				add_filter(
 					'pre_option_woocommerce_myaccount_page_id',
 					function () use ( $page_id ) {

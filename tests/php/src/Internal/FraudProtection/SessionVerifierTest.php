@@ -30,21 +30,21 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 	/**
 	 * Mock session data collector.
 	 *
-	 * @var SessionDataCollector
+	 * @var SessionDataCollector&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $data_collector;
 
 	/**
 	 * Mock API client.
 	 *
-	 * @var ApiClient
+	 * @var ApiClient&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $api_client;
 
 	/**
 	 * Mock decision handler.
 	 *
-	 * @var DecisionHandler
+	 * @var DecisionHandler&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $decision_handler;
 

@@ -23,7 +23,7 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 	/**
 	 * The System Under Test.
 	 *
-	 * @var SessionBlockingHandler
+	 * @var SessionBlockingHandler|null
 	 */
 	private $sut;
 
@@ -146,7 +146,8 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 		$this->sut->register();
 
 		$cart_item_key = WC()->cart->add_to_cart( $this->product->get_id(), 1 );
-		$result        = WC()->cart->remove_cart_item( $cart_item_key );
+		$this->assertIsString( $cart_item_key );
+		$result = WC()->cart->remove_cart_item( $cart_item_key );
 
 		$this->assertTrue( $result, 'Remove cart item should succeed when session is allowed' );
 		$this->assertEquals( 0, WC()->cart->get_cart_contents_count() );
@@ -157,7 +158,8 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_remove_cart_item_allowed_when_no_hooks_registered(): void {
 		$cart_item_key = WC()->cart->add_to_cart( $this->product->get_id(), 1 );
-		$result        = WC()->cart->remove_cart_item( $cart_item_key );
+		$this->assertIsString( $cart_item_key );
+		$result = WC()->cart->remove_cart_item( $cart_item_key );
 
 		$this->assertTrue( $result, 'Remove cart item should succeed without blocking hooks' );
 		$this->assertEquals( 0, WC()->cart->get_cart_contents_count() );
@@ -171,7 +173,8 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 		$this->sut->register();
 
 		$cart_item_key = WC()->cart->add_to_cart( $this->product->get_id(), 1 );
-		$result        = WC()->cart->set_quantity( $cart_item_key, 5 );
+		$this->assertIsString( $cart_item_key );
+		$result = WC()->cart->set_quantity( $cart_item_key, 5 );
 
 		$this->assertTrue( $result, 'Set quantity should succeed when session is allowed' );
 		$this->assertEquals( 5, WC()->cart->get_cart_contents_count() );
@@ -182,7 +185,8 @@ class CartBlockingTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_set_quantity_allowed_when_no_hooks_registered(): void {
 		$cart_item_key = WC()->cart->add_to_cart( $this->product->get_id(), 1 );
-		$result        = WC()->cart->set_quantity( $cart_item_key, 5 );
+		$this->assertIsString( $cart_item_key );
+		$result = WC()->cart->set_quantity( $cart_item_key, 5 );
 
 		$this->assertTrue( $result, 'Set quantity should succeed without blocking hooks' );
 		$this->assertEquals( 5, WC()->cart->get_cart_contents_count() );

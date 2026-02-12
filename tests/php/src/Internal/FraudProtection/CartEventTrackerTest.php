@@ -160,6 +160,7 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_track_cart_item_updated_collects_data(): void {
 		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
 
 		$this->mock_collector
 			->expects( $this->once() )
@@ -194,6 +195,7 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_track_cart_item_removed_collects_data(): void {
 		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
 
 		$this->mock_collector
 			->expects( $this->once() )
@@ -221,6 +223,7 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_track_cart_item_restored_collects_data(): void {
 		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
 
 		$this->mock_collector
 			->expects( $this->once() )
@@ -249,8 +252,9 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_cart_events_include_variation_id(): void {
 		$variable_product = \WC_Helper_Product::create_variation_product();
-		$variations       = $variable_product->get_available_variations();
-		$variation_id     = $variations[0]['variation_id'];
+		$variations       = $variable_product->get_available_variations( 'array' );
+		$this->assertIsArray( $variations[0] );
+		$variation_id = $variations[0]['variation_id'];
 
 		$this->mock_collector
 			->expects( $this->once() )

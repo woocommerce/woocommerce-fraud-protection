@@ -39,7 +39,7 @@ class CartItemTest extends \WC_Unit_Test_Case {
 		$product->set_name( 'Test Widget' );
 		$product->set_description( 'A test widget' );
 		$product->set_sku( 'WDG-001' );
-		$product->set_regular_price( 25.00 );
+		$product->set_regular_price( '25.00' );
 		$product->save();
 
 		wp_set_object_terms( $product->get_id(), 'Electronics', 'product_cat' );
@@ -74,7 +74,7 @@ class CartItemTest extends \WC_Unit_Test_Case {
 		WC()->cart->empty_cart();
 
 		$product = \WC_Helper_Product::create_simple_product();
-		$product->set_regular_price( 100.00 );
+		$product->set_regular_price( '100.00' );
 		$product->save();
 
 		WC()->cart->add_to_cart( $product->get_id(), 2 );

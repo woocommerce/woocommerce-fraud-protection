@@ -1,0 +1,25 @@
+<?php
+/**
+ * PHPStan stub for WC_Stripe_API.
+ *
+ * The test suite conditionally defines a stub via class_alias() which PHPStan
+ * cannot follow. This stub declares the methods used in tests.
+ */
+class WC_Stripe_API {
+	/**
+	 * @return void
+	 */
+	public static function reset(): void {}
+
+	/**
+	 * @param mixed $response The mock response.
+	 * @return void
+	 */
+	public static function set_mock_response( $response ): void {}
+
+	/**
+	 * @param string $payment_method_id The payment method ID.
+	 * @return mixed
+	 */
+	public static function get_payment_method( string $payment_method_id ) {}
+}

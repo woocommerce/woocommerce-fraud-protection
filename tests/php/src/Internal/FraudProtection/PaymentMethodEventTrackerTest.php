@@ -87,6 +87,7 @@ class PaymentMethodEventTrackerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_track_payment_method_added_collects_data(): void {
 		$user_id = $this->factory->user->create();
+		$this->assertIsInt( $user_id );
 
 		$token = new \WC_Payment_Token_CC();
 		$token->set_token( 'test_token_123' );
@@ -133,6 +134,7 @@ class PaymentMethodEventTrackerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_track_payment_method_added_includes_expiry_for_cc_tokens(): void {
 		$user_id = $this->factory->user->create();
+		$this->assertIsInt( $user_id );
 
 		$token = new \WC_Payment_Token_CC();
 		$token->set_token( 'test_token_456' );
