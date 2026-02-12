@@ -1,5 +1,7 @@
 # Running Tests
 
+> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && pnpm run test:php:env`).
+
 ## Table of Contents
 
 - [PHP Unit Tests](#php-unit-tests)

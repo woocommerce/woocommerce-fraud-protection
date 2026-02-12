@@ -1,5 +1,7 @@
 # Code Quality Commands
 
+> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && pnpm run lint:changes:branch:php`).
+
 ## Table of Contents
 
 - [Overview](#overview)

@@ -1,5 +1,7 @@
 # Markdown Linting
 
+> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && npm install -g markdownlint-cli`).
+
 ## Table of Contents
 
 - [Critical Rule](#critical-rule)
