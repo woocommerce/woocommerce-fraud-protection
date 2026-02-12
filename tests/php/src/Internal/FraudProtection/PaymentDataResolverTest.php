@@ -50,12 +50,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	public function test_returns_null_when_no_filter(): void {
 		$result = $this->sut->resolve(
 			'woocommerce_payments',
-			array(
-				array(
-					'key'   => 'wcpay-payment-method',
-					'value' => 'pm_123',
-				),
-			)
+			array( 'wcpay-payment-method' => 'pm_123' )
 		);
 
 		$this->assertNull( $result );
@@ -123,12 +118,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve(
 			'stripe',
-			array(
-				array(
-					'key'   => 'token',
-					'value' => (string) $token->get_id(),
-				),
-			)
+			array( 'token' => (string) $token->get_id() )
 		);
 
 		// Falls back to token pre-resolution, not null.
@@ -169,104 +159,32 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Normalizes raw [{key, value}] to key-value map before passing to filter.
+	 * @testdox Passes payment_method and flat key-value payment_data to the filter.
 	 */
-	public function test_normalizes_payment_data(): void {
-		$captured_data = null;
-
-		add_filter(
-			'woocommerce_fraud_protection_resolved_payment_data',
-			function ( $resolved, $payment_method, $normalized ) use ( &$captured_data ) {
-				$captured_data = $normalized;
-				return null;
-			},
-			10,
-			3
-		);
-
-		$this->sut->resolve(
-			'test_gateway',
-			array(
-				array(
-					'key'   => 'foo',
-					'value' => 'bar',
-				),
-				array(
-					'key'   => 'baz',
-					'value' => 'qux',
-				),
-			)
-		);
-
-		$this->assertSame(
-			array(
-				'foo' => 'bar',
-				'baz' => 'qux',
-			),
-			$captured_data
-		);
-	}
-
-	/**
-	 * @testdox Passes the payment_method string to the filter.
-	 */
-	public function test_passes_payment_method_to_filter(): void {
+	public function test_passes_payment_method_and_data_to_filter(): void {
 		$captured_method = null;
+		$captured_data   = null;
 
 		add_filter(
 			'woocommerce_fraud_protection_resolved_payment_data',
-			function ( $resolved, $payment_method ) use ( &$captured_method ) {
+			function ( $resolved, $payment_method, $payment_data ) use ( &$captured_method, &$captured_data ) {
 				$captured_method = $payment_method;
+				$captured_data   = $payment_data;
 				return null;
 			},
 			10,
 			3
 		);
 
-		$this->sut->resolve( 'woocommerce_payments', array() );
+		$input = array(
+			'foo' => 'bar',
+			'baz' => 'qux',
+		);
+
+		$this->sut->resolve( 'woocommerce_payments', $input );
 
 		$this->assertSame( 'woocommerce_payments', $captured_method );
-	}
-
-	/**
-	 * @testdox Skips malformed items in raw payment data during normalization.
-	 */
-	public function test_skips_malformed_items(): void {
-		$captured_data = null;
-
-		add_filter(
-			'woocommerce_fraud_protection_resolved_payment_data',
-			function ( $resolved, $payment_method, $normalized ) use ( &$captured_data ) {
-				$captured_data = $normalized;
-				return null;
-			},
-			10,
-			3
-		);
-
-		$this->sut->resolve(
-			'test_gateway',
-			array(
-				array(
-					'key'   => 'valid',
-					'value' => 'yes',
-				),
-				'not an array',
-				array( 'missing_value_key' => true ),
-				array(
-					'key'   => 'also_valid',
-					'value' => 'yep',
-				),
-			)
-		);
-
-		$this->assertSame(
-			array(
-				'valid'      => 'yes',
-				'also_valid' => 'yep',
-			),
-			$captured_data
-		);
+		$this->assertSame( $input, $captured_data );
 	}
 
 	/**
@@ -285,12 +203,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve(
 			'stripe',
-			array(
-				array(
-					'key'   => 'token',
-					'value' => (string) $token->get_id(),
-				),
-			)
+			array( 'token' => (string) $token->get_id() )
 		);
 
 		$this->assertInstanceOf( PaymentMethodData::class, $result );
@@ -320,12 +233,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve(
 			'stripe',
-			array(
-				array(
-					'key'   => 'token',
-					'value' => (string) $token->get_id(),
-				),
-			)
+			array( 'token' => (string) $token->get_id() )
 		);
 
 		$this->assertNull( $result );
@@ -337,12 +245,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	public function test_token_preresolution_returns_null_for_invalid_token(): void {
 		$result = $this->sut->resolve(
 			'stripe',
-			array(
-				array(
-					'key'   => 'token',
-					'value' => '999999',
-				),
-			)
+			array( 'token' => '999999' )
 		);
 
 		$this->assertNull( $result );
@@ -354,12 +257,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	public function test_token_preresolution_returns_null_when_no_token_key(): void {
 		$result = $this->sut->resolve(
 			'stripe',
-			array(
-				array(
-					'key'   => 'wc-stripe-payment-method',
-					'value' => 'pm_123',
-				),
-			)
+			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
 		$this->assertNull( $result );
@@ -395,12 +293,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve(
 			'stripe',
-			array(
-				array(
-					'key'   => 'token',
-					'value' => (string) $token->get_id(),
-				),
-			)
+			array( 'token' => (string) $token->get_id() )
 		);
 
 		$this->assertSame( $override, $result );
@@ -432,12 +325,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve(
 			'square_credit_card',
-			array(
-				array(
-					'key'   => 'token',
-					'value' => (string) $token->get_id(),
-				),
-			)
+			array( 'token' => (string) $token->get_id() )
 		);
 
 		$this->assertInstanceOf( PaymentMethodData::class, $captured_initial );

@@ -157,7 +157,7 @@ class BlocksCheckoutProtector {
 		try {
 			$payment_data = $this->payment_data_resolver->resolve(
 				$this->request_data['payment_method'] ?? '',
-				$this->request_data['payment_data'] ?? array()
+				$this->normalize_payment_data( $this->request_data['payment_data'] ?? array() )
 			);
 		} catch ( \Throwable $e ) {
 			// Fail-open: resolve is enrichment only, verify still runs.
@@ -244,6 +244,24 @@ class BlocksCheckoutProtector {
 				},
 			)
 		);
+	}
+
+	/**
+	 * Normalize raw payment_data from Store API [{key, value}, ...] to key-value map.
+	 *
+	 * @param array $raw_payment_data Raw payment_data array from Store API.
+	 * @return array Flat key-value map.
+	 */
+	private function normalize_payment_data( array $raw_payment_data ): array {
+		$normalized = array();
+
+		foreach ( $raw_payment_data as $item ) {
+			if ( is_array( $item ) && isset( $item['key'], $item['value'] ) ) {
+				$normalized[ $item['key'] ] = $item['value'];
+			}
+		}
+
+		return $normalized;
 	}
 
 	/**
