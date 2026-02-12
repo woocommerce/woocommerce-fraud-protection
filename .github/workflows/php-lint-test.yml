@@ -50,6 +50,28 @@ jobs:
       - name: Run PHPCS
         run: composer phpcs
 
+  phpstan:
+    name: PHPStan Static Analysis
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          tools: composer
+          coverage: none
+
+      - name: Install project dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run PHPStan
+        run: tasks/phpstan/run-phpstan.sh --skip-cleanup
+
   test:
     name: PHP Unit Tests (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
