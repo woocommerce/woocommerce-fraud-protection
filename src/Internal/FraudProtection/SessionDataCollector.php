@@ -94,15 +94,15 @@ class SessionDataCollector {
 	 * Retrieves the array of collected event data stored during this session.
 	 * Returns an empty array if no data has been collected or session is unavailable.
 	 *
-	 * @param int|null $order_id Optional order ID to include order data in the response.
+	 * @param int $order_id Optional order ID to include order data in the response.
 	 * @return array Array of collected fraud protection event data.
 	 */
-	public function get_collected_data( ?int $order_id = null ): array {
+	public function get_collected_data( int $order_id = 0 ): array {
 		$data = array(
 			'wc_version'       => WC()->version,
 			'session'          => $this->get_session_data()->to_array(),
 			'customer'         => $this->get_customer_data()->to_array(),
-			'order'            => $order_id ? $this->get_order_data( $order_id )->to_array() : array(),
+			'order'            => $this->get_order_data( $order_id )->to_array(),
 			'collected_events' => array(),
 		);
 
@@ -205,10 +205,10 @@ class SessionDataCollector {
 	/**
 	 * Get order data as an OrderData schema object.
 	 *
-	 * @param int|null $order_id_from_event Optional order ID from event data.
+	 * @param int $order_id_from_event Optional order ID from event data.
 	 * @return OrderData
 	 */
-	private function get_order_data( ?int $order_id_from_event = null ): OrderData {
+	private function get_order_data( int $order_id_from_event = 0 ): OrderData {
 		try {
 			if ( WC()->cart instanceof \WC_Cart && WC()->customer instanceof \WC_Customer ) {
 				return OrderData::from_cart( $order_id_from_event, WC()->cart, WC()->customer );
