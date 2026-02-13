@@ -30,7 +30,7 @@ class DecisionHandlerTest extends WC_Unit_Test_Case {
 	/**
 	 * Mock session clearance manager.
 	 *
-	 * @var SessionClearanceManager
+	 * @var SessionClearanceManager&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $session_manager;
 

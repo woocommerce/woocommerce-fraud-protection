@@ -1,0 +1,8 @@
+<?php
+/**
+ * Stub for WC_Unit_Test_Case which extends WP_UnitTestCase.
+ *
+ * This class is defined in WooCommerce's test infrastructure but is not
+ * included in woocommerce-stubs.
+ */
+class WC_Unit_Test_Case extends WP_UnitTestCase {}

@@ -65,6 +65,7 @@ class SessionInfoTest extends \WC_Unit_Test_Case {
 		$user_id = $this->factory->user->create(
 			array( 'user_email' => 'session-test@example.com' )
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
 		$info = SessionInfo::from_request( $this->session_id );

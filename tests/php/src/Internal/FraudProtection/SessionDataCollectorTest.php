@@ -221,10 +221,8 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 
 		$this->assertArrayHasKey( 'wc_session_id', $result['session'] );
 		// Session ID should be a string when session is available.
-		if ( isset( WC()->session ) ) {
-			$this->assertIsString( $result['session']['wc_session_id'] );
-			$this->assertNotEmpty( $result['session']['wc_session_id'] );
-		}
+		$this->assertIsString( $result['session']['wc_session_id'] );
+		$this->assertNotEmpty( $result['session']['wc_session_id'] );
 	}
 
 	/**
@@ -237,6 +235,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 				'user_email' => 'testuser@example.com',
 			)
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
 		$this->sut->collect();
@@ -254,9 +253,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		wp_set_current_user( 0 );
 
 		// Set customer billing email — should NOT appear in session.email.
-		if ( isset( WC()->customer ) ) {
-			WC()->customer->set_billing_email( 'customer@example.com' );
-		}
+		WC()->customer->set_billing_email( 'customer@example.com' );
 
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
@@ -293,6 +290,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 				'user_email' => 'customer@example.com',
 			)
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
 		// Initialize customer with logged-in user.
@@ -322,11 +320,9 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		wp_set_current_user( 0 );
 
 		// Clear customer data.
-		if ( isset( WC()->customer ) ) {
-			WC()->customer->set_billing_first_name( '' );
-			WC()->customer->set_billing_last_name( '' );
-			WC()->customer->set_billing_email( '' );
-		}
+		WC()->customer->set_billing_first_name( '' );
+		WC()->customer->set_billing_last_name( '' );
+		WC()->customer->set_billing_email( '' );
 
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
@@ -346,6 +342,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -373,13 +370,14 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->empty_cart();
 
 		$product = \WC_Helper_Product::create_simple_product();
-		$product->set_regular_price( 50.00 );
+		$product->set_regular_price( '50.00' );
 		$product->save();
 
 		WC()->cart->add_to_cart( $product->get_id(), 2 );
 		WC()->cart->calculate_totals();
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -398,13 +396,14 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data( $order->get_id() );
 
 		$this->assertArrayHasKey( 'shipping_tax_rate', $result['order'] );
-		if ( 0 === (float) $result['order']['shipping_total'] ) {
+		if ( 0.0 === (float) $result['order']['shipping_total'] ) {
 			$this->assertNull( $result['order']['shipping_tax_rate'] );
 		}
 	}
@@ -419,12 +418,13 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$product->set_name( 'Test Product' );
 		$product->set_description( 'Test product description' );
 		$product->set_sku( 'TEST-SKU-123' );
-		$product->set_regular_price( 25.00 );
+		$product->set_regular_price( '25.00' );
 		$product->save();
 
 		WC()->cart->add_to_cart( $product->get_id(), 2 );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -460,14 +460,12 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_billing_address_includes_all_required_fields(): void {
 		// Set billing address data.
-		if ( isset( WC()->customer ) ) {
-			WC()->customer->set_billing_address_1( '123 Main St' );
-			WC()->customer->set_billing_address_2( 'Apt 4B' );
-			WC()->customer->set_billing_city( 'New York' );
-			WC()->customer->set_billing_state( 'NY' );
-			WC()->customer->set_billing_country( 'US' );
-			WC()->customer->set_billing_postcode( '10001' );
-		}
+		WC()->customer->set_billing_address_1( '123 Main St' );
+		WC()->customer->set_billing_address_2( 'Apt 4B' );
+		WC()->customer->set_billing_city( 'New York' );
+		WC()->customer->set_billing_state( 'NY' );
+		WC()->customer->set_billing_country( 'US' );
+		WC()->customer->set_billing_postcode( '10001' );
 
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
@@ -483,14 +481,12 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertArrayNotHasKey( 'address', $billing );
 
 		// Verify values.
-		if ( isset( WC()->customer ) ) {
-			$this->assertEquals( '123 Main St', $billing['address_1'] );
-			$this->assertEquals( 'Apt 4B', $billing['address_2'] );
-			$this->assertEquals( 'New York', $billing['city'] );
-			$this->assertEquals( 'NY', $billing['state'] );
-			$this->assertEquals( 'US', $billing['country'] );
-			$this->assertEquals( '10001', $billing['postcode'] );
-		}
+		$this->assertEquals( '123 Main St', $billing['address_1'] );
+		$this->assertEquals( 'Apt 4B', $billing['address_2'] );
+		$this->assertEquals( 'New York', $billing['city'] );
+		$this->assertEquals( 'NY', $billing['state'] );
+		$this->assertEquals( 'US', $billing['country'] );
+		$this->assertEquals( '10001', $billing['postcode'] );
 	}
 
 	/**
@@ -498,14 +494,12 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_shipping_address_includes_all_required_fields(): void {
 		// Set shipping address data.
-		if ( isset( WC()->customer ) ) {
-			WC()->customer->set_shipping_address_1( '456 Oak Ave' );
-			WC()->customer->set_shipping_address_2( 'Suite 100' );
-			WC()->customer->set_shipping_city( 'Los Angeles' );
-			WC()->customer->set_shipping_state( 'CA' );
-			WC()->customer->set_shipping_country( 'US' );
-			WC()->customer->set_shipping_postcode( '90001' );
-		}
+		WC()->customer->set_shipping_address_1( '456 Oak Ave' );
+		WC()->customer->set_shipping_address_2( 'Suite 100' );
+		WC()->customer->set_shipping_city( 'Los Angeles' );
+		WC()->customer->set_shipping_state( 'CA' );
+		WC()->customer->set_shipping_country( 'US' );
+		WC()->customer->set_shipping_postcode( '90001' );
 
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
@@ -521,14 +515,12 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertArrayNotHasKey( 'address', $shipping );
 
 		// Verify values.
-		if ( isset( WC()->customer ) ) {
-			$this->assertEquals( '456 Oak Ave', $shipping['address_1'] );
-			$this->assertEquals( 'Suite 100', $shipping['address_2'] );
-			$this->assertEquals( 'Los Angeles', $shipping['city'] );
-			$this->assertEquals( 'CA', $shipping['state'] );
-			$this->assertEquals( 'US', $shipping['country'] );
-			$this->assertEquals( '90001', $shipping['postcode'] );
-		}
+		$this->assertEquals( '456 Oak Ave', $shipping['address_1'] );
+		$this->assertEquals( 'Suite 100', $shipping['address_2'] );
+		$this->assertEquals( 'Los Angeles', $shipping['city'] );
+		$this->assertEquals( 'CA', $shipping['state'] );
+		$this->assertEquals( 'US', $shipping['country'] );
+		$this->assertEquals( '90001', $shipping['postcode'] );
 	}
 
 	/**
@@ -538,6 +530,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->empty_cart();
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -564,6 +557,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -582,6 +576,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 				'user_email' => 'logged-in-user@example.com',
 			)
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
 		WC()->customer = new \WC_Customer( $user_id, true );
@@ -590,6 +585,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -608,21 +604,21 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 				'user_email' => 'complete-test@example.com',
 			)
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
-		if ( isset( WC()->customer ) ) {
-			WC()->customer->set_billing_first_name( 'Test' );
-			WC()->customer->set_billing_last_name( 'User' );
-			WC()->customer->set_billing_email( 'complete-test@example.com' );
-			WC()->customer->set_billing_address_1( '123 Test St' );
-			WC()->customer->set_billing_city( 'Test City' );
-			WC()->customer->set_billing_country( 'US' );
-		}
+		WC()->customer->set_billing_first_name( 'Test' );
+		WC()->customer->set_billing_last_name( 'User' );
+		WC()->customer->set_billing_email( 'complete-test@example.com' );
+		WC()->customer->set_billing_address_1( '123 Test St' );
+		WC()->customer->set_billing_city( 'Test City' );
+		WC()->customer->set_billing_country( 'US' );
 
 		$product = \WC_Helper_Product::create_simple_product();
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect( 'checkout_started', array( 'test' => 'data' ) );
@@ -675,39 +671,39 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 				'user_email' => 'e2e-test@example.com',
 			)
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
 		$existing_order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $existing_order );
 		$existing_order->set_customer_id( $user_id );
 		$existing_order->set_status( 'completed' );
 		$existing_order->save();
 
-		if ( isset( WC()->customer ) ) {
-			WC()->customer = new \WC_Customer( $user_id, true );
-			WC()->customer->set_billing_first_name( 'John' );
-			WC()->customer->set_billing_last_name( 'Doe' );
-			WC()->customer->set_billing_email( 'e2e-test@example.com' );
-			WC()->customer->set_billing_address_1( '123 Test St' );
-			WC()->customer->set_billing_address_2( 'Apt 1' );
-			WC()->customer->set_billing_city( 'Test City' );
-			WC()->customer->set_billing_state( 'CA' );
-			WC()->customer->set_billing_country( 'US' );
-			WC()->customer->set_billing_postcode( '90210' );
-			WC()->customer->set_shipping_address_1( '456 Ship St' );
-			WC()->customer->set_shipping_city( 'Ship City' );
-			WC()->customer->set_shipping_state( 'NY' );
-			WC()->customer->set_shipping_country( 'US' );
-			WC()->customer->set_shipping_postcode( '10001' );
-		}
+		WC()->customer = new \WC_Customer( $user_id, true );
+		WC()->customer->set_billing_first_name( 'John' );
+		WC()->customer->set_billing_last_name( 'Doe' );
+		WC()->customer->set_billing_email( 'e2e-test@example.com' );
+		WC()->customer->set_billing_address_1( '123 Test St' );
+		WC()->customer->set_billing_address_2( 'Apt 1' );
+		WC()->customer->set_billing_city( 'Test City' );
+		WC()->customer->set_billing_state( 'CA' );
+		WC()->customer->set_billing_country( 'US' );
+		WC()->customer->set_billing_postcode( '90210' );
+		WC()->customer->set_shipping_address_1( '456 Ship St' );
+		WC()->customer->set_shipping_city( 'Ship City' );
+		WC()->customer->set_shipping_state( 'NY' );
+		WC()->customer->set_shipping_country( 'US' );
+		WC()->customer->set_shipping_postcode( '10001' );
 
 		$product1 = \WC_Helper_Product::create_simple_product();
 		$product1->set_name( 'Product 1' );
-		$product1->set_regular_price( 100.00 );
+		$product1->set_regular_price( '100.00' );
 		$product1->save();
 
 		$product2 = \WC_Helper_Product::create_simple_product();
 		$product2->set_name( 'Product 2' );
-		$product2->set_regular_price( 50.00 );
+		$product2->set_regular_price( '50.00' );
 		$product2->save();
 
 		WC()->cart->add_to_cart( $product1->get_id(), 2 );
@@ -715,6 +711,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->calculate_totals();
 
 		$new_order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $new_order );
 		$new_order->save();
 
 		$this->sut->collect( 'payment_attempt', array( 'gateway' => 'stripe' ) );
@@ -767,13 +764,12 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 
 		WC()->cart->empty_cart();
 
-		if ( isset( WC()->customer ) ) {
-			WC()->customer->set_billing_first_name( '' );
-			WC()->customer->set_billing_last_name( '' );
-			WC()->customer->set_billing_email( '' );
-		}
+		WC()->customer->set_billing_first_name( '' );
+		WC()->customer->set_billing_last_name( '' );
+		WC()->customer->set_billing_email( '' );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -810,6 +806,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
 		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->save();
 
 		$this->sut->collect();
@@ -889,7 +886,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$original_session = WC()->session;
 
 		// Set session to null to simulate unavailability.
-		WC()->session = null;
+		WC()->session = null; // @phpstan-ignore assign.propertyType
 
 		$result = $this->sut->get_collected_data();
 

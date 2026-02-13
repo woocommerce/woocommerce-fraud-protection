@@ -1,0 +1,25 @@
+includes:
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+	- vendor/phpstan/phpstan-phpunit/extension.neon
+
+parameters:
+	tmpDir: tmp
+	level: 8
+	phpVersion: 70400
+	paths:
+		- woocommerce-fraud-protection.php
+		- src/
+		- tests/php/
+	bootstrapFiles:
+		- vendor/autoload.php
+	scanFiles:
+		- vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+		- vendor/php-stubs/wordpress-tests-stubs/wordpress-tests-stubs.php
+		- stubs/wc-unit-test-case.stub
+		- stubs/constants.stub
+		- stubs/wc-stripe-api.stub
+	treatPhpDocTypesAsCertain: false
+	ignoreErrors:
+		- identifier: missingType.iterableValue
+	parallel:
+		maximumNumberOfProcesses: 4

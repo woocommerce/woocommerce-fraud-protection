@@ -1,0 +1,9 @@
+<?php
+/**
+ * PHPStan stub for plugin constants.
+ *
+ * These are defined via define() in woocommerce-fraud-protection.php with dynamic
+ * values that PHPStan cannot resolve statically.
+ */
+
+define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', '' );

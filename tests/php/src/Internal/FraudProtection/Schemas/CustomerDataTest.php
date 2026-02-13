@@ -62,6 +62,7 @@ class CustomerDataTest extends \WC_Unit_Test_Case {
 		$user_id = $this->factory->user->create(
 			array( 'user_email' => 'count-test@example.com' )
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 		WC()->customer = new \WC_Customer( $user_id, true );
 
@@ -102,15 +103,18 @@ class CustomerDataTest extends \WC_Unit_Test_Case {
 		$user_id = $this->factory->user->create(
 			array( 'user_email' => 'orders-test@example.com' )
 		);
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 		WC()->customer = new \WC_Customer( $user_id, true );
 
 		// Create completed orders for this customer.
 		$order = wc_create_order( array( 'customer_id' => $user_id ) );
+		$this->assertInstanceOf( \WC_Order::class, $order );
 		$order->set_status( 'completed' );
 		$order->save();
 
 		$order2 = wc_create_order( array( 'customer_id' => $user_id ) );
+		$this->assertInstanceOf( \WC_Order::class, $order2 );
 		$order2->set_status( 'completed' );
 		$order2->save();
 

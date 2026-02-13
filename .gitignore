@@ -51,6 +51,9 @@ wp-config.php
 vendor/
 node_modules/
 
+# PHPStan
+tmp/
+
 # PHPUnit
 .phpunit.result.cache
 coverage/

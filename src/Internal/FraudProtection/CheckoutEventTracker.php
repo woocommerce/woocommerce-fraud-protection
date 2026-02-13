@@ -241,10 +241,12 @@ class CheckoutEventTracker {
 		$payment_data = array();
 
 		if ( ! empty( $posted_data['payment_method'] ) ) {
-			$payment_gateway_name = WC()->payment_gateways()->get_payment_gateway_name_by_id( $posted_data['payment_method'] );
+			$gateway_id           = $posted_data['payment_method'];
+			$gateways             = WC()->payment_gateways()->payment_gateways();
+			$payment_gateway_name = isset( $gateways[ $gateway_id ] ) ? $gateways[ $gateway_id ]->get_title() : $gateway_id;
 
 			$payment_data['payment'] = array(
-				'payment_gateway_type' => $posted_data['payment_method'],
+				'payment_gateway_type' => $gateway_id,
 				'payment_gateway_name' => $payment_gateway_name,
 			);
 		}

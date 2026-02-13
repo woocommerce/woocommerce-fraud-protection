@@ -165,7 +165,7 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 
 		ob_start();
 		do_action( 'before_woocommerce_add_payment_method' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
-		$output = ob_get_clean();
+		$output = (string) ob_get_clean();
 
 		$this->assertStringContainsString( 'unable to process this request online', $output, 'Should display blocked message on add payment method page' );
 		$this->assertStringContainsString( 'for assistance', $output, 'Should display generic message' );
@@ -183,7 +183,7 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 
 		ob_start();
 		do_action( 'before_woocommerce_add_payment_method' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
-		$output = ob_get_clean();
+		$output = (string) ob_get_clean();
 
 		$this->assertEmpty( $output, 'Non-blocked sessions should not display any message' );
 	}

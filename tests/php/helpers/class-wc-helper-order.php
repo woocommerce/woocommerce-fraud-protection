@@ -21,6 +21,11 @@ class WC_Helper_Order {
 		// Create a product for the order.
 		$product = WC_Helper_Product::create_simple_product( true, $product_props );
 
+		/**
+		 * Type-narrowed from WC_Order|WP_Error.
+		 *
+		 * @var WC_Order $order
+		 */
 		$order = wc_create_order(
 			array(
 				'customer_id' => $customer_id,
