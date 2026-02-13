@@ -47,7 +47,7 @@
 		"test:coverage": "phpunit --coverage-text --coverage-html=coverage",
 		"phpcs": "phpcs",
 		"phpcbf": "phpcbf",
-		"phpstan": "phpstan analyse --memory-limit=4G",
-		"phpstan:baseline": "phpstan analyse --memory-limit=4G --generate-baseline=phpstan-baseline.neon"
+		"phpstan": "phpstan analyse --memory-limit=2G",
+		"phpstan:baseline": "phpstan analyse --memory-limit=2G --generate-baseline=phpstan-baseline.neon"
 	}
 }
