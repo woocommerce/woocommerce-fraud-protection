@@ -20,6 +20,7 @@ const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 let $;
 let $form;
 let mockGetSessionId;
+let mockGetNewSessionId;
 let submitSpy;
 
 beforeEach( () => {
@@ -39,6 +40,7 @@ beforeEach( () => {
 	jest.useFakeTimers();
 
 	mockGetSessionId = jest.fn( () => Promise.resolve( 'sess-shortcode' ) );
+	mockGetNewSessionId = jest.fn( () => Promise.resolve( 'sess-fresh' ) );
 } );
 
 afterEach( () => {
@@ -54,9 +56,17 @@ function loadScript() {
 	} );
 }
 
+function setupBlackbox( overrides = {} ) {
+	window.Blackbox = {
+		getSessionId: mockGetSessionId,
+		getNewSessionId: mockGetNewSessionId,
+		...overrides,
+	};
+}
+
 describe( 'shortcode-checkout', () => {
 	it( 'registers a checkout_place_order handler on form.checkout', () => {
-		window.Blackbox = { getSessionId: mockGetSessionId };
+		setupBlackbox();
 		loadScript();
 
 		const events = $._data( $form[ 0 ], 'events' );
@@ -71,7 +81,15 @@ describe( 'shortcode-checkout', () => {
 	} );
 
 	it( 'allows submission when Blackbox.getSessionId is missing (fail-open)', () => {
-		window.Blackbox = {};
+		window.Blackbox = { getNewSessionId: mockGetNewSessionId };
+		loadScript();
+
+		const result = $form.triggerHandler( 'checkout_place_order' );
+		expect( result ).toBe( true );
+	} );
+
+	it( 'allows submission when Blackbox.getNewSessionId is missing (fail-open)', () => {
+		window.Blackbox = { getSessionId: mockGetSessionId };
 		loadScript();
 
 		const result = $form.triggerHandler( 'checkout_place_order' );
@@ -79,7 +97,7 @@ describe( 'shortcode-checkout', () => {
 	} );
 
 	it( 'blocks first submission, acquires session_id, injects field, re-submits', async () => {
-		window.Blackbox = { getSessionId: mockGetSessionId };
+		setupBlackbox();
 		loadScript();
 
 		// First pass: blocks submission.
@@ -103,7 +121,7 @@ describe( 'shortcode-checkout', () => {
 	it( 'allows submission on timeout when getSessionId takes too long', async () => {
 		mockGetSessionId.mockReturnValue( new Promise( () => {} ) ); // Never resolves.
 
-		window.Blackbox = { getSessionId: mockGetSessionId };
+		setupBlackbox();
 		loadScript();
 
 		// First pass blocks.
@@ -122,7 +140,7 @@ describe( 'shortcode-checkout', () => {
 	it( 'fails open when getSessionId rejects', async () => {
 		mockGetSessionId.mockReturnValue( Promise.reject( new Error( 'SDK error' ) ) );
 
-		window.Blackbox = { getSessionId: mockGetSessionId };
+		setupBlackbox();
 		loadScript();
 
 		// First pass blocks.
@@ -138,7 +156,7 @@ describe( 'shortcode-checkout', () => {
 	} );
 
 	it( 'allows through on second pass when hidden field exists', () => {
-		window.Blackbox = { getSessionId: mockGetSessionId };
+		setupBlackbox();
 		loadScript();
 
 		// Inject the hidden field as if first pass did it.
@@ -151,8 +169,8 @@ describe( 'shortcode-checkout', () => {
 		expect( mockGetSessionId ).not.toHaveBeenCalled();
 	} );
 
-	it( 'removes hidden field after allowing through via setTimeout', () => {
-		window.Blackbox = { getSessionId: mockGetSessionId };
+	it( 'removes hidden field and calls getNewSessionId after allowing through', () => {
+		setupBlackbox();
 		loadScript();
 
 		// Inject the hidden field.
@@ -163,13 +181,15 @@ describe( 'shortcode-checkout', () => {
 		// Second pass allows through.
 		$form.triggerHandler( 'checkout_place_order' );
 
-		// Field still exists (setTimeout hasn't fired yet).
+		// Field still exists, getNewSessionId not called yet.
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 1 );
+		expect( mockGetNewSessionId ).not.toHaveBeenCalled();
 
 		// Fire the setTimeout(0).
 		jest.advanceTimersByTime( 0 );
 
-		// Now the field should be gone.
+		// Now the field should be gone and getNewSessionId called.
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+		expect( mockGetNewSessionId ).toHaveBeenCalledTimes( 1 );
 	} );
 } );
