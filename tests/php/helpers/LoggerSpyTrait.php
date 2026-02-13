@@ -88,7 +88,7 @@ trait LoggerSpyTrait {
 		$logs = $this->get_logs_by_level( $level );
 
 		foreach ( $logs as $log ) {
-			if ( str_contains( $log['message'], $substring ) ) {
+			if ( strpos( $log['message'], $substring ) !== false ) {
 				if ( null !== $expected_context && ! $this->context_matches( $expected_context, $log['context'] ) ) {
 					continue;
 				}

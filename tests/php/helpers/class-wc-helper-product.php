@@ -79,6 +79,13 @@ class WC_Helper_Product {
 		$variation2->set_status( 'publish' );
 		$variation2->save();
 
-		return wc_get_product( $product->get_id() );
+		/**
+		 * Type-narrowed from WC_Product|false|null.
+		 *
+		 * @var WC_Product_Variable $variable
+		 */
+		$variable = wc_get_product( $product->get_id() );
+
+		return $variable;
 	}
 }

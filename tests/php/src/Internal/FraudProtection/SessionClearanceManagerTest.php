@@ -38,7 +38,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test that session status constants are defined correctly.
 	 */
-	public function test_session_status_constants() {
+	public function test_session_status_constants(): void {
 		$this->assertEquals( 'pending', SessionClearanceManager::STATUS_PENDING );
 		$this->assertEquals( 'allowed', SessionClearanceManager::STATUS_ALLOWED );
 		$this->assertEquals( 'blocked', SessionClearanceManager::STATUS_BLOCKED );
@@ -48,7 +48,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test default session status when session is not available.
 	 */
-	public function test_default_session_status_without_session() {
+	public function test_default_session_status_without_session(): void {
 		// If session is not available, should return DEFAULT_STATUS.
 		$status = $this->sut->get_session_status();
 		$this->assertEquals( SessionClearanceManager::DEFAULT_STATUS, $status );
@@ -57,7 +57,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test that is_session_allowed returns true for allowed status.
 	 */
-	public function test_is_session_allowed_returns_true_for_allowed() {
+	public function test_is_session_allowed_returns_true_for_allowed(): void {
 		$this->sut->allow_session();
 		$this->assertTrue( $this->sut->is_session_allowed() );
 		$this->assertFalse( $this->sut->is_session_blocked() );
@@ -66,7 +66,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test that pending session is neither allowed nor blocked.
 	 */
-	public function test_is_session_allowed_returns_false_for_pending() {
+	public function test_is_session_allowed_returns_false_for_pending(): void {
 		$this->sut->challenge_session();
 		$this->assertFalse( $this->sut->is_session_allowed() );
 		$this->assertFalse( $this->sut->is_session_blocked() );
@@ -75,7 +75,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test blocked status.
 	 */
-	public function test_is_session_allowed_returns_false_for_blocked() {
+	public function test_is_session_allowed_returns_false_for_blocked(): void {
 		$this->sut->block_session();
 		$this->assertFalse( $this->sut->is_session_allowed() );
 		$this->assertTrue( $this->sut->is_session_blocked() );
@@ -84,7 +84,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test block_session empties the cart.
 	 */
-	public function test_block_session_empties_cart() {
+	public function test_block_session_empties_cart(): void {
 		// Add item to cart.
 		$product = \WC_Helper_Product::create_simple_product();
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
@@ -101,7 +101,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test reset_session sets status to DEFAULT_STATUS.
 	 */
-	public function test_reset_session_sets_status_to_default() {
+	public function test_reset_session_sets_status_to_default(): void {
 		// Set to blocked first.
 		$this->sut->block_session();
 		$this->assertEquals( SessionClearanceManager::STATUS_BLOCKED, $this->sut->get_session_status() );
@@ -114,7 +114,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test session status transitions.
 	 */
-	public function test_session_status_transitions() {
+	public function test_session_status_transitions(): void {
 		// Start with allowed.
 		$this->sut->allow_session();
 		$this->assertEquals( SessionClearanceManager::STATUS_ALLOWED, $this->sut->get_session_status() );
@@ -135,7 +135,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	/**
 	 * Test get_session_status returns default status for invalid stored values.
 	 */
-	public function test_get_session_status_returns_default_status_for_invalid_values() {
+	public function test_get_session_status_returns_default_status_for_invalid_values(): void {
 		// Set an invalid value directly in session.
 		WC()->session->set( '_fraud_protection_clearance_status', 'invalid_status' );
 

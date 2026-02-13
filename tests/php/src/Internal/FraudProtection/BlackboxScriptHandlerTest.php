@@ -136,8 +136,6 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	 * @testdox Should not enqueue Blackbox scripts on non-payment pages.
 	 */
 	public function test_does_not_enqueue_scripts_on_other_pages(): void {
-		$this->markTestSkipped( 'Flaky in full suite due to is_checkout returning true (despite the resets).' );
-
 		$this->mock_jetpack_blog_id( 12345 );
 
 		do_action( 'wp_enqueue_scripts' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
@@ -238,6 +236,7 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 						'post_title' => 'My account',
 					)
 				);
+				$this->assertIsInt( $page_id );
 				add_filter(
 					'pre_option_woocommerce_myaccount_page_id',
 					function () use ( $page_id ) {
