@@ -5,10 +5,10 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection\Compat;
+namespace Automattic\WooCommerce\Tests\Internal\Compat;
 
-use Automattic\WooCommerce\Internal\FraudProtection\Compat\StripePaymentDataCompat;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\Internal\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
 // Stub WC_Stripe_API if the real class isn't loaded.
@@ -60,7 +60,7 @@ if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 /**
  * Tests for the StripePaymentDataCompat class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\Compat\StripePaymentDataCompat
+ * @covers \Automattic\WooCommerce\Internal\Compat\StripePaymentDataCompat
  */
 class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 

@@ -5,14 +5,14 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection\Schemas;
+namespace Automattic\WooCommerce\Tests\Internal\Schemas;
 
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\CartItem;
+use Automattic\WooCommerce\Internal\Schemas\CartItem;
 
 /**
  * Tests for CartItem schema.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\Schemas\CartItem
+ * @covers \Automattic\WooCommerce\Internal\Schemas\CartItem
  */
 class CartItemTest extends \WC_Unit_Test_Case {
 

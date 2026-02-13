@@ -5,14 +5,14 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\SessionClearanceManager;
 
 /**
  * Tests for SessionClearanceManager.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager
+ * @covers \Automattic\WooCommerce\Internal\SessionClearanceManager
  */
 class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 

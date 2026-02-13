@@ -45,53 +45,53 @@ add_action(
 	'woocommerce_loaded',
 	function () {
 		// Core dependencies.
-		$session_manager = new \Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager();
+		$session_manager = new \Automattic\WooCommerce\Internal\SessionClearanceManager();
 
-		$api_client = new \Automattic\WooCommerce\Internal\FraudProtection\ApiClient();
+		$api_client = new \Automattic\WooCommerce\Internal\ApiClient();
 
-		$decision_handler = new \Automattic\WooCommerce\Internal\FraudProtection\DecisionHandler();
+		$decision_handler = new \Automattic\WooCommerce\Internal\DecisionHandler();
 		$decision_handler->init( $session_manager );
 
-		$session_data_collector = new \Automattic\WooCommerce\Internal\FraudProtection\SessionDataCollector();
+		$session_data_collector = new \Automattic\WooCommerce\Internal\SessionDataCollector();
 		$session_data_collector->init( $session_manager );
 
 		// Event trackers.
-		$cart_event_tracker = new \Automattic\WooCommerce\Internal\FraudProtection\CartEventTracker();
+		$cart_event_tracker = new \Automattic\WooCommerce\Internal\CartEventTracker();
 		$cart_event_tracker->init( $session_data_collector );
 
-		$checkout_event_tracker = new \Automattic\WooCommerce\Internal\FraudProtection\CheckoutEventTracker();
+		$checkout_event_tracker = new \Automattic\WooCommerce\Internal\CheckoutEventTracker();
 		$checkout_event_tracker->init( $session_data_collector );
 
-		$payment_method_event_tracker = new \Automattic\WooCommerce\Internal\FraudProtection\PaymentMethodEventTracker();
+		$payment_method_event_tracker = new \Automattic\WooCommerce\Internal\PaymentMethodEventTracker();
 		$payment_method_event_tracker->init( $session_data_collector );
 
 		// Notice and script handlers.
-		$blocked_notice = new \Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice();
+		$blocked_notice = new \Automattic\WooCommerce\Internal\BlockedSessionNotice();
 		$blocked_notice->init( $session_manager );
 
-		$blackbox_handler = new \Automattic\WooCommerce\Internal\FraudProtection\BlackboxScriptHandler();
+		$blackbox_handler = new \Automattic\WooCommerce\Internal\BlackboxScriptHandler();
 		$blackbox_handler->init( $session_manager );
 
 		// Session blocking handler.
-		$session_blocking_handler = new \Automattic\WooCommerce\Internal\FraudProtection\SessionBlockingHandler();
+		$session_blocking_handler = new \Automattic\WooCommerce\Internal\SessionBlockingHandler();
 		$session_blocking_handler->init( $session_manager, $blocked_notice );
 
-		$session_verifier = new \Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier();
+		$session_verifier = new \Automattic\WooCommerce\Internal\SessionVerifier();
 		$session_verifier->init( $session_data_collector, $api_client, $decision_handler );
 
-		$payment_data_resolver = new \Automattic\WooCommerce\Internal\FraudProtection\PaymentDataResolver();
+		$payment_data_resolver = new \Automattic\WooCommerce\Internal\PaymentDataResolver();
 
-		$stripe_compat = new \Automattic\WooCommerce\Internal\FraudProtection\Compat\StripePaymentDataCompat();
+		$stripe_compat = new \Automattic\WooCommerce\Internal\Compat\StripePaymentDataCompat();
 		$stripe_compat->register();
 
-		$square_compat = new \Automattic\WooCommerce\Internal\FraudProtection\Compat\SquarePaymentDataCompat();
+		$square_compat = new \Automattic\WooCommerce\Internal\Compat\SquarePaymentDataCompat();
 		$square_compat->register();
 
-		$blocks_checkout_protector = new \Automattic\WooCommerce\Internal\FraudProtection\BlocksCheckoutProtector();
+		$blocks_checkout_protector = new \Automattic\WooCommerce\Internal\BlocksCheckoutProtector();
 		$blocks_checkout_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
 
 		// Main controller.
-		$controller = new \Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController();
+		$controller = new \Automattic\WooCommerce\Internal\FraudProtectionController();
 		$controller->init(
 			$blocked_notice,
 			$blackbox_handler,

@@ -5,12 +5,12 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal\FraudProtection;
+namespace Automattic\WooCommerce\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\Address;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\CustomerData;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\OrderData;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\SessionInfo;
+use Automattic\WooCommerce\Internal\Schemas\Address;
+use Automattic\WooCommerce\Internal\Schemas\CustomerData;
+use Automattic\WooCommerce\Internal\Schemas\OrderData;
+use Automattic\WooCommerce\Internal\Schemas\SessionInfo;
 
 defined( 'ABSPATH' ) || exit;
 

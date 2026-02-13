@@ -5,15 +5,15 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\ApiClient;
-use Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtection\BlocksCheckoutProtector;
-use Automattic\WooCommerce\Internal\FraudProtection\PaymentDataResolver;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\CardPaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\ApiClient;
+use Automattic\WooCommerce\Internal\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\BlocksCheckoutProtector;
+use Automattic\WooCommerce\Internal\PaymentDataResolver;
+use Automattic\WooCommerce\Internal\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\Internal\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\SessionVerifier;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 use WC_Unit_Test_Case;
@@ -21,7 +21,7 @@ use WC_Unit_Test_Case;
 /**
  * Tests for the BlocksCheckoutProtector class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\BlocksCheckoutProtector
+ * @covers \Automattic\WooCommerce\Internal\BlocksCheckoutProtector
  */
 class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 

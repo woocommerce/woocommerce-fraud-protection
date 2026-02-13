@@ -5,18 +5,18 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionBlockingHandler;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\SessionBlockingHandler;
+use Automattic\WooCommerce\Internal\SessionClearanceManager;
 
 /**
  * Tests for cart blocking when session is blocked by fraud protection.
  *
  * Tests SessionBlockingHandler hook-based blocking and WC_Cart integration.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\SessionBlockingHandler
+ * @covers \Automattic\WooCommerce\Internal\SessionBlockingHandler
  */
 class CartBlockingTest extends \WC_Unit_Test_Case {
 

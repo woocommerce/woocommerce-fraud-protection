@@ -5,15 +5,15 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\SessionDataCollector;
+use Automattic\WooCommerce\Internal\SessionClearanceManager;
 
 /**
  * Tests for SessionDataCollector.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\SessionDataCollector
+ * @covers \Automattic\WooCommerce\Internal\SessionDataCollector
  */
 class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 

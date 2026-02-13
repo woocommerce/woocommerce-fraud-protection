@@ -5,14 +5,14 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection\Schemas;
+namespace Automattic\WooCommerce\Tests\Internal\Schemas;
 
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\OrderData;
+use Automattic\WooCommerce\Internal\Schemas\OrderData;
 
 /**
  * Tests for OrderData schema.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\Schemas\OrderData
+ * @covers \Automattic\WooCommerce\Internal\Schemas\OrderData
  */
 class OrderDataTest extends \WC_Unit_Test_Case {
 

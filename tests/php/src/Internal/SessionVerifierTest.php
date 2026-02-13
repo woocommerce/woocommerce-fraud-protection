@@ -5,18 +5,18 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
+namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtection\ApiClient;
-use Automattic\WooCommerce\Internal\FraudProtection\DecisionHandler;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\ApiClient;
+use Automattic\WooCommerce\Internal\DecisionHandler;
+use Automattic\WooCommerce\Internal\SessionDataCollector;
+use Automattic\WooCommerce\Internal\SessionVerifier;
 use WC_Unit_Test_Case;
 
 /**
  * Tests for the SessionVerifier class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier
+ * @covers \Automattic\WooCommerce\Internal\SessionVerifier
  */
 class SessionVerifierTest extends WC_Unit_Test_Case {
 
