@@ -1,5 +1,7 @@
 # JavaScript/TypeScript i18n Patterns
 
+> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && npx eslint client/path/to/file.tsx`).
+
 ## Table of Contents
 
 - [Overview](#overview)

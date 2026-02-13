@@ -7,6 +7,10 @@ description: Run tests, linting, and quality checks for WooCommerce development.
 
 This skill provides guidance for the WooCommerce development workflow, including running tests, code quality checks, and troubleshooting.
 
+## Prerequisites
+
+**IMPORTANT:** Always run `nvm use` before executing any `pnpm`, `npm`, or `npx` commands. This ensures the correct Node.js version is active. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && pnpm run test:php:env`).
+
 ## Instructions
 
 Follow these guidelines for WooCommerce development workflow:
@@ -22,9 +26,9 @@ Follow these guidelines for WooCommerce development workflow:
 The standard development workflow:
 
 1. Make code changes
-2. Run relevant tests: `pnpm run test:php:env -- --filter YourTestClass`
-3. Run linting/type checking: `pnpm run lint:changes:branch:php`
-4. Fix any issues: `pnpm run lint:php:fix`
+2. Run relevant tests: `nvm use && pnpm run test:php:env -- --filter YourTestClass`
+3. Run linting/type checking: `nvm use && pnpm run lint:changes:branch:php`
+4. Fix any issues: `nvm use && pnpm run lint:php:fix`
 5. Commit changes only after tests pass
 
 ## Key Principles

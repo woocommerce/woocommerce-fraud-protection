@@ -1,5 +1,7 @@
 # PHP Linting Patterns and Common Issues
 
+> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && pnpm lint:php:changes`).
+
 ## Table of Contents
 
 - [Critical Rule: Lint Only Specific Files](#critical-rule-lint-only-specific-files)
