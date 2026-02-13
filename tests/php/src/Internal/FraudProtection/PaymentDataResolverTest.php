@@ -173,7 +173,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 				return null;
 			},
 			10,
-			2
+			3
 		);
 
 		$input = array(
