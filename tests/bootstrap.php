@@ -54,19 +54,19 @@ function _manually_load_plugins() {
 
 	// Load our plugin's class files BEFORE WooCommerce so they take precedence
 	// over WooCommerce's versions (prevents "Cannot redeclare class" errors).
-	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionClearanceManager.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionDataCollector.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/ApiClient.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/DecisionHandler.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/CartEventTracker.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/CheckoutEventTracker.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/PaymentMethodEventTracker.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/BlackboxScriptHandler.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/BlockedSessionNotice.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionVerifier.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/BlocksCheckoutProtector.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/SessionBlockingHandler.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtection/FraudProtectionController.php';
+	require_once $plugin_dir . '/src/Internal/SessionClearanceManager.php';
+	require_once $plugin_dir . '/src/Internal/SessionDataCollector.php';
+	require_once $plugin_dir . '/src/Internal/ApiClient.php';
+	require_once $plugin_dir . '/src/Internal/DecisionHandler.php';
+	require_once $plugin_dir . '/src/Internal/CartEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/CheckoutEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/PaymentMethodEventTracker.php';
+	require_once $plugin_dir . '/src/Internal/BlackboxScriptHandler.php';
+	require_once $plugin_dir . '/src/Internal/BlockedSessionNotice.php';
+	require_once $plugin_dir . '/src/Internal/SessionVerifier.php';
+	require_once $plugin_dir . '/src/Internal/BlocksCheckoutProtector.php';
+	require_once $plugin_dir . '/src/Internal/SessionBlockingHandler.php';
+	require_once $plugin_dir . '/src/Internal/FraudProtectionController.php';
 
 	$wc_dir = _get_wc_dir();
 
