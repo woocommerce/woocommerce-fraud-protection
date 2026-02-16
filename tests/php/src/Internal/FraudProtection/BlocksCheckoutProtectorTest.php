@@ -69,10 +69,6 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 			->method( 'get_message_plaintext' )
 			->willReturn( 'We are unable to process this request online. Please contact support (test@example.com) to complete your purchase.' );
 
-		$this->payment_data_resolver
-			->method( 'resolve' )
-			->willReturn( null );
-
 		$this->sut = new BlocksCheckoutProtector();
 		$this->sut->init(
 			$this->session_verifier,
@@ -323,6 +319,40 @@ class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
 
 		$sut->extract_request_data( $order, $request );
 		$sut->verify_and_block( $order );
+	}
+
+	/**
+	 * @testdox verify_and_block() normalizes [{key, value}, ...] payment_data to flat map before calling resolver.
+	 */
+	public function test_verify_normalizes_payment_data_before_resolve(): void {
+		$this->payment_data_resolver
+			->expects( $this->once() )
+			->method( 'resolve' )
+			->with(
+				'stripe',
+				$this->equalTo( array( 'wc-stripe-payment-method' => 'pm_123' ) )
+			);
+
+		$this->session_verifier
+			->method( 'verify_session' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$request = $this->create_mock_request(
+			'test-session-normalize',
+			array(
+				'payment_method' => 'stripe',
+				'payment_data'   => array(
+					array(
+						'key'   => 'wc-stripe-payment-method',
+						'value' => 'pm_123',
+					),
+				),
+			)
+		);
+		$order = $this->create_mock_order( 800 );
+
+		$this->sut->extract_request_data( $order, $request );
+		$this->sut->verify_and_block( $order );
 	}
 
 	/**

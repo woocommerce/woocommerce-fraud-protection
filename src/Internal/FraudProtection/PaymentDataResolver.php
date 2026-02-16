@@ -13,12 +13,15 @@ use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentMethodData;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Resolves raw gateway-specific payment data into structured PaymentMethodData.
+ * Resolves payment data into structured PaymentMethodData.
  *
- * Normalizes the raw `payment_data` array from the Store API checkout request
- * (which comes as `[{key, value}, ...]`) into a key-value map, then applies
- * the `woocommerce_fraud_protection_resolved_payment_data` filter to let
+ * Accepts a flat key-value map of payment data and applies the
+ * `woocommerce_fraud_protection_resolved_payment_data` filter to let
  * gateway compat layers resolve it into a PaymentMethodData record object.
+ *
+ * Callers are responsible for normalizing their input into a flat map
+ * before calling resolve() (e.g. BlocksCheckoutProtector normalizes the
+ * Store API [{key, value}, ...] format; shortcode checkout already has flat POST data).
  *
  * Implements a fail-open pattern: returns null if no gateway resolves the data
  * or if resolution fails for any reason.
@@ -28,16 +31,14 @@ defined( 'ABSPATH' ) || exit;
 class PaymentDataResolver {
 
 	/**
-	 * Resolve raw payment data into structured PaymentMethodData.
+	 * Resolve payment data into structured PaymentMethodData.
 	 *
 	 * @param string $payment_method The gateway ID (e.g. 'woocommerce_payments', 'stripe').
-	 * @param array  $raw_payment_data Raw payment_data from the checkout request ([{key, value}, ...]).
+	 * @param array  $payment_data   Flat key-value map of payment data.
 	 * @return ?PaymentMethodData Resolved payment data, or null if unresolved.
 	 */
-	public function resolve( string $payment_method, array $raw_payment_data ): ?PaymentMethodData {
-		$normalized_payment_data = $this->normalize_payment_data( $raw_payment_data );
-
-		$pre_resolved_payment_data = $this->resolve_from_wc_token( $normalized_payment_data );
+	public function resolve( string $payment_method, array $payment_data ): ?PaymentMethodData {
+		$pre_resolved_payment_data = $this->resolve_from_wc_token( $payment_data );
 
 		try {
 			/**
@@ -54,13 +55,13 @@ class PaymentDataResolver {
 			 *
 			 * @param ?PaymentMethodData $resolved               The resolved payment data (pre-resolved from WC token, or null).
 			 * @param string             $payment_method          The gateway ID.
-			 * @param array              $normalized_payment_data Normalized key-value map of payment data.
+			 * @param array              $payment_data Flat key-value map of payment data.
 			 */
 			$resolved_payment_data = apply_filters(
 				'woocommerce_fraud_protection_resolved_payment_data',
 				$pre_resolved_payment_data,
 				$payment_method,
-				$normalized_payment_data
+				$payment_data
 			);
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
@@ -69,7 +70,7 @@ class PaymentDataResolver {
 				array(
 					'error'                     => $e,
 					'payment_method'            => $payment_method,
-					'normalized_payment_data'   => $normalized_payment_data,
+					'payment_data'              => $payment_data,
 					'pre_resolved_payment_data' => $pre_resolved_payment_data,
 				)
 			);
@@ -85,7 +86,7 @@ class PaymentDataResolver {
 				),
 				array(
 					'payment_method'            => $payment_method,
-					'normalized_payment_data'   => $normalized_payment_data,
+					'payment_data'              => $payment_data,
 					'pre_resolved_payment_data' => $pre_resolved_payment_data,
 					'resolved_payment_data'     => $resolved_payment_data,
 				)
@@ -102,11 +103,11 @@ class PaymentDataResolver {
 	 * `token` key with the WC token ID. This method resolves card details
 	 * from the stored token, providing a universal fallback for all gateways.
 	 *
-	 * @param array $normalized_payment_data Normalized key-value payment data.
+	 * @param array $payment_data Flat key-value payment data.
 	 * @return ?PaymentMethodData Resolved data from token, or null.
 	 */
-	private function resolve_from_wc_token( array $normalized_payment_data ): ?PaymentMethodData {
-		$token_id = $normalized_payment_data['token'] ?? '';
+	private function resolve_from_wc_token( array $payment_data ): ?PaymentMethodData {
+		$token_id = $payment_data['token'] ?? '';
 		if ( empty( $token_id ) ) {
 			return null;
 		}
@@ -134,23 +135,5 @@ class PaymentDataResolver {
 				$token->get_expiry_year() ? (int) $token->get_expiry_year() : null
 			)
 		);
-	}
-
-	/**
-	 * Normalize raw payment_data from [{key, value}, ...] to key-value map.
-	 *
-	 * @param array $raw_payment_data Raw payment_data array.
-	 * @return array Normalized key-value map.
-	 */
-	private function normalize_payment_data( array $raw_payment_data ): array {
-		$normalized = array();
-
-		foreach ( $raw_payment_data as $item ) {
-			if ( is_array( $item ) && isset( $item['key'], $item['value'] ) ) {
-				$normalized[ $item['key'] ] = $item['value'];
-			}
-		}
-
-		return $normalized;
 	}
 }

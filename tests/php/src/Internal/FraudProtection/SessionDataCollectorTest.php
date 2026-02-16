@@ -899,9 +899,9 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox get_collected_data() returns empty order array when no order_id is provided.
+	 * @testdox get_collected_data() returns cart-based order data when no order_id is provided.
 	 */
-	public function test_get_collected_data_returns_empty_order_when_no_order_id(): void {
+	public function test_get_collected_data_returns_cart_order_data_when_no_order_id(): void {
 		$product = \WC_Helper_Product::create_simple_product();
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
@@ -910,7 +910,9 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 
 		$this->assertArrayHasKey( 'order', $result );
 		$this->assertIsArray( $result['order'] );
-		$this->assertEmpty( $result['order'] );
+		$this->assertNotEmpty( $result['order'] );
+		$this->assertArrayHasKey( 'items', $result['order'] );
+		$this->assertNotEmpty( $result['order']['items'] );
 	}
 
 	/**

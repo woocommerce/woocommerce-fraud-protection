@@ -75,7 +75,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 				$captured_url  = $url;
 				return array(
 					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'data' => 'ALLOW' ) ),
+					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
 				);
 			},
 			10,
@@ -101,7 +101,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			'pre_http_request',
 			fn() => array(
 				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'data' => 'ALLOW' ) ),
+				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
 			)
 		);
 
@@ -120,7 +120,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			'pre_http_request',
 			fn() => array(
 				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'data' => 'BLOCK' ) ),
+				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'block' ) ) ),
 			)
 		);
 
@@ -217,7 +217,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
-		$this->assertLogged( 'error', 'missing "data" field' );
+		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
 
 	/**
@@ -230,7 +230,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			'pre_http_request',
 			fn() => array(
 				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'data' => 'UNKNOWN_VALUE' ) ),
+				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'unknown_value' ) ) ),
 			)
 		);
 

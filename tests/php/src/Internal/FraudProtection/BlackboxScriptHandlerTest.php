@@ -41,6 +41,9 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	public function setUp(): void {
 		parent::setUp();
 
+		// Remove any bootstrap-registered enqueue handlers so only the test SUT runs.
+		remove_all_actions( 'wp_enqueue_scripts' );
+
 		$this->mock_session_manager = $this->createMock( SessionClearanceManager::class );
 		$this->mock_session_manager->method( 'get_session_id' )->willReturn( 'mock-session-id' );
 
@@ -53,7 +56,6 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		parent::tearDown();
 		remove_all_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts' );
 		remove_all_filters( 'woocommerce_is_checkout' );
 		remove_all_filters( 'pre_option_jetpack_options' );
@@ -68,6 +70,8 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 		unset( $wp->query_vars['order-pay'] );
 		unset( $wp->query_vars['add-payment-method'] );
 		$post = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Test teardown cleanup.
+
+		parent::tearDown();
 	}
 
 	/**

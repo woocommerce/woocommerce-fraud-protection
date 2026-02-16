@@ -76,7 +76,7 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 		WC()->cart->calculate_totals();
 
-		$data = OrderData::from_cart( null, WC()->cart, WC()->customer );
+		$data = OrderData::from_cart( 0, WC()->cart, WC()->customer );
 		$arr  = $data->to_array();
 
 		$this->assertEquals( 'guest', $arr['customer_id'] );
@@ -95,7 +95,7 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 		WC()->cart->calculate_totals();
 
-		$data = OrderData::from_cart( null, WC()->cart, WC()->customer );
+		$data = OrderData::from_cart( 0, WC()->cart, WC()->customer );
 		$arr  = $data->to_array();
 
 		$this->assertEquals( $user_id, $arr['customer_id'] );
@@ -131,7 +131,7 @@ class OrderDataTest extends \WC_Unit_Test_Case {
 		WC()->cart->add_to_cart( $product2->get_id(), 1 );
 		WC()->cart->calculate_totals();
 
-		$data = OrderData::from_cart( null, WC()->cart, WC()->customer );
+		$data = OrderData::from_cart( 0, WC()->cart, WC()->customer );
 		$arr  = $data->to_array();
 
 		$this->assertCount( 2, $arr['items'] );
