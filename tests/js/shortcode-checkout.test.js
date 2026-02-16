@@ -20,7 +20,7 @@ const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 let $;
 let $form;
 let mockGetSessionId;
-let mockGetNewSessionId;
+let mockReset;
 let submitSpy;
 
 beforeEach( () => {
@@ -40,7 +40,7 @@ beforeEach( () => {
 	jest.useFakeTimers();
 
 	mockGetSessionId = jest.fn( () => Promise.resolve( 'sess-shortcode' ) );
-	mockGetNewSessionId = jest.fn( () => Promise.resolve( 'sess-fresh' ) );
+	mockReset = jest.fn( () => Promise.resolve() );
 } );
 
 afterEach( () => {
@@ -59,7 +59,7 @@ function loadScript() {
 function setupBlackbox( overrides = {} ) {
 	window.Blackbox = {
 		getSessionId: mockGetSessionId,
-		getNewSessionId: mockGetNewSessionId,
+		reset: mockReset,
 		...overrides,
 	};
 }
@@ -81,14 +81,14 @@ describe( 'shortcode-checkout', () => {
 	} );
 
 	it( 'allows submission when Blackbox.getSessionId is missing (fail-open)', () => {
-		window.Blackbox = { getNewSessionId: mockGetNewSessionId };
+		window.Blackbox = { reset: mockReset };
 		loadScript();
 
 		const result = $form.triggerHandler( 'checkout_place_order' );
 		expect( result ).toBe( true );
 	} );
 
-	it( 'allows submission when Blackbox.getNewSessionId is missing (fail-open)', () => {
+	it( 'allows submission when Blackbox.reset is missing (fail-open)', () => {
 		window.Blackbox = { getSessionId: mockGetSessionId };
 		loadScript();
 
@@ -169,7 +169,7 @@ describe( 'shortcode-checkout', () => {
 		expect( mockGetSessionId ).not.toHaveBeenCalled();
 	} );
 
-	it( 'removes hidden field and calls getNewSessionId after allowing through', () => {
+	it( 'removes hidden field and calls reset after allowing through', () => {
 		setupBlackbox();
 		loadScript();
 
@@ -181,15 +181,15 @@ describe( 'shortcode-checkout', () => {
 		// Second pass allows through.
 		$form.triggerHandler( 'checkout_place_order' );
 
-		// Field still exists, getNewSessionId not called yet.
+		// Field still exists, reset not called yet.
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 1 );
-		expect( mockGetNewSessionId ).not.toHaveBeenCalled();
+		expect( mockReset ).not.toHaveBeenCalled();
 
 		// Fire the setTimeout(0).
 		jest.advanceTimersByTime( 0 );
 
-		// Now the field should be gone and getNewSessionId called.
+		// Now the field should be gone and reset called.
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
-		expect( mockGetNewSessionId ).toHaveBeenCalledTimes( 1 );
+		expect( mockReset ).toHaveBeenCalledTimes( 1 );
 	} );
 } );
