@@ -62,3 +62,11 @@ woocommerce-fraud-protection.zip
 
 # Claude local config files
 .claude/*local*.json
+.idea/.gitignore
+.idea/laravel-idea.xml
+.idea/modules.xml
+.idea/php.xml
+.idea/phpunit.xml
+.idea/vcs.xml
+.idea/woocommerce-fraud-protection.iml
+.idea/inspectionProfiles/Project_Default.xml
