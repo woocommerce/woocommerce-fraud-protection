@@ -142,4 +142,83 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 		// Should return default status for invalid values.
 		$this->assertEquals( SessionClearanceManager::DEFAULT_STATUS, $this->sut->get_session_status() );
 	}
+
+	/**
+	 * @testdox Should return stored identity ID from session when already present.
+	 */
+	public function test_get_session_id_returns_stored_identity_from_session(): void {
+		$expected_id = 'existing-identity-id';
+		WC()->session->set( '_fraud_protection_customer_session_id', $expected_id );
+
+		$result = $this->sut->get_session_id();
+
+		$this->assertSame( $expected_id, $result, 'Should return the identity ID already stored in the session' );
+	}
+
+	/**
+	 * @testdox Should return a non-empty session ID when no identity is stored in the session.
+	 */
+	public function test_get_session_id_returns_non_empty_id_when_not_in_session(): void {
+		$result = $this->sut->get_session_id();
+
+		$this->assertNotEmpty( $result, 'Should return a non-empty session ID' );
+	}
+
+	/**
+	 * @testdox Should persist identity ID to the session for future use.
+	 */
+	public function test_get_session_id_persists_identity_to_session(): void {
+		$this->assertEmpty(
+			WC()->session->get( '_fraud_protection_customer_session_id' ),
+			'Session should not have an identity ID before calling get_session_id'
+		);
+
+		$result = $this->sut->get_session_id();
+
+		$this->assertSame(
+			$result,
+			WC()->session->get( '_fraud_protection_customer_session_id' ),
+			'Identity ID should be persisted to the session'
+		);
+	}
+
+	/**
+	 * @testdox Should return consistent session ID on subsequent calls.
+	 */
+	public function test_get_session_id_returns_consistent_value(): void {
+		$first_call  = $this->sut->get_session_id();
+		$second_call = $this->sut->get_session_id();
+
+		$this->assertSame( $first_call, $second_call, 'Subsequent calls should return the same session ID' );
+	}
+
+	/**
+	 * @testdox Should initialize session and return valid ID when session is not available.
+	 */
+	public function test_get_session_id_initializes_session_when_unavailable(): void {
+		WC()->session = null;
+
+		$result = $this->sut->get_session_id();
+
+		$this->assertNotEmpty( $result, 'Should return a valid session ID even when session was not initially available' );
+		$this->assertInstanceOf( \WC_Session::class, WC()->session, 'Session should be initialized after the call' );
+	}
+
+	/**
+	 * @testdox Should use Tracks Client identity when session has no stored identity ID.
+	 */
+	public function test_get_session_id_uses_tracks_identity(): void {
+		$user_id = $this->factory->user->create();
+		wp_set_current_user( $user_id );
+
+		$tracks_identity = \WC_Tracks_Client::get_identity( $user_id );
+		$expected_id     = $tracks_identity['_ui'] ?? '';
+
+		$result = $this->sut->get_session_id();
+
+		$this->assertSame( $expected_id, $result, 'Should use the Tracks Client identity ID' );
+
+		wp_set_current_user( 0 );
+		wp_delete_user( $user_id );
+	}
 }
