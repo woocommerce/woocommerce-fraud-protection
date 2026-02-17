@@ -7,12 +7,12 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\Schemas;
 
-use Automattic\WooCommerce\Internal\Schemas\SessionInfo;
+use Automattic\WooCommerce\FraudProtection\Schemas\SessionInfo;
 
 /**
  * Tests for SessionInfo schema.
  *
- * @covers \Automattic\WooCommerce\Internal\Schemas\SessionInfo
+ * @covers \Automattic\WooCommerce\FraudProtection\Schemas\SessionInfo
  */
 class SessionInfoTest extends \WC_Unit_Test_Case {
 

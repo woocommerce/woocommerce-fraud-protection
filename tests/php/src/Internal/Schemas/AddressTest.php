@@ -7,12 +7,12 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\Schemas;
 
-use Automattic\WooCommerce\Internal\Schemas\Address;
+use Automattic\WooCommerce\FraudProtection\Schemas\Address;
 
 /**
  * Tests for Address schema.
  *
- * @covers \Automattic\WooCommerce\Internal\Schemas\Address
+ * @covers \Automattic\WooCommerce\FraudProtection\Schemas\Address
  */
 class AddressTest extends \WC_Unit_Test_Case {
 

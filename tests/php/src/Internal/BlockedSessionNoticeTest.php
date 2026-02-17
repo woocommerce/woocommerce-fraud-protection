@@ -7,13 +7,13 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\SessionClearanceManager;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\SessionClearanceManager;
 
 /**
  * Tests for BlockedSessionNotice.
  *
- * @covers \Automattic\WooCommerce\Internal\BlockedSessionNotice
+ * @covers \Automattic\WooCommerce\FraudProtection\BlockedSessionNotice
  */
 class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 

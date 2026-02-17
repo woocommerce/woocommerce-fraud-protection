@@ -7,13 +7,13 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\Schemas;
 
-use Automattic\WooCommerce\Internal\Schemas\Address;
-use Automattic\WooCommerce\Internal\Schemas\CustomerData;
+use Automattic\WooCommerce\FraudProtection\Schemas\Address;
+use Automattic\WooCommerce\FraudProtection\Schemas\CustomerData;
 
 /**
  * Tests for CustomerData schema.
  *
- * @covers \Automattic\WooCommerce\Internal\Schemas\CustomerData
+ * @covers \Automattic\WooCommerce\FraudProtection\Schemas\CustomerData
  */
 class CustomerDataTest extends \WC_Unit_Test_Case {
 

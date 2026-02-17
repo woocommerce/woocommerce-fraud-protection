@@ -5,7 +5,7 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal;
+namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\Jetpack\Connection\Client as Jetpack_Connection_Client;
 

@@ -7,13 +7,13 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\CheckoutEventTracker;
-use Automattic\WooCommerce\Internal\SessionDataCollector;
+use Automattic\WooCommerce\FraudProtection\CheckoutEventTracker;
+use Automattic\WooCommerce\FraudProtection\SessionDataCollector;
 
 /**
  * Tests for CheckoutEventTracker.
  *
- * @covers \Automattic\WooCommerce\Internal\CheckoutEventTracker
+ * @covers \Automattic\WooCommerce\FraudProtection\CheckoutEventTracker
  */
 class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 

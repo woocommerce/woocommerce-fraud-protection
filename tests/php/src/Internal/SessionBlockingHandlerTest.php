@@ -7,14 +7,14 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\SessionBlockingHandler;
-use Automattic\WooCommerce\Internal\SessionClearanceManager;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\SessionBlockingHandler;
+use Automattic\WooCommerce\FraudProtection\SessionClearanceManager;
 
 /**
  * Tests for the SessionBlockingHandler class.
  *
- * @covers \Automattic\WooCommerce\Internal\SessionBlockingHandler
+ * @covers \Automattic\WooCommerce\FraudProtection\SessionBlockingHandler
  */
 class SessionBlockingHandlerTest extends \WC_Unit_Test_Case {
 

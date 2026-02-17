@@ -5,10 +5,10 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal;
+namespace Automattic\WooCommerce\FraudProtection;
 
-use Automattic\WooCommerce\Internal\Schemas\CardPaymentMethodData;
-use Automattic\WooCommerce\Internal\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 
 defined( 'ABSPATH' ) || exit;
 

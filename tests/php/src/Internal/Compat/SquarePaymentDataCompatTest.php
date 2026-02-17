@@ -7,15 +7,15 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\Compat;
 
-use Automattic\WooCommerce\Internal\Compat\SquarePaymentDataCompat;
-use Automattic\WooCommerce\Internal\Schemas\CardPaymentMethodData;
-use Automattic\WooCommerce\Internal\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
 /**
  * Tests for the SquarePaymentDataCompat class.
  *
- * @covers \Automattic\WooCommerce\Internal\Compat\SquarePaymentDataCompat
+ * @covers \Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat
  */
 class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 

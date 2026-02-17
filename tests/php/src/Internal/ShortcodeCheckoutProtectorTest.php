@@ -7,20 +7,20 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtection;
 
-use Automattic\WooCommerce\Internal\FraudProtection\ApiClient;
-use Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtection\PaymentDataResolver;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\CardPaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtection\ShortcodeCheckoutProtector;
+use Automattic\WooCommerce\FraudProtection\ApiClient;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\PaymentDataResolver;
+use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
 /**
  * Tests for the ShortcodeCheckoutProtector class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtection\ShortcodeCheckoutProtector
+ * @covers \Automattic\WooCommerce\FraudProtection\ShortcodeCheckoutProtector
  */
 class ShortcodeCheckoutProtectorTest extends WC_Unit_Test_Case {
 

@@ -7,14 +7,14 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\Schemas;
 
-use Automattic\WooCommerce\Internal\Schemas\CardPaymentMethodData;
-use Automattic\WooCommerce\Internal\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
 /**
  * Tests for the PaymentMethodData class.
  *
- * @covers \Automattic\WooCommerce\Internal\Schemas\PaymentMethodData
+ * @covers \Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData
  */
 class PaymentMethodDataTest extends WC_Unit_Test_Case {
 

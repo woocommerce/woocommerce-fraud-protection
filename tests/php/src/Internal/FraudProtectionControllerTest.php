@@ -4,7 +4,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Tests\Internal;
 
-use Automattic\WooCommerce\Internal\FraudProtectionController;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 
 /**
  * Tests for the FraudProtectionController class.
