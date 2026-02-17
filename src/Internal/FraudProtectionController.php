@@ -42,6 +42,13 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private BlocksCheckoutProtector $blocks_checkout_protector;
 
 	/**
+	 * Shortcode checkout protector instance.
+	 *
+	 * @var ShortcodeCheckoutProtector
+	 */
+	private ShortcodeCheckoutProtector $shortcode_checkout_protector;
+
+	/**
 	 * Cart event tracker instance.
 	 *
 	 * @var CartEventTracker
@@ -81,13 +88,14 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @internal
 	 *
-	 * @param BlockedSessionNotice      $blocked_session_notice       The instance of BlockedSessionNotice to use.
-	 * @param BlackboxScriptHandler     $blackbox_script_handler      The instance of BlackboxScriptHandler to use.
-	 * @param CartEventTracker          $cart_event_tracker           The instance of CartEventTracker to use.
-	 * @param CheckoutEventTracker      $checkout_event_tracker       The instance of CheckoutEventTracker to use.
-	 * @param PaymentMethodEventTracker $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
-	 * @param SessionBlockingHandler    $session_blocking_handler     The instance of SessionBlockingHandler to use.
-	 * @param BlocksCheckoutProtector   $blocks_checkout_protector The instance of BlocksCheckoutProtector to use.
+	 * @param BlockedSessionNotice       $blocked_session_notice       The instance of BlockedSessionNotice to use.
+	 * @param BlackboxScriptHandler      $blackbox_script_handler      The instance of BlackboxScriptHandler to use.
+	 * @param CartEventTracker           $cart_event_tracker           The instance of CartEventTracker to use.
+	 * @param CheckoutEventTracker       $checkout_event_tracker       The instance of CheckoutEventTracker to use.
+	 * @param PaymentMethodEventTracker  $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
+	 * @param SessionBlockingHandler     $session_blocking_handler     The instance of SessionBlockingHandler to use.
+	 * @param BlocksCheckoutProtector    $blocks_checkout_protector    The instance of BlocksCheckoutProtector to use.
+	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
 	 */
 	final public function init(
 		BlockedSessionNotice $blocked_session_notice,
@@ -96,7 +104,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		CheckoutEventTracker $checkout_event_tracker,
 		PaymentMethodEventTracker $payment_method_event_tracker,
 		SessionBlockingHandler $session_blocking_handler,
-		BlocksCheckoutProtector $blocks_checkout_protector
+		BlocksCheckoutProtector $blocks_checkout_protector,
+		ShortcodeCheckoutProtector $shortcode_checkout_protector
 	): void {
 		$this->blocked_session_notice       = $blocked_session_notice;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
@@ -105,6 +114,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->payment_method_event_tracker = $payment_method_event_tracker;
 		$this->session_blocking_handler     = $session_blocking_handler;
 		$this->blocks_checkout_protector    = $blocks_checkout_protector;
+		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
 	}
 
 	/**
@@ -121,6 +131,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->blocked_session_notice->register();
 		$this->blackbox_script_handler->register();
 		$this->blocks_checkout_protector->register();
+		$this->shortcode_checkout_protector->register();
 		$this->session_blocking_handler->register();
 		$this->cart_event_tracker->register();
 		$this->checkout_event_tracker->register();

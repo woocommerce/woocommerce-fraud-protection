@@ -163,16 +163,16 @@ class ApiClient {
 			return self::DECISION_ALLOW;
 		}
 
-		if ( ! isset( $response['data'] ) ) {
+		$decision = $this->extract_decision( $response );
+
+		if ( null === $decision ) {
 			FraudProtectionController::log(
 				'error',
-				'Response missing "data" field. Failing open with "allow" decision.',
+				'Could not extract decision from response. Failing open with "allow" decision.',
 				array( 'response' => $response )
 			);
 			return self::DECISION_ALLOW;
 		}
-
-		$decision = \strtolower( $response['data'] );
 
 		if ( ! in_array( $decision, self::VALID_DECISIONS, true ) ) {
 			FraudProtectionController::log(
@@ -295,6 +295,24 @@ class ApiClient {
 		}
 
 		return $data;
+	}
+
+	/**
+	 * Extract the decision string from the API response.
+	 *
+	 * Response format: { "data": { "decision": "allow", ... } }
+	 *
+	 * @param array<string, mixed> $response Parsed JSON response.
+	 * @return string|null Lowercased decision string, or null if not extractable.
+	 */
+	private function extract_decision( array $response ): ?string {
+		$data = $response['data'] ?? null;
+
+		if ( is_array( $data ) && isset( $data['decision'] ) && is_string( $data['decision'] ) ) {
+			return \strtolower( $data['decision'] );
+		}
+
+		return null;
 	}
 
 	/**

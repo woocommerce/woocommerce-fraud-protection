@@ -19,9 +19,9 @@ class OrderData {
 	/**
 	 * Order ID.
 	 *
-	 * @var ?int
+	 * @var int
 	 */
-	private ?int $order_id;
+	private int $order_id;
 
 	/**
 	 * Customer ID or 'guest'.
@@ -96,7 +96,7 @@ class OrderData {
 	/**
 	 * Private constructor — use factory methods.
 	 *
-	 * @param ?int       $order_id          Order ID.
+	 * @param int        $order_id          Order ID (0 when not yet created).
 	 * @param int|string $customer_id       Customer ID or 'guest'.
 	 * @param float      $total             Order total.
 	 * @param float      $items_total       Items subtotal.
@@ -109,7 +109,7 @@ class OrderData {
 	 * @param CartItem[] $items             Cart items.
 	 */
 	private function __construct(
-		?int $order_id = null,
+		int $order_id = 0,
 		$customer_id = 'guest',
 		float $total = 0,
 		float $items_total = 0,
@@ -137,12 +137,12 @@ class OrderData {
 	/**
 	 * Build from a WooCommerce cart.
 	 *
-	 * @param ?int         $order_id Order ID.
+	 * @param int          $order_id Order ID (0 when not yet created).
 	 * @param \WC_Cart     $cart     WooCommerce cart.
 	 * @param \WC_Customer $customer WooCommerce customer.
 	 * @return self
 	 */
-	public static function from_cart( ?int $order_id, \WC_Cart $cart, \WC_Customer $customer ): self {
+	public static function from_cart( int $order_id, \WC_Cart $cart, \WC_Customer $customer ): self {
 		$customer_id = $customer->get_id() ? $customer->get_id() : 'guest';
 
 		$items_total    = (float) $cart->get_subtotal();
@@ -191,10 +191,10 @@ class OrderData {
 	/**
 	 * Build an empty OrderData for graceful degradation.
 	 *
-	 * @param ?int $order_id Order ID.
+	 * @param int $order_id Order ID (0 when not yet created).
 	 * @return self
 	 */
-	public static function empty( ?int $order_id = null ): self {
+	public static function empty( int $order_id = 0 ): self {
 		return new self( $order_id );
 	}
 

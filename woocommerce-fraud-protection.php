@@ -37,6 +37,7 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Compat/StripePaymen
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Compat/SquarePaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/SessionVerifier.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/BlocksCheckoutProtector.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/ShortcodeCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/SessionBlockingHandler.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtectionController.php';
 
@@ -90,6 +91,9 @@ add_action(
 		$blocks_checkout_protector = new \Automattic\WooCommerce\Internal\BlocksCheckoutProtector();
 		$blocks_checkout_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
 
+		$shortcode_checkout_protector = new \Automattic\WooCommerce\Internal\FraudProtection\ShortcodeCheckoutProtector();
+		$shortcode_checkout_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
+
 		// Main controller.
 		$controller = new \Automattic\WooCommerce\Internal\FraudProtectionController();
 		$controller->init(
@@ -99,7 +103,8 @@ add_action(
 			$checkout_event_tracker,
 			$payment_method_event_tracker,
 			$session_blocking_handler,
-			$blocks_checkout_protector
+			$blocks_checkout_protector,
+			$shortcode_checkout_protector
 		);
 		$controller->register();
 	}
