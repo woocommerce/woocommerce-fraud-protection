@@ -1,8 +1,13 @@
 /**
  * Blocks checkout fraud protection integration.
  *
- * Handles Blackbox collect() and sets extension data for the checkout POST.
- * Depends on blackbox-init.js (SDK configured) and wp-data (checkout store).
+ * Gates checkout submission to acquire a Blackbox session ID via getSessionId(),
+ * sets it as extension data for the checkout POST, then lets the request proceed.
+ * Resets Blackbox after checkout completes (success or failure) so that stale
+ * behavioral data doesn't accumulate across retries.
+ *
+ * Depends on blackbox-init.js (SDK configured), wp-data (checkout store), and
+ * wc-blocks-checkout-events (validation gate + success/fail hooks).
  */
 ( function () {
 	'use strict';
@@ -10,122 +15,83 @@
 	const NAMESPACE = 'woocommerce/fraud-protection';
 	const STORE_KEY = 'wc/store/checkout';
 
-	// Start pending so the validation gate waits for collect() or times out.
-	let collectPromise = new Promise( function () {} );
+	const SESSION_ID_TIMEOUT = 5000;
+
+	const checkoutTimeoutGuard = function () {
+		return new Promise( function ( resolve ) {
+			setTimeout( function () {
+				resolve( '' );
+			}, SESSION_ID_TIMEOUT );
+		} );
+	};
+
+	const checkoutEvents =
+		window.wc &&
+		window.wc.blocksCheckoutEvents &&
+		window.wc.blocksCheckoutEvents.checkoutEvents;
+
+	if ( ! checkoutEvents ) {
+		return;
+	}
 
 	/**
-	 * Collect a Blackbox session ID and set it as checkout extension data.
+	 * Gate checkout on session_id acquisition.
 	 *
-	 * Fail-open: if Blackbox SDK is not loaded or collect() fails, checkout
-	 * proceeds without a session_id (server will verify with empty string).
+	 * When checkout validation fires, acquire a fresh session ID via
+	 * getSessionId(), store it as extension data, and let checkout proceed.
+	 *
+	 * Fail-open: if Blackbox SDK is not loaded or getSessionId() fails,
+	 * checkout proceeds without a session_id (server will verify with
+	 * empty string).
 	 */
-	const collectAndStoreSessionId = function () {
-		if ( ! window.Blackbox || ! window.Blackbox.collect ) {
-			return;
+	checkoutEvents.onCheckoutValidation( function () {
+		// Fail-open: no Blackbox available.
+		if ( ! window.Blackbox || ! window.Blackbox.getSessionId ) {
+			return true;
 		}
 
-		collectPromise = window.Blackbox.collect()
-			.then( function ( response ) {
-				const sessionId =
-					response && response.data && response.data.session_id
-						? response.data.session_id
-						: '';
-				if ( ! sessionId ) {
-					return;
-				}
-
-				if (
-					! window.wp ||
-					! window.wp.data ||
-					! window.wp.data.dispatch
-				) {
-					return;
-				}
-
-				const checkout = window.wp.data.dispatch( STORE_KEY );
-				if ( checkout && checkout.setExtensionData ) {
+		// Race against a 5 s timeout so we never block the checkout
+		// indefinitely (fail-open). .catch() converts rejections into
+		// empty string so checkout still proceeds.
+		return Promise.race( [
+			window.Blackbox.getSessionId(),
+			checkoutTimeoutGuard(),
+		] )
+			.catch( function () {
+				return '';
+			} )
+			.then( function ( sessionId ) {
+				if ( sessionId ) {
+					// wp-data is a declared script dependency, so wp.data
+					// is guaranteed to be available.
+					const checkout = wp.data.dispatch( STORE_KEY );
 					checkout.setExtensionData(
 						NAMESPACE,
 						{ blackbox_session_id: sessionId },
 						true
 					);
 				}
+
+				return true;
 			} )
 			.catch( function () {
-				// Fail-open: continue without session_id.
+				// Fail-open: extension data errors should not block checkout.
+				return true;
 			} );
-	};
-
-	/**
-	 * Reset Blackbox telemetry and re-collect a fresh session ID.
-	 *
-	 * Called after checkout processing completes (success or failure) so that
-	 * stale behavioral data doesn't accumulate across retries.
-	 */
-	const resetAndCollect = function () {
-		if ( ! window.Blackbox || ! window.Blackbox.reset ) {
-			return;
-		}
-		window.Blackbox.reset()
-			.then( function () {
-				collectAndStoreSessionId();
-			} )
-			.catch( function () {
-				// reset() failed, still try to collect (fail-open).
-				collectAndStoreSessionId();
-			} );
-	};
-
-	// The wc/store/checkout store is registered lazily when the checkout block
-	// mounts, so we use wp.data.subscribe to wait for it before collecting.
-	if ( ! window.wp || ! window.wp.data || ! window.wp.data.subscribe ) {
-		return;
-	}
-
-	let wasProcessing = false;
-	let initialCollectDone = false;
-
-	window.wp.data.subscribe( function () {
-		const store = window.wp.data.select( STORE_KEY );
-		if ( ! store ) {
-			return;
-		}
-
-		// Initial collect once the checkout store is available.
-		if ( ! initialCollectDone ) {
-			initialCollectDone = true;
-			collectAndStoreSessionId();
-		}
-
-		// Re-collect after each checkout submission for fresh session_id.
-		// Covers both success and failure. On success the page redirects
-		// so the fresh session_id is only meaningful for retry scenarios.
-		const isProcessing = store.isProcessing();
-		if ( wasProcessing && ! isProcessing ) {
-			resetAndCollect();
-		}
-		wasProcessing = isProcessing;
 	} );
 
-	// Gate checkout on session_id readiness.
-	// The checkout events API is exposed at wc.blocksCheckoutEvents.checkoutEvents.
-	const checkoutEvents =
-		window.wc &&
-		window.wc.blocksCheckoutEvents &&
-		window.wc.blocksCheckoutEvents.checkoutEvents;
-	if ( checkoutEvents && checkoutEvents.onCheckoutValidation ) {
-		checkoutEvents.onCheckoutValidation( function () {
-			// Wait for in-flight collect(), with a timeout so we don't block forever (fail-open).
-			return Promise.race( [
-				collectPromise.then( function () {
-					return true;
-				} ),
-				new Promise( function ( resolve ) {
-					setTimeout( function () {
-						resolve( true );
-					}, 5000 );
-				} ),
-			] );
-		} );
-	}
+	/**
+	 * Reset Blackbox after checkout completes (success or failure)
+	 * so stale behavioral data doesn't accumulate across retries.
+	 */
+	const resetBlackbox = function () {
+		if ( window.Blackbox && window.Blackbox.reset ) {
+			window.Blackbox.reset().catch( function () {
+				// Fail-open: reset failure is non-critical.
+			} );
+		}
+	};
+
+	checkoutEvents.onCheckoutSuccess( resetBlackbox );
+	checkoutEvents.onCheckoutFail( resetBlackbox );
 } )();

@@ -19,7 +19,7 @@ defined( 'ABSPATH' ) || exit;
  * 1. Registers Store API extension data namespace for blackbox_session_id
  * 2. Extracts request data (including session_id) from the checkout POST request
  * 3. Calls verify() before payment processing, blocking on BLOCK decisions
- * 4. Enqueues the blocks-checkout.js script for collect + setExtensionData
+ * 4. Enqueues the blocks-checkout.js script for getSessionId + setExtensionData
  *
  * All hooks fire within the same HTTP request, so request data is stored
  * as a class property (no WC session or DB storage needed).
@@ -197,8 +197,8 @@ class BlocksCheckoutProtector {
 	/**
 	 * Enqueue the blocks-checkout.js script.
 	 *
-	 * Called during `woocommerce_blocks_checkout_enqueue_data`. The script handles
-	 * Blackbox.collect() and sets the extension data via wp.data.dispatch.
+	 * Called during `woocommerce_blocks_checkout_enqueue_data`. The script gates
+	 * checkout on Blackbox.getSessionId() and sets the extension data via wp.data.dispatch.
 	 *
 	 * @internal
 	 *
