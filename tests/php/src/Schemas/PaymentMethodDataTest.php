@@ -5,7 +5,7 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\Schemas;
+namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;

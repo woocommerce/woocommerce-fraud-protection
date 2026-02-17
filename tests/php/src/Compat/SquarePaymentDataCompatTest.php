@@ -5,7 +5,7 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\Compat;
+namespace Automattic\WooCommerce\FraudProtection\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
