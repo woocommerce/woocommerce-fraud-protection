@@ -16,30 +16,30 @@ define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // Require class files (no autoloader).
 // Order matters: typed properties require dependencies to be loaded first.
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/SessionClearanceManager.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Schemas/Address.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Schemas/CartItem.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Schemas/OrderData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Schemas/SessionInfo.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Schemas/CustomerData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/SessionDataCollector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/ApiClient.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/DecisionHandler.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/CartEventTracker.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/CheckoutEventTracker.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/PaymentMethodEventTracker.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/BlackboxScriptHandler.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/BlockedSessionNotice.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Schemas/CardPaymentMethodData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Schemas/PaymentMethodData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/PaymentDataResolver.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Compat/StripePaymentDataCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/Compat/SquarePaymentDataCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/SessionVerifier.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/BlocksCheckoutProtector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/ShortcodeCheckoutProtector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/SessionBlockingHandler.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Internal/FraudProtectionController.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionClearanceManager.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/Address.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CartItem.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/OrderData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/SessionInfo.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CustomerData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionDataCollector.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ApiClient.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/DecisionHandler.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/CartEventTracker.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/CheckoutEventTracker.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentMethodEventTracker.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlackboxScriptHandler.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlockedSessionNotice.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CardPaymentMethodData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentMethodData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentDataResolver.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/StripePaymentDataCompat.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SquarePaymentDataCompat.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionBlockingHandler.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/FraudProtectionController.php';
 
 // Bootstrap after WooCommerce loads (MU-plugins load before regular plugins).
 add_action(

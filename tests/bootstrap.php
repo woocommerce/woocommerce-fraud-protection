@@ -54,19 +54,19 @@ function _manually_load_plugins() {
 
 	// Load our plugin's class files BEFORE WooCommerce so they take precedence
 	// over WooCommerce's versions (prevents "Cannot redeclare class" errors).
-	require_once $plugin_dir . '/src/Internal/SessionClearanceManager.php';
-	require_once $plugin_dir . '/src/Internal/SessionDataCollector.php';
-	require_once $plugin_dir . '/src/Internal/ApiClient.php';
-	require_once $plugin_dir . '/src/Internal/DecisionHandler.php';
-	require_once $plugin_dir . '/src/Internal/CartEventTracker.php';
-	require_once $plugin_dir . '/src/Internal/CheckoutEventTracker.php';
-	require_once $plugin_dir . '/src/Internal/PaymentMethodEventTracker.php';
-	require_once $plugin_dir . '/src/Internal/BlackboxScriptHandler.php';
-	require_once $plugin_dir . '/src/Internal/BlockedSessionNotice.php';
-	require_once $plugin_dir . '/src/Internal/SessionVerifier.php';
-	require_once $plugin_dir . '/src/Internal/BlocksCheckoutProtector.php';
-	require_once $plugin_dir . '/src/Internal/SessionBlockingHandler.php';
-	require_once $plugin_dir . '/src/Internal/FraudProtectionController.php';
+	require_once $plugin_dir . '/src/SessionClearanceManager.php';
+	require_once $plugin_dir . '/src/SessionDataCollector.php';
+	require_once $plugin_dir . '/src/ApiClient.php';
+	require_once $plugin_dir . '/src/DecisionHandler.php';
+	require_once $plugin_dir . '/src/CartEventTracker.php';
+	require_once $plugin_dir . '/src/CheckoutEventTracker.php';
+	require_once $plugin_dir . '/src/PaymentMethodEventTracker.php';
+	require_once $plugin_dir . '/src/BlackboxScriptHandler.php';
+	require_once $plugin_dir . '/src/BlockedSessionNotice.php';
+	require_once $plugin_dir . '/src/SessionVerifier.php';
+	require_once $plugin_dir . '/src/BlocksCheckoutProtector.php';
+	require_once $plugin_dir . '/src/SessionBlockingHandler.php';
+	require_once $plugin_dir . '/src/FraudProtectionController.php';
 
 	$wc_dir = _get_wc_dir();
 
