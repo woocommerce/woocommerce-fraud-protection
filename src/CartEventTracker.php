@@ -45,7 +45,10 @@ class CartEventTracker {
 	 * @return void
 	 */
 	public function register(): void {
-		add_action( 'woocommerce_add_to_cart', array( $this, 'track_cart_item_added' ), 10, 4 );
+		add_action( 'wp_loaded', array( $this, 'track_cart_item_added_via_product_page' ), 30 ); // Needs to run after WC_Form_Handler::add_to_cart_action().
+		add_action( 'woocommerce_store_api_cart_item_add_from_request', array( $this, 'track_cart_item_added_via_store_api' ), 10, 3 );
+		add_action( 'woocommerce_ajax_added_to_cart', array( $this, 'track_cart_item_added' ), 10, 1 );
+
 		add_action( 'woocommerce_cart_item_removed', array( $this, 'track_cart_item_removed' ), 10, 2 );
 		add_action( 'woocommerce_cart_item_restored', array( $this, 'track_cart_item_restored' ), 10, 2 );
 		add_action( 'woocommerce_after_cart_item_quantity_update', array( $this, 'track_cart_item_updated' ), 10, 4 );
@@ -68,19 +71,68 @@ class CartEventTracker {
 	}
 
 	/**
+	 * Track cart item added via Store API.
+	 *
+	 * @internal
+	 *
+	 * @param string   $item_id  Cart item key.
+	 * @param int      $quantity Quantity added.
+	 * @param \WC_Cart $cart     Cart object.
+	 * @return void
+	 */
+	public function track_cart_item_added_via_store_api( string $item_id, int $quantity, \WC_Cart $cart ): void {
+		$cart_item = $cart->get_cart_item( $item_id );
+		if ( ! $cart_item ) {
+			return;
+		}
+
+		$product_id = $cart_item['variation_id'] ? $cart_item['variation_id'] : $cart_item['product_id'];
+
+		$this->track_cart_item_added( $product_id );
+	}
+
+	/**
+	 * Track cart item added via product page form.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function track_cart_item_added_via_product_page(): void {
+		if ( ! isset( $_REQUEST['add-to-cart'] ) || ! is_numeric( wp_unslash( $_REQUEST['add-to-cart'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			return;
+		}
+
+		/** This filter is documented in WooCommerce core. */
+		$product_id = apply_filters( 'woocommerce_add_to_cart_product_id', absint( wp_unslash( $_REQUEST['add-to-cart'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		$this->track_cart_item_added( $product_id );
+	}
+
+	/**
 	 * Track cart item added event.
 	 *
 	 * Collects session data when an item is added to the cart.
 	 *
 	 * @internal
 	 *
-	 * @param string $cart_item_key  Cart item key.
-	 * @param int    $product_id     Product ID.
-	 * @param int    $quantity       Quantity added.
-	 * @param int    $variation_id   Variation ID.
+	 * @param int $product_id Product ID.
 	 * @return void
 	 */
-	public function track_cart_item_added( $cart_item_key, $product_id, $quantity, $variation_id ): void {
+	public function track_cart_item_added( int $product_id ): void {
+		$product = wc_get_product( $product_id );
+		if ( ! $product ) {
+			return;
+		}
+
+		$quantity     = empty( $_POST['quantity'] ) ? 1 : (int) wc_stock_amount( wp_unslash( $_POST['quantity'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$variation_id = 0;
+
+		if ( 'variation' === $product->get_type() ) {
+			$variation_id = $product_id;
+			$product_id   = $product->get_parent_id();
+		}
+
 		$event_data = $this->build_cart_event_data(
 			'item_added',
 			$product_id,
