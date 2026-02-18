@@ -196,11 +196,13 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	 * @testdox Should initialize session and return valid ID when session is not available.
 	 */
 	public function test_get_session_id_initializes_session_when_unavailable(): void {
+		// @phpstan-ignore assign.propertyType
 		WC()->session = null;
 
 		$result = $this->sut->get_session_id();
 
 		$this->assertNotEmpty( $result, 'Should return a valid session ID even when session was not initially available' );
+		// @phpstan-ignore method.impossibleType
 		$this->assertInstanceOf( \WC_Session::class, WC()->session, 'Session should be initialized after the call' );
 	}
 
@@ -209,6 +211,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_get_session_id_uses_tracks_identity(): void {
 		$user_id = $this->factory->user->create();
+		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
 		$tracks_identity = \WC_Tracks_Client::get_identity( $user_id );
@@ -220,5 +223,20 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 
 		wp_set_current_user( 0 );
 		wp_delete_user( $user_id );
+	}
+
+	/**
+	 * @testdox Should use Tracks Client identity for anonymous (guest) users.
+	 */
+	public function test_get_session_id_uses_tracks_identity_for_anonymous_users(): void {
+		wp_set_current_user( 0 );
+
+		$tracks_identity = \WC_Tracks_Client::get_identity( 0 );
+		$expected_id     = $tracks_identity['_ui'] ?? '';
+
+		$result = $this->sut->get_session_id();
+
+		$this->assertNotEmpty( $result, 'Should return a non-empty session ID for anonymous users' );
+		$this->assertSame( $expected_id, $result, 'Should use the Tracks Client identity ID for anonymous users' );
 	}
 }
