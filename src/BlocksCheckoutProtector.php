@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Integrates Blackbox fraud protection into the blocks-based checkout.
  *
- * Handles the collect -> verify -> verdict flow:
+ * Handles the getSessionId -> verify -> verdict flow:
  * 1. Registers Store API extension data namespace for blackbox_session_id
  * 2. Extracts request data (including session_id) from the checkout POST request
  * 3. Calls verify() before payment processing, blocking on BLOCK decisions
