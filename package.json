@@ -24,8 +24,8 @@
 		"plugin-zip": "composer install --no-dev && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip package.json README.md && composer install",
 		"test": "npm run test:php && npm run test:js",
 		"test:js": "wp-scripts test-unit-js",
-		"test:php": "./vendor/bin/phpunit",
-		"test:php:env": "./vendor/bin/phpunit",
+		"test:php": "vendor/bin/phpunit",
+		"test:php:env": "vendor/bin/phpunit",
 		"phpstan": "vendor/bin/phpstan analyse --memory-limit=2G",
 		"phpstan:baseline": "vendor/bin/phpstan analyse --memory-limit=2G --generate-baseline=phpstan-baseline.neon"
 	},
