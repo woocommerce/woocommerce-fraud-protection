@@ -29,7 +29,7 @@ class SessionClearanceManager {
 	/**
 	 * Session key for storing customer session ID.
 	 */
-	private const CUSTOMER_SESSION_ID_KEY = '_fraud_protection_customer_session_id';
+	private const CUSTOMER_IDENTITY_ID_KEY = '_fraud_protection_customer_session_id';
 
 	/**
 	 * Session status: pending clearance.
@@ -182,14 +182,14 @@ class SessionClearanceManager {
 	 *
 	 * @return string Session identifier.
 	 */
-	public function get_session_id(): string {
+	public function get_identity_id(): string {
 		if ( ! $this->is_session_available() ) {
 			WC()->session = new \WC_Session_Handler();
 			WC()->session->init();
 		}
 
 		// Checks if the identity ID is already in the session.
-		$identity_id = WC()->session->get( self::CUSTOMER_SESSION_ID_KEY );
+		$identity_id = WC()->session->get( self::CUSTOMER_IDENTITY_ID_KEY );
 
 		if ( is_string( $identity_id ) && $identity_id ) {
 			return $identity_id;
@@ -209,7 +209,7 @@ class SessionClearanceManager {
 		}
 
 		// Persists the identity ID in the session for future use.
-		WC()->session->set( self::CUSTOMER_SESSION_ID_KEY, $identity_id );
+		WC()->session->set( self::CUSTOMER_IDENTITY_ID_KEY, $identity_id );
 
 		return $identity_id;
 	}
@@ -232,7 +232,7 @@ class SessionClearanceManager {
 	 * @return void
 	 */
 	private function log_session_update_event( string $action ): void {
-		$session_id = $this->get_session_id();
+		$session_id = $this->get_identity_id();
 		$user_id    = get_current_user_id();
 		$user_info  = $user_id ? "User: {$user_id}" : 'User: guest';
 		$timestamp  = current_time( 'mysql' );

@@ -42,7 +42,7 @@ class SessionInfoTest extends \WC_Unit_Test_Case {
 		$arr  = $info->to_array();
 
 		$this->assertCount( 4, $arr );
-		$this->assertArrayHasKey( 'wc_session_id', $arr );
+		$this->assertArrayHasKey( 'wc_identity_id', $arr );
 		$this->assertArrayHasKey( 'ip_address', $arr );
 		$this->assertArrayHasKey( 'email', $arr );
 		$this->assertArrayHasKey( 'user_agent', $arr );
@@ -55,7 +55,7 @@ class SessionInfoTest extends \WC_Unit_Test_Case {
 		$info = SessionInfo::from_request( $this->session_id );
 		$arr  = $info->to_array();
 
-		$this->assertEquals( $this->session_id, $arr['wc_session_id'] );
+		$this->assertEquals( $this->session_id, $arr['wc_identity_id'] );
 	}
 
 	/**
@@ -94,7 +94,7 @@ class SessionInfoTest extends \WC_Unit_Test_Case {
 		$arr  = $info->to_array();
 
 		$this->assertCount( 4, $arr );
-		$this->assertNull( $arr['wc_session_id'] );
+		$this->assertNull( $arr['wc_identity_id'] );
 		$this->assertNull( $arr['ip_address'] );
 		$this->assertNull( $arr['email'] );
 		$this->assertNull( $arr['user_agent'] );

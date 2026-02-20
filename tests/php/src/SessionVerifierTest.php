@@ -73,7 +73,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$session_id    = 'test-session-abc';
 		$order_id      = 42;
 		$collected_data = array(
-			'session'  => array( 'wc_session_id' => 'abc' ),
+			'session'  => array( 'wc_identity_id' => 'abc' ),
 			'customer' => array(),
 		);
 		$request_data = array(

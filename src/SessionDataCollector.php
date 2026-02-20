@@ -145,7 +145,7 @@ class SessionDataCollector {
 	 */
 	private function get_session_data(): SessionInfo {
 		try {
-			return SessionInfo::from_request( $this->session_clearance_manager->get_session_id() );
+			return SessionInfo::from_request( $this->session_clearance_manager->get_identity_id() );
 		} catch ( \Throwable $e ) {
 			return SessionInfo::empty();
 		}

@@ -187,7 +187,7 @@ class ApiClient {
 		}
 
 		$session    = is_array( $event_data['session'] ?? null ) ? $event_data['session'] : array();
-		$session_id = $session['wc_session_id'] ?? 'unknown';
+		$session_id = $session['wc_identity_id'] ?? 'unknown';
 		$source     = $event_data['source'] ?? 'unknown';
 		FraudProtectionController::log(
 			'info',
