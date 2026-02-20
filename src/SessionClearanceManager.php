@@ -191,11 +191,13 @@ class SessionClearanceManager {
 		// Checks if the identity ID is already in the session.
 		$identity_id = WC()->session->get( self::CUSTOMER_SESSION_ID_KEY );
 
-		// If no identity ID is found in the session, the Tracks Client will get it from the tk_ai cookie or generate a new one.
-		if ( ! $identity_id ) {
-			$identity    = \WC_Tracks_Client::get_identity( get_current_user_id() );
-			$identity_id = $identity['_ui'] ?? '';
+		if ( is_string( $identity_id ) && $identity_id ) {
+			return $identity_id;
 		}
+
+		// If no identity ID is found in the session, the Tracks Client will get it from the tk_ai cookie or generate a new one.
+		$identity    = \WC_Tracks_Client::get_identity( get_current_user_id() );
+		$identity_id = $identity['_ui'] ?? '';
 
 		if ( ! $identity_id ) {
 			// Only used as a fallback. Should rarely happen.
