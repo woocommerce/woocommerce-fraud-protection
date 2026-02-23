@@ -74,8 +74,12 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 			'woocommerce_cart_item_added_from_user_request hook should be registered'
 		);
 		$this->assertNotFalse(
-			has_action( 'woocommerce_cart_item_removed', array( $this->sut, 'track_cart_item_removed' ) ),
-			'woocommerce_cart_item_removed hook should be registered'
+			has_action( 'woocommerce_shortcode_cart_item_removed', array( $this->sut, 'track_cart_item_removed' ) ),
+			'woocommerce_shortcode_cart_item_removed hook should be registered'
+		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_store_api_cart_item_removed_from_request', array( $this->sut, 'track_cart_item_removed' ) ),
+			'woocommerce_store_api_cart_item_removed_from_request hook should be registered'
 		);
 		$this->assertNotFalse(
 			has_action( 'woocommerce_cart_item_restored', array( $this->sut, 'track_cart_item_restored' ) ),

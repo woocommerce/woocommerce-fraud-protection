@@ -52,7 +52,9 @@ class CartEventTracker {
 		add_action( 'woocommerce_shortcode_cart_item_update_quantity', array( $this, 'track_cart_item_updated' ), 10, 4 );
 		add_action( 'woocommerce_store_api_cart_item_update_from_request', array( $this, 'track_cart_item_updated' ), 10, 4 );
 
-		add_action( 'woocommerce_cart_item_removed', array( $this, 'track_cart_item_removed' ), 10, 2 );
+		add_action( 'woocommerce_shortcode_cart_item_removed', array( $this, 'track_cart_item_removed' ), 10, 2 );
+		add_action( 'woocommerce_store_api_cart_item_removed_from_request', array( $this, 'track_cart_item_removed' ), 10, 2 );
+
 		add_action( 'woocommerce_cart_item_restored', array( $this, 'track_cart_item_restored' ), 10, 2 );
 
 		add_action( 'template_redirect', array( $this, 'track_cart_page_loaded' ), 10, 0 );
