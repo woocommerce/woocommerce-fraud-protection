@@ -206,23 +206,23 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 
 		$this->assertIsArray( $result['session'] );
 		$this->assertCount( 4, $result['session'] );
-		$this->assertArrayHasKey( 'wc_session_id', $result['session'] );
+		$this->assertArrayHasKey( 'wc_identity_id', $result['session'] );
 		$this->assertArrayHasKey( 'ip_address', $result['session'] );
 		$this->assertArrayHasKey( 'email', $result['session'] );
 		$this->assertArrayHasKey( 'user_agent', $result['session'] );
 	}
 
 	/**
-	 * Test wc_session_id is retrieved from SessionClearanceManager.
+	 * Test wc_identity_id is retrieved from SessionClearanceManager.
 	 */
 	public function test_session_id_retrieved_from_session_clearance_manager(): void {
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
 
-		$this->assertArrayHasKey( 'wc_session_id', $result['session'] );
+		$this->assertArrayHasKey( 'wc_identity_id', $result['session'] );
 		// Session ID should be a string when session is available.
-		$this->assertIsString( $result['session']['wc_session_id'] );
-		$this->assertNotEmpty( $result['session']['wc_session_id'] );
+		$this->assertIsString( $result['session']['wc_identity_id'] );
+		$this->assertNotEmpty( $result['session']['wc_identity_id'] );
 	}
 
 	/**
@@ -734,7 +734,7 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertNotNull( $payment_event, 'payment_attempt event should be present' );
 		$this->assertNotEmpty( $payment_event['timestamp'] );
 
-		$this->assertNotEmpty( $result['session']['wc_session_id'] );
+		$this->assertNotEmpty( $result['session']['wc_identity_id'] );
 		$this->assertEquals( 'e2e-test@example.com', $result['session']['email'] );
 
 		$this->assertEquals( 'e2e-test@example.com', $result['customer']['billing_email'] );

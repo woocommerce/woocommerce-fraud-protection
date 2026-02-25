@@ -134,13 +134,13 @@ class BlackboxScriptHandler {
 			array( 'in_footer' => true )
 		);
 
-		$wc_session_id = $this->session_clearance_manager->get_session_id();
+		$wc_identity_id = $this->session_clearance_manager->get_identity_id();
 
 		wp_localize_script(
 			'wc-fraud-protection-blackbox-init',
 			'wcBlackboxConfig',
 			array(
-				'apiKey' => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_session_id,
+				'apiKey' => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_identity_id,
 			)
 		);
 	}

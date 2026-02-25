@@ -27,6 +27,11 @@ class SessionClearanceManager {
 	private const SESSION_KEY = '_fraud_protection_clearance_status';
 
 	/**
+	 * Session key for storing customer identity ID.
+	 */
+	private const CUSTOMER_IDENTITY_ID_KEY = '_fraud_protection_customer_identity_id';
+
+	/**
 	 * Session status: pending clearance.
 	 */
 	public const STATUS_PENDING = 'pending';
@@ -170,21 +175,44 @@ class SessionClearanceManager {
 
 	/**
 	 * Get a unique identifier for the current session.
+	 * Uses the Tracks Client to get the identity ID.
+	 * If no identity ID is found in the session, the Tracks Client will get it from the tk_ai cookie or generate a new one.
+	 * If no identity ID is found in the session or the cookie, a fallback identity ID will be generated.
+	 * The fallback identity ID is used to ensure that a session ID is always generated.
 	 *
 	 * @return string Session identifier.
 	 */
-	public function get_session_id(): string {
+	public function get_identity_id(): string {
 		if ( ! $this->is_session_available() ) {
-			return 'no-session';
+			WC()->initialize_session();
 		}
 
-		// Use or generate a stable session ID for tracking consistency.
-		$fraud_customer_session_id = WC()->session->get( '_fraud_protection_customer_session_id' );
-		if ( ! $fraud_customer_session_id ) {
-			$fraud_customer_session_id = WC()->call_function( 'wc_rand_hash', 'customer_', 30 );
-			WC()->session->set( '_fraud_protection_customer_session_id', $fraud_customer_session_id );
+		// Checks if the identity ID is already in the session.
+		$identity_id = WC()->session->get( self::CUSTOMER_IDENTITY_ID_KEY );
+
+		if ( is_string( $identity_id ) && $identity_id ) {
+			return $identity_id;
 		}
-		return $fraud_customer_session_id;
+
+		if ( class_exists( '\WC_Tracks_Client' ) ) {
+			// If no identity ID is found in the session, the Tracks Client will get it from the tk_ai cookie or generate a new one.
+			$identity    = \WC_Tracks_Client::get_identity( get_current_user_id() );
+			$identity_id = $identity['_ui'] ?? '';
+		}
+
+		if ( ! $identity_id ) {
+			// Only used as a fallback. Should rarely happen.
+			$identity_id = WC()->call_function( 'wc_rand_hash', 'customer_', 30 );
+			FraudProtectionController::log(
+				'warning',
+				'FraudProtection: Created new fallback session identity ID for customer. This should rarely happen. User ID: ' . get_current_user_id()
+			);
+		}
+
+		// Persists the identity ID in the session for future use.
+		WC()->session->set( self::CUSTOMER_IDENTITY_ID_KEY, $identity_id );
+
+		return $identity_id;
 	}
 
 	/**
@@ -205,7 +233,7 @@ class SessionClearanceManager {
 	 * @return void
 	 */
 	private function log_session_update_event( string $action ): void {
-		$session_id = $this->get_session_id();
+		$session_id = $this->get_identity_id();
 		$user_id    = get_current_user_id();
 		$user_info  = $user_id ? "User: {$user_id}" : 'User: guest';
 		$timestamp  = current_time( 'mysql' );

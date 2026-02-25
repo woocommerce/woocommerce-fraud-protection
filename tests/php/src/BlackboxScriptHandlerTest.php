@@ -45,7 +45,7 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 		remove_all_actions( 'wp_enqueue_scripts' );
 
 		$this->mock_session_manager = $this->createMock( SessionClearanceManager::class );
-		$this->mock_session_manager->method( 'get_session_id' )->willReturn( 'mock-session-id' );
+		$this->mock_session_manager->method( 'get_identity_id' )->willReturn( 'mock-session-id' );
 
 		$this->sut = new BlackboxScriptHandler();
 		$this->sut->init( $this->mock_session_manager );

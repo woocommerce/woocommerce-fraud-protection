@@ -21,7 +21,7 @@ class SessionInfo {
 	 *
 	 * @var ?string
 	 */
-	private ?string $wc_session_id;
+	private ?string $wc_identity_id;
 
 	/**
 	 * IP address.
@@ -47,32 +47,32 @@ class SessionInfo {
 	/**
 	 * Private constructor — use factory methods.
 	 *
-	 * @param ?string $wc_session_id WooCommerce session ID.
+	 * @param ?string $wc_identity_id WooCommerce session ID.
 	 * @param ?string $ip_address    IP address.
 	 * @param ?string $email         WordPress user email.
 	 * @param ?string $user_agent    User agent string.
 	 */
 	private function __construct(
-		?string $wc_session_id = null,
+		?string $wc_identity_id = null,
 		?string $ip_address = null,
 		?string $email = null,
 		?string $user_agent = null
 	) {
-		$this->wc_session_id = $wc_session_id;
-		$this->ip_address    = $ip_address;
-		$this->email         = $email;
-		$this->user_agent    = $user_agent;
+		$this->wc_identity_id = $wc_identity_id;
+		$this->ip_address     = $ip_address;
+		$this->email          = $email;
+		$this->user_agent     = $user_agent;
 	}
 
 	/**
 	 * Build from the current request context.
 	 *
-	 * @param string $wc_session_id WooCommerce session ID from SessionClearanceManager.
+	 * @param string $wc_identity_id WooCommerce session ID from SessionClearanceManager.
 	 * @return self
 	 */
-	public static function from_request( string $wc_session_id ): self {
+	public static function from_request( string $wc_identity_id ): self {
 		return new self(
-			$wc_session_id,
+			$wc_identity_id,
 			self::get_ip_address(),
 			self::get_email(),
 			self::get_user_agent(),
@@ -138,10 +138,10 @@ class SessionInfo {
 	 */
 	public function to_array(): array {
 		return array(
-			'wc_session_id' => $this->wc_session_id,
-			'ip_address'    => $this->ip_address,
-			'email'         => $this->email,
-			'user_agent'    => $this->user_agent,
+			'wc_identity_id' => $this->wc_identity_id,
+			'ip_address'     => $this->ip_address,
+			'email'          => $this->email,
+			'user_agent'     => $this->user_agent,
 		);
 	}
 }
