@@ -27,9 +27,9 @@ class SessionClearanceManager {
 	private const SESSION_KEY = '_fraud_protection_clearance_status';
 
 	/**
-	 * Session key for storing customer session ID.
+	 * Session key for storing customer identity ID.
 	 */
-	private const CUSTOMER_IDENTITY_ID_KEY = '_fraud_protection_customer_session_id';
+	private const CUSTOMER_IDENTITY_ID_KEY = '_fraud_protection_customer_identity_id';
 
 	/**
 	 * Session status: pending clearance.

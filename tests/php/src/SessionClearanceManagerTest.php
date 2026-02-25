@@ -148,7 +148,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_get_identity_id_returns_stored_identity_from_session(): void {
 		$expected_id = 'existing-identity-id';
-		WC()->session->set( '_fraud_protection_customer_session_id', $expected_id );
+		WC()->session->set( '_fraud_protection_customer_identity_id', $expected_id );
 
 		$result = $this->sut->get_identity_id();
 
@@ -169,7 +169,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_get_identity_id_persists_identity_to_session(): void {
 		$this->assertEmpty(
-			WC()->session->get( '_fraud_protection_customer_session_id' ),
+			WC()->session->get( '_fraud_protection_customer_identity_id' ),
 			'Session should not have an identity ID before calling get_identity_id'
 		);
 
@@ -177,7 +177,7 @@ class SessionClearanceManagerTest extends \WC_Unit_Test_Case {
 
 		$this->assertSame(
 			$result,
-			WC()->session->get( '_fraud_protection_customer_session_id' ),
+			WC()->session->get( '_fraud_protection_customer_identity_id' ),
 			'Identity ID should be persisted to the session'
 		);
 	}
