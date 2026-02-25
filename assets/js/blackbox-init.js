@@ -37,12 +37,13 @@
 			}, fraudProtection.config.timeout );
 		} );
 
-		return Promise.race( [
-			window.Blackbox.getSessionId(),
-			timeout,
-		] ).catch( function () {
-			return '';
-		} );
+		return Promise.race( [ window.Blackbox.getSessionId(), timeout ] )
+			.then( function ( result ) {
+				return typeof result === 'string' ? result : '';
+			} )
+			.catch( function () {
+				return '';
+			} );
 	};
 
 	/**

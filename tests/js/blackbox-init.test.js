@@ -139,6 +139,15 @@ describe( 'blackbox-init', () => {
 			expect( sessionId ).toBe( '' );
 		} );
 
+		it( 'resolves with empty string when getSessionId resolves with non-string', async () => {
+			mockGetSessionId.mockReturnValue( Promise.resolve( { message: 'Failed to fetch' } ) );
+			setupAndLoad();
+
+			const sessionId = await window.wcFraudProtection.acquireSessionId();
+
+			expect( sessionId ).toBe( '' );
+		} );
+
 		it( 'resolves with empty string when getSessionId is missing', async () => {
 			setupAndLoad();
 			delete window.Blackbox.getSessionId;
