@@ -3,16 +3,20 @@
  */
 
 /**
- * Tests for add-payment-method Blackbox integration.
+ * Tests for add-payment-method fraud protection integration.
  *
  * Uses real jQuery with jsdom. Each test:
  * 1. Sets up a <form id="add_payment_method"> in the DOM
- * 2. Requires the IIFE (which binds the capture-phase submit handler)
- * 3. Dispatches a native submit event and asserts behavior
+ * 2. Sets up window.wcFraudProtection with mocked acquireSessionId
+ * 3. Loads add-payment-method.js (which binds the capture-phase submit handler)
+ * 4. Dispatches a native submit event and asserts behavior
  *
  * bubbleSubmitSpy is registered on document.body (not the form) so it
  * fires during the actual bubble phase — after the script's capture handler
  * has had a chance to call stopImmediatePropagation().
+ *
+ * acquireSessionId is tested in blackbox-init.test.js.
+ * Consumer tests mock wcFraudProtection directly.
  *
  * @package WooCommerce\FraudProtection
  */
@@ -23,7 +27,7 @@ const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 
 let $;
 let form;
-let mockGetSessionId;
+let mockAcquireSessionId;
 let bubbleSubmitSpy;
 
 beforeEach( () => {
@@ -33,10 +37,10 @@ beforeEach( () => {
 	$ = require( 'jquery' );
 	window.jQuery = $;
 
-	delete window.Blackbox;
+	delete window.wcFraudProtection;
 	jest.useFakeTimers();
 
-	mockGetSessionId = jest.fn( () => Promise.resolve( 'sess-add-pm' ) );
+	mockAcquireSessionId = jest.fn( () => Promise.resolve( 'sess-add-pm' ) );
 
 	// Bubble-phase spy on body: fires only when the event propagates past
 	// the form (i.e. the capture handler did not stop it).
@@ -48,21 +52,20 @@ afterEach( () => {
 	document.body.removeEventListener( 'submit', bubbleSubmitSpy );
 	document.body.innerHTML = '';
 	delete window.jQuery;
-	delete window.Blackbox;
+	delete window.wcFraudProtection;
 	jest.useRealTimers();
 } );
+
+function setupFraudProtection() {
+	window.wcFraudProtection = {
+		acquireSessionId: mockAcquireSessionId,
+	};
+}
 
 function loadScript() {
 	jest.isolateModules( () => {
 		require( '../../assets/js/add-payment-method' );
 	} );
-}
-
-function setupBlackbox( overrides = {} ) {
-	window.Blackbox = {
-		getSessionId: mockGetSessionId,
-		...overrides,
-	};
 }
 
 function dispatchSubmit() {
@@ -72,16 +75,7 @@ function dispatchSubmit() {
 }
 
 describe( 'add-payment-method', () => {
-	it( 'lets submit through when Blackbox is missing (fail-open)', () => {
-		loadScript();
-
-		const notCancelled = dispatchSubmit();
-		expect( notCancelled ).toBe( true );
-		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
-	} );
-
-	it( 'lets submit through when Blackbox.getSessionId is missing (fail-open)', () => {
-		window.Blackbox = {};
+	it( 'lets submit through when wcFraudProtection is missing (fail-open)', () => {
 		loadScript();
 
 		const notCancelled = dispatchSubmit();
@@ -90,16 +84,16 @@ describe( 'add-payment-method', () => {
 	} );
 
 	it( 'blocks first submission, acquires session_id, injects field, re-dispatches', async () => {
-		setupBlackbox();
+		setupFraudProtection();
 		loadScript();
 
 		// First pass: blocks submission.
 		const notCancelled = dispatchSubmit();
 		expect( notCancelled ).toBe( false );
-		expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 		expect( bubbleSubmitSpy ).not.toHaveBeenCalled();
 
-		// Wait for the getSessionId promise to resolve.
+		// Wait for the acquireSessionId promise to resolve.
 		await flushPromises();
 
 		// Hidden field injected with correct value.
@@ -112,7 +106,7 @@ describe( 'add-payment-method', () => {
 	} );
 
 	it( 'stops other handlers via stopImmediatePropagation on first submission', () => {
-		setupBlackbox();
+		setupFraudProtection();
 		loadScript();
 
 		// Handler added after the script — should not fire.
@@ -125,37 +119,8 @@ describe( 'add-payment-method', () => {
 		expect( bubbleSubmitSpy ).not.toHaveBeenCalled();
 	} );
 
-	it( 'allows submission on timeout when getSessionId takes too long', async () => {
-		mockGetSessionId.mockReturnValue( new Promise( () => {} ) );
-		setupBlackbox();
-		loadScript();
-
-		dispatchSubmit();
-
-		await jest.advanceTimersByTimeAsync( 5000 );
-
-		const field = document.getElementById( SESSION_ID_FIELD );
-		expect( field ).not.toBeNull();
-		expect( field.value ).toBe( '' );
-		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
-	} );
-
-	it( 'fails open when getSessionId rejects', async () => {
-		mockGetSessionId.mockReturnValue( Promise.reject( new Error( 'SDK error' ) ) );
-		setupBlackbox();
-		loadScript();
-
-		dispatchSubmit();
-		await flushPromises();
-
-		const field = document.getElementById( SESSION_ID_FIELD );
-		expect( field ).not.toBeNull();
-		expect( field.value ).toBe( '' );
-		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
-	} );
-
 	it( 'lets through when hidden field already exists', () => {
-		setupBlackbox();
+		setupFraudProtection();
 		loadScript();
 
 		// Pre-inject hidden field.
@@ -168,7 +133,7 @@ describe( 'add-payment-method', () => {
 
 		const notCancelled = dispatchSubmit();
 		expect( notCancelled ).toBe( true );
-		expect( mockGetSessionId ).not.toHaveBeenCalled();
+		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
 	} );
 } );
