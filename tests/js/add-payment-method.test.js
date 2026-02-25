@@ -58,6 +58,7 @@ afterEach( () => {
 
 function setupFraudProtection() {
 	window.wcFraudProtection = {
+		config: { sessionIdField: SESSION_ID_FIELD },
 		acquireSessionId: mockAcquireSessionId,
 	};
 }

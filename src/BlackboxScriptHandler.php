@@ -37,6 +37,14 @@ class BlackboxScriptHandler {
 	private const SESSION_ID_TIMEOUT_MS = 5000;
 
 	/**
+	 * Name of the form field carrying the Blackbox session ID.
+	 *
+	 * Used by classic form protectors (via ClassicFormDataExtractionTrait)
+	 * and passed to JS via wcFraudProtection.config.
+	 */
+	public const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+
+	/**
 	 * Session clearance manager.
 	 *
 	 * @var SessionClearanceManager
@@ -146,8 +154,9 @@ class BlackboxScriptHandler {
 			'wcFraudProtection',
 			array(
 				'config' => array(
-					'apiKey'  => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_identity_id,
-					'timeout' => self::SESSION_ID_TIMEOUT_MS,
+					'apiKey'         => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_identity_id,
+					'timeout'        => self::SESSION_ID_TIMEOUT_MS,
+					'sessionIdField' => self::SESSION_ID_FIELD,
 				),
 			)
 		);

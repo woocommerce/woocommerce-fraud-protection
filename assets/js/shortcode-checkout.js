@@ -12,8 +12,6 @@
 ( function ( $ ) {
 	'use strict';
 
-	const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
-
 	$( 'form.checkout' ).on( 'checkout_place_order', function () {
 		const fraudProtection = window.wcFraudProtection;
 
@@ -21,11 +19,13 @@
 			return true;
 		}
 
+		const sessionIdField = fraudProtection.config.sessionIdField;
+
 		// Re-entry: field present, let through. Deferred cleanup removes
 		// the field and resets so the next attempt gets a fresh session.
-		if ( $( '#' + SESSION_ID_FIELD ).length ) {
+		if ( $( '#' + sessionIdField ).length ) {
 			setTimeout( function () {
-				$( '#' + SESSION_ID_FIELD ).remove();
+				$( '#' + sessionIdField ).remove();
 				fraudProtection.reset();
 			}, 0 );
 			return true;
@@ -36,8 +36,8 @@
 		fraudProtection.acquireSessionId().then( function ( sessionId ) {
 			$( '<input>', {
 				type: 'hidden',
-				name: SESSION_ID_FIELD,
-				id: SESSION_ID_FIELD,
+				name: sessionIdField,
+				id: sessionIdField,
 				value: sessionId,
 			} ).appendTo( $form );
 			$form.trigger( 'submit' );

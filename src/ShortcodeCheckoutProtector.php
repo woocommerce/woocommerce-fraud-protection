@@ -24,10 +24,7 @@ defined( 'ABSPATH' ) || exit;
  */
 class ShortcodeCheckoutProtector {
 
-	/**
-	 * Name of the form field carrying the Blackbox session ID.
-	 */
-	private const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+	use ClassicFormDataExtractionTrait;
 
 	/**
 	 * Source identifier for verify requests from this protector.
@@ -169,106 +166,5 @@ class ShortcodeCheckoutProtector {
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )
 		);
-	}
-
-	/**
-	 * Get the Blackbox session ID from the POST data.
-	 *
-	 * @return string The session ID, or empty string if not found.
-	 */
-	private function get_blackbox_session_id(): string {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce checkout.
-		$session_id = isset( $_POST[ self::SESSION_ID_FIELD ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::SESSION_ID_FIELD ] ) ) : '';
-		return $session_id;
-	}
-
-	/**
-	 * Build structured request data from the flat posted checkout form data.
-	 *
-	 * Maps the flat POST keys into nested billing/shipping address arrays
-	 * that match the format used by the blocks checkout for consistency.
-	 *
-	 * @param array $posted_data The posted checkout form data.
-	 * @return array Structured request data.
-	 */
-	private function build_request_data( array $posted_data ): array {
-		return array(
-			'billing_address'  => $this->extract_address( $posted_data, 'billing_' ),
-			'shipping_address' => $this->extract_address( $posted_data, 'shipping_' ),
-			'payment_method'   => $posted_data['payment_method'] ?? '',
-			'payment_data'     => $this->extract_payment_data(),
-		);
-	}
-
-	/**
-	 * Extract an address array from flat posted data by prefix.
-	 *
-	 * @param array  $posted_data The posted checkout form data.
-	 * @param string $prefix      The address prefix ('billing_' or 'shipping_').
-	 * @return array Address data with prefix stripped from keys.
-	 */
-	private function extract_address( array $posted_data, string $prefix ): array {
-		$address = array();
-		$length  = strlen( $prefix );
-
-		foreach ( $posted_data as $key => $value ) {
-			if ( 0 === strpos( $key, $prefix ) && is_string( $value ) ) {
-				$address[ substr( $key, $length ) ] = $value;
-			}
-		}
-
-		return $address;
-	}
-
-	/**
-	 * Extract gateway-specific payment data from $_POST.
-	 *
-	 * Excludes known non-payment prefixes and exact keys to isolate
-	 * gateway-specific fields. Returns a flat key-value map — the same
-	 * format compat layers receive from the blocks checkout.
-	 *
-	 * @return array Flat key-value map of payment-related POST fields.
-	 */
-	private function extract_payment_data(): array {
-		$excluded_prefixes = array(
-			'billing_',
-			'shipping_',
-			'order_',
-			'account_',
-			'woocommerce',
-			'_wp',
-			'wc_fraud_protection_',
-			'wc_order_attribution_',
-		);
-
-		// WooCommerce core checkout form fields that are not gateway-specific.
-		$excluded_keys = array(
-			'terms',
-			'terms-field',
-			'ship_to_different_address',
-		);
-
-		$payment_data = array();
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce checkout.
-		foreach ( $_POST as $key => $value ) {
-			if ( in_array( $key, $excluded_keys, true ) ) {
-				continue;
-			}
-
-			$skip = false;
-			foreach ( $excluded_prefixes as $prefix ) {
-				if ( 0 === strpos( $key, $prefix ) ) {
-					$skip = true;
-					break;
-				}
-			}
-
-			if ( ! $skip ) {
-				$payment_data[ sanitize_text_field( $key ) ] = wc_clean( wp_unslash( $value ) );
-			}
-		}
-
-		return $payment_data;
 	}
 }

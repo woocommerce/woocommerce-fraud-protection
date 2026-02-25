@@ -24,10 +24,7 @@ defined( 'ABSPATH' ) || exit;
  */
 class AddPaymentMethodProtector {
 
-	/**
-	 * Name of the form field carrying the Blackbox session ID.
-	 */
-	private const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+	use ClassicFormDataExtractionTrait;
 
 	/**
 	 * Source identifier for verify requests from this protector.
@@ -109,7 +106,8 @@ class AddPaymentMethodProtector {
 			return $is_valid;
 		}
 
-		$request_data = $this->build_request_data();
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
+		$request_data = $this->build_request_data( $_POST );
 
 		$payment_data = null;
 		try {
@@ -178,86 +176,5 @@ class AddPaymentMethodProtector {
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )
 		);
-	}
-
-	/**
-	 * Get the Blackbox session ID from the POST data.
-	 *
-	 * @return string The session ID, or empty string if not found.
-	 */
-	private function get_blackbox_session_id(): string {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
-		$session_id = isset( $_POST[ self::SESSION_ID_FIELD ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::SESSION_ID_FIELD ] ) ) : '';
-		return $session_id;
-	}
-
-	/**
-	 * Build structured request data from the POST data.
-	 *
-	 * Unlike checkout protectors, the add-payment-method form has no
-	 * billing or shipping address fields — only payment method and
-	 * gateway-specific data.
-	 *
-	 * @return array Structured request data with payment_method and payment_data keys.
-	 */
-	private function build_request_data(): array {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
-		$payment_method = isset( $_POST['payment_method'] ) ? sanitize_text_field( wp_unslash( $_POST['payment_method'] ) ) : '';
-
-		return array(
-			'payment_method' => $payment_method,
-			'payment_data'   => $this->extract_payment_data(),
-		);
-	}
-
-	/**
-	 * Extract gateway-specific payment data from $_POST.
-	 *
-	 * Excludes known non-payment prefixes and exact keys to isolate
-	 * gateway-specific fields. Returns a flat key-value map — the same
-	 * format compat layers receive from the blocks checkout.
-	 *
-	 * @return array Flat key-value map of payment-related POST fields.
-	 */
-	private function extract_payment_data(): array {
-		$excluded_prefixes = array(
-			'billing_',
-			'shipping_',
-			'order_',
-			'account_',
-			'woocommerce',
-			'_wp',
-			'wc_fraud_protection_',
-			'wc_order_attribution_',
-		);
-
-		$excluded_keys = array(
-			'terms',
-			'terms-field',
-			'ship_to_different_address',
-		);
-
-		$payment_data = array();
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
-		foreach ( $_POST as $key => $value ) {
-			if ( in_array( $key, $excluded_keys, true ) ) {
-				continue;
-			}
-
-			$skip = false;
-			foreach ( $excluded_prefixes as $prefix ) {
-				if ( 0 === strpos( $key, $prefix ) ) {
-					$skip = true;
-					break;
-				}
-			}
-
-			if ( ! $skip ) {
-				$payment_data[ sanitize_text_field( $key ) ] = wc_clean( wp_unslash( $value ) );
-			}
-		}
-
-		return $payment_data;
 	}
 }

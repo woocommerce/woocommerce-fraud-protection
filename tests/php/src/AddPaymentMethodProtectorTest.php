@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\FraudProtection\FraudProtection;
 use Automattic\WooCommerce\FraudProtection\AddPaymentMethodProtector;
 use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
@@ -83,6 +84,16 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 
 		parent::tearDown();
+	}
+
+	/**
+	 * @testdox AddPaymentMethodProtector uses ClassicFormDataExtractionTrait.
+	 */
+	public function test_uses_classic_form_data_extraction_trait(): void {
+		$this->assertContains(
+			ClassicFormDataExtractionTrait::class,
+			class_uses( AddPaymentMethodProtector::class )
+		);
 	}
 
 	/*
@@ -259,98 +270,4 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 		$this->assertFalse( $result );
 	}
 
-	/*
-	|--------------------------------------------------------------------------
-	| build_request_data() Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox build_request_data includes payment_method from POST.
-	 */
-	public function test_build_request_data_includes_payment_method(): void {
-		$_POST['payment_method'] = 'stripe';
-
-		$captured_request_data = null;
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->willReturnCallback( function ( $session_id, $order_id, $source, $request_data ) use ( &$captured_request_data ) {
-				$captured_request_data = $request_data;
-				return ApiClient::DECISION_ALLOW;
-			} );
-
-		$this->sut->verify_and_block( true );
-
-		$this->assertSame( 'stripe', $captured_request_data['payment_method'] );
-	}
-
-	/**
-	 * @testdox build_request_data has no billing or shipping address fields.
-	 */
-	public function test_build_request_data_has_no_address_fields(): void {
-		$_POST['payment_method'] = 'stripe';
-
-		$captured_request_data = null;
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->willReturnCallback( function ( $session_id, $order_id, $source, $request_data ) use ( &$captured_request_data ) {
-				$captured_request_data = $request_data;
-				return ApiClient::DECISION_ALLOW;
-			} );
-
-		$this->sut->verify_and_block( true );
-
-		$this->assertArrayNotHasKey( 'billing_address', $captured_request_data );
-		$this->assertArrayNotHasKey( 'shipping_address', $captured_request_data );
-	}
-
-	/*
-	|--------------------------------------------------------------------------
-	| extract_payment_data() Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox extract_payment_data excludes known non-payment keys and prefixes.
-	 */
-	public function test_extract_payment_data_excludes_non_payment_keys(): void {
-		$_POST = array(
-			'wc_fraud_protection_session_id'       => 'sess-123',
-			'woocommerce_add_payment_method'       => '1',
-			'woocommerce-add-payment-method-nonce' => 'abc123',
-			'_wpnonce'                             => 'xyz789',
-			'payment_method'                       => 'stripe',
-			'wc-stripe-payment-method'             => 'pm_123',
-			'wc-stripe-payment-token'              => 'new',
-		);
-
-		$captured_request_data = null;
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->willReturnCallback( function ( $session_id, $order_id, $source, $request_data ) use ( &$captured_request_data ) {
-				$captured_request_data = $request_data;
-				return ApiClient::DECISION_ALLOW;
-			} );
-
-		$this->sut->verify_and_block( true );
-
-		$payment_data = $captured_request_data['payment_data'];
-
-		// Should include gateway-specific keys.
-		$this->assertArrayHasKey( 'wc-stripe-payment-method', $payment_data );
-		$this->assertSame( 'pm_123', $payment_data['wc-stripe-payment-method'] );
-		$this->assertArrayHasKey( 'wc-stripe-payment-token', $payment_data );
-
-		// Should exclude non-payment keys.
-		$this->assertArrayNotHasKey( 'wc_fraud_protection_session_id', $payment_data );
-		$this->assertArrayNotHasKey( 'woocommerce_add_payment_method', $payment_data );
-		$this->assertArrayNotHasKey( 'woocommerce-add-payment-method-nonce', $payment_data );
-		$this->assertArrayNotHasKey( '_wpnonce', $payment_data );
-	}
 }

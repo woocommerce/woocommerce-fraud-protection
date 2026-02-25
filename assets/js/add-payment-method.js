@@ -16,8 +16,6 @@
 ( function ( $ ) {
 	'use strict';
 
-	const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
-
 	const form = document.getElementById( 'add_payment_method' );
 	if ( ! form ) {
 		return;
@@ -33,9 +31,11 @@
 				return;
 			}
 
+			const sessionIdField = fraudProtection.config.sessionIdField;
+
 			// Session ID already injected — let through (handles both
 			// our re-dispatch and gateway re-triggers after tokenization).
-			if ( document.getElementById( SESSION_ID_FIELD ) ) {
+			if ( document.getElementById( sessionIdField ) ) {
 				return;
 			}
 
@@ -45,8 +45,8 @@
 			fraudProtection.acquireSessionId().then( function ( sessionId ) {
 				$( '<input>', {
 					type: 'hidden',
-					name: SESSION_ID_FIELD,
-					id: SESSION_ID_FIELD,
+					name: sessionIdField,
+					id: sessionIdField,
 					value: sessionId,
 				} ).appendTo( form );
 

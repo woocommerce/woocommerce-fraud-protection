@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\FraudProtection\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
@@ -83,6 +84,16 @@ class ShortcodeCheckoutProtectorTest extends WC_Unit_Test_Case {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 
 		parent::tearDown();
+	}
+
+	/**
+	 * @testdox ShortcodeCheckoutProtector uses ClassicFormDataExtractionTrait.
+	 */
+	public function test_uses_classic_form_data_extraction_trait(): void {
+		$this->assertContains(
+			ClassicFormDataExtractionTrait::class,
+			class_uses( ShortcodeCheckoutProtector::class )
+		);
 	}
 
 	/*
@@ -237,116 +248,6 @@ class ShortcodeCheckoutProtectorTest extends WC_Unit_Test_Case {
 		);
 
 		$this->assertEmpty( $errors->get_error_codes() );
-	}
-
-	/*
-	|--------------------------------------------------------------------------
-	| build_request_data() Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox build_request_data structures billing/shipping addresses from flat POST keys.
-	 */
-	public function test_build_request_data_structures_addresses(): void {
-		$posted_data = array(
-			'billing_first_name'  => 'John',
-			'billing_last_name'   => 'Doe',
-			'billing_email'       => 'john@example.com',
-			'billing_country'     => 'US',
-			'shipping_first_name' => 'John',
-			'shipping_last_name'  => 'Doe',
-			'shipping_country'    => 'US',
-			'payment_method'      => 'stripe',
-		);
-
-		$captured_request_data = null;
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->willReturnCallback( function ( $session_id, $order_id, $source, $request_data ) use ( &$captured_request_data ) {
-				$captured_request_data = $request_data;
-				return ApiClient::DECISION_ALLOW;
-			} );
-
-		$errors = new \WP_Error();
-		$this->sut->verify_and_block( $posted_data, $errors );
-
-		$this->assertSame( 'John', $captured_request_data['billing_address']['first_name'] );
-		$this->assertSame( 'Doe', $captured_request_data['billing_address']['last_name'] );
-		$this->assertSame( 'john@example.com', $captured_request_data['billing_address']['email'] );
-		$this->assertSame( 'US', $captured_request_data['billing_address']['country'] );
-
-		$this->assertSame( 'John', $captured_request_data['shipping_address']['first_name'] );
-		$this->assertSame( 'US', $captured_request_data['shipping_address']['country'] );
-
-		$this->assertSame( 'stripe', $captured_request_data['payment_method'] );
-	}
-
-	/*
-	|--------------------------------------------------------------------------
-	| extract_payment_data() Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox extract_payment_data excludes known non-payment keys and prefixes.
-	 */
-	public function test_extract_payment_data_excludes_non_payment_keys(): void {
-		$_POST = array(
-			'wc_fraud_protection_session_id'  => 'sess-123',
-			'billing_first_name'              => 'John',
-			'shipping_first_name'             => 'John',
-			'order_comments'                  => 'Leave at door',
-			'account_username'                => 'john',
-			'woocommerce_checkout_nonce'      => 'abc123',
-			'_wpnonce'                        => 'xyz789',
-			'payment_method'                  => 'stripe',
-			'terms'                           => '1',
-			'terms-field'                     => '1',
-			'ship_to_different_address'       => '1',
-			'wc_order_attribution_source_type' => 'typein',
-			'wc_order_attribution_utm_source' => '(direct)',
-			'wc-stripe-payment-method'        => 'pm_123',
-			'wc-stripe-payment-token'         => 'new',
-			'some_gateway_data'               => array( 'token' => 'tok_789' ),
-		);
-
-		$captured_request_data = null;
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->willReturnCallback( function ( $session_id, $order_id, $source, $request_data ) use ( &$captured_request_data ) {
-				$captured_request_data = $request_data;
-				return ApiClient::DECISION_ALLOW;
-			} );
-
-		$errors = new \WP_Error();
-		$this->sut->verify_and_block( array( 'payment_method' => 'stripe' ), $errors );
-
-		$payment_data = $captured_request_data['payment_data'];
-
-		// Should include gateway-specific keys (strings and arrays).
-		$this->assertArrayHasKey( 'wc-stripe-payment-method', $payment_data );
-		$this->assertSame( 'pm_123', $payment_data['wc-stripe-payment-method'] );
-		$this->assertArrayHasKey( 'wc-stripe-payment-token', $payment_data );
-		$this->assertSame( array( 'token' => 'tok_789' ), $payment_data['some_gateway_data'] );
-
-		// Should exclude non-payment keys.
-		$this->assertArrayNotHasKey( 'billing_first_name', $payment_data );
-		$this->assertArrayNotHasKey( 'shipping_first_name', $payment_data );
-		$this->assertArrayNotHasKey( 'order_comments', $payment_data );
-		$this->assertArrayNotHasKey( 'account_username', $payment_data );
-		$this->assertArrayNotHasKey( 'woocommerce_checkout_nonce', $payment_data );
-		$this->assertArrayNotHasKey( '_wpnonce', $payment_data );
-		$this->assertArrayNotHasKey( 'terms', $payment_data );
-		$this->assertArrayNotHasKey( 'terms-field', $payment_data );
-		$this->assertArrayNotHasKey( 'ship_to_different_address', $payment_data );
-		$this->assertArrayNotHasKey( 'wc_fraud_protection_session_id', $payment_data );
-		$this->assertArrayNotHasKey( 'wc_order_attribution_source_type', $payment_data );
-		$this->assertArrayNotHasKey( 'wc_order_attribution_utm_source', $payment_data );
 	}
 
 }
