@@ -32,6 +32,11 @@ class BlackboxScriptHandler {
 	private const API_KEY_PREFIX = 'woo';
 
 	/**
+	 * Session ID acquisition timeout in milliseconds.
+	 */
+	private const SESSION_ID_TIMEOUT_MS = 5000;
+
+	/**
 	 * Session clearance manager.
 	 *
 	 * @var SessionClearanceManager
@@ -138,9 +143,12 @@ class BlackboxScriptHandler {
 
 		wp_localize_script(
 			'wc-fraud-protection-blackbox-init',
-			'wcBlackboxConfig',
+			'wcFraudProtection',
 			array(
-				'apiKey' => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_identity_id,
+				'config' => array(
+					'apiKey'  => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_identity_id,
+					'timeout' => self::SESSION_ID_TIMEOUT_MS,
+				),
 			)
 		);
 	}

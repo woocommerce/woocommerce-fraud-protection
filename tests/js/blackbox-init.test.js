@@ -20,7 +20,6 @@ let mockReset;
 
 beforeEach( () => {
 	delete window.Blackbox;
-	delete window.wcBlackboxConfig;
 	delete window.wcFraudProtection;
 
 	jest.useFakeTimers();
@@ -35,7 +34,7 @@ afterEach( () => {
 } );
 
 function setupAndLoad() {
-	window.wcBlackboxConfig = { apiKey: 'test-key' };
+	window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 5000 } };
 	window.Blackbox = {
 		configure: mockConfigure,
 		getSessionId: mockGetSessionId,
@@ -57,7 +56,7 @@ describe( 'blackbox-init', () => {
 			} );
 		} );
 
-		it( 'does not error when wcBlackboxConfig is missing', () => {
+		it( 'does not error when config is missing', () => {
 			window.Blackbox = { configure: mockConfigure };
 
 			expect( () => {
@@ -70,7 +69,7 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'does not error when Blackbox is missing', () => {
-			window.wcBlackboxConfig = { apiKey: 'test-key' };
+			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 5000 } };
 
 			expect( () => {
 				jest.isolateModules( () => {
@@ -100,13 +99,13 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'is NOT set when SDK is missing', () => {
-			window.wcBlackboxConfig = { apiKey: 'test-key' };
+			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 5000 } };
 
 			jest.isolateModules( () => {
 				require( '../../assets/js/blackbox-init' );
 			} );
 
-			expect( window.wcFraudProtection ).toBeUndefined();
+			expect( window.wcFraudProtection.acquireSessionId ).toBeUndefined();
 		} );
 	} );
 

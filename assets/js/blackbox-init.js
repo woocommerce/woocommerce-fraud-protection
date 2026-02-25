@@ -8,10 +8,8 @@
 ( function () {
 	'use strict';
 
-	const TIMEOUT_MS = 5000;
-
-	const config = window.wcBlackboxConfig;
-	if ( ! config ) {
+	const fraudProtection = window.wcFraudProtection;
+	if ( ! fraudProtection || ! fraudProtection.config ) {
 		return;
 	}
 
@@ -20,41 +18,39 @@
 	}
 
 	window.Blackbox.configure( {
-		apiKey: config.apiKey,
+		apiKey: fraudProtection.config.apiKey,
 	} );
 
-	window.wcFraudProtection = {
-		/**
-		 * Acquire a Blackbox session ID (fail-open: empty string on timeout/error).
-		 *
-		 * @return {Promise<string>} Session ID or empty string.
-		 */
-		acquireSessionId() {
-			if ( ! window.Blackbox || ! window.Blackbox.getSessionId ) {
-				return Promise.resolve( '' );
-			}
+	/**
+	 * Acquire a Blackbox session ID (fail-open: empty string on timeout/error).
+	 *
+	 * @return {Promise<string>} Session ID or empty string.
+	 */
+	fraudProtection.acquireSessionId = function () {
+		if ( ! window.Blackbox || ! window.Blackbox.getSessionId ) {
+			return Promise.resolve( '' );
+		}
 
-			const timeout = new Promise( function ( resolve ) {
-				setTimeout( function () {
-					resolve( '' );
-				}, TIMEOUT_MS );
-			} );
+		const timeout = new Promise( function ( resolve ) {
+			setTimeout( function () {
+				resolve( '' );
+			}, fraudProtection.config.timeout );
+		} );
 
-			return Promise.race( [
-				window.Blackbox.getSessionId(),
-				timeout,
-			] ).catch( function () {
-				return '';
-			} );
-		},
+		return Promise.race( [
+			window.Blackbox.getSessionId(),
+			timeout,
+		] ).catch( function () {
+			return '';
+		} );
+	};
 
-		/**
-		 * Reset Blackbox state. Silently no-ops if reset is unavailable.
-		 */
-		reset() {
-			if ( window.Blackbox && window.Blackbox.reset ) {
-				window.Blackbox.reset().catch( function () {} );
-			}
-		},
+	/**
+	 * Reset Blackbox state. Silently no-ops if reset is unavailable.
+	 */
+	fraudProtection.reset = function () {
+		if ( window.Blackbox && window.Blackbox.reset ) {
+			window.Blackbox.reset().catch( function () {} );
+		}
 	};
 } )();
