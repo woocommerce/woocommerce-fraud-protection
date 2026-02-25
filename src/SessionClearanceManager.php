@@ -184,8 +184,7 @@ class SessionClearanceManager {
 	 */
 	public function get_identity_id(): string {
 		if ( ! $this->is_session_available() ) {
-			WC()->session = new \WC_Session_Handler();
-			WC()->session->init();
+			WC()->initialize_session();
 		}
 
 		// Checks if the identity ID is already in the session.
