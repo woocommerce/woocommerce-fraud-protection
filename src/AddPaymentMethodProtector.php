@@ -142,10 +142,10 @@ class AddPaymentMethodProtector {
 		}
 
 		if ( ApiClient::DECISION_BLOCK === $decision ) {
-			wc_add_notice(
-				$this->blocked_session_notice->get_message_html( 'generic' ),
-				'error'
-			);
+			$message = $this->blocked_session_notice->get_message_html( 'generic' );
+			if ( ! wc_has_notice( $message, 'error' ) ) {
+				wc_add_notice( $message, 'error' );
+			}
 			return false;
 		}
 

@@ -100,7 +100,10 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 			return;
 		}
 
-		wc_print_notice( $this->get_message_html(), 'error' );
+		$message = $this->get_message_html();
+		if ( ! wc_has_notice( $message, 'error' ) ) {
+			wc_add_notice( $message, 'error' );
+		}
 	}
 
 	/**
