@@ -82,12 +82,8 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 			'woocommerce_cart_item_restored hook should be registered'
 		);
 		$this->assertNotFalse(
-			has_action( 'woocommerce_shortcode_cart_item_update_quantity', array( $this->sut, 'track_cart_item_updated' ) ),
-			'woocommerce_shortcode_cart_item_update_quantity hook should be registered'
-		);
-		$this->assertNotFalse(
-			has_action( 'woocommerce_store_api_cart_item_update_from_request', array( $this->sut, 'track_cart_item_updated' ) ),
-			'woocommerce_store_api_cart_item_update_from_request hook should be registered'
+			has_action( 'woocommerce_cart_item_updated_from_user_request', array( $this->sut, 'track_cart_item_updated' ) ),
+			'woocommerce_cart_item_updated_from_user_request hook should be registered'
 		);
 		$this->assertNotFalse(
 			has_action( 'template_redirect', array( $this->sut, 'track_cart_page_loaded' ) ),
@@ -313,5 +309,10 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 
 		WC()->cart->empty_cart();
 		remove_all_filters( 'woocommerce_is_cart' );
+		remove_all_actions( 'woocommerce_cart_item_added_from_user_request' );
+		remove_all_actions( 'woocommerce_cart_item_updated_from_user_request' );
+		remove_all_actions( 'woocommerce_cart_item_removed' );
+		remove_all_actions( 'woocommerce_cart_item_restored' );
+		remove_all_actions( 'template_redirect' );
 	}
 }
