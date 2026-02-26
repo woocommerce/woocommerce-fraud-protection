@@ -3,7 +3,9 @@
  *
  * Intercepts form submit (capture phase) via
  * wcFraudProtection.acquireSessionId(), injects the session ID as a
- * hidden field, then re-dispatches submit so gateway handlers proceed.
+ * hidden field, then re-submits. Uses dispatchEvent to fire gateway
+ * handlers, falling back to form.submit() for native POST when no
+ * handler prevents default (simple gateways like Check Payments).
  * Capture phase + stopImmediatePropagation ensures this fires first and
  * prevents gateway handlers (e.g. Stripe tokenization) from starting
  * concurrent async work that would cause a double-POST.
@@ -34,7 +36,7 @@
 			const sessionIdField = fraudProtection.config.sessionIdField;
 
 			// Session ID already injected — let through (handles both
-			// our re-dispatch and gateway re-triggers after tokenization).
+			// our re-submit and gateway re-triggers after tokenization).
 			if ( document.getElementById( sessionIdField ) ) {
 				return;
 			}
@@ -50,12 +52,15 @@
 					value: sessionId,
 				} ).appendTo( form );
 
-				form.dispatchEvent(
-					new Event( 'submit', {
-						bubbles: true,
-						cancelable: true,
-					} )
-				);
+				// Re-fire submit so gateway handlers (Stripe, etc.) can
+				// intercept. If no handler prevents, fall back to native POST.
+				const submitEvent = new Event( 'submit', {
+					bubbles: true,
+					cancelable: true,
+				} );
+				if ( form.dispatchEvent( submitEvent ) ) {
+					form.submit();
+				}
 			} );
 		},
 		true
