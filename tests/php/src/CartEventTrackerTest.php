@@ -70,8 +70,8 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 		$this->sut->register();
 
 		$this->assertNotFalse(
-			has_action( 'woocommerce_add_to_cart', array( $this->sut, 'track_cart_item_added' ) ),
-			'woocommerce_add_to_cart hook should be registered'
+			has_action( 'woocommerce_cart_item_added_from_user_request', array( $this->sut, 'track_cart_item_added' ) ),
+			'woocommerce_cart_item_added_from_user_request hook should be registered'
 		);
 		$this->assertNotFalse(
 			has_action( 'woocommerce_cart_item_removed', array( $this->sut, 'track_cart_item_removed' ) ),
@@ -122,8 +122,6 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test cart item added collects data.
-	 *
 	 * @testdox track_cart_item_added() collects session data with event details.
 	 */
 	public function test_track_cart_item_added_collects_data(): void {
@@ -145,12 +143,18 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 				)
 			);
 
-		$this->sut->track_cart_item_added(
-			'test_cart_key',
-			$this->test_product->get_id(),
-			2,
-			0
-		);
+		$this->sut->track_cart_item_added( $this->test_product->get_id(), 2 );
+	}
+
+	/**
+	 * @testdox track_cart_item_added() does not collect data for invalid product ID.
+	 */
+	public function test_track_cart_item_added_skips_invalid_product(): void {
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
+
+		$this->sut->track_cart_item_added( 999999, 1 );
 	}
 
 	/**
@@ -184,6 +188,25 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 			$cart_item_key,
 			5,
 			1,
+			WC()->cart
+		);
+	}
+
+	/**
+	 * @testdox track_cart_item_updated() does not collect data when quantity is unchanged.
+	 */
+	public function test_track_cart_item_updated_skips_unchanged_quantity(): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 3 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
+
+		$this->sut->track_cart_item_updated(
+			$cart_item_key,
+			3,
+			3,
 			WC()->cart
 		);
 	}
@@ -246,11 +269,9 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test cart events include variation_id.
-	 *
-	 * @testdox Cart events include variation_id when present.
+	 * @testdox track_cart_item_added() resolves variable product and sets variation_id.
 	 */
-	public function test_cart_events_include_variation_id(): void {
+	public function test_track_cart_item_added_resolves_variable_product(): void {
 		$variable_product = \WC_Helper_Product::create_variation_product();
 		$variations       = $variable_product->get_available_variations( 'array' );
 		$this->assertIsArray( $variations[0] );
@@ -262,22 +283,16 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 			->with(
 				$this->equalTo( 'cart_item_added' ),
 				$this->callback(
-					function ( $event_data ) use ( $variation_id ) {
-						$this->assertArrayHasKey( 'action', $event_data );
+					function ( $event_data ) use ( $variable_product, $variation_id ) {
 						$this->assertEquals( 'item_added', $event_data['action'] );
-						$this->assertArrayHasKey( 'variation_id', $event_data );
 						$this->assertEquals( $variation_id, $event_data['variation_id'] );
+						$this->assertEquals( $variable_product->get_id(), $event_data['product_id'] );
 						return true;
 					}
 				)
 			);
 
-		$this->sut->track_cart_item_added(
-			'test_cart_key',
-			$variable_product->get_id(),
-			1,
-			$variation_id
-		);
+		$this->sut->track_cart_item_added( $variation_id, 1 );
 
 		$variable_product->delete( true );
 	}
