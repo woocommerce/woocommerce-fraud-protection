@@ -47,9 +47,11 @@ class CartEventTracker {
 	public function register(): void {
 		add_action( 'woocommerce_cart_item_added_from_user_request', array( $this, 'track_cart_item_added' ), 10, 2 );
 
+		add_action( 'woocommerce_cart_item_updated_from_user_request', array( $this, 'track_cart_item_updated' ), 10, 4 );
+
 		add_action( 'woocommerce_cart_item_removed', array( $this, 'track_cart_item_removed' ), 10, 2 );
 		add_action( 'woocommerce_cart_item_restored', array( $this, 'track_cart_item_restored' ), 10, 2 );
-		add_action( 'woocommerce_after_cart_item_quantity_update', array( $this, 'track_cart_item_updated' ), 10, 4 );
+
 		add_action( 'template_redirect', array( $this, 'track_cart_page_loaded' ), 10, 0 );
 	}
 
