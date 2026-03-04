@@ -82,6 +82,9 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 	 */
 	public function tearDown(): void {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		wc_clear_notices();
+		remove_all_filters( 'woocommerce_add_payment_method_form_is_valid' );
+		remove_all_actions( 'wp_enqueue_scripts' );
 
 		parent::tearDown();
 	}
