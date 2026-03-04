@@ -80,10 +80,10 @@ add_action(
 		$session_blocking_handler = new \Automattic\WooCommerce\FraudProtection\SessionBlockingHandler();
 		$session_blocking_handler->init( $session_manager, $blocked_notice );
 
-		$session_verifier = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
-		$session_verifier->init( $session_data_collector, $api_client, $decision_handler );
-
 		$payment_data_resolver = new \Automattic\WooCommerce\FraudProtection\PaymentDataResolver();
+
+		$session_verifier = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
+		$session_verifier->init( $session_data_collector, $api_client, $decision_handler, $payment_data_resolver );
 
 		$stripe_compat = new \Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat();
 		$stripe_compat->register();
@@ -92,16 +92,16 @@ add_action(
 		$square_compat->register();
 
 		$blocks_checkout_protector = new \Automattic\WooCommerce\FraudProtection\BlocksCheckoutProtector();
-		$blocks_checkout_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
+		$blocks_checkout_protector->init( $session_verifier, $blocked_notice );
 
 		$shortcode_checkout_protector = new \Automattic\WooCommerce\FraudProtection\ShortcodeCheckoutProtector();
-		$shortcode_checkout_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
+		$shortcode_checkout_protector->init( $session_verifier, $blocked_notice );
 
 		$add_payment_method_protector = new \Automattic\WooCommerce\FraudProtection\AddPaymentMethodProtector();
-		$add_payment_method_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
+		$add_payment_method_protector->init( $session_verifier, $blocked_notice );
 
 		$pay_for_order_protector = new \Automattic\WooCommerce\FraudProtection\PayForOrderProtector();
-		$pay_for_order_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
+		$pay_for_order_protector->init( $session_verifier, $blocked_notice );
 
 		// Main controller.
 		$controller = new \Automattic\WooCommerce\FraudProtection\FraudProtectionController();
