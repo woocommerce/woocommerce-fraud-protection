@@ -11,11 +11,7 @@ use Automattic\WooCommerce\FraudProtection\AddPaymentMethodProtector;
 use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
-use Automattic\WooCommerce\FraudProtection\PaymentDataResolver;
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
-use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
 /**
@@ -24,8 +20,6 @@ use WC_Unit_Test_Case;
  * @covers \Automattic\WooCommerce\FraudProtection\AddPaymentMethodProtector
  */
 class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * The System Under Test.
@@ -49,13 +43,6 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 	private $blocked_session_notice;
 
 	/**
-	 * Mock payment data resolver.
-	 *
-	 * @var PaymentDataResolver&\PHPUnit\Framework\MockObject\MockObject
-	 */
-	private $payment_data_resolver;
-
-	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -63,7 +50,6 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
-		$this->payment_data_resolver  = $this->createMock( PaymentDataResolver::class );
 
 		$this->blocked_session_notice
 			->method( 'get_message_html' )
@@ -72,8 +58,7 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 		$this->sut = new AddPaymentMethodProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice,
-			$this->payment_data_resolver
+			$this->blocked_session_notice
 		);
 	}
 
@@ -137,7 +122,7 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-123', 0, 'add_payment_method', $this->isType( 'array' ), null )
+			->with( 'test-session-123', 'add_payment_method', 0, $this->isType( 'array' ) )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		$result = $this->sut->verify_and_block( true );
@@ -184,80 +169,6 @@ class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
 			->willReturn( ApiClient::DECISION_BLOCK );
 
 		$this->sut->verify_and_block( true );
-	}
-
-	/**
-	 * @testdox verify_and_block() fails open when verify_session() throws.
-	 */
-	public function test_verify_fails_open_when_verify_session_throws(): void {
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->willThrowException( new \TypeError( 'Unexpected type in collected data' ) );
-
-		$result = $this->sut->verify_and_block( true );
-
-		$this->assertTrue( $result );
-		$this->assertLogged( 'error', 'verify_and_block failed, allowing add payment method: Unexpected type in collected data' );
-	}
-
-	/**
-	 * @testdox verify_and_block() fails open when resolver throws, still calls verify.
-	 */
-	public function test_verify_fails_open_when_resolver_throws(): void {
-		$_POST['payment_method'] = 'stripe';
-
-		$this->payment_data_resolver
-			->expects( $this->once() )
-			->method( 'resolve' )
-			->willThrowException( new \RuntimeException( 'Compat layer exploded' ) );
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->with( '', 0, 'add_payment_method', $this->isType( 'array' ), null )
-			->willReturn( ApiClient::DECISION_ALLOW );
-
-		$result = $this->sut->verify_and_block( true );
-
-		$this->assertTrue( $result );
-		$this->assertLogged( 'warning', 'Payment data resolution failed: Compat layer exploded' );
-	}
-
-	/**
-	 * @testdox verify_and_block() passes resolved PaymentMethodData to SessionVerifier.
-	 */
-	public function test_verify_passes_resolved_payment_data(): void {
-		$_POST['wc_fraud_protection_session_id'] = 'test-session-600';
-		$_POST['payment_method']                 = 'woocommerce_payments';
-
-		$resolved = new PaymentMethodData(
-			'woocommerce_payments',
-			'card',
-			false,
-			new CardPaymentMethodData( 'visa', 'credit', '4242' )
-		);
-
-		$this->payment_data_resolver
-			->expects( $this->once() )
-			->method( 'resolve' )
-			->willReturn( $resolved );
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->with(
-				'test-session-600',
-				0,
-				'add_payment_method',
-				$this->isType( 'array' ),
-				$this->identicalTo( $resolved )
-			)
-			->willReturn( ApiClient::DECISION_ALLOW );
-
-		$result = $this->sut->verify_and_block( true );
-
-		$this->assertTrue( $result );
 	}
 
 	/**

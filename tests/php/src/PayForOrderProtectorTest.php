@@ -11,11 +11,7 @@ use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\PayForOrderProtector;
-use Automattic\WooCommerce\FraudProtection\PaymentDataResolver;
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
-use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
 /**
@@ -24,8 +20,6 @@ use WC_Unit_Test_Case;
  * @covers \Automattic\WooCommerce\FraudProtection\PayForOrderProtector
  */
 class PayForOrderProtectorTest extends WC_Unit_Test_Case {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * The System Under Test.
@@ -49,13 +43,6 @@ class PayForOrderProtectorTest extends WC_Unit_Test_Case {
 	private $blocked_session_notice;
 
 	/**
-	 * Mock payment data resolver.
-	 *
-	 * @var PaymentDataResolver&\PHPUnit\Framework\MockObject\MockObject
-	 */
-	private $payment_data_resolver;
-
-	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -63,7 +50,6 @@ class PayForOrderProtectorTest extends WC_Unit_Test_Case {
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
-		$this->payment_data_resolver  = $this->createMock( PaymentDataResolver::class );
 
 		$this->blocked_session_notice
 			->method( 'get_message_html' )
@@ -72,8 +58,7 @@ class PayForOrderProtectorTest extends WC_Unit_Test_Case {
 		$this->sut = new PayForOrderProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice,
-			$this->payment_data_resolver
+			$this->blocked_session_notice
 		);
 	}
 
@@ -138,7 +123,7 @@ class PayForOrderProtectorTest extends WC_Unit_Test_Case {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-123', 42, 'pay_for_order', $this->isType( 'array' ), null )
+			->with( 'test-session-123', 'pay_for_order', 42, $this->isType( 'array' ) )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
 		$this->sut->verify_and_block( $order );
@@ -206,90 +191,9 @@ class PayForOrderProtectorTest extends WC_Unit_Test_Case {
 			->method( 'verify_session' )
 			->with(
 				$this->isType( 'string' ),
+				'pay_for_order',
 				99,
-				'pay_for_order',
-				$this->isType( 'array' ),
-				$this->anything()
-			)
-			->willReturn( ApiClient::DECISION_ALLOW );
-
-		$this->sut->verify_and_block( $order );
-	}
-
-	/**
-	 * @testdox verify_and_block() fails open when verify_session() throws.
-	 */
-	public function test_verify_fails_open_when_verify_session_throws(): void {
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 1 );
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->willThrowException( new \TypeError( 'Unexpected type in collected data' ) );
-
-		$this->sut->verify_and_block( $order );
-
-		$this->assertFalse( wc_has_notice( $this->blocked_session_notice->get_message_html( 'purchase' ), 'error' ) );
-		$this->assertLogged( 'error', 'verify_and_block failed, allowing pay for order: Unexpected type in collected data' );
-	}
-
-	/**
-	 * @testdox verify_and_block() fails open when resolver throws, still calls verify.
-	 */
-	public function test_verify_fails_open_when_resolver_throws(): void {
-		$_POST['payment_method'] = 'stripe';
-
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 5 );
-
-		$this->payment_data_resolver
-			->expects( $this->once() )
-			->method( 'resolve' )
-			->willThrowException( new \RuntimeException( 'Compat layer exploded' ) );
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->with( '', 5, 'pay_for_order', $this->isType( 'array' ), null )
-			->willReturn( ApiClient::DECISION_ALLOW );
-
-		$this->sut->verify_and_block( $order );
-
-		$this->assertLogged( 'warning', 'Payment data resolution failed: Compat layer exploded' );
-	}
-
-	/**
-	 * @testdox verify_and_block() passes resolved PaymentMethodData to SessionVerifier.
-	 */
-	public function test_verify_passes_resolved_payment_data(): void {
-		$_POST['wc_fraud_protection_session_id'] = 'test-session-600';
-		$_POST['payment_method']                 = 'woocommerce_payments';
-
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 77 );
-
-		$resolved = new PaymentMethodData(
-			'woocommerce_payments',
-			'card',
-			false,
-			new CardPaymentMethodData( 'visa', 'credit', '4242' )
-		);
-
-		$this->payment_data_resolver
-			->expects( $this->once() )
-			->method( 'resolve' )
-			->willReturn( $resolved );
-
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->with(
-				'test-session-600',
-				77,
-				'pay_for_order',
-				$this->isType( 'array' ),
-				$this->identicalTo( $resolved )
+				$this->isType( 'array' )
 			)
 			->willReturn( ApiClient::DECISION_ALLOW );
 

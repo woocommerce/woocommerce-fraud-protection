@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
  * 2. Hooks into `woocommerce_add_payment_method_form_is_valid` (before gateway
  *    processing) to verify the session with Blackbox and block on BLOCK decisions.
  *
- * Fail-open: If verification fails for any reason, the form proceeds.
+ * Fail-open: Delegated to SessionVerifier — all internal errors result in ALLOW.
  *
  * @internal
  */
@@ -46,29 +46,19 @@ class AddPaymentMethodProtector {
 	private BlockedSessionNotice $blocked_session_notice;
 
 	/**
-	 * Payment data resolver instance.
-	 *
-	 * @var PaymentDataResolver
-	 */
-	private PaymentDataResolver $payment_data_resolver;
-
-	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionVerifier      $session_verifier       The session verifier instance.
 	 * @param BlockedSessionNotice $blocked_session_notice The blocked session notice instance.
-	 * @param PaymentDataResolver  $payment_data_resolver  The payment data resolver instance.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionNotice $blocked_session_notice,
-		PaymentDataResolver $payment_data_resolver
+		BlockedSessionNotice $blocked_session_notice
 	): void {
 		$this->session_verifier       = $session_verifier;
 		$this->blocked_session_notice = $blocked_session_notice;
-		$this->payment_data_resolver  = $payment_data_resolver;
 	}
 
 	/**
@@ -93,7 +83,7 @@ class AddPaymentMethodProtector {
 	 * Returning false prevents the payment method from being added.
 	 *
 	 * Fail-open: If session_id is empty, verify is still called (Blackbox/server
-	 * decides). If verify throws or returns an error, the form proceeds.
+	 * decides). SessionVerifier handles all internal errors and returns ALLOW.
 	 *
 	 * @internal
 	 *
@@ -109,37 +99,12 @@ class AddPaymentMethodProtector {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
 		$request_data = $this->build_request_data( $_POST );
 
-		$payment_data = null;
-		try {
-			$payment_data = $this->payment_data_resolver->resolve(
-				$request_data['payment_method'],
-				$request_data['payment_data']
-			);
-		} catch ( \Throwable $e ) {
-			// Fail-open: resolve is enrichment only, verify still runs.
-			FraudProtectionController::log(
-				'warning',
-				'Payment data resolution failed: ' . $e->getMessage(),
-				array( 'exception' => $e )
-			);
-		}
-
-		try {
-			$decision = $this->session_verifier->verify_session(
-				$this->get_blackbox_session_id(),
-				0, // No order in add-payment-method flow.
-				self::SOURCE,
-				$request_data,
-				$payment_data
-			);
-		} catch ( \Throwable $e ) {
-			FraudProtectionController::log(
-				'error',
-				'verify_and_block failed, allowing add payment method: ' . $e->getMessage(),
-				array( 'exception' => $e )
-			);
-			return true;
-		}
+		$decision = $this->session_verifier->verify_session(
+			$this->get_blackbox_session_id(),
+			self::SOURCE,
+			0, // No order in add-payment-method flow.
+			$request_data
+		);
 
 		if ( ApiClient::DECISION_BLOCK === $decision ) {
 			$message = $this->blocked_session_notice->get_message_html( 'generic' );
