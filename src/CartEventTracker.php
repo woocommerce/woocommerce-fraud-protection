@@ -45,10 +45,14 @@ class CartEventTracker {
 	 * @return void
 	 */
 	public function register(): void {
-		add_action( 'woocommerce_add_to_cart', array( $this, 'track_cart_item_added' ), 10, 4 );
-		add_action( 'woocommerce_cart_item_removed', array( $this, 'track_cart_item_removed' ), 10, 2 );
+		add_action( 'woocommerce_cart_item_added_from_user_request', array( $this, 'track_cart_item_added' ), 10, 2 );
+
+		add_action( 'woocommerce_cart_item_updated_from_user_request', array( $this, 'track_cart_item_updated' ), 10, 4 );
+
+		add_action( 'woocommerce_cart_item_removed_from_user_request', array( $this, 'track_cart_item_removed' ), 10, 2 );
+
 		add_action( 'woocommerce_cart_item_restored', array( $this, 'track_cart_item_restored' ), 10, 2 );
-		add_action( 'woocommerce_after_cart_item_quantity_update', array( $this, 'track_cart_item_updated' ), 10, 4 );
+
 		add_action( 'template_redirect', array( $this, 'track_cart_page_loaded' ), 10, 0 );
 	}
 
@@ -74,13 +78,23 @@ class CartEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param string $cart_item_key  Cart item key.
-	 * @param int    $product_id     Product ID.
-	 * @param int    $quantity       Quantity added.
-	 * @param int    $variation_id   Variation ID.
+	 * @param int $product_id Product ID.
+	 * @param int $quantity   Quantity added.
 	 * @return void
 	 */
-	public function track_cart_item_added( $cart_item_key, $product_id, $quantity, $variation_id ): void {
+	public function track_cart_item_added( int $product_id, int $quantity ): void {
+		$product = wc_get_product( $product_id );
+		if ( ! $product ) {
+			return;
+		}
+
+		$variation_id = 0;
+
+		if ( 'variation' === $product->get_type() ) {
+			$variation_id = $product_id;
+			$product_id   = $product->get_parent_id();
+		}
+
 		$event_data = $this->build_cart_event_data(
 			'item_added',
 			$product_id,
