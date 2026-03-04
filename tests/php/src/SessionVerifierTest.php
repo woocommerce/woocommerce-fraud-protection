@@ -81,6 +81,15 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		);
 	}
 
+	/**
+	 * Tear down test fixtures.
+	 */
+	public function tearDown(): void {
+		// @phpstan-ignore assign.propertyType
+		WC()->session = null;
+		parent::tearDown();
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Pipeline Tests
@@ -296,6 +305,125 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Session verification failed, allowing: Decision handler exploded' );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| Caching Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox verify_session() caches the decision — second call with same session_id skips the API.
+	 */
+	public function test_verify_session_caches_decision(): void {
+		WC()->session = new \WC_Session_Handler();
+		WC()->session->init();
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_BLOCK );
+
+		$this->decision_handler
+			->expects( $this->once() )
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_BLOCK );
+
+		// First call — hits API.
+		$result1 = $this->sut->verify_session( 'session-abc', 'blocks_checkout' );
+		$this->assertSame( ApiClient::DECISION_BLOCK, $result1 );
+
+		// Second call — returns cached, API not called again (once() above).
+		$result2 = $this->sut->verify_session( 'session-abc', 'blocks_checkout' );
+		$this->assertSame( ApiClient::DECISION_BLOCK, $result2 );
+		$this->assertLogged( 'info', 'Returning cached decision "block" for session session-abc' );
+	}
+
+	/**
+	 * @testdox verify_session() does not return cached decision for a different session ID.
+	 */
+	public function test_verify_session_does_not_return_cached_decision_for_different_session_id(): void {
+		WC()->session = new \WC_Session_Handler();
+		WC()->session->init();
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->exactly( 2 ) )
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->sut->verify_session( 'session-one', 'blocks_checkout' );
+		$this->sut->verify_session( 'session-two', 'blocks_checkout' );
+	}
+
+	/**
+	 * @testdox verify_session() does not cache empty session IDs — each call hits the API.
+	 */
+	public function test_verify_session_does_not_cache_empty_session_id(): void {
+		WC()->session = new \WC_Session_Handler();
+		WC()->session->init();
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->exactly( 2 ) )
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->sut->verify_session( '', 'blocks_checkout' );
+		$this->sut->verify_session( '', 'blocks_checkout' );
+	}
+
+	/**
+	 * @testdox verify_session() ignores invalid cached decision and re-verifies via the API.
+	 */
+	public function test_verify_session_ignores_invalid_cached_decision(): void {
+		WC()->session = new \WC_Session_Handler();
+		WC()->session->init();
+
+		// Seed the cache with a corrupted decision value.
+		WC()->session->set(
+			'_fraud_protection_verified_session',
+			array(
+				'session_id' => 'session-corrupted',
+				'decision'   => 'wrong_decision',
+			)
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$result = $this->sut->verify_session( 'session-corrupted', 'blocks_checkout' );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertLogged( 'warning', 'Discarding invalid cached decision "wrong_decision" for session session-corrupted' );
 	}
 
 }

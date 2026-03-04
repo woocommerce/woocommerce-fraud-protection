@@ -25,6 +25,21 @@ defined( 'ABSPATH' ) || exit;
 class SessionVerifier {
 
 	/**
+	 * WC session key for caching verified session decisions.
+	 *
+	 * Blackbox rejects re-verification of the same session ID. Payment
+	 * integrations should reset Blackbox between flows so each verify
+	 * gets a fresh session ID. This cache is a safety net for edge cases
+	 * where that reset doesn't happen (e.g. PayPal express: CreateOrder +
+	 * checkout submit) — it prevents Blackbox rejection errors and ensures
+	 * the original decision is preserved.
+	 *
+	 * Stores an associative array with session_id and decision keys —
+	 * only the most recent session ID is cached.
+	 */
+	private const SESSION_CACHE_KEY = '_fraud_protection_verified_session';
+
+	/**
 	 * Session data collector instance.
 	 *
 	 * @var SessionDataCollector
@@ -89,6 +104,21 @@ class SessionVerifier {
 	 * @return string The final decision: 'allow' or 'block'.
 	 */
 	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): string {
+		// Return cached decision if this session_id was already verified.
+		$cached = $this->get_cached_decision( $session_id );
+		if ( null !== $cached ) {
+			FraudProtectionController::log(
+				'info',
+				sprintf(
+					'Returning cached decision "%s" for session %s (source: %s)',
+					$cached,
+					$session_id,
+					$source
+				)
+			);
+			return $cached;
+		}
+
 		// Resolve payment data (fail-open).
 		$payment_data = null;
 		try {
@@ -124,9 +154,79 @@ class SessionVerifier {
 					'session_id' => $session_id,
 				)
 			);
-			return ApiClient::DECISION_ALLOW;
+			$decision = ApiClient::DECISION_ALLOW;
 		}
 
+		// Cache both real and fail-open decisions. This is a safety net —
+		// integrations should reset Blackbox between flows so each verify
+		// gets a fresh session ID.
+		$this->cache_decision( $session_id, $decision );
+
 		return $decision;
+	}
+
+	/**
+	 * Get a cached decision for a session ID from the WC session.
+	 *
+	 * @param string $session_id Blackbox session ID.
+	 * @return string|null Cached decision, or null on miss / empty ID / no WC session.
+	 */
+	private function get_cached_decision( string $session_id ): ?string {
+		if ( '' === $session_id ) {
+			return null;
+		}
+
+		if ( ! function_exists( 'WC' ) || ! WC()->session instanceof \WC_Session ) {
+			return null;
+		}
+
+		$cache = WC()->session->get( self::SESSION_CACHE_KEY, array() );
+
+		if ( ! is_array( $cache )
+			|| ! isset( $cache['session_id'], $cache['decision'] )
+			|| $cache['session_id'] !== $session_id
+		) {
+			return null;
+		}
+
+		$value = (string) $cache['decision'];
+
+		if ( ! in_array( $value, ApiClient::VALID_DECISIONS, true ) ) {
+			FraudProtectionController::log(
+				'warning',
+				sprintf(
+					'Discarding invalid cached decision "%s" for session %s',
+					$value,
+					$session_id
+				)
+			);
+			return null;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Cache a decision for a session ID in the WC session.
+	 *
+	 * @param string $session_id Blackbox session ID.
+	 * @param string $decision   The decision to cache.
+	 */
+	private function cache_decision( string $session_id, string $decision ): void {
+		if ( '' === $session_id ) {
+			return;
+		}
+
+		if ( ! function_exists( 'WC' ) || ! WC()->session instanceof \WC_Session ) {
+			return;
+		}
+
+		WC()->session->set(
+			self::SESSION_CACHE_KEY,
+			array(
+				'session_id' => $session_id,
+				'decision'   => $decision,
+			)
+		);
 	}
 }
