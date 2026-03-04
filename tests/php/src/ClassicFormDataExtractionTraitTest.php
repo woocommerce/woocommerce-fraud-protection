@@ -11,10 +11,29 @@ use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use WC_Unit_Test_Case;
 
 /**
- * Test double that exposes the trait's public methods.
+ * Test double that exposes the trait's private methods for testing.
  */
 class ClassicFormDataExtractionTraitTestDouble {
 	use ClassicFormDataExtractionTrait;
+
+	/**
+	 * Public proxy for the private build_request_data() method.
+	 *
+	 * @param array $form_data Form data array.
+	 * @return array Structured request data.
+	 */
+	public function test_build_request_data( array $form_data ): array {
+		return $this->build_request_data( $form_data );
+	}
+
+	/**
+	 * Public proxy for the private extract_payment_data() method.
+	 *
+	 * @return array Flat key-value map of payment-related POST fields.
+	 */
+	public function test_extract_payment_data(): array {
+		return $this->extract_payment_data();
+	}
 }
 
 /**
@@ -59,7 +78,7 @@ class ClassicFormDataExtractionTraitTest extends WC_Unit_Test_Case {
 	 * @testdox build_request_data() includes payment_method from form data.
 	 */
 	public function test_build_request_data_includes_payment_method(): void {
-		$result = $this->sut->build_request_data( array( 'payment_method' => 'stripe' ) );
+		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
 
 		$this->assertSame( 'stripe', $result['payment_method'] );
 	}
@@ -68,7 +87,7 @@ class ClassicFormDataExtractionTraitTest extends WC_Unit_Test_Case {
 	 * @testdox build_request_data() omits address keys when form data has no address fields.
 	 */
 	public function test_build_request_data_omits_empty_addresses(): void {
-		$result = $this->sut->build_request_data( array( 'payment_method' => 'stripe' ) );
+		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
 
 		$this->assertArrayNotHasKey( 'billing_address', $result );
 		$this->assertArrayNotHasKey( 'shipping_address', $result );
@@ -100,7 +119,7 @@ class ClassicFormDataExtractionTraitTest extends WC_Unit_Test_Case {
 			'payment_method'      => 'stripe',
 		);
 
-		$result = $this->sut->build_request_data( $form_data );
+		$result = $this->sut->test_build_request_data( $form_data );
 
 		$this->assertSame(
 			array(
@@ -166,7 +185,7 @@ class ClassicFormDataExtractionTraitTest extends WC_Unit_Test_Case {
 			'some_gateway_data'                    => array( 'token' => 'tok_789' ),
 		);
 
-		$payment_data = $this->sut->extract_payment_data();
+		$payment_data = $this->sut->test_extract_payment_data();
 
 		// Should include gateway-specific keys (strings and arrays).
 		$this->assertArrayHasKey( 'wc-stripe-payment-method', $payment_data );

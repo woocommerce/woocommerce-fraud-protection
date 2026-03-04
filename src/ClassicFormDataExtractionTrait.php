@@ -40,7 +40,7 @@ trait ClassicFormDataExtractionTrait {
 	 * @param array $form_data Form data array — WC's $posted_data (shortcode checkout) or $_POST (add-payment-method).
 	 * @return array Structured request data.
 	 */
-	public function build_request_data( array $form_data ): array {
+	private function build_request_data( array $form_data ): array {
 		$request_data = array(
 			'payment_method' => sanitize_text_field( wp_unslash( $form_data['payment_method'] ?? '' ) ),
 			'payment_data'   => $this->extract_payment_data(),
@@ -88,7 +88,7 @@ trait ClassicFormDataExtractionTrait {
 	 *
 	 * @return array Flat key-value map of payment-related POST fields.
 	 */
-	public function extract_payment_data(): array {
+	private function extract_payment_data(): array {
 		$excluded_prefixes = array(
 			'billing_',
 			'shipping_',
