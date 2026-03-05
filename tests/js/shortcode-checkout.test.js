@@ -3,12 +3,16 @@
  */
 
 /**
- * Tests for shortcode checkout Blackbox integration.
+ * Tests for shortcode checkout fraud protection integration.
  *
  * Uses real jQuery with jsdom. Each test:
  * 1. Sets up a <form class="checkout"> in the DOM
- * 2. Requires the IIFE (which binds the checkout_place_order handler)
- * 3. Triggers the event via jQuery and asserts behavior
+ * 2. Sets up window.wcFraudProtection with mocked acquireSessionId/reset
+ * 3. Loads shortcode-checkout.js (which binds the checkout_place_order handler)
+ * 4. Triggers the event via jQuery and asserts behavior
+ *
+ * acquireSessionId and reset are tested in blackbox-init.test.js.
+ * Consumer tests mock wcFraudProtection directly.
  *
  * @package WooCommerce\FraudProtection
  */
@@ -19,7 +23,7 @@ const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 
 let $;
 let $form;
-let mockGetSessionId;
+let mockAcquireSessionId;
 let mockReset;
 let submitSpy;
 
@@ -36,19 +40,27 @@ beforeEach( () => {
 	window.jQuery = $;
 	$form = $( 'form.checkout' );
 
-	delete window.Blackbox;
+	delete window.wcFraudProtection;
 	jest.useFakeTimers();
 
-	mockGetSessionId = jest.fn( () => Promise.resolve( 'sess-shortcode' ) );
-	mockReset = jest.fn( () => Promise.resolve() );
+	mockAcquireSessionId = jest.fn( () => Promise.resolve( 'sess-shortcode' ) );
+	mockReset = jest.fn();
 } );
 
 afterEach( () => {
 	document.body.innerHTML = '';
 	delete window.jQuery;
-	delete window.Blackbox;
+	delete window.wcFraudProtection;
 	jest.useRealTimers();
 } );
+
+function setupFraudProtection() {
+	window.wcFraudProtection = {
+		config: { sessionIdField: SESSION_ID_FIELD },
+		acquireSessionId: mockAcquireSessionId,
+		reset: mockReset,
+	};
+}
 
 function loadScript() {
 	jest.isolateModules( () => {
@@ -56,40 +68,8 @@ function loadScript() {
 	} );
 }
 
-function setupBlackbox( overrides = {} ) {
-	window.Blackbox = {
-		getSessionId: mockGetSessionId,
-		reset: mockReset,
-		...overrides,
-	};
-}
-
 describe( 'shortcode-checkout', () => {
-	it( 'registers a checkout_place_order handler on form.checkout', () => {
-		setupBlackbox();
-		loadScript();
-
-		const events = $._data( $form[ 0 ], 'events' );
-		expect( events.checkout_place_order ).toHaveLength( 1 );
-	} );
-
-	it( 'allows submission when Blackbox is missing (fail-open)', () => {
-		loadScript();
-
-		const result = $form.triggerHandler( 'checkout_place_order' );
-		expect( result ).toBe( true );
-	} );
-
-	it( 'allows submission when Blackbox.getSessionId is missing (fail-open)', () => {
-		window.Blackbox = { reset: mockReset };
-		loadScript();
-
-		const result = $form.triggerHandler( 'checkout_place_order' );
-		expect( result ).toBe( true );
-	} );
-
-	it( 'allows submission when Blackbox.reset is missing (fail-open)', () => {
-		window.Blackbox = { getSessionId: mockGetSessionId };
+	it( 'allows submission when wcFraudProtection is missing (fail-open)', () => {
 		loadScript();
 
 		const result = $form.triggerHandler( 'checkout_place_order' );
@@ -97,16 +77,16 @@ describe( 'shortcode-checkout', () => {
 	} );
 
 	it( 'blocks first submission, acquires session_id, injects field, re-submits', async () => {
-		setupBlackbox();
+		setupFraudProtection();
 		loadScript();
 
 		// First pass: blocks submission.
 		const result = $form.triggerHandler( 'checkout_place_order' );
 		expect( result ).toBe( false );
-		expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 		expect( submitSpy ).not.toHaveBeenCalled();
 
-		// Wait for the getSessionId promise to resolve.
+		// Wait for the acquireSessionId promise to resolve.
 		await flushPromises();
 
 		// Hidden field injected into the form with correct value.
@@ -118,65 +98,34 @@ describe( 'shortcode-checkout', () => {
 		expect( submitSpy ).toHaveBeenCalled();
 	} );
 
-	it( 'allows submission on timeout when getSessionId takes too long', async () => {
-		mockGetSessionId.mockReturnValue( new Promise( () => {} ) ); // Never resolves.
-
-		setupBlackbox();
-		loadScript();
-
-		// First pass blocks.
-		const result = $form.triggerHandler( 'checkout_place_order' );
-		expect( result ).toBe( false );
-		expect( submitSpy ).not.toHaveBeenCalled();
-
-		// Timeout fires after 5 seconds.
-		await jest.advanceTimersByTimeAsync( 5000 );
-
-		// After timeout, form is re-submitted with empty session_id.
-		expect( submitSpy ).toHaveBeenCalled();
-		expect( $form.find( '#' + SESSION_ID_FIELD ).val() ).toBe( '' );
-	} );
-
-	it( 'fails open when getSessionId rejects', async () => {
-		mockGetSessionId.mockReturnValue( Promise.reject( new Error( 'SDK error' ) ) );
-
-		setupBlackbox();
-		loadScript();
-
-		// First pass blocks.
-		const result = $form.triggerHandler( 'checkout_place_order' );
-		expect( result ).toBe( false );
-
-		// Wait for the rejection to propagate.
-		await flushPromises();
-
-		// Should still re-submit with empty session_id (fail-open).
-		expect( submitSpy ).toHaveBeenCalled();
-		expect( $form.find( '#' + SESSION_ID_FIELD ).val() ).toBe( '' );
-	} );
-
 	it( 'allows through on second pass when hidden field exists', () => {
-		setupBlackbox();
+		setupFraudProtection();
 		loadScript();
 
 		// Inject the hidden field as if first pass did it.
-		$( '<input type="hidden" id="' + SESSION_ID_FIELD + '" name="' + SESSION_ID_FIELD + '">' )
-			.val( 'sess-123' )
-			.appendTo( $form );
+		$( '<input>', {
+			type: 'hidden',
+			id: SESSION_ID_FIELD,
+			name: SESSION_ID_FIELD,
+			value: 'sess-123',
+		} ).appendTo( $form );
 
 		const result = $form.triggerHandler( 'checkout_place_order' );
 		expect( result ).toBe( true );
-		expect( mockGetSessionId ).not.toHaveBeenCalled();
+		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 	} );
 
 	it( 'removes hidden field and calls reset after allowing through', () => {
-		setupBlackbox();
+		setupFraudProtection();
 		loadScript();
 
 		// Inject the hidden field.
-		$( '<input type="hidden" id="' + SESSION_ID_FIELD + '" name="' + SESSION_ID_FIELD + '">' )
-			.val( 'sess-123' )
-			.appendTo( $form );
+		$( '<input>', {
+			type: 'hidden',
+			id: SESSION_ID_FIELD,
+			name: SESSION_ID_FIELD,
+			value: 'sess-123',
+		} ).appendTo( $form );
 
 		// Second pass allows through.
 		$form.triggerHandler( 'checkout_place_order' );

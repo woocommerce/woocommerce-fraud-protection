@@ -163,14 +163,12 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 	public function test_add_payment_method_action_displays_blocked_message(): void {
 		$this->mock_session_manager->method( 'is_session_blocked' )->willReturn( true );
 
-		ob_start();
 		do_action( 'before_woocommerce_add_payment_method' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
-		$output = (string) ob_get_clean();
 
-		$this->assertStringContainsString( 'unable to process this request online', $output, 'Should display blocked message on add payment method page' );
-		$this->assertStringContainsString( 'for assistance', $output, 'Should display generic message' );
-		$this->assertStringContainsString( 'support@example.com', $output, 'Should include support email in message' );
-		$this->assertStringContainsString( 'mailto:support@example.com', $output, 'Should include mailto link' );
+		$this->assertTrue(
+			wc_has_notice( $this->sut->get_message_html(), 'error' ),
+			'Should add blocked notice on add payment method page'
+		);
 	}
 
 	/**
@@ -181,11 +179,12 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 	public function test_add_payment_method_action_no_message_for_non_blocked_session(): void {
 		$this->mock_session_manager->method( 'is_session_blocked' )->willReturn( false );
 
-		ob_start();
 		do_action( 'before_woocommerce_add_payment_method' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
-		$output = (string) ob_get_clean();
 
-		$this->assertEmpty( $output, 'Non-blocked sessions should not display any message' );
+		$this->assertFalse(
+			wc_has_notice( $this->sut->get_message_html(), 'error' ),
+			'Non-blocked sessions should not add any notice'
+		);
 	}
 
 	/**
