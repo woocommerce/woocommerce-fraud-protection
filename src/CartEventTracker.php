@@ -45,11 +45,11 @@ class CartEventTracker {
 	 * @return void
 	 */
 	public function register(): void {
-		add_action( 'woocommerce_cart_item_added_from_user_request', array( $this, 'track_cart_item_added' ), 10, 2 );
+		add_action( 'internal_woocommerce_cart_item_added_from_user_request', array( $this, 'track_cart_item_added' ), 10, 2 );
 
-		add_action( 'woocommerce_cart_item_updated_from_user_request', array( $this, 'track_cart_item_updated' ), 10, 4 );
+		add_action( 'internal_woocommerce_cart_item_updated_from_user_request', array( $this, 'track_cart_item_updated' ), 10, 4 );
 
-		add_action( 'woocommerce_cart_item_removed_from_user_request', array( $this, 'track_cart_item_removed' ), 10, 2 );
+		add_action( 'internal_woocommerce_cart_item_removed_from_user_request', array( $this, 'track_cart_item_removed' ), 10, 2 );
 
 		add_action( 'woocommerce_cart_item_restored', array( $this, 'track_cart_item_restored' ), 10, 2 );
 

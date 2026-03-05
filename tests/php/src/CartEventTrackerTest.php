@@ -70,20 +70,20 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 		$this->sut->register();
 
 		$this->assertNotFalse(
-			has_action( 'woocommerce_cart_item_added_from_user_request', array( $this->sut, 'track_cart_item_added' ) ),
-			'woocommerce_cart_item_added_from_user_request hook should be registered'
+			has_action( 'internal_woocommerce_cart_item_added_from_user_request', array( $this->sut, 'track_cart_item_added' ) ),
+			'internal_woocommerce_cart_item_added_from_user_request hook should be registered'
 		);
 		$this->assertNotFalse(
-			has_action( 'woocommerce_cart_item_removed_from_user_request', array( $this->sut, 'track_cart_item_removed' ) ),
-			'woocommerce_cart_item_removed_from_user_request hook should be registered'
+			has_action( 'internal_woocommerce_cart_item_removed_from_user_request', array( $this->sut, 'track_cart_item_removed' ) ),
+			'internal_woocommerce_cart_item_removed_from_user_request hook should be registered'
 		);
 		$this->assertNotFalse(
 			has_action( 'woocommerce_cart_item_restored', array( $this->sut, 'track_cart_item_restored' ) ),
 			'woocommerce_cart_item_restored hook should be registered'
 		);
 		$this->assertNotFalse(
-			has_action( 'woocommerce_cart_item_updated_from_user_request', array( $this->sut, 'track_cart_item_updated' ) ),
-			'woocommerce_cart_item_updated_from_user_request hook should be registered'
+			has_action( 'internal_woocommerce_cart_item_updated_from_user_request', array( $this->sut, 'track_cart_item_updated' ) ),
+			'internal_woocommerce_cart_item_updated_from_user_request hook should be registered'
 		);
 		$this->assertNotFalse(
 			has_action( 'template_redirect', array( $this->sut, 'track_cart_page_loaded' ) ),
@@ -309,9 +309,9 @@ class CartEventTrackerTest extends \WC_Unit_Test_Case {
 
 		WC()->cart->empty_cart();
 		remove_all_filters( 'woocommerce_is_cart' );
-		remove_all_actions( 'woocommerce_cart_item_added_from_user_request' );
-		remove_all_actions( 'woocommerce_cart_item_updated_from_user_request' );
-		remove_all_actions( 'woocommerce_cart_item_removed_from_user_request' );
+		remove_all_actions( 'internal_woocommerce_cart_item_added_from_user_request' );
+		remove_all_actions( 'internal_woocommerce_cart_item_updated_from_user_request' );
+		remove_all_actions( 'internal_woocommerce_cart_item_removed_from_user_request' );
 		remove_all_actions( 'woocommerce_cart_item_restored' );
 		remove_all_actions( 'template_redirect' );
 	}
