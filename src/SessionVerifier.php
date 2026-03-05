@@ -100,7 +100,15 @@ class SessionVerifier {
 			FraudProtectionController::log(
 				'warning',
 				'Payment data resolution failed: ' . $e->getMessage(),
-				array( 'exception' => $e )
+				array(
+					'exception'      => $e,
+					'verify_context' => array(
+						'source'       => $source,
+						'session_id'   => $session_id,
+						'order_id'     => $order_id,
+						'request_data' => $request_data,
+					),
+				)
 			);
 		}
 
@@ -119,9 +127,13 @@ class SessionVerifier {
 				'error',
 				'Session verification failed, allowing: ' . $e->getMessage(),
 				array(
-					'exception'  => $e,
-					'source'     => $source,
-					'session_id' => $session_id,
+					'exception'      => $e,
+					'verify_context' => array(
+						'source'       => $source,
+						'session_id'   => $session_id,
+						'order_id'     => $order_id,
+						'request_data' => $request_data,
+					),
 				)
 			);
 			return ApiClient::DECISION_ALLOW;

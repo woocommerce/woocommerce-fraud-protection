@@ -241,15 +241,23 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			->method( 'apply_decision' )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
-		$result = $this->sut->verify_session(
-			'test-session',
-			'checkout',
-			0,
-			array( 'payment_method' => 'stripe', 'payment_data' => array() )
-		);
+		$request_data = array( 'payment_method' => 'stripe', 'payment_data' => array() );
+
+		$result = $this->sut->verify_session( 'test-session', 'checkout', 0, $request_data );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
-		$this->assertLogged( 'warning', 'Payment data resolution failed: Compat layer exploded' );
+		$this->assertLogged(
+			'warning',
+			'Payment data resolution failed: Compat layer exploded',
+			array(
+				'verify_context' => array(
+					'source'       => 'checkout',
+					'session_id'   => 'test-session',
+					'order_id'     => 0,
+					'request_data' => $request_data,
+				),
+			)
+		);
 	}
 
 	/*
@@ -273,7 +281,16 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$result = $this->sut->verify_session( 'test-session', 'checkout' );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
-		$this->assertLogged( 'error', 'Session verification failed, allowing: API call failed' );
+		$this->assertLogged(
+			'error',
+			'Session verification failed, allowing: API call failed',
+			array(
+				'verify_context' => array(
+					'source'     => 'checkout',
+					'session_id' => 'test-session',
+				),
+			)
+		);
 	}
 
 	/**
@@ -295,7 +312,16 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$result = $this->sut->verify_session( 'test-session', 'checkout' );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
-		$this->assertLogged( 'error', 'Session verification failed, allowing: Decision handler exploded' );
+		$this->assertLogged(
+			'error',
+			'Session verification failed, allowing: Decision handler exploded',
+			array(
+				'verify_context' => array(
+					'source'     => 'checkout',
+					'session_id' => 'test-session',
+				),
+			)
+		);
 	}
 
 }
