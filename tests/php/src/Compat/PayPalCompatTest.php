@@ -69,10 +69,18 @@ class PayPalCompatTest extends WC_Unit_Test_Case {
 		remove_all_filters( 'wp_doing_ajax' );
 		remove_all_filters( 'wp_die_ajax_handler' );
 		remove_all_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts' );
+		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
 		remove_all_actions( 'woocommerce_paypal_payments_create_order_request_started' );
 		remove_all_actions( 'wp_enqueue_scripts' );
 		wp_dequeue_script( 'wc-fraud-protection-blackbox-init' );
 		wp_dequeue_script( 'wc-fraud-protection-paypal-express' );
+
+		if ( WC()->session ) {
+			WC()->session->set( 'ppcp', null );
+			WC()->session->set( '_fraud_protection_paypal_verified_session_id', null );
+		}
+
+		unset( $_GET['wc-ajax'] );
 
 		parent::tearDown();
 	}
@@ -101,6 +109,10 @@ class PayPalCompatTest extends WC_Unit_Test_Case {
 			has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script' ) ),
 			'wp_enqueue_scripts action should be registered'
 		);
+		$this->assertNotFalse(
+			has_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->sut, 'skip_default_verify_for_paypal_express' ) ),
+			'should_verify_session filter should be registered'
+		);
 	}
 
 	/*
@@ -123,6 +135,23 @@ class PayPalCompatTest extends WC_Unit_Test_Case {
 
 		// Should return normally without terminating.
 		$this->sut->verify_and_block_create_order( $data );
+
+		$this->assertSame( 'test-session-abc', WC()->session->get( '_fraud_protection_paypal_verified_session_id' ) );
+	}
+
+	/**
+	 * @testdox verify_and_block_create_order() does not store empty session ID in WC session.
+	 */
+	public function test_verify_does_not_store_empty_session_id(): void {
+		$data = array( 'context' => 'product' );
+
+		$this->session_verifier
+			->method( 'verify_session' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->sut->verify_and_block_create_order( $data );
+
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verified_session_id' ) );
 	}
 
 	/**
@@ -142,30 +171,23 @@ class PayPalCompatTest extends WC_Unit_Test_Case {
 			->method( 'get_message_plaintext' )
 			->with( 'purchase' );
 
-		// wp_send_json_error calls wp_die() only when wp_doing_ajax() is true,
-		// otherwise it calls die() directly. Force AJAX context and override
-		// the AJAX die handler to throw an exception we can catch.
+		// wp_send_json_error() echoes JSON then calls wp_die(). Force AJAX
+		// context (otherwise it calls bare die()) and override the die
+		// handler to throw a catchable exception.
 		add_filter( 'wp_doing_ajax', '__return_true' );
 		add_filter(
 			'wp_die_ajax_handler',
 			function () {
 				return function () {
-					throw new \WPDieException( 'wp_die called' );
+					throw new \WPDieException();
 				};
 			}
 		);
 
-		// Buffer output to capture the JSON echoed by wp_send_json_error.
-		ob_start();
-		try {
-			$this->sut->verify_and_block_create_order( $data );
-			$this->fail( 'Expected WPDieException was not thrown' );
-		} catch ( \WPDieException $e ) {
-			$json = (string) ob_get_clean();
-			$body = json_decode( $json, true );
-			$this->assertFalse( $body['success'] );
-			$this->assertStringContainsString( 'unable to process', $body['data']['message'] );
-		}
+		$this->expectException( \WPDieException::class );
+		$this->expectOutputRegex( '/"success":false.*unable to process this request/' );
+
+		$this->sut->verify_and_block_create_order( $data );
 	}
 
 	/**
@@ -228,5 +250,155 @@ class PayPalCompatTest extends WC_Unit_Test_Case {
 		$this->sut->enqueue_paypal_script();
 
 		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| skip_default_verify_for_paypal_express() Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns true (skip) when PayPal gateway has approved order in session.
+	 */
+	public function test_skip_verify_skips_for_paypal_with_approved_order(): void {
+		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
+
+		$gateways = array( 'ppcp-gateway', 'ppcp-credit-card-gateway', 'ppcp-applepay', 'ppcp-googlepay', 'ppcp-axo-gateway' );
+
+		foreach ( $gateways as $gateway ) {
+			$result = $this->sut->skip_default_verify_for_paypal_express(
+				false,
+				'blocks_checkout',
+				array( 'payment_method' => $gateway ),
+				'some-session-id'
+			);
+
+			$this->assertTrue( $result, "Expected true (skip) for gateway: $gateway" );
+		}
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns true (skip) during ppc-create-order request.
+	 */
+	public function test_skip_verify_skips_during_create_order_request(): void {
+		$_GET['wc-ajax'] = 'ppc-create-order';
+
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			false,
+			'shortcode_checkout',
+			array( 'payment_method' => 'ppcp-gateway' ),
+			'some-session-id'
+		);
+
+		$this->assertTrue( $result );
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns true (skip) when session ID matches one verified at ppc-create-order.
+	 */
+	public function test_skip_verify_skips_when_session_id_matches_verified(): void {
+		WC()->session->set( '_fraud_protection_paypal_verified_session_id', 'test-session-abc' );
+
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-credit-card-gateway' ),
+			'test-session-abc'
+		);
+
+		$this->assertTrue( $result );
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns false (don't skip) when both session IDs are empty (no accidental blank match).
+	 */
+	public function test_skip_verify_does_not_skip_when_both_session_ids_are_empty(): void {
+		WC()->session->set( '_fraud_protection_paypal_verified_session_id', '' );
+
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-gateway' ),
+			''
+		);
+
+		$this->assertFalse( $result );
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns false (don't skip) when session ID does not match (different flow).
+	 */
+	public function test_skip_verify_does_not_skip_when_session_id_does_not_match(): void {
+		WC()->session->set( '_fraud_protection_paypal_verified_session_id', 'old-session' );
+
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-ideal' ),
+			'new-session'
+		);
+
+		$this->assertFalse( $result );
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns false (don't skip) for PayPal gateway without approved order or create-order request.
+	 */
+	public function test_skip_verify_does_not_skip_for_paypal_without_approved_order(): void {
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-gateway' ),
+			'some-session-id'
+		);
+
+		$this->assertFalse( $result );
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns false (don't skip) when payment method is not PayPal.
+	 */
+	public function test_skip_verify_does_not_skip_for_non_paypal_gateway(): void {
+		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
+
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'stripe' ),
+			'some-session-id'
+		);
+
+		$this->assertFalse( $result );
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() returns false (don't skip) for its own source even with approved order.
+	 */
+	public function test_skip_verify_does_not_skip_own_source(): void {
+		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
+
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			false,
+			'paypal_express_order_creation',
+			array( 'payment_method' => 'ppcp-gateway' ),
+			'some-session-id'
+		);
+
+		$this->assertFalse( $result );
+	}
+
+	/**
+	 * @testdox skip_default_verify_for_paypal_express() passes through true (skip) from an earlier filter.
+	 */
+	public function test_skip_verify_respects_true_from_earlier_filter(): void {
+		$result = $this->sut->skip_default_verify_for_paypal_express(
+			true,
+			'blocks_checkout',
+			array( 'payment_method' => 'stripe' ),
+			'some-session-id'
+		);
+
+		$this->assertTrue( $result );
 	}
 }

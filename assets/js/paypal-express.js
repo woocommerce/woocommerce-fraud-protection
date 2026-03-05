@@ -32,8 +32,7 @@
 		try {
 			const body = JSON.parse( init.body );
 			body[ fp.config.sessionIdField ] = sessionId;
-			const jsonBody = JSON.stringify( body );
-			init.body = jsonBody;
+			init.body = JSON.stringify( body );
 		} catch ( e ) {
 			// Fail-open: send the request without session ID.
 		}

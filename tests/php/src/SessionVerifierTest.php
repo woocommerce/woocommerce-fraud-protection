@@ -81,6 +81,14 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		);
 	}
 
+	/**
+	 * Tear down after each test.
+	 */
+	public function tearDown(): void {
+		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
+		parent::tearDown();
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Pipeline Tests
@@ -322,6 +330,111 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 				),
 			)
 		);
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| Should Verify Filter Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox verify_session() skips verification and returns ALLOW when filter returns true.
+	 */
+	public function test_verify_session_skips_when_filter_returns_true(): void {
+		add_filter( 'woocommerce_fraud_protection_skip_session_verify', '__return_true' );
+
+		$this->api_client
+			->expects( $this->never() )
+			->method( 'verify' );
+
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertLogged( 'info', 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
+	}
+
+	/**
+	 * @testdox verify_session() proceeds normally when filter returns false.
+	 */
+	public function test_verify_session_proceeds_when_filter_returns_false(): void {
+		add_filter( 'woocommerce_fraud_protection_skip_session_verify', '__return_false' );
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+	}
+
+	/**
+	 * @testdox verify_session() proceeds normally when filter returns non-bool falsy value.
+	 */
+	public function test_verify_session_proceeds_when_filter_returns_non_bool(): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				return null;
+			}
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+	}
+
+	/**
+	 * @testdox verify_session() proceeds normally when filter callback throws (fail-open).
+	 */
+	public function test_verify_session_proceeds_when_filter_throws(): void {
+		add_filter( // @phpstan-ignore return.missing
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				throw new \RuntimeException( 'Filter exploded' );
+			}
+		);
+
+		$this->data_collector // @phpstan-ignore deadCode.unreachable
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw: Filter exploded' );
 	}
 
 }
