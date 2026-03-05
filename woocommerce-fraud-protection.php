@@ -40,6 +40,7 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php'
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ClassicFormDataExtractionTrait.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/AddPaymentMethodProtector.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PayForOrderProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionBlockingHandler.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/FraudProtectionController.php';
 
@@ -99,6 +100,9 @@ add_action(
 		$add_payment_method_protector = new \Automattic\WooCommerce\FraudProtection\AddPaymentMethodProtector();
 		$add_payment_method_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
 
+		$pay_for_order_protector = new \Automattic\WooCommerce\FraudProtection\PayForOrderProtector();
+		$pay_for_order_protector->init( $session_verifier, $blocked_notice, $payment_data_resolver );
+
 		// Main controller.
 		$controller = new \Automattic\WooCommerce\FraudProtection\FraudProtectionController();
 		$controller->init(
@@ -110,7 +114,8 @@ add_action(
 			$session_blocking_handler,
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
-			$add_payment_method_protector
+			$add_payment_method_protector,
+			$pay_for_order_protector
 		);
 		$controller->register();
 	}

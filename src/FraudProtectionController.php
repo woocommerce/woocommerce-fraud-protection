@@ -77,6 +77,13 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private AddPaymentMethodProtector $add_payment_method_protector;
 
 	/**
+	 * Pay-for-order protector instance.
+	 *
+	 * @var PayForOrderProtector
+	 */
+	private PayForOrderProtector $pay_for_order_protector;
+
+	/**
 	 * Session blocking handler instance.
 	 *
 	 * @var SessionBlockingHandler
@@ -104,6 +111,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param BlocksCheckoutProtector    $blocks_checkout_protector    The instance of BlocksCheckoutProtector to use.
 	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
 	 * @param AddPaymentMethodProtector  $add_payment_method_protector The instance of AddPaymentMethodProtector to use.
+	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
 	 */
 	final public function init(
 		BlockedSessionNotice $blocked_session_notice,
@@ -114,7 +122,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		SessionBlockingHandler $session_blocking_handler,
 		BlocksCheckoutProtector $blocks_checkout_protector,
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
-		AddPaymentMethodProtector $add_payment_method_protector
+		AddPaymentMethodProtector $add_payment_method_protector,
+		PayForOrderProtector $pay_for_order_protector
 	): void {
 		$this->blocked_session_notice       = $blocked_session_notice;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
@@ -125,6 +134,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->blocks_checkout_protector    = $blocks_checkout_protector;
 		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
 		$this->add_payment_method_protector = $add_payment_method_protector;
+		$this->pay_for_order_protector      = $pay_for_order_protector;
 	}
 
 	/**
@@ -143,6 +153,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->blocks_checkout_protector->register();
 		$this->shortcode_checkout_protector->register();
 		$this->add_payment_method_protector->register();
+		$this->pay_for_order_protector->register();
 		$this->session_blocking_handler->register();
 		$this->cart_event_tracker->register();
 		$this->checkout_event_tracker->register();
