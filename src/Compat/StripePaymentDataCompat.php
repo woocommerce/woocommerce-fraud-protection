@@ -56,7 +56,8 @@ class StripePaymentDataCompat {
 			return $resolved;
 		}
 
-		$is_saved = ! empty( $payment_data['wc-stripe-payment-token'] ?? '' );
+		$token_value = $payment_data['wc-stripe-payment-token'] ?? '';
+		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
 			return $resolved;
