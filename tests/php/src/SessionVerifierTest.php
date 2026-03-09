@@ -82,10 +82,15 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Tear down after each test.
+	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
+		if ( WC()->session ) {
+			WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, null );
+		}
 		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
+		remove_all_actions( 'woocommerce_checkout_order_created' );
+
 		parent::tearDown();
 	}
 
@@ -332,6 +337,141 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		);
 	}
 
+	/*
+	|--------------------------------------------------------------------------
+	| Session ID Persistence Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox verify_session() persists session ID to order meta when order_id > 0.
+	 */
+	public function test_verify_session_persists_session_id_to_order_meta(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->stub_successful_verification();
+
+		$this->sut->verify_session( 'bb-session-xyz', 'blocks_checkout', $order->get_id() );
+
+		// Re-read from DB to ensure it was saved.
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertSame(
+			'bb-session-xyz',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() overwrites session ID on order meta when called again.
+	 */
+	public function test_verify_session_overwrites_session_id_on_order_meta(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->stub_successful_verification();
+
+		$this->sut->verify_session( 'first-session', 'blocks_checkout', $order->get_id() );
+		$this->sut->verify_session( 'second-session', 'blocks_checkout', $order->get_id() );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertSame(
+			'second-session',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() stores session ID in WC session when order_id is 0.
+	 */
+	public function test_verify_session_stores_session_id_in_wc_session(): void {
+		$this->stub_successful_verification();
+
+		$this->sut->verify_session( 'bb-session-deferred', 'shortcode_checkout', 0 );
+
+		$this->assertSame(
+			'bb-session-deferred',
+			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox persist_session_id_to_order() copies session ID from WC session to order meta.
+	 */
+	public function test_persist_session_id_to_order_copies_from_session(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		// Simulate shortcode checkout: session ID stored in WC session.
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'deferred-session-abc' );
+
+		$this->sut->persist_session_id_to_order( $order );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertSame(
+			'deferred-session-abc',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox persist_session_id_to_order() does nothing when WC session has no session ID.
+	 */
+	public function test_persist_session_id_to_order_skips_when_session_empty(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->sut->persist_session_id_to_order( $order );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertSame(
+			'',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() does not persist session ID when verification fails open.
+	 */
+	public function test_verify_session_does_not_persist_when_verification_fails(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willThrowException( new \RuntimeException( 'Collector exploded' ) );
+
+		$this->sut->verify_session( 'bb-session-fail', 'blocks_checkout', $order->get_id() );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertSame(
+			'',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox register() hooks persist_session_id_to_order to woocommerce_checkout_order_created.
+	 */
+	public function test_register_hooks_deferred_persistence(): void {
+		$this->sut->register();
+
+		$this->assertNotFalse(
+			has_action( 'woocommerce_checkout_order_created', array( $this->sut, 'persist_session_id_to_order' ) )
+		);
+	}
+
+	/**
+	 * Stub a successful verification pipeline (data collector, API, decision handler).
+	 */
+	private function stub_successful_verification(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( ApiClient::DECISION_ALLOW );
+	}
 	/*
 	|--------------------------------------------------------------------------
 	| Should Verify Filter Tests

@@ -116,6 +116,7 @@ add_action(
 			$checkout_event_tracker,
 			$payment_method_event_tracker,
 			$session_blocking_handler,
+			$session_verifier,
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
