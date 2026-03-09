@@ -264,6 +264,95 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Pre-resolves from wc-{gateway}-payment-token key (classic checkout).
+	 */
+	public function test_token_preresolution_from_classic_checkout_key(): void {
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'stripe' );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '4242' );
+		$token->set_expiry_month( '12' );
+		$token->set_expiry_year( '2028' );
+		$token->set_token( 'tok_classic_test' );
+		$token->set_user_id( get_current_user_id() );
+		$token->save();
+
+		$result = $this->sut->resolve(
+			'stripe',
+			array( 'wc-stripe-payment-token' => (string) $token->get_id() )
+		);
+
+		$this->assertInstanceOf( PaymentMethodData::class, $result );
+		$array = $result->to_array();
+		$this->assertSame( 'stripe', $array['gateway'] );
+		$this->assertSame( 'visa', $array['card']['brand'] );
+		$this->assertSame( '4242', $array['card']['last4'] );
+		$this->assertTrue( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @testdox Pre-resolves from dasherized gateway key (e.g. Square's SkyVerge framework).
+	 */
+	public function test_token_preresolution_from_dasherized_gateway_key(): void {
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'square_credit_card' );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '1111' );
+		$token->set_expiry_month( '03' );
+		$token->set_expiry_year( '2029' );
+		$token->set_token( 'tok_square_dasherized' );
+		$token->set_user_id( get_current_user_id() );
+		$token->save();
+
+		$result = $this->sut->resolve(
+			'square_credit_card',
+			array( 'wc-square-credit-card-payment-token' => (string) $token->get_id() )
+		);
+
+		$this->assertInstanceOf( PaymentMethodData::class, $result );
+		$array = $result->to_array();
+		$this->assertSame( 'square_credit_card', $array['gateway'] );
+		$this->assertSame( 'visa', $array['card']['brand'] );
+		$this->assertSame( '1111', $array['card']['last4'] );
+		$this->assertTrue( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @testdox Pre-resolution falls back to bare token key when gateway key is absent.
+	 */
+	public function test_token_preresolution_falls_back_to_bare_token_key(): void {
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'stripe' );
+		$token->set_card_type( 'mastercard' );
+		$token->set_last4( '5678' );
+		$token->set_expiry_month( '06' );
+		$token->set_expiry_year( '2027' );
+		$token->set_token( 'tok_bare_fallback' );
+		$token->set_user_id( get_current_user_id() );
+		$token->save();
+
+		$result = $this->sut->resolve(
+			'stripe',
+			array( 'token' => (string) $token->get_id() )
+		);
+
+		$this->assertInstanceOf( PaymentMethodData::class, $result );
+		$this->assertSame( 'mastercard', $result->to_array()['card']['brand'] );
+	}
+
+	/**
+	 * @testdox Pre-resolution returns null when classic key value is "new".
+	 */
+	public function test_token_preresolution_returns_null_for_new_payment_method(): void {
+		$result = $this->sut->resolve(
+			'stripe',
+			array( 'wc-stripe-payment-token' => 'new' )
+		);
+
+		$this->assertNull( $result );
+	}
+
+	/**
 	 * @testdox Filter can override token-based pre-resolved data.
 	 */
 	public function test_filter_can_override_token_data(): void {

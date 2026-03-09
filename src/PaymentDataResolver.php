@@ -38,7 +38,7 @@ class PaymentDataResolver {
 	 * @return ?PaymentMethodData Resolved payment data, or null if unresolved.
 	 */
 	public function resolve( string $payment_method, array $payment_data ): ?PaymentMethodData {
-		$pre_resolved_payment_data = $this->resolve_from_wc_token( $payment_data );
+		$pre_resolved_payment_data = $this->resolve_from_wc_token( $payment_method, $payment_data );
 
 		try {
 			/**
@@ -103,12 +103,30 @@ class PaymentDataResolver {
 	 * `token` key with the WC token ID. This method resolves card details
 	 * from the stored token, providing a universal fallback for all gateways.
 	 *
-	 * @param array $payment_data Flat key-value payment data.
+	 * @param string $payment_method The gateway ID (e.g. 'stripe').
+	 * @param array  $payment_data   Flat key-value payment data.
 	 * @return ?PaymentMethodData Resolved data from token, or null.
 	 */
-	private function resolve_from_wc_token( array $payment_data ): ?PaymentMethodData {
-		$token_id = $payment_data['token'] ?? '';
+	private function resolve_from_wc_token( string $payment_method, array $payment_data ): ?PaymentMethodData {
+		// Both classic and blocks checkout send 'wc-{gateway}-payment-token'.
+		// Blocks checkout also sends a bare 'token' key (used as fallback).
+		// Some gateways (e.g. Square via SkyVerge) dasherize the gateway ID in field names,
+		// so we try the raw key first, then the dasherized variant.
+		$token_id = $payment_data[ 'wc-' . $payment_method . '-payment-token' ] ?? '';
+
 		if ( empty( $token_id ) ) {
+			$dasherized = str_replace( '_', '-', $payment_method );
+			if ( $dasherized !== $payment_method ) {
+				$token_id = $payment_data[ 'wc-' . $dasherized . '-payment-token' ] ?? '';
+			}
+		}
+
+		if ( empty( $token_id ) ) {
+			$token_id = $payment_data['token'] ?? '';
+		}
+
+		// "new" means the customer chose to enter a new payment method.
+		if ( empty( $token_id ) || 'new' === $token_id ) {
 			return null;
 		}
 
