@@ -36,6 +36,7 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentDataResolver.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/StripePaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SquarePaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ClassicFormDataExtractionTrait.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
@@ -86,6 +87,9 @@ add_action(
 		$session_verifier = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
 		$session_verifier->init( $session_data_collector, $api_client, $decision_handler, $payment_data_resolver );
 
+		$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
+		$order_events_tracker->init( $api_client );
+
 		$stripe_compat = new \Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat();
 		$stripe_compat->register();
 
@@ -117,6 +121,7 @@ add_action(
 			$payment_method_event_tracker,
 			$session_blocking_handler,
 			$session_verifier,
+			$order_events_tracker,
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
