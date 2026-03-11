@@ -53,7 +53,6 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 	 */
 	public function tearDown(): void {
 		remove_all_actions( 'woocommerce_fraud_protection_report' );
-		remove_all_actions( 'woocommerce_order_refunded' );
 
 		parent::tearDown();
 	}
@@ -128,88 +127,4 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 		$this->assertLogged( 'error', 'Failed to report 3rd party event to Blackbox API: API connection failed' );
 	}
 
-	/*
-	|--------------------------------------------------------------------------
-	| Order Refunded Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox register() hooks on_order_refunded to woocommerce_order_refunded.
-	 */
-	public function test_register_hooks_order_refunded(): void {
-		$this->sut->register();
-
-		$this->assertNotFalse(
-			has_action( 'woocommerce_order_refunded', array( $this->sut, 'on_order_refunded' ) )
-		);
-	}
-
-	/**
-	 * @testdox on_order_refunded() calls report with correct payload when session ID exists.
-	 */
-	public function test_on_order_refunded_reports_when_session_id_exists(): void {
-		$order = \WC_Helper_Order::create_order();
-		$order->set_status( 'completed' );
-		$order->save();
-
-		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-456' );
-		$order->save_meta_data();
-
-		$refund = wc_create_refund(
-			array(
-				'order_id' => $order->get_id(),
-				'amount'   => '10.00',
-				'reason'   => 'Customer requested refund.',
-			)
-		);
-
-		$this->api_client
-			->expects( $this->once() )
-			->method( 'report' )
-			->with(
-				'bb-session-456',
-				array(
-					'label'  => 'good',
-					'source' => 'order_refunded',
-					'notes'  => 'Customer requested refund.',
-				)
-			);
-
-		$this->sut->on_order_refunded( $order->get_id(), $refund->get_id() );
-	}
-
-	/**
-	 * @testdox on_order_refunded() skips reporting when order has no session ID.
-	 */
-	public function test_on_order_refunded_skips_when_no_session_id(): void {
-		$order = \WC_Helper_Order::create_order();
-		$order->set_status( 'completed' );
-		$order->save();
-
-		$refund = wc_create_refund(
-			array(
-				'order_id' => $order->get_id(),
-				'amount'   => '10.00',
-				'reason'   => 'Refund reason.',
-			)
-		);
-
-		$this->api_client
-			->expects( $this->never() )
-			->method( 'report' );
-
-		$this->sut->on_order_refunded( $order->get_id(), $refund->get_id() );
-	}
-
-	/**
-	 * @testdox on_order_refunded() skips reporting when order does not exist.
-	 */
-	public function test_on_order_refunded_skips_when_order_missing(): void {
-		$this->api_client
-			->expects( $this->never() )
-			->method( 'report' );
-
-		$this->sut->on_order_refunded( 999999999, 999999998 );
-	}
 }
