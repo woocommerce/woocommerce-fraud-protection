@@ -80,6 +80,10 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 			has_action( 'template_redirect', array( $this->sut, 'track_checkout_page_loaded' ) ),
 			'template_redirect hook should be registered'
 		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_before_pay_action', array( $this->sut, 'track_order_paid_via_pay_for_order' ) ),
+			'woocommerce_before_pay_action hook should be registered'
+		);
 	}
 
 	// ========================================
@@ -117,7 +121,7 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox track_checkout_page_loaded() collects pay_for_order_page_loaded when on the pay-for-order page.
+	 * @testdox track_checkout_page_loaded() collects pay_for_order_page_loaded (not checkout_page_loaded) on the pay-for-order page.
 	 */
 	public function test_track_checkout_page_loaded_collects_pay_for_order_event(): void {
 		global $wp;
@@ -138,9 +142,70 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 		$this->sut->track_checkout_page_loaded();
 
 		$this->assertContains( 'pay_for_order_page_loaded', $collected_events, 'pay_for_order_page_loaded event should be collected on the pay-for-order page' );
+		$this->assertNotContains( 'checkout_page_loaded', $collected_events, 'checkout_page_loaded event should NOT be collected on the pay-for-order page' );
 
 		remove_filter( 'woocommerce_is_checkout', '__return_true' );
 		unset( $wp->query_vars['order-pay'] );
+	}
+
+	// ========================================
+	// Pay-for-Order Event Tests
+	// ========================================
+
+	/**
+	 * @testdox track_order_paid_via_pay_for_order() registers the woocommerce_payment_complete listener.
+	 */
+	public function test_track_order_paid_via_pay_for_order_registers_payment_complete_hook(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->sut->track_order_paid_via_pay_for_order( $order );
+
+		$this->assertNotFalse(
+			has_action( 'woocommerce_payment_complete', array( $this->sut, 'track_payment_complete' ) ),
+			'woocommerce_payment_complete hook should be registered after track_order_paid_via_pay_for_order'
+		);
+
+		remove_action( 'woocommerce_payment_complete', array( $this->sut, 'track_payment_complete' ), 10 );
+		$order->delete( true );
+	}
+
+	/**
+	 * @testdox track_payment_complete() collects order_placed event with order details.
+	 */
+	public function test_track_payment_complete_collects_order_placed_event(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( 'order_placed' ),
+				$this->callback(
+					function ( $event_data ) use ( $order ) {
+						return $event_data['order_id'] === $order->get_id()
+							&& isset( $event_data['payment_method'] )
+							&& isset( $event_data['total'] )
+							&& isset( $event_data['currency'] )
+							&& isset( $event_data['customer_id'] )
+							&& isset( $event_data['status'] );
+					}
+				)
+			);
+
+		$this->sut->track_payment_complete( $order->get_id() );
+
+		$order->delete( true );
+	}
+
+	/**
+	 * @testdox track_payment_complete() does nothing when order ID is invalid.
+	 */
+	public function test_track_payment_complete_bails_on_invalid_order(): void {
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
+
+		$this->sut->track_payment_complete( 999999 );
 	}
 
 	// ========================================
