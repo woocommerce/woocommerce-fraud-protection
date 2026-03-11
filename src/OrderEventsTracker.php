@@ -12,9 +12,9 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Tracks order lifecycle events and reports them to the Blackbox API.
  *
- * Listens to WooCommerce order_refunded hook and 3rd party plugins that report events to the Blackbox API.
- * Sends event data to the report endpoint so Blackbox can correlate
- * outcomes with the original fraud-check session.
+ * Exposes a `woocommerce_fraud_protection_report` action hook so 3rd-party
+ * plugins (e.g. payment gateways) can report events to the Blackbox report
+ * endpoint, correlating outcomes with the original fraud-check session.
  *
  * Fire-and-forget: failures are logged but never affect the order flow.
  *

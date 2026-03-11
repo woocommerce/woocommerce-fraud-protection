@@ -355,6 +355,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 
 		// Re-read from DB to ensure it was saved.
 		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
 		$this->assertSame(
 			'bb-session-xyz',
 			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
@@ -373,6 +374,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->sut->verify_session( 'second-session', 'blocks_checkout', $order->get_id() );
 
 		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
 		$this->assertSame(
 			'second-session',
 			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
@@ -405,6 +407,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->sut->persist_session_id_to_order( $order );
 
 		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
 		$this->assertSame(
 			'deferred-session-abc',
 			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
@@ -420,6 +423,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->sut->persist_session_id_to_order( $order );
 
 		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
 		$this->assertSame(
 			'',
 			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
@@ -439,6 +443,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->sut->verify_session( 'bb-session-fail', 'blocks_checkout', $order->get_id() );
 
 		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
 		$this->assertSame(
 			'',
 			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
