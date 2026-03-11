@@ -111,6 +111,23 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox on_fraud_protection_report() skips reporting and logs warning when status is invalid.
+	 */
+	public function test_on_fraud_protection_report_skips_when_invalid_status(): void {
+		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-123' );
+		$order->save_meta_data();
+
+		$this->api_client
+			->expects( $this->never() )
+			->method( 'report' );
+
+		$this->sut->on_fraud_protection_report( $order, 'invalid_status', 'Some notes.' );
+
+		$this->assertLogged( 'warning', 'Invalid report status "invalid_status", skipping report.' );
+	}
+
+	/**
 	 * @testdox on_fraud_protection_report() catches exceptions and logs error.
 	 */
 	public function test_on_fraud_protection_report_catches_exceptions(): void {

@@ -67,6 +67,14 @@ class OrderEventsTracker {
 	 */
 	public function on_fraud_protection_report( \WC_Order $order, string $status, string $notes ): void {
 		try {
+			if ( ! in_array( $status, array( 'good', 'bad' ), true ) ) {
+				FraudProtectionController::log(
+					'warning',
+					sprintf( 'Invalid report status "%s", skipping report.', $status )
+				);
+				return;
+			}
+
 			$session_id = $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY );
 			if ( ! is_string( $session_id ) || '' === $session_id ) {
 				return;
