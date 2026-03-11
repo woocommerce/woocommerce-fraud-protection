@@ -116,6 +116,33 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 		$this->sut->track_checkout_page_loaded();
 	}
 
+	/**
+	 * @testdox track_checkout_page_loaded() collects pay_for_order_page_loaded when on the pay-for-order page.
+	 */
+	public function test_track_checkout_page_loaded_collects_pay_for_order_event(): void {
+		global $wp;
+		$wp->query_vars['order-pay'] = 123;
+		add_filter( 'woocommerce_is_checkout', '__return_true' );
+
+		$collected_events = array();
+		$this->mock_collector
+			->expects( $this->atLeast( 1 ) )
+			->method( 'collect' )
+			->willReturnCallback(
+				function ( $event_type, $event_data ) use ( &$collected_events ) {
+					$collected_events[] = $event_type;
+					return array();
+				}
+			);
+
+		$this->sut->track_checkout_page_loaded();
+
+		$this->assertContains( 'pay_for_order_page_loaded', $collected_events, 'pay_for_order_page_loaded event should be collected on the pay-for-order page' );
+
+		remove_filter( 'woocommerce_is_checkout', '__return_true' );
+		unset( $wp->query_vars['order-pay'] );
+	}
+
 	// ========================================
 	// Blocks Checkout Tests
 	// ========================================

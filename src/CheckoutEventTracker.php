@@ -64,6 +64,11 @@ class CheckoutEventTracker {
 		if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
 			$this->session_data_collector->collect( 'checkout_page_loaded', array() );
 		}
+
+		// Check if it's the pay-for-order page.
+		if ( function_exists( 'is_checkout_pay_page' ) && is_checkout_pay_page() ) {
+			$this->session_data_collector->collect( 'pay_for_order_page_loaded', array() );
+		}
 	}
 
 	/**
