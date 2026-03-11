@@ -233,13 +233,23 @@ class ApiClient {
 
 		$payload['blog_id'] = $blog_id;
 
-		$body = \wp_json_encode(
-			array(
-				'session_id'  => $session_id,
-				'private_key' => '', // Woo will not use private keys for now.
-				'context'     => $payload,
-			)
-		);
+		if ( self::REPORT_ENDPOINT === $path ) {
+			$body = \wp_json_encode(
+				array(
+					'session_id'  => $session_id,
+					'private_key' => '', // Woo will not use private keys for now.
+					...$payload,
+				)
+			);
+		} else {
+			$body = \wp_json_encode(
+				array(
+					'session_id'  => $session_id,
+					'private_key' => '', // Woo will not use private keys for now.
+					'context'     => $payload,
+				)
+			);
+		}
 
 		if ( false === $body ) {
 			return new \WP_Error(
