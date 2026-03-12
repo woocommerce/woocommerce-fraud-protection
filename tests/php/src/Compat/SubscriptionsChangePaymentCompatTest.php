@@ -208,6 +208,39 @@ class SubscriptionsChangePaymentCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox verify_and_block() does not duplicate the blocked notice if already present.
+	 */
+	public function test_verify_deduplicates_blocked_notice(): void {
+		$this->intercept_redirect();
+		$subscription = $this->create_mock_subscription( 1 );
+
+		$_POST['wc_fraud_protection_session_id'] = 'test-session-dedup';
+		$_POST['payment_method']                 = 'stripe';
+
+		$this->blocked_session_notice
+			->method( 'get_message_html' )
+			->with( 'generic' )
+			->willReturn( 'Blocked message.' );
+
+		$this->session_verifier
+			->method( 'verify_session' )
+			->willReturn( ApiClient::DECISION_BLOCK );
+
+		// Pre-add the same notice.
+		wc_add_notice( 'Blocked message.', 'error' );
+
+		try {
+			$this->sut->verify_and_block( $subscription );
+			$this->fail( 'Expected RedirectInterceptedException' );
+		} catch ( RedirectInterceptedException $e ) {
+			// Expected.
+		}
+
+		// Should still be just 1 notice, not 2.
+		$this->assertSame( 1, wc_notice_count( 'error' ) );
+	}
+
+	/**
 	 * Create a mock WC_Order representing a subscription.
 	 *
 	 * @param int $id The subscription/order ID.
