@@ -40,6 +40,9 @@
 	"jest": {
 		"testMatch": [
 			"**/tests/js/**/*.test.js"
+		],
+		"setupFilesAfterEnv": [
+			"./tests/js/setup.js"
 		]
 	}
 }
