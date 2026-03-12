@@ -149,7 +149,7 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 		$controller = $this->create_controller();
 
 		// Check if the method returns true.
-		$this->assertTrue( $controller->feature_is_enabled() );
+		$this->assertTrue( FraudProtectionController::feature_is_enabled() );
 	}
 
 	/**
@@ -165,7 +165,7 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 		$controller = $this->create_controller();
 
 		// Standalone plugin is always enabled.
-		$this->assertTrue( $controller->feature_is_enabled() );
+		$this->assertTrue( FraudProtectionController::feature_is_enabled() );
 	}
 
 	/**
