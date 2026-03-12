@@ -106,6 +106,24 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Marks as not saved when payment token is "new".
+	 */
+	public function test_not_saved_when_payment_token_is_new(): void {
+		$result = $this->sut->resolve(
+			null,
+			'square_credit_card',
+			array(
+				'wc-square-credit-card-payment-token' => 'new',
+				'wc-square-credit-card-card-type'     => 'visa',
+				'wc-square-credit-card-last-four'     => '4242',
+			)
+		);
+
+		$this->assertInstanceOf( PaymentMethodData::class, $result );
+		$this->assertFalse( $result->to_array()['is_saved_payment_method'] );
+	}
+
+	/**
 	 * @testdox Saved card with empty card keys returns pre-resolved token data.
 	 */
 	public function test_saved_card_with_empty_keys_returns_resolved(): void {
