@@ -144,7 +144,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 */
 	public function on_init(): void {
 		// Bail if the feature is not enabled.
-		if ( ! $this->feature_is_enabled() ) {
+		if ( ! self::feature_is_enabled() ) {
 			return;
 		}
 
@@ -168,7 +168,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @return bool True if enabled, false if not enabled or init hasn't run yet.
 	 */
-	public function feature_is_enabled(): bool {
+	public static function feature_is_enabled(): bool {
 		// Fail-open: don't block if init hasn't run yet to avoid FeaturesController translation notices.
 		if ( ! did_action( 'init' ) ) {
 			return false;

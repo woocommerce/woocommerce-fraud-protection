@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\FraudProtection\Compat;
 use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
 defined( 'ABSPATH' ) || exit;
@@ -86,6 +87,10 @@ class SubscriptionsChangePaymentCompat {
 	 * @return void
 	 */
 	public function register(): void {
+		if ( ! FraudProtectionController::feature_is_enabled() ) {
+			return;
+		}
+
 		add_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode', array( $this, 'verify_and_block' ) );
 	}
 
