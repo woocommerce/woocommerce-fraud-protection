@@ -33,6 +33,9 @@ defined( 'ABSPATH' ) || exit;
  *
  * Fail-open: SessionVerifier handles all internal errors and returns ALLOW.
  *
+ * Lives in Compat/ rather than as a top-level Protector because it targets
+ * a third-party extension hook and is only relevant when Subscriptions is active.
+ *
  * @internal
  */
 class SubscriptionsChangePaymentCompat {
