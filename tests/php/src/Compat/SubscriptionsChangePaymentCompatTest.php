@@ -50,10 +50,6 @@ class SubscriptionsChangePaymentCompatTest extends WC_Unit_Test_Case {
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
 
-		$this->blocked_session_notice
-			->method( 'get_message_html' )
-			->willReturn( 'We are unable to process this request online. Please <a href="mailto:test@example.com">contact support (test@example.com)</a> for assistance.' );
-
 		$this->sut = new SubscriptionsChangePaymentCompat();
 		$this->sut->init(
 			$this->session_verifier,
@@ -140,13 +136,7 @@ class SubscriptionsChangePaymentCompatTest extends WC_Unit_Test_Case {
 
 		$this->sut->verify_and_block( $subscription );
 
-		$this->assertFalse(
-			wc_has_notice(
-				$this->blocked_session_notice->get_message_html( 'generic' ),
-				'error'
-			),
-			'No error notice should be added on ALLOW'
-		);
+		$this->assertSame( 0, wc_notice_count( 'error' ), 'No error notice should be added on ALLOW' );
 	}
 
 	/**
