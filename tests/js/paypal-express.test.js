@@ -69,8 +69,17 @@ describe( 'paypal-express fetch interceptor', () => {
 		it( 'handles Request objects with url property', async () => {
 			setupAndLoad();
 
-			const request = { url: 'https://store.test/?wc-ajax=ppc-create-order' };
+			const request = new Request( 'https://store.test/?wc-ajax=ppc-create-order' );
 			await window.fetch( request, { body: JSON.stringify( {} ) } );
+
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'handles URL objects', async () => {
+			setupAndLoad();
+
+			const url = new URL( 'https://store.test/?wc-ajax=ppc-create-order' );
+			await window.fetch( url, { body: JSON.stringify( {} ) } );
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 		} );

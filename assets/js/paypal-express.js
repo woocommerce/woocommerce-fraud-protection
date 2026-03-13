@@ -20,7 +20,9 @@
 
 	window.fetch = async function ( resource, init ) {
 		init = init || {};
-		const url = typeof resource === 'string' ? resource : resource.url;
+		// fetch() accepts string, URL, or Request objects.
+		const url =
+			resource instanceof Request ? resource.url : String( resource );
 
 		if ( ! url || url.indexOf( 'ppc-create-order' ) === -1 ) {
 			return originalFetch.call( this, resource, init );
