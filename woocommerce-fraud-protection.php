@@ -41,6 +41,7 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ClassicFormDataExtractionTra
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/AddPaymentMethodProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PayForOrderProtector.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/PayPalCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionBlockingHandler.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/FraudProtectionController.php';
 
@@ -91,6 +92,9 @@ add_action(
 		$square_compat = new \Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat();
 		$square_compat->register();
 
+		$paypal_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat();
+		$paypal_compat->init( $session_verifier, $blocked_notice );
+
 		$blocks_checkout_protector = new \Automattic\WooCommerce\FraudProtection\BlocksCheckoutProtector();
 		$blocks_checkout_protector->init( $session_verifier, $blocked_notice );
 
@@ -115,7 +119,8 @@ add_action(
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
-			$pay_for_order_protector
+			$pay_for_order_protector,
+			$paypal_compat
 		);
 		$controller->register();
 	}
