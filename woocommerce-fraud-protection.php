@@ -95,6 +95,7 @@ add_action(
 
 		$paypal_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat();
 		$paypal_compat->init( $session_verifier, $blocked_notice );
+		$paypal_compat->register();
 
 		$subscriptions_change_payment_compat = new \Automattic\WooCommerce\FraudProtection\Compat\SubscriptionsChangePaymentCompat();
 		$subscriptions_change_payment_compat->init( $session_verifier, $blocked_notice );
@@ -124,8 +125,7 @@ add_action(
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
-			$pay_for_order_protector,
-			$paypal_compat
+			$pay_for_order_protector
 		);
 		$controller->register();
 	}
