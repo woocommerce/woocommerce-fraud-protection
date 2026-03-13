@@ -89,6 +89,38 @@ class SessionVerifier {
 	 * @return string The final decision: 'allow' or 'block'.
 	 */
 	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): string {
+		try {
+			/**
+			 * Filters whether to skip session verification.
+			 *
+			 * Extensions that handle their own verification (e.g. PayPal express
+			 * checkout via PayPalCompat) can return true to skip the redundant
+			 * verify call from standard protectors.
+			 *
+			 * Fail-open: truthy values skip verification (session is allowed).
+			 *
+			 * @param bool   $skip         Whether to skip verification. Default false.
+			 * @param string $source       Source identifier (e.g. 'blocks_checkout').
+			 * @param array  $request_data Request data with payment_method, payment_data, etc.
+			 * @param string $session_id   The Blackbox session ID being verified.
+			 */
+			$skip = (bool) apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $session_id );
+
+			if ( $skip ) {
+				FraudProtectionController::log(
+					'info',
+					sprintf( 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source )
+				);
+				return ApiClient::DECISION_ALLOW;
+			}
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'`woocommerce_fraud_protection_skip_session_verify` filter threw: ' . $e->getMessage(),
+				array( 'exception' => $e )
+			);
+		}
+
 		// Resolve payment data (fail-open).
 		$payment_data = null;
 		try {

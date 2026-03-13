@@ -88,11 +88,6 @@ describe( 'pay-for-order', () => {
 		setupFraudProtection();
 		loadScript();
 
-		// Mock form.submit to prevent jsdom from incorrectly firing
-		// another submit event (real browsers don't fire submit on form.submit()).
-		const nativeSubmitSpy = jest.fn();
-		form.submit = nativeSubmitSpy;
-
 		// First pass: blocks submission.
 		const notCancelled = dispatchSubmit();
 		expect( notCancelled ).toBe( false );
@@ -109,15 +104,12 @@ describe( 'pay-for-order', () => {
 
 		// Re-dispatch reached bubble phase, then native submit fallback fired.
 		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
-		expect( nativeSubmitSpy ).toHaveBeenCalledTimes( 1 );
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
 	} );
 
 	it( 'skips native submit when a gateway handler calls preventDefault', async () => {
 		setupFraudProtection();
 		loadScript();
-
-		const nativeSubmitSpy = jest.fn();
-		form.submit = nativeSubmitSpy;
 
 		// Simulate a gateway handler (e.g. Stripe) that prevents default
 		// to handle submission itself (tokenize, then submit).
@@ -126,7 +118,7 @@ describe( 'pay-for-order', () => {
 		dispatchSubmit();
 		await flushPromises();
 
-		expect( nativeSubmitSpy ).not.toHaveBeenCalled();
+		expect( form.submit ).not.toHaveBeenCalled();
 	} );
 
 	it( 'stops other handlers via stopImmediatePropagation on first submission', () => {

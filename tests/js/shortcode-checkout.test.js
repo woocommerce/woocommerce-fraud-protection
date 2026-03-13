@@ -25,16 +25,9 @@ let $;
 let $form;
 let mockAcquireSessionId;
 let mockReset;
-let submitSpy;
 
 beforeEach( () => {
 	document.body.innerHTML = '<form class="checkout"></form>';
-
-	// Stub native submit on this specific form element — jsdom doesn't
-	// implement it and jQuery's trigger('submit') calls it after firing
-	// jQuery handlers.
-	submitSpy = jest.fn();
-	document.querySelector( 'form.checkout' ).submit = submitSpy;
 
 	$ = require( 'jquery' );
 	window.jQuery = $;
@@ -84,7 +77,7 @@ describe( 'shortcode-checkout', () => {
 		const result = $form.triggerHandler( 'checkout_place_order' );
 		expect( result ).toBe( false );
 		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
-		expect( submitSpy ).not.toHaveBeenCalled();
+		expect( document.querySelector( 'form.checkout' ).submit ).not.toHaveBeenCalled();
 
 		// Wait for the acquireSessionId promise to resolve.
 		await flushPromises();
@@ -95,7 +88,7 @@ describe( 'shortcode-checkout', () => {
 		expect( $field.val() ).toBe( 'sess-shortcode' );
 
 		// Form re-submitted.
-		expect( submitSpy ).toHaveBeenCalled();
+		expect( document.querySelector( 'form.checkout' ).submit ).toHaveBeenCalled();
 	} );
 
 	it( 'allows through on second pass when hidden field exists', () => {
