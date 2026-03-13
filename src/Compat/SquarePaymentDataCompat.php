@@ -44,16 +44,17 @@ class SquarePaymentDataCompat {
 			return $resolved;
 		}
 
-		$is_saved  = ! empty( $payment_data['wc-square-credit-card-payment-token'] ?? '' );
-		$brand     = $payment_data['wc-square-credit-card-card-type'] ?? null;
-		$last4     = $payment_data['wc-square-credit-card-last-four'] ?? null;
-		$exp_month = isset( $payment_data['wc-square-credit-card-exp-month'] )
+		$token_value = $payment_data['wc-square-credit-card-payment-token'] ?? '';
+		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
+		$brand       = $payment_data['wc-square-credit-card-card-type'] ?? null;
+		$last4       = $payment_data['wc-square-credit-card-last-four'] ?? null;
+		$exp_month   = isset( $payment_data['wc-square-credit-card-exp-month'] )
 			? (int) $payment_data['wc-square-credit-card-exp-month']
 			: null;
-		$exp_year  = isset( $payment_data['wc-square-credit-card-exp-year'] )
+		$exp_year    = isset( $payment_data['wc-square-credit-card-exp-year'] )
 			? (int) $payment_data['wc-square-credit-card-exp-year']
 			: null;
-		$postcode  = $payment_data['wc-square-credit-card-payment-postcode'] ?? null;
+		$postcode    = $payment_data['wc-square-credit-card-payment-postcode'] ?? null;
 
 		// Saved cards have empty card keys — pass through the token-based data.
 		if ( empty( $brand ) && empty( $last4 ) && $resolved instanceof PaymentMethodData ) {

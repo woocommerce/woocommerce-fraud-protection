@@ -255,6 +255,25 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Marks as not saved when payment token is "new".
+	 */
+	public function test_not_saved_when_payment_token_is_new(): void {
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$result = $this->sut->resolve(
+			null,
+			'stripe',
+			array(
+				'wc-stripe-payment-method' => 'pm_new_123',
+				'wc-stripe-payment-token'  => 'new',
+			)
+		);
+
+		$this->assertInstanceOf( PaymentMethodData::class, $result );
+		$this->assertFalse( $result->to_array()['is_saved_payment_method'] );
+	}
+
+	/**
 	 * @testdox Returns resolved when API returns null.
 	 */
 	public function test_returns_resolved_when_api_returns_null(): void {
