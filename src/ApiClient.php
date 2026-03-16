@@ -95,7 +95,26 @@ class ApiClient {
 			)
 		);
 
-		$response = $this->make_request( 'POST', self::VERIFY_ENDPOINT, $session_id, $payload );
+		$blog_id = $this->get_blog_id();
+		if ( ! $blog_id ) {
+			FraudProtectionController::log(
+				'error',
+				'Jetpack blog ID not found. Is the site connected to WordPress.com? Failing open with "allow" decision.'
+			);
+			return self::DECISION_ALLOW;
+		}
+		$payload['blog_id'] = $blog_id;
+
+		$payload = array(
+			'context' => $payload,
+		);
+
+		$response = $this->make_request(
+			'POST',
+			self::VERIFY_ENDPOINT,
+			$session_id,
+			$payload
+		);
 
 		return $this->process_decision_response( $response, $payload );
 	}
@@ -223,35 +242,15 @@ class ApiClient {
 			);
 		}
 
-		$blog_id = $this->get_blog_id();
-		if ( ! $blog_id ) {
-			return new \WP_Error(
-				'no_blog_id',
-				'Jetpack blog ID not found. Is the site connected to WordPress.com?'
-			);
-		}
-
-		$payload['blog_id'] = $blog_id;
-
-		if ( self::REPORT_ENDPOINT === $path ) {
-			$body = \wp_json_encode(
-				array_merge(
-					$payload,
-					array(
-						'session_id'  => $session_id,
-						'private_key' => '', // Woo will not use private keys for now.
-					)
-				)
-			);
-		} else {
-			$body = \wp_json_encode(
+		$body = \wp_json_encode(
+			array_merge(
+				$payload,
 				array(
 					'session_id'  => $session_id,
 					'private_key' => '', // Woo will not use private keys for now.
-					'context'     => $payload,
 				)
-			);
-		}
+			)
+		);
 
 		if ( false === $body ) {
 			return new \WP_Error(
