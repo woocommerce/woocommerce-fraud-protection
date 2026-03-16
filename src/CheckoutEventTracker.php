@@ -49,7 +49,6 @@ class CheckoutEventTracker {
 		add_action( 'woocommerce_checkout_update_order_review', array( $this, 'track_shortcode_checkout_field_update' ), 10, 1 );
 		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this, 'track_blocks_checkout_update' ), 10, 0 );
 		add_action( 'template_redirect', array( $this, 'track_checkout_page_loaded' ), 10, 0 );
-
 	}
 
 	/**
@@ -62,14 +61,12 @@ class CheckoutEventTracker {
 	 * @return void
 	 */
 	public function track_checkout_page_loaded(): void {
-		if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() && ! is_checkout_pay_page() ) {
-			$this->session_data_collector->collect( 'checkout_page_loaded', array() );
+		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_order_received_page() ) {
+			return;
 		}
 
-		// Check if it's the pay-for-order page.
-		if ( function_exists( 'is_checkout_pay_page' ) && is_checkout_pay_page() ) {
-			$this->session_data_collector->collect( 'pay_for_order_page_loaded', array() );
-		}
+		$event_name = is_checkout_pay_page() ? 'pay_for_order_page_loaded' : 'checkout_page_loaded';
+		$this->session_data_collector->collect( $event_name, array() );
 	}
 
 	/**
