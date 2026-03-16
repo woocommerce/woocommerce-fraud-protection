@@ -89,7 +89,7 @@ class OrderEventsTracker {
 				array(
 					'label'  => $status,
 					'source' => 'payment_gateway_event',
-					'notes'  => $notes,
+					'notes'  => sanitize_text_field( $notes ),
 				)
 			);
 		} catch ( \Throwable $e ) {
