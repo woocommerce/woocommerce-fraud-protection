@@ -98,6 +98,29 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox on_fraud_protection_report() calls report with 'good' status when payment succeeds.
+	 */
+	public function test_on_fraud_protection_report_reports_good_status(): void {
+		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-456' );
+		$order->save_meta_data();
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'report' )
+			->with(
+				'bb-session-456',
+				array(
+					'label'  => 'good',
+					'source' => 'payment_gateway_event',
+					'notes'  => 'Payment completed successfully.',
+				)
+			);
+
+		$this->sut->on_fraud_protection_report( $order, 'good', 'Payment completed successfully.' );
+	}
+
+	/**
 	 * @testdox on_fraud_protection_report() skips reporting when order has no session ID.
 	 */
 	public function test_on_fraud_protection_report_skips_when_no_session_id(): void {
