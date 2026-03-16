@@ -77,6 +77,10 @@ class OrderEventsTracker {
 
 			$session_id = $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY );
 			if ( ! is_string( $session_id ) || '' === $session_id ) {
+				FraudProtectionController::log(
+					'warning',
+					'Missing session ID in order meta, skipping Blackbox API report.'
+				);
 				return;
 			}
 
