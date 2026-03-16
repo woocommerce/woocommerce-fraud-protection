@@ -76,6 +76,26 @@ class ApiClient {
 	);
 
 	/**
+	 * Report status: good outcome.
+	 */
+	public const REPORT_STATUS_GOOD = 'good';
+
+	/**
+	 * Report status: bad outcome.
+	 */
+	public const REPORT_STATUS_BAD = 'bad';
+
+	/**
+	 * Valid report status values.
+	 *
+	 * @var array<string>
+	 */
+	public const VALID_REPORT_STATUSES = array(
+		self::REPORT_STATUS_GOOD,
+		self::REPORT_STATUS_BAD,
+	);
+
+	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
 	 *
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,

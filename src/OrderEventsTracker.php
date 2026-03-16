@@ -67,7 +67,7 @@ class OrderEventsTracker {
 	 */
 	public function on_fraud_protection_report( \WC_Order $order, string $status, string $notes ): void {
 		try {
-			if ( ! in_array( $status, array( 'good', 'bad' ), true ) ) {
+			if ( ! in_array( $status, ApiClient::VALID_REPORT_STATUSES, true ) ) {
 				FraudProtectionController::log(
 					'warning',
 					sprintf( 'Invalid report status "%s", skipping report.', $status )
