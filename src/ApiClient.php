@@ -236,11 +236,11 @@ class ApiClient {
 		if ( self::REPORT_ENDPOINT === $path ) {
 			$body = \wp_json_encode(
 				array_merge(
+					$payload,
 					array(
 						'session_id'  => $session_id,
 						'private_key' => '', // Woo will not use private keys for now.
-					),
-					$payload
+					)
 				)
 			);
 		} else {
