@@ -50,38 +50,6 @@ class CheckoutEventTracker {
 		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this, 'track_blocks_checkout_update' ), 10, 0 );
 		add_action( 'template_redirect', array( $this, 'track_checkout_page_loaded' ), 10, 0 );
 
-		add_action( 'woocommerce_before_pay_action', array( $this, 'track_order_paid_via_pay_for_order' ), 10, 1 );
-	}
-
-	/**
-	 * Register a woocommerce_payment_complete listener during the pay-for-order flow.
-	 *
-	 * Hooked to woocommerce_before_pay_action so that the payment_complete
-	 * listener is only active when the user is paying for an existing order.
-	 *
-	 * @internal
-	 *
-	 * @param \WC_Order $order The order being paid for (unused — required by hook signature).
-	 * @return void
-	 */
-	public function track_order_paid_via_pay_for_order( \WC_Order $order ): void { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
-		add_action( 'woocommerce_payment_complete', array( $this, 'track_payment_complete' ), 10, 1 );
-	}
-
-	/**
-	 * Track successful payment completion for a pay-for-order flow.
-	 *
-	 * @internal
-	 *
-	 * @param int $order_id The order ID.
-	 * @return void
-	 */
-	public function track_payment_complete( int $order_id ): void {
-		$order = wc_get_order( $order_id );
-		if ( ! $order instanceof \WC_Order ) {
-			return;
-		}
-		$this->track_order_placed( $order_id, $order );
 	}
 
 	/**
