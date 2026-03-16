@@ -431,6 +431,21 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox verify_session() gracefully handles invalid order ID when wc_get_order() returns false.
+	 */
+	public function test_verify_session_handles_invalid_order_id(): void {
+		$this->stub_successful_verification();
+
+		$this->sut->verify_session( 'bb-session-invalid-order', 'blocks_checkout', 99999 );
+
+		// Session ID should still be stored in WC session despite invalid order ID.
+		$this->assertSame(
+			'bb-session-invalid-order',
+			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
 	 * @testdox verify_session() does not persist session ID when verification fails open.
 	 */
 	public function test_verify_session_does_not_persist_when_verification_fails(): void {
