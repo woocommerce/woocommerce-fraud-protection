@@ -142,13 +142,14 @@ add_action(
  * (i.e. after `woocommerce_store_api_checkout_order_processed`).
  *
  * @param \WC_Order $order  The order to report on.
+ * @param string    $source The source of the event. Use ApiClient::REPORT_SOURCE_* constants.
  * @param string    $status The status of the event. Use ApiClient::REPORT_STATUS_GOOD or ApiClient::REPORT_STATUS_BAD.
  * @param string    $notes  Free-form notes describing the event.
  */
-function wc_fraud_protection_report( \WC_Order $order, string $status, string $notes ): void {
+function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
 	$api_client = new \Automattic\WooCommerce\FraudProtection\ApiClient();
 
 	$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
 	$order_events_tracker->init( $api_client );
-	$order_events_tracker->fraud_protection_report( $order, $status, $notes );
+	$order_events_tracker->fraud_protection_report( $order, $source, $status, $notes );
 }

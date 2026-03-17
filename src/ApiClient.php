@@ -96,6 +96,32 @@ class ApiClient {
 	);
 
 	/**
+	 * Report source: chargeback event.
+	 */
+	public const REPORT_SOURCE_CHARGEBACK = 'chargeback';
+
+	/**
+	 * Report source: manual review outcome.
+	 */
+	public const REPORT_SOURCE_MANUAL_REVIEW = 'manual_review';
+
+	/**
+	 * Report source: API-driven event.
+	 */
+	public const REPORT_SOURCE_API = 'api';
+
+	/**
+	 * Valid report source values.
+	 *
+	 * @var array<string>
+	 */
+	public const VALID_REPORT_SOURCES = array(
+		self::REPORT_SOURCE_CHARGEBACK,
+		self::REPORT_SOURCE_MANUAL_REVIEW,
+		self::REPORT_SOURCE_API,
+	);
+
+	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
 	 *
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,

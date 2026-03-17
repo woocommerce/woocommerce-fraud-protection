@@ -69,12 +69,12 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 				'bb-session-123',
 				array(
 					'label'  => 'bad',
-					'source' => 'payment_gateway_event',
+					'source' => ApiClient::REPORT_SOURCE_API,
 					'notes'  => 'Payment failed via Stripe.',
 				)
 			);
 
-		$this->sut->fraud_protection_report( $order, 'bad', 'Payment failed via Stripe.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'bad', 'Payment failed via Stripe.' );
 	}
 
 	/**
@@ -92,12 +92,12 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 				'bb-session-456',
 				array(
 					'label'  => 'good',
-					'source' => 'payment_gateway_event',
+					'source' => ApiClient::REPORT_SOURCE_API,
 					'notes'  => 'Payment completed successfully.',
 				)
 			);
 
-		$this->sut->fraud_protection_report( $order, 'good', 'Payment completed successfully.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'good', 'Payment completed successfully.' );
 	}
 
 	/**
@@ -110,7 +110,7 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 			->expects( $this->never() )
 			->method( 'report' );
 
-		$this->sut->fraud_protection_report( $order, 'bad', 'Some notes.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'bad', 'Some notes.' );
 	}
 
 	/**
@@ -125,9 +125,26 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 			->expects( $this->never() )
 			->method( 'report' );
 
-		$this->sut->fraud_protection_report( $order, 'invalid_status', 'Some notes.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'invalid_status', 'Some notes.' );
 
 		$this->assertLogged( 'warning', 'Invalid report status "invalid_status", skipping report.' );
+	}
+
+	/**
+	 * @testdox fraud_protection_report() skips reporting and logs warning when source is invalid.
+	 */
+	public function test_fraud_protection_report_skips_when_invalid_source(): void {
+		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-123' );
+		$order->save_meta_data();
+
+		$this->api_client
+			->expects( $this->never() )
+			->method( 'report' );
+
+		$this->sut->fraud_protection_report( $order, 'invalid_source', 'bad', 'Some notes.' );
+
+		$this->assertLogged( 'warning', 'Invalid report source "invalid_source", skipping report.' );
 	}
 
 	/**
@@ -142,7 +159,7 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 			->method( 'report' )
 			->willThrowException( new \RuntimeException( 'API connection failed' ) );
 
-		$this->sut->fraud_protection_report( $order, 'bad', 'Payment failed.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'bad', 'Payment failed.' );
 
 		$this->assertLogged( 'error', 'Failed to report 3rd party event to Blackbox API: API connection failed' );
 	}

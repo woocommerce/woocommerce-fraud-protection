@@ -53,11 +53,20 @@ class OrderEventsTracker {
 	 *
 	 * @internal
 	 * @param \WC_Order $order  The order to report on.
+	 * @param string    $source The source of the event. Use ApiClient::REPORT_SOURCE_* constants.
 	 * @param string    $status The status of the event. Use ApiClient::REPORT_STATUS_GOOD or ApiClient::REPORT_STATUS_BAD.
 	 * @param string    $notes  The notes of the event.
 	 */
-	public function fraud_protection_report( \WC_Order $order, string $status, string $notes ): void {
+	public function fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
 		try {
+			if ( ! in_array( $source, ApiClient::VALID_REPORT_SOURCES, true ) ) {
+				FraudProtectionController::log(
+					'warning',
+					sprintf( 'Invalid report source "%s", skipping report.', $source )
+				);
+				return;
+			}
+
 			if ( ! in_array( $status, ApiClient::VALID_REPORT_STATUSES, true ) ) {
 				FraudProtectionController::log(
 					'warning',
@@ -79,7 +88,7 @@ class OrderEventsTracker {
 				$session_id,
 				array(
 					'label'  => $status,
-					'source' => 'payment_gateway_event',
+					'source' => $source,
 					'notes'  => sanitize_text_field( $notes ),
 				)
 			);
