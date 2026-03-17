@@ -12,9 +12,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Tracks order lifecycle events and reports them to the Blackbox API.
  *
- * Exposes a `woocommerce_fraud_protection_report` action hook so 3rd-party
- * plugins (e.g. payment gateways) can report events to the Blackbox report
- * endpoint, correlating outcomes with the original fraud-check session.
+ * 3rd-party plugins can report events via the global `wc_fraud_protection_report()` function,
+ * which delegates to this class.
  *
  * Fire-and-forget: failures are logged but never affect the order flow.
  *
@@ -43,29 +42,21 @@ class OrderEventsTracker {
 	/**
 	 * Register hooks.
 	 */
-	public function register(): void {
-		/**
-		 * Action hook to report events to the Blackbox API.
-		 * This hook must be called only after the SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY is set to the order meta.
-		 * Which happens when woocommerce_store_api_checkout_order_processed hook is called.
-		 *
-		 * @param \WC_Order $order The order to report on.
-		 * @param string $status   The status of the event. Either 'good' or 'bad'.
-		 * @param string $notes    The notes of the event.
-		 */
-		add_action( 'woocommerce_fraud_protection_report', array( $this, 'on_fraud_protection_report' ), 10, 3 );
-	}
+	public function register(): void {}
 
 	/**
-	 * Allow 3rd party plugins to report events to the Blackbox API.
-	 * Useful when a payment fails and you want to report the event to the Blackbox API.
+	 * Report events to the Blackbox API.
+	 *
+	 * Called by the global `wc_fraud_protection_report()` function.
+	 * Must be called after the session ID has been persisted to order meta
+	 * (i.e. after `woocommerce_store_api_checkout_order_processed`).
 	 *
 	 * @internal
-	 * @param \WC_Order $order The order to report on.
-	 * @param string    $status   The status of the event. Either 'good' or 'bad'.
-	 * @param string    $notes    The notes of the event.
+	 * @param \WC_Order $order  The order to report on.
+	 * @param string    $status The status of the event. Use ApiClient::REPORT_STATUS_GOOD or ApiClient::REPORT_STATUS_BAD.
+	 * @param string    $notes  The notes of the event.
 	 */
-	public function on_fraud_protection_report( \WC_Order $order, string $status, string $notes ): void {
+	public function fraud_protection_report( \WC_Order $order, string $status, string $notes ): void {
 		try {
 			if ( ! in_array( $status, ApiClient::VALID_REPORT_STATUSES, true ) ) {
 				FraudProtectionController::log(
