@@ -163,17 +163,9 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	/**
 	 * Check if fraud protection feature is enabled.
 	 *
-	 * This method can be used by other fraud protection classes to check
-	 * the feature flag status. Returns false (fail-open) if init hasn't run yet.
-	 *
-	 * @return bool True if enabled, false if not enabled or init hasn't run yet.
+	 * @return bool
 	 */
 	public static function feature_is_enabled(): bool {
-		// Fail-open: don't block if init hasn't run yet to avoid FeaturesController translation notices.
-		if ( ! did_action( 'init' ) ) {
-			return false;
-		}
-		// Always enabled as MU-plugin.
 		return true;
 	}
 

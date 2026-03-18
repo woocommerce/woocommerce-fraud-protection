@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 
@@ -35,6 +36,10 @@ class StripePaymentDataCompat {
 	 * @return void
 	 */
 	public function register(): void {
+		if ( ! FraudProtectionController::feature_is_enabled() ) {
+			return;
+		}
+
 		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 3 );
 	}
 
