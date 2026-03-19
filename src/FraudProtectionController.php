@@ -98,13 +98,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionBlockingHandler $session_blocking_handler;
 
 	/**
-	 * PayPal compatibility instance.
-	 *
-	 * @var Compat\PayPalCompat
-	 */
-	private Compat\PayPalCompat $paypal_compat;
-
-	/**
 	 * Order events tracker instance.
 	 *
 	 * @var OrderEventsTracker
@@ -134,6 +127,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
 	 * @param AddPaymentMethodProtector  $add_payment_method_protector The instance of AddPaymentMethodProtector to use.
 	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
+	 * @param OrderEventsTracker         $order_events_tracker         The instance of OrderEventsTracker to use.
 	 */
 	final public function init(
 		BlockedSessionNotice $blocked_session_notice,
@@ -147,7 +141,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
 		AddPaymentMethodProtector $add_payment_method_protector,
 		PayForOrderProtector $pay_for_order_protector,
-		Compat\PayPalCompat $paypal_compat,
 		OrderEventsTracker $order_events_tracker
 	): void {
 		$this->blocked_session_notice       = $blocked_session_notice;
@@ -161,7 +154,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
 		$this->add_payment_method_protector = $add_payment_method_protector;
 		$this->pay_for_order_protector      = $pay_for_order_protector;
-		$this->paypal_compat                = $paypal_compat;
 		$this->order_events_tracker         = $order_events_tracker;
 	}
 
@@ -187,7 +179,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->cart_event_tracker->register();
 		$this->checkout_event_tracker->register();
 		$this->payment_method_event_tracker->register();
-		$this->paypal_compat->register();
 		$this->order_events_tracker->register();
 	}
 

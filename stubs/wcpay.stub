@@ -1,0 +1,72 @@
+<?php
+/**
+ * PHPStan stubs for WooPayments classes used in OrderEventsTracker.
+ */
+
+namespace WCPay\Constants {
+	class Intent_Status {
+		const REQUIRES_ACTION         = 'requires_action';
+		const REQUIRES_PAYMENT_METHOD = 'requires_payment_method';
+	}
+}
+
+namespace WCPay\Core\Server\Request {
+	class Get_Intention {
+		/**
+		 * @param string $intent_id The intent ID.
+		 * @return self
+		 */
+		public static function create( $intent_id ) {
+			return new self();
+		}
+
+		/**
+		 * @param \WC_Order $order The order.
+		 * @return void
+		 */
+		public function set_hook_args( $order ) {}
+
+		/**
+		 * @return \WCPay\Core\Server\Response
+		 */
+		public function send() {
+			return new \WCPay\Core\Server\Response( array() );
+		}
+	}
+}
+
+namespace WCPay\Core\Server {
+	class Response extends \ArrayObject {
+		/**
+		 * @return string
+		 */
+		public function get_status() {
+			return '';
+		}
+
+		/**
+		 * @return array|null
+		 */
+		public function get_last_payment_error() {
+			return null;
+		}
+	}
+}
+
+namespace WCPay\Exceptions {
+	class API_Exception extends \Exception {
+		/**
+		 * @return string
+		 */
+		public function get_error_code() {
+			return '';
+		}
+
+		/**
+		 * @return string
+		 */
+		public function get_message() {
+			return '';
+		}
+	}
+}

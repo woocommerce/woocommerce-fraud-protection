@@ -39,6 +39,9 @@ class OrderEventsTracker {
 		$this->api_client = $api_client;
 	}
 
+	/**
+	 * Register hooks for order event tracking.
+	 */
 	public function register(): void {
 		/**
 		 * Hook into the woopayments order failed action to report events to the Blackbox API.
@@ -57,7 +60,7 @@ class OrderEventsTracker {
 		 * @param int $order_id The ID of the order.
 		 * @return void
 		 */
-		add_action( 'woocommerce_order_status_failed', [ $this, 'on_order_status_failed' ], 10, 1 );
+		add_action( 'woocommerce_order_status_failed', array( $this, 'on_order_status_failed' ), 10, 1 );
 	}
 
 	/**
@@ -120,60 +123,58 @@ class OrderEventsTracker {
 	/**
 	 * Report events to the Blackbox API for WooPayments orders that failed to process payment.
 	 * This flow is used for 3DS authentication failed orders.
+	 *
 	 * @internal
-	 * @param int $order_id 
-	 * @return void 
+	 * @param int $order_id The ID of the order.
+	 * @return void
 	 */
 	public function on_order_status_failed( $order_id ) {
 		$order = wc_get_order( $order_id );
 
+		if ( ! ( $order instanceof \WC_Order ) ) {
+			return;
+		}
+
 		$payment_method = $order->get_payment_method();
-		if ( $payment_method === 'woocommerce_payments' ) {
-			$intent_id = $order->get_meta( '_intent_id' );
+		if ( 'woocommerce_payments' !== $payment_method ) {
+			return;
+		}
 
-			$request = \WCPay\Core\Server\Request\Get_Intention::create( $intent_id );
-			$request->set_hook_args( $order );
-			$intent = $request->send();
+		$intent_id = $order->get_meta( '_intent_id' );
 
-			switch ( $intent->get_status() ) {
-				// case WooCommerce\Payments\Intent_Status::CANCELED:
-				// 	$this->mark_payment_capture_cancelled( $order, $intent_data );
-				// 	break;
-				// case \WCPay\Constants\Intent_Status::PROCESSING:
-				// case \WCPay\Constants\Intent_Status::REQUIRES_CAPTURE:
-				// 	if ( Rule::FRAUD_OUTCOME_REVIEW === $intent_data['fraud_outcome'] ) {
-				// 		$this->mark_order_held_for_review_for_fraud( $order, $intent_data );
-				// 	}
-				// 	break;
-				case \WCPay\Constants\Intent_Status::REQUIRES_ACTION:
-				case \WCPay\Constants\Intent_Status::REQUIRES_PAYMENT_METHOD:
-					if ( $intent->get_last_payment_error() ) {
-						$this->fraud_protection_report( $order, 'api','bad', $intent->get_last_payment_error()['message'] );
-					}
-					break;
-			}
+		$request = \WCPay\Core\Server\Request\Get_Intention::create( $intent_id );
+		$request->set_hook_args( $order );
+		$intent = $request->send();
 
+		switch ( $intent->get_status() ) {
+			case \WCPay\Constants\Intent_Status::REQUIRES_ACTION:
+			case \WCPay\Constants\Intent_Status::REQUIRES_PAYMENT_METHOD:
+				if ( $intent->get_last_payment_error() ) {
+					$this->fraud_protection_report( $order, 'api', 'bad', $intent->get_last_payment_error()['message'] );
+				}
+				break;
 		}
 	}
 
 	/**
 	 * Report events to the Blackbox API for WooPayments orders that failed to process payment.
+	 *
 	 * @internal
-	 * @param \WC_Order $order The order that failed.
-	 * @param \Exception $exception The exception that occurred.
+	 * @param \WC_Order                       $order     The order that failed.
+	 * @param \WCPay\Exceptions\API_Exception $exception The exception that occurred.
 	 * @return void
 	 */
-	public function woopayments_payment_failed( $order, $exception ){
+	public function woopayments_payment_failed( $order, $exception ) {
 		$order = wc_get_order( $order->get_id() );
 
 		if ( ! ( $order instanceof \WC_Order ) ) {
 			return;
 		}
 
-		if ( $exception->get_error_code() === 'wcpay_blocked_by_fraud_rule' ) {
-			$this->fraud_protection_report( $order, 'api','bad', 'Payment blocked by WooPayments fraud rule: ' . $exception->get_message() );
-		} elseif ( in_array( $exception->get_error_code(), [ 'card_declined', 'incorrect_number', 'incorrect_cvc' ], true ) ) { 
-			$this->fraud_protection_report( $order, 'api','bad', 'Card declined: ' . $exception->get_message() );
+		if ( 'wcpay_blocked_by_fraud_rule' === $exception->get_error_code() ) {
+			$this->fraud_protection_report( $order, 'api', 'bad', 'Payment blocked by WooPayments fraud rule: ' . $exception->get_message() );
+		} elseif ( in_array( $exception->get_error_code(), array( 'card_declined', 'incorrect_number', 'incorrect_cvc' ), true ) ) {
+			$this->fraud_protection_report( $order, 'api', 'bad', 'Card declined: ' . $exception->get_message() );
 		}
 	}
 }
