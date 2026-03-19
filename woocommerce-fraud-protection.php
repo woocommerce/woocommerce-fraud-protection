@@ -8,6 +8,8 @@
  * @package WooCommerce\FraudProtection
  */
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
+
 defined( 'ABSPATH' ) || exit;
 
 define( 'WC_FRAUD_PROTECTION_VERSION', '1.0.0' );
@@ -147,6 +149,10 @@ add_action(
  * @param string    $notes  Free-form notes describing the event.
  */
 function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
+	if ( ! FraudProtectionController::feature_is_enabled() ) {
+		return;
+	}
+
 	$api_client = new \Automattic\WooCommerce\FraudProtection\ApiClient();
 
 	$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
