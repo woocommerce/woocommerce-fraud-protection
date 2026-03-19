@@ -41,6 +41,9 @@ class OrderEventsTracker {
 
 	public function register(): void {
 		add_action( 'woocommerce_payments_order_failed', array( $this, 'woopayments_payment_failed' ), 10, 2 );
+
+		add_action( 'wp_ajax_update_order_status', [ $this, 'on_order_status_failed' ] );
+		add_action( 'wp_ajax_nopriv_update_order_status', [ $this, 'on_order_status_failed' ] );
 	}
 
 	/**
@@ -139,7 +142,9 @@ class OrderEventsTracker {
 			return;
 		}
 
-		if ( in_array( $exception->get_error_code(), [ 'card_declined', 'incorrect_number', 'incorrect_cvc' ], true ) ) { 
+		if ( $exception->get_error_code() === 'wcpay_blocked_by_fraud_rule' ) {
+			$this->fraud_protection_report( $order, 'api','bad', 'Payment blocked by WooPayments fraud rule: ' . $exception->get_message() );
+		} elseif ( in_array( $exception->get_error_code(), [ 'card_declined', 'incorrect_number', 'incorrect_cvc' ], true ) ) { 
 			$this->fraud_protection_report( $order, 'api','bad', 'Card declined: ' . $exception->get_message() );
 		}
 	}
