@@ -123,7 +123,6 @@ add_action(
 			$payment_method_event_tracker,
 			$session_blocking_handler,
 			$session_verifier,
-			$order_events_tracker,
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,

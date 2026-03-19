@@ -279,18 +279,17 @@ class ApiClient {
 		}
 
 		if ( ! $this->get_blog_id() ) {
-			FraudProtectionController::log(
-				'error',
-				'Jetpack blog ID not found. Is the site connected to WordPress.com? Failing open with "allow" decision.'
+			return new \WP_Error(
+				'blog_id_not_found',
+				'Jetpack blog ID not found'
 			);
-			return self::DECISION_ALLOW;
 		}
 
 		$body = \wp_json_encode(
 			array_merge(
 				$payload,
 				array(
-					'session_id'  => $session_id,
+					'session_id' => $session_id,
 				)
 			)
 		);
