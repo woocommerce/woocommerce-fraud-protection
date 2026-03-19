@@ -87,8 +87,6 @@ class ApiClientTest extends WC_Unit_Test_Case {
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
 		$this->assertArrayHasKey( 'context', $captured_body );
-		$this->assertArrayHasKey( 'blog_id', $captured_body['context'] );
-		$this->assertSame( 12345, $captured_body['context']['blog_id'] );
 	}
 
 	/**
@@ -274,9 +272,8 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/report/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
-		$this->assertArrayHasKey( 'context', $captured_body );
-		$this->assertArrayHasKey( 'blog_id', $captured_body['context'] );
-		$this->assertSame( 12345, $captured_body['context']['blog_id'] );
+		$this->assertArrayNotHasKey( 'context', $captured_body );
+		$this->assertSame( 'payment_success', $captured_body['event_type'] );
 	}
 
 	/**
@@ -297,20 +294,6 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$this->assertTrue( $result );
 		$this->assertLogged( 'info', 'Event reported successfully' );
-	}
-
-	/**
-	 * Test report returns false when blog_id not found.
-	 *
-	 * @testdox report() returns false when blog_id not found
-	 */
-	public function test_report_returns_false_when_blog_id_not_found(): void {
-		update_option( 'jetpack_options', array( 'id' => null ) );
-
-		$result = $this->sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
-
-		$this->assertFalse( $result );
-		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
 	/**

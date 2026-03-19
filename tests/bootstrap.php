@@ -64,6 +64,7 @@ function _manually_load_plugins() {
 	require_once $plugin_dir . '/src/BlackboxScriptHandler.php';
 	require_once $plugin_dir . '/src/BlockedSessionNotice.php';
 	require_once $plugin_dir . '/src/SessionVerifier.php';
+	require_once $plugin_dir . '/src/OrderEventsTracker.php';
 	require_once $plugin_dir . '/src/BlocksCheckoutProtector.php';
 	require_once $plugin_dir . '/src/SessionBlockingHandler.php';
 	require_once $plugin_dir . '/src/FraudProtectionController.php';

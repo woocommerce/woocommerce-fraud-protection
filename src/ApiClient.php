@@ -76,6 +76,52 @@ class ApiClient {
 	);
 
 	/**
+	 * Report status: good outcome.
+	 */
+	public const REPORT_STATUS_GOOD = 'good';
+
+	/**
+	 * Report status: bad outcome.
+	 */
+	public const REPORT_STATUS_BAD = 'bad';
+
+	/**
+	 * Valid report status values.
+	 *
+	 * @var array<string>
+	 */
+	public const VALID_REPORT_STATUSES = array(
+		self::REPORT_STATUS_GOOD,
+		self::REPORT_STATUS_BAD,
+	);
+
+	/**
+	 * Report source: chargeback event.
+	 */
+	public const REPORT_SOURCE_CHARGEBACK = 'chargeback';
+
+	/**
+	 * Report source: manual review outcome.
+	 */
+	public const REPORT_SOURCE_MANUAL_REVIEW = 'manual_review';
+
+	/**
+	 * Report source: API-driven event.
+	 */
+	public const REPORT_SOURCE_API = 'api';
+
+	/**
+	 * Valid report source values.
+	 *
+	 * @var array<string>
+	 */
+	public const VALID_REPORT_SOURCES = array(
+		self::REPORT_SOURCE_CHARGEBACK,
+		self::REPORT_SOURCE_MANUAL_REVIEW,
+		self::REPORT_SOURCE_API,
+	);
+
+	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
 	 *
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,
@@ -95,7 +141,16 @@ class ApiClient {
 			)
 		);
 
-		$response = $this->make_request( 'POST', self::VERIFY_ENDPOINT, $session_id, $payload );
+		$payload = array(
+			'context' => $payload,
+		);
+
+		$response = $this->make_request(
+			'POST',
+			self::VERIFY_ENDPOINT,
+			$session_id,
+			$payload
+		);
 
 		return $this->process_decision_response( $response, $payload );
 	}
@@ -223,21 +278,19 @@ class ApiClient {
 			);
 		}
 
-		$blog_id = $this->get_blog_id();
-		if ( ! $blog_id ) {
+		if ( ! $this->get_blog_id() ) {
 			return new \WP_Error(
-				'no_blog_id',
-				'Jetpack blog ID not found. Is the site connected to WordPress.com?'
+				'blog_id_not_found',
+				'Jetpack blog ID not found'
 			);
 		}
 
-		$payload['blog_id'] = $blog_id;
-
 		$body = \wp_json_encode(
-			array(
-				'session_id'  => $session_id,
-				'private_key' => '', // Woo will not use private keys for now.
-				'context'     => $payload,
+			array_merge(
+				$payload,
+				array(
+					'session_id' => $session_id,
+				)
 			)
 		);
 

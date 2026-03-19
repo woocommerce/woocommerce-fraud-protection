@@ -8,6 +8,8 @@
  * @package WooCommerce\FraudProtection
  */
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
+
 defined( 'ABSPATH' ) || exit;
 
 define( 'WC_FRAUD_PROTECTION_VERSION', '1.0.0' );
@@ -36,6 +38,7 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentDataResolver.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/StripePaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SquarePaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ClassicFormDataExtractionTrait.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
@@ -86,6 +89,9 @@ add_action(
 		$session_verifier = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
 		$session_verifier->init( $session_data_collector, $api_client, $decision_handler, $payment_data_resolver );
 
+		$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
+		$order_events_tracker->init( $api_client );
+
 		$stripe_compat = new \Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat();
 		$stripe_compat->register();
 
@@ -116,6 +122,7 @@ add_action(
 			$checkout_event_tracker,
 			$payment_method_event_tracker,
 			$session_blocking_handler,
+			$session_verifier,
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
@@ -125,3 +132,29 @@ add_action(
 		$controller->register();
 	}
 );
+
+/**
+ * Report an order event to the Blackbox API.
+ *
+ * This is the public API for 3rd-party plugins (e.g. payment gateways) to
+ * report outcomes (success / failure) correlated with the original fraud-check session.
+ *
+ * Must be called after the session ID has been persisted to order meta
+ * (i.e. after `woocommerce_store_api_checkout_order_processed`).
+ *
+ * @param \WC_Order $order  The order to report on.
+ * @param string    $source The source of the event. Use ApiClient::REPORT_SOURCE_* constants.
+ * @param string    $status The status of the event. Use ApiClient::REPORT_STATUS_GOOD or ApiClient::REPORT_STATUS_BAD.
+ * @param string    $notes  Free-form notes describing the event.
+ */
+function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
+	if ( ! FraudProtectionController::feature_is_enabled() ) {
+		return;
+	}
+
+	$api_client = new \Automattic\WooCommerce\FraudProtection\ApiClient();
+
+	$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
+	$order_events_tracker->init( $api_client );
+	$order_events_tracker->fraud_protection_report( $order, $source, $status, $notes );
+}

@@ -84,6 +84,13 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private PayForOrderProtector $pay_for_order_protector;
 
 	/**
+	 * Session verifier instance.
+	 *
+	 * @var SessionVerifier
+	 */
+	private SessionVerifier $session_verifier;
+
+	/**
 	 * Session blocking handler instance.
 	 *
 	 * @var SessionBlockingHandler
@@ -115,6 +122,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param CheckoutEventTracker       $checkout_event_tracker       The instance of CheckoutEventTracker to use.
 	 * @param PaymentMethodEventTracker  $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
 	 * @param SessionBlockingHandler     $session_blocking_handler     The instance of SessionBlockingHandler to use.
+	 * @param SessionVerifier            $session_verifier             The instance of SessionVerifier to use.
 	 * @param BlocksCheckoutProtector    $blocks_checkout_protector    The instance of BlocksCheckoutProtector to use.
 	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
 	 * @param AddPaymentMethodProtector  $add_payment_method_protector The instance of AddPaymentMethodProtector to use.
@@ -128,6 +136,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		CheckoutEventTracker $checkout_event_tracker,
 		PaymentMethodEventTracker $payment_method_event_tracker,
 		SessionBlockingHandler $session_blocking_handler,
+		SessionVerifier $session_verifier,
 		BlocksCheckoutProtector $blocks_checkout_protector,
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
 		AddPaymentMethodProtector $add_payment_method_protector,
@@ -140,6 +149,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->checkout_event_tracker       = $checkout_event_tracker;
 		$this->payment_method_event_tracker = $payment_method_event_tracker;
 		$this->session_blocking_handler     = $session_blocking_handler;
+		$this->session_verifier             = $session_verifier;
 		$this->blocks_checkout_protector    = $blocks_checkout_protector;
 		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
 		$this->add_payment_method_protector = $add_payment_method_protector;
@@ -154,12 +164,13 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 */
 	public function on_init(): void {
 		// Bail if the feature is not enabled.
-		if ( ! $this->feature_is_enabled() ) {
+		if ( ! self::feature_is_enabled() ) {
 			return;
 		}
 
 		$this->blocked_session_notice->register();
 		$this->blackbox_script_handler->register();
+		$this->session_verifier->register();
 		$this->blocks_checkout_protector->register();
 		$this->shortcode_checkout_protector->register();
 		$this->add_payment_method_protector->register();
@@ -179,7 +190,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @return bool True if enabled, false if not enabled or init hasn't run yet.
 	 */
-	public function feature_is_enabled(): bool {
+	public static function feature_is_enabled(): bool {
 		// Fail-open: don't block if init hasn't run yet to avoid FeaturesController translation notices.
 		if ( ! did_action( 'init' ) ) {
 			return false;
