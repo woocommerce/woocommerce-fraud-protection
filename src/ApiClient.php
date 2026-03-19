@@ -293,7 +293,6 @@ class ApiClient {
 				$payload,
 				array(
 					'session_id'  => $session_id,
-					'private_key' => '', // Woo will not use private keys for now.
 				)
 			)
 		);

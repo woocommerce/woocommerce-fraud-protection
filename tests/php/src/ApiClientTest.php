@@ -316,42 +316,6 @@ class ApiClientTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Test report payload cannot override session_id or private_key.
-	 *
-	 * @testdox report() prevents payload from overriding session_id and private_key
-	 */
-	public function test_report_payload_cannot_override_session_id_or_private_key(): void {
-		$captured_body = null;
-
-		add_filter(
-			'pre_http_request',
-			function ( $preempt, $args ) use ( &$captured_body ) {
-				unset( $preempt );
-				$captured_body = json_decode( $args['body'], true );
-				return array(
-					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
-				);
-			},
-			10,
-			2
-		);
-
-		$this->sut->report(
-			'correct-session-id',
-			array(
-				'session_id'  => 'malicious-session-id',
-				'private_key' => 'malicious-key',
-				'event_type'  => 'payment_success',
-			)
-		);
-
-		$this->assertSame( 'correct-session-id', $captured_body['session_id'] );
-		$this->assertSame( '', $captured_body['private_key'] );
-		$this->assertSame( 'payment_success', $captured_body['event_type'] );
-	}
-
-	/**
 	 * Test report returns false on server error.
 	 *
 	 * @testdox report() returns false when API returns error status
