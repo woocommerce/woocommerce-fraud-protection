@@ -141,16 +141,6 @@ class ApiClient {
 			)
 		);
 
-		$blog_id = $this->get_blog_id();
-		if ( ! $blog_id ) {
-			FraudProtectionController::log(
-				'error',
-				'Jetpack blog ID not found. Is the site connected to WordPress.com? Failing open with "allow" decision.'
-			);
-			return self::DECISION_ALLOW;
-		}
-		$payload['blog_id'] = $blog_id;
-
 		$payload = array(
 			'context' => $payload,
 		);
@@ -286,6 +276,14 @@ class ApiClient {
 				'jetpack_not_available',
 				'Jetpack Connection is not available'
 			);
+		}
+
+		if ( ! $this->get_blog_id() ) {
+			FraudProtectionController::log(
+				'error',
+				'Jetpack blog ID not found. Is the site connected to WordPress.com? Failing open with "allow" decision.'
+			);
+			return self::DECISION_ALLOW;
 		}
 
 		$body = \wp_json_encode(
