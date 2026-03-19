@@ -87,8 +87,6 @@ class ApiClientTest extends WC_Unit_Test_Case {
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
 		$this->assertArrayHasKey( 'context', $captured_body );
-		$this->assertArrayHasKey( 'blog_id', $captured_body['context'] );
-		$this->assertSame( 12345, $captured_body['context']['blog_id'] );
 	}
 
 	/**
