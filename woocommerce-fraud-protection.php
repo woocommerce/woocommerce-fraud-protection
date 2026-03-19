@@ -132,7 +132,9 @@ add_action(
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
-			$pay_for_order_protector
+			$pay_for_order_protector,
+			$paypal_compat,
+			$order_events_tracker
 		);
 		$controller->register();
 	}

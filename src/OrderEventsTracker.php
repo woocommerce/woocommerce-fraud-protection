@@ -39,6 +39,10 @@ class OrderEventsTracker {
 		$this->api_client = $api_client;
 	}
 
+	public function register(): void {
+		add_action( 'woocommerce_payments_order_failed', array( $this, 'woopayments_payment_failed' ), 10, 2 );
+	}
+
 	/**
 	 * Report events to the Blackbox API.
 	 *
@@ -125,6 +129,18 @@ class OrderEventsTracker {
 					break;
 			}
 
+		}
+	}
+
+	public function woopayments_payment_failed( $order, $exception ){
+		$order = wc_get_order( $order->get_id() );
+
+		if ( ! ( $order instanceof \WC_Order ) ) {
+			return;
+		}
+
+		if ( in_array( $exception->get_error_code(), [ 'card_declined', 'incorrect_number', 'incorrect_cvc' ], true ) ) { 
+			$this->fraud_protection_report( $order, 'api','bad', 'Card declined: ' . $exception->get_message() );
 		}
 	}
 }
