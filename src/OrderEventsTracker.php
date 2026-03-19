@@ -40,11 +40,6 @@ class OrderEventsTracker {
 	}
 
 	/**
-	 * Register hooks.
-	 */
-	public function register(): void {}
-
-	/**
 	 * Report events to the Blackbox API.
 	 *
 	 * Called by the global `wc_fraud_protection_report()` function.
