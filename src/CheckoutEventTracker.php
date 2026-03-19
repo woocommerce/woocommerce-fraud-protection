@@ -61,9 +61,12 @@ class CheckoutEventTracker {
 	 * @return void
 	 */
 	public function track_checkout_page_loaded(): void {
-		if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
-			$this->session_data_collector->collect( 'checkout_page_loaded', array() );
+		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_order_received_page() ) {
+			return;
 		}
+
+		$event_name = is_checkout_pay_page() ? 'pay_for_order_page_loaded' : 'checkout_page_loaded';
+		$this->session_data_collector->collect( $event_name, array() );
 	}
 
 	/**

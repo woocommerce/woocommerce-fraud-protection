@@ -25,6 +25,14 @@ defined( 'ABSPATH' ) || exit;
 class SessionVerifier {
 
 	/**
+	 * Order meta key for storing the Blackbox session ID.
+	 *
+	 * Persisted so the report integration can correlate order outcomes
+	 * (e.g. chargebacks, refunds) back to the original fraud-check session.
+	 */
+	public const ORDER_BLACKBOX_SESSION_ID_KEY = '_wc_fraud_protection_session_id';
+
+	/**
 	 * Session data collector instance.
 	 *
 	 * @var SessionDataCollector
@@ -72,6 +80,45 @@ class SessionVerifier {
 		$this->api_client            = $api_client;
 		$this->decision_handler      = $decision_handler;
 		$this->payment_data_resolver = $payment_data_resolver;
+	}
+
+	/**
+	 * Register hooks for deferred session ID persistence.
+	 *
+	 * In shortcode checkout the order does not exist at verification time
+	 * (order_id = 0). This hook copies the session ID from the WC session
+	 * to order meta once the order is created.
+	 */
+	public function register(): void {
+		add_action( 'woocommerce_checkout_order_created', array( $this, 'persist_session_id_to_order' ) );
+	}
+
+	/**
+	 * Copy the Blackbox session ID from the WC session to order meta.
+	 *
+	 * Hooked to `woocommerce_checkout_order_created` for flows where the
+	 * order did not exist at verification time.
+	 *
+	 * @internal
+	 *
+	 * @param \WC_Order $order The newly created order.
+	 */
+	public function persist_session_id_to_order( \WC_Order $order ): void {
+		$session_id = $this->get_session_id_from_session();
+		if ( '' === $session_id ) {
+			return;
+		}
+
+		$order->update_meta_data( self::ORDER_BLACKBOX_SESSION_ID_KEY, $session_id );
+		$order->save_meta_data();
+
+		FraudProtectionController::log(
+			'info',
+			sprintf(
+				'Persisted session ID to order meta (deferred): order=%d',
+				$order->get_id()
+			)
+		);
 	}
 
 	/**
@@ -154,6 +201,8 @@ class SessionVerifier {
 
 			$decision = $this->api_client->verify( $session_id, $payload );
 			$decision = $this->decision_handler->apply_decision( $decision, $payload );
+
+			$this->persist_session_id( $session_id, $order_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'error',
@@ -172,5 +221,55 @@ class SessionVerifier {
 		}
 
 		return $decision;
+	}
+
+	/**
+	 * Persist the Blackbox session ID to order meta and WC session.
+	 *
+	 * Saves to order meta when an order already exists (blocks checkout,
+	 * pay-for-order). Always saves to WC session so the deferred hook
+	 * can pick it up for shortcode checkout.
+	 *
+	 * @param string $session_id The Blackbox session ID.
+	 * @param int    $order_id   The WooCommerce order ID (0 for pre-order flows).
+	 */
+	private function persist_session_id( string $session_id, int $order_id ): void {
+		$this->store_session_id_in_session( $session_id );
+
+		if ( $order_id > 0 ) {
+			$order = wc_get_order( $order_id );
+			if ( $order instanceof \WC_Order ) {
+				$order->update_meta_data( self::ORDER_BLACKBOX_SESSION_ID_KEY, $session_id );
+				$order->save_meta_data();
+			}
+		}
+	}
+
+	/**
+	 * Store the Blackbox session ID in the WC session.
+	 *
+	 * @param string $session_id The Blackbox session ID.
+	 */
+	private function store_session_id_in_session( string $session_id ): void {
+		if ( ! function_exists( 'WC' ) || ! WC()->session instanceof \WC_Session ) {
+			return;
+		}
+
+		WC()->session->set( self::ORDER_BLACKBOX_SESSION_ID_KEY, $session_id );
+	}
+
+	/**
+	 * Retrieve the Blackbox session ID from the WC session.
+	 *
+	 * @return string The session ID, or empty string if unavailable.
+	 */
+	private function get_session_id_from_session(): string {
+		if ( ! function_exists( 'WC' ) || ! WC()->session instanceof \WC_Session ) {
+			return '';
+		}
+
+		$session_id = WC()->session->get( self::ORDER_BLACKBOX_SESSION_ID_KEY, '' );
+
+		return is_string( $session_id ) ? $session_id : '';
 	}
 }
