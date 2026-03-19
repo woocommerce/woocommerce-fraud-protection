@@ -150,7 +150,7 @@ Keep the changes description concise but include the **why** and **how** behind 
 - [ ] Error messages: Generic, don't reveal fraud detection
 - [ ] Open source safe: No aggregation logic, risk scores, or rule details exposed
 - [ ] Hooks-based integration: All WC integration through hooks, no direct WC Core modifications
-- [ ] Hook registration: Via `FraudProtectionController::on_init()`
+- [ ] Hook registration: First-party components via `FraudProtectionController::on_init()`; compat layers self-register with `feature_is_enabled()` guard
 - [ ] Filter validation: All filter outputs validated before use
 - [ ] Log messages: Using `FraudProtectionController::log()`, include filter/hook names
 - [ ] Annotations: `@internal` on new classes
