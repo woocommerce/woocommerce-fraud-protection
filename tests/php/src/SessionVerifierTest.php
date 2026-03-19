@@ -492,6 +492,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			->method( 'apply_decision' )
 			->willReturn( ApiClient::DECISION_ALLOW );
 	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Should Verify Filter Tests
