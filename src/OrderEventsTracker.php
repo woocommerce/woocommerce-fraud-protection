@@ -40,10 +40,24 @@ class OrderEventsTracker {
 	}
 
 	public function register(): void {
+		/**
+		 * Hook into the woopayments order failed action to report events to the Blackbox API.
+		 * This is used to report events to the Blackbox API for WooPayments orders.
+		 *
+		 * @param \WC_Order $order The order that failed.
+		 * @param \Exception $exception The exception that occurred.
+		 * @return void
+		 */
 		add_action( 'woocommerce_payments_order_failed', array( $this, 'woopayments_payment_failed' ), 10, 2 );
 
-		add_action( 'wp_ajax_update_order_status', [ $this, 'on_order_status_failed' ] );
-		add_action( 'wp_ajax_nopriv_update_order_status', [ $this, 'on_order_status_failed' ] );
+		/**
+		 * Hook into the order status failed action to report events to the Blackbox API.
+		 * This is used to report events to the Blackbox API for WooPayments orders.
+		 *
+		 * @param int $order_id The ID of the order.
+		 * @return void
+		 */
+		add_action( 'woocommerce_order_status_failed', [ $this, 'on_order_status_failed' ], 10, 1 );
 	}
 
 	/**
@@ -103,6 +117,13 @@ class OrderEventsTracker {
 		}
 	}
 
+	/**
+	 * Report events to the Blackbox API for WooPayments orders that failed to process payment.
+	 * This flow is used for 3DS authentication failed orders.
+	 * @internal
+	 * @param int $order_id 
+	 * @return void 
+	 */
 	public function on_order_status_failed( $order_id ) {
 		$order = wc_get_order( $order_id );
 
@@ -135,6 +156,13 @@ class OrderEventsTracker {
 		}
 	}
 
+	/**
+	 * Report events to the Blackbox API for WooPayments orders that failed to process payment.
+	 * @internal
+	 * @param \WC_Order $order The order that failed.
+	 * @param \Exception $exception The exception that occurred.
+	 * @return void
+	 */
 	public function woopayments_payment_failed( $order, $exception ){
 		$order = wc_get_order( $order->get_id() );
 
