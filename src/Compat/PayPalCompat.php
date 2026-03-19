@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\FraudProtection\Compat;
 use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
 defined( 'ABSPATH' ) || exit;
@@ -81,6 +82,10 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function register(): void {
+		if ( ! FraudProtectionController::feature_is_enabled() ) {
+			return;
+		}
+
 		add_action( 'woocommerce_paypal_payments_create_order_request_started', array( $this, 'verify_and_block_create_order' ) );
 		add_filter( 'woocommerce_fraud_protection_enqueue_blackbox_scripts', array( $this, 'should_enqueue_blackbox' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_paypal_script' ), 20 );

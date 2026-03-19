@@ -41,6 +41,7 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ClassicFormDataExtractionTrait.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SubscriptionsChangePaymentCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/AddPaymentMethodProtector.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PayForOrderProtector.php';
@@ -100,6 +101,11 @@ add_action(
 
 		$paypal_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat();
 		$paypal_compat->init( $session_verifier, $blocked_notice );
+		$paypal_compat->register();
+
+		$subscriptions_change_payment_compat = new \Automattic\WooCommerce\FraudProtection\Compat\SubscriptionsChangePaymentCompat();
+		$subscriptions_change_payment_compat->init( $session_verifier, $blocked_notice );
+		$subscriptions_change_payment_compat->register();
 
 		$blocks_checkout_protector = new \Automattic\WooCommerce\FraudProtection\BlocksCheckoutProtector();
 		$blocks_checkout_protector->init( $session_verifier, $blocked_notice );
@@ -126,8 +132,7 @@ add_action(
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
-			$pay_for_order_protector,
-			$paypal_compat
+			$pay_for_order_protector
 		);
 		$controller->register();
 	}

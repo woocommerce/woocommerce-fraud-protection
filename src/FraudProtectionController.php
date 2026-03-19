@@ -98,13 +98,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionBlockingHandler $session_blocking_handler;
 
 	/**
-	 * PayPal compatibility instance.
-	 *
-	 * @var Compat\PayPalCompat
-	 */
-	private Compat\PayPalCompat $paypal_compat;
-
-	/**
 	 * Register hooks.
 	 */
 	public function register(): void {
@@ -127,7 +120,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
 	 * @param AddPaymentMethodProtector  $add_payment_method_protector The instance of AddPaymentMethodProtector to use.
 	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
-	 * @param Compat\PayPalCompat        $paypal_compat                The instance of PayPalCompat to use.
 	 */
 	final public function init(
 		BlockedSessionNotice $blocked_session_notice,
@@ -140,8 +132,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		BlocksCheckoutProtector $blocks_checkout_protector,
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
 		AddPaymentMethodProtector $add_payment_method_protector,
-		PayForOrderProtector $pay_for_order_protector,
-		Compat\PayPalCompat $paypal_compat
+		PayForOrderProtector $pay_for_order_protector
 	): void {
 		$this->blocked_session_notice       = $blocked_session_notice;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
@@ -154,7 +145,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
 		$this->add_payment_method_protector = $add_payment_method_protector;
 		$this->pay_for_order_protector      = $pay_for_order_protector;
-		$this->paypal_compat                = $paypal_compat;
 	}
 
 	/**
@@ -179,22 +169,14 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->cart_event_tracker->register();
 		$this->checkout_event_tracker->register();
 		$this->payment_method_event_tracker->register();
-		$this->paypal_compat->register();
 	}
 
 	/**
 	 * Check if fraud protection feature is enabled.
 	 *
-	 * This method can be used by other fraud protection classes to check
-	 * the feature flag status. Returns false (fail-open) if init hasn't run yet.
-	 *
-	 * @return bool True if enabled, false if not enabled or init hasn't run yet.
+	 * @return bool
 	 */
 	public static function feature_is_enabled(): bool {
-		// Fail-open: don't block if init hasn't run yet to avoid FeaturesController translation notices.
-		if ( ! did_action( 'init' ) ) {
-			return false;
-		}
 		// Always enabled as MU-plugin.
 		return true;
 	}

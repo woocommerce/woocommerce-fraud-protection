@@ -10,9 +10,8 @@ namespace Automattic\WooCommerce\FraudProtection;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Shared request data extraction for protectors that read from $_POST.
+ * Shared request data extraction for protectors and compat layers that read from $_POST.
  *
- * Used by ShortcodeCheckoutProtector and AddPaymentMethodProtector.
  * BlocksCheckoutProtector reads from WP_REST_Request and does not use this trait.
  *
  * @internal
