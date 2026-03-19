@@ -95,4 +95,36 @@ class OrderEventsTracker {
 			);
 		}
 	}
+
+	public function on_order_status_failed( $order_id ) {
+		$order = wc_get_order( $order_id );
+
+		$payment_method = $order->get_payment_method();
+		if ( $payment_method === 'woocommerce_payments' ) {
+			$intent_id = $order->get_meta( '_intent_id' );
+
+			$request = \WCPay\Core\Server\Request\Get_Intention::create( $intent_id );
+			$request->set_hook_args( $order );
+			$intent = $request->send();
+
+			switch ( $intent->get_status() ) {
+				// case WooCommerce\Payments\Intent_Status::CANCELED:
+				// 	$this->mark_payment_capture_cancelled( $order, $intent_data );
+				// 	break;
+				// case \WCPay\Constants\Intent_Status::PROCESSING:
+				// case \WCPay\Constants\Intent_Status::REQUIRES_CAPTURE:
+				// 	if ( Rule::FRAUD_OUTCOME_REVIEW === $intent_data['fraud_outcome'] ) {
+				// 		$this->mark_order_held_for_review_for_fraud( $order, $intent_data );
+				// 	}
+				// 	break;
+				case \WCPay\Constants\Intent_Status::REQUIRES_ACTION:
+				case \WCPay\Constants\Intent_Status::REQUIRES_PAYMENT_METHOD:
+					if ( $intent->get_last_payment_error() ) {
+						$this->fraud_protection_report( $order, 'api','bad', $intent->get_last_payment_error()['message'] );
+					}
+					break;
+			}
+
+		}
+	}
 }
