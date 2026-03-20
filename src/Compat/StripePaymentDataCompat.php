@@ -55,29 +55,33 @@ class StripePaymentDataCompat {
 			return $resolved;
 		}
 
+		$transaction_mode = $this->resolve_transaction_mode();
+
 		$pm_id = $payment_data['wc-stripe-payment-method'] ?? ( $payment_data['stripe_source'] ?? '' );
 		if ( empty( $pm_id ) ) {
-			return $resolved;
+			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
 		$token_value = $payment_data['wc-stripe-payment-token'] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
-			return $resolved;
+			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
 		$pm_details = \WC_Stripe_API::get_payment_method( $pm_id );
 
 		if ( is_wp_error( $pm_details ) || ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
-			return $resolved;
+			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
 		if ( 'card' !== $pm_details->type || ! isset( $pm_details->card ) ) {
 			return new PaymentMethodData(
 				$resolved->get_gateway(),
 				$pm_details->type,
-				$is_saved
+				$is_saved,
+				null,
+				$transaction_mode
 			);
 		}
 
@@ -96,8 +100,24 @@ class StripePaymentDataCompat {
 				isset( $pm_details->card->exp_month ) ? (int) $pm_details->card->exp_month : null,
 				isset( $pm_details->card->exp_year ) ? (int) $pm_details->card->exp_year : null,
 				$postcode
-			)
+			),
+			$transaction_mode
 		);
+	}
+
+	/**
+	 * Resolve the Stripe transaction mode from settings.
+	 *
+	 * @return ?string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 */
+	private function resolve_transaction_mode(): ?string {
+		$settings = get_option( 'woocommerce_stripe_settings' );
+
+		if ( ! is_array( $settings ) || ! isset( $settings['testmode'] ) ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
+
+		return 'yes' === $settings['testmode'] ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
 	}
 
 	/**

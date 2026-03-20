@@ -15,6 +15,11 @@ use WC_Unit_Test_Case;
 /**
  * Tests for the SquarePaymentDataCompat class.
  *
+ * Note: the WC_SQUARE_SANDBOX constant override path is not tested here
+ * because PHP constants cannot be undefined after definition, requiring
+ * @runInSeparateProcess which adds ~2.5s per test. The path is a trivial
+ * one-liner and covered by code review.
+ *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat
  */
 class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
@@ -33,6 +38,14 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 		parent::setUp();
 
 		$this->sut = new SquarePaymentDataCompat();
+	}
+
+	/**
+	 * Clean up after each test.
+	 */
+	public function tearDown(): void {
+		delete_option( 'wc_square_settings' );
+		parent::tearDown();
 	}
 
 	/**
@@ -79,6 +92,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 					'exp_year'         => 2028,
 					'billing_postcode' => '90210',
 				),
+				'transaction_mode'        => PaymentMethodData::MODE_UNKNOWN,
 			),
 			$result->to_array()
 		);
@@ -117,9 +131,9 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Saved card with empty card keys returns pre-resolved token data.
+	 * @testdox Saved card with empty card keys preserves token data.
 	 */
-	public function test_saved_card_with_empty_keys_returns_resolved(): void {
+	public function test_saved_card_with_empty_keys_preserves_token_data(): void {
 		$token_data = new PaymentMethodData(
 			'square_credit_card',
 			'card',
@@ -134,6 +148,96 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$this->assertSame( $token_data, $result );
+		$this->assertNotSame( $token_data, $result );
+		$array = $result->to_array();
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertTrue( $array['is_saved_payment_method'] );
+		$this->assertSame( 'visa', $array['card']['brand'] );
+		$this->assertSame( '4242', $array['card']['last4'] );
+	}
+
+	/**
+	 * @testdox Saved card with empty card keys and sandbox mode sets test mode.
+	 */
+	public function test_saved_card_with_empty_keys_sets_mode(): void {
+		update_option(
+			'wc_square_settings',
+			array( 'enable_sandbox' => 'yes' )
+		);
+
+		$token_data = new PaymentMethodData(
+			'square_credit_card',
+			'card',
+			true,
+			new CardPaymentMethodData( 'visa', null, '4242', null, null, 12, 2028 )
+		);
+
+		$result = $this->sut->resolve(
+			$token_data,
+			array(
+				'wc-square-credit-card-payment-token' => 'token_abc123',
+			)
+		);
+
+		$this->assertNotSame( $token_data, $result );
+		$array = $result->to_array();
+		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
+		$this->assertSame( 'visa', $array['card']['brand'] );
+		$this->assertSame( '4242', $array['card']['last4'] );
+	}
+
+	/**
+	 * @testdox Includes test mode when Square sandbox setting is yes.
+	 */
+	public function test_includes_test_mode_from_settings(): void {
+		update_option(
+			'wc_square_settings',
+			array( 'enable_sandbox' => 'yes' )
+		);
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'square_credit_card' ),
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+			)
+		);
+
+		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Includes live mode when Square sandbox setting is no.
+	 */
+	public function test_includes_live_mode_from_settings(): void {
+		update_option(
+			'wc_square_settings',
+			array( 'enable_sandbox' => 'no' )
+		);
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'square_credit_card' ),
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+			)
+		);
+
+		$this->assertSame( PaymentMethodData::MODE_LIVE, $result->to_array()['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Transaction mode is unknown when Square settings are absent.
+	 */
+	public function test_transaction_mode_unknown_without_settings(): void {
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'square_credit_card' ),
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+			)
+		);
+
+		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $result->to_array()['transaction_mode'] );
 	}
 }

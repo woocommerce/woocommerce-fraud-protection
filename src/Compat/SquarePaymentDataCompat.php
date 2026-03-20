@@ -60,9 +60,11 @@ class SquarePaymentDataCompat {
 			: null;
 		$postcode    = $payment_data['wc-square-credit-card-payment-postcode'] ?? null;
 
+		$transaction_mode = $this->resolve_transaction_mode();
+
 		// Saved cards have empty card keys — pass through the token-based data.
 		if ( empty( $brand ) && empty( $last4 ) ) {
-			return $resolved;
+			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
 		return new PaymentMethodData(
@@ -78,7 +80,30 @@ class SquarePaymentDataCompat {
 				$exp_month,
 				$exp_year,
 				$postcode
-			)
+			),
+			$transaction_mode
 		);
+	}
+
+	/**
+	 * Resolve the Square transaction mode from settings.
+	 *
+	 * Checks the WC_SQUARE_SANDBOX constant first (development override),
+	 * then falls back to the enable_sandbox setting.
+	 *
+	 * @return ?string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 */
+	private function resolve_transaction_mode(): ?string {
+		if ( defined( 'WC_SQUARE_SANDBOX' ) && WC_SQUARE_SANDBOX ) {
+			return PaymentMethodData::MODE_TEST;
+		}
+
+		$settings = get_option( 'wc_square_settings' );
+
+		if ( ! is_array( $settings ) || ! isset( $settings['enable_sandbox'] ) ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
+
+		return 'yes' === $settings['enable_sandbox'] ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
 	}
 }

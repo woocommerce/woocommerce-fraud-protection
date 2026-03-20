@@ -77,6 +77,7 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 					'exp_year'         => 2026,
 					'billing_postcode' => null,
 				),
+				'transaction_mode'        => PaymentMethodData::MODE_UNKNOWN,
 			),
 			$data->to_array()
 		);
