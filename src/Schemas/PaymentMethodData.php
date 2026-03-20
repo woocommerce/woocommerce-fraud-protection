@@ -30,9 +30,11 @@ class PaymentMethodData {
 	/**
 	 * Payment type (e.g. 'card', 'sepa_debit', 'ideal', 'link').
 	 *
-	 * @var string
+	 * Null when the payment type has not been resolved by a compat layer.
+	 *
+	 * @var ?string
 	 */
-	private string $payment_type;
+	private ?string $payment_type;
 
 	/**
 	 * Whether this is a saved/tokenized payment method.
@@ -52,13 +54,13 @@ class PaymentMethodData {
 	 * Constructor.
 	 *
 	 * @param string                 $gateway                 Gateway ID.
-	 * @param string                 $payment_type            Payment type identifier.
+	 * @param ?string                $payment_type            Payment type identifier, or null when unresolved.
 	 * @param bool                   $is_saved_payment_method Whether saved/tokenized.
 	 * @param ?CardPaymentMethodData $card                    Card details, if applicable.
 	 */
 	public function __construct(
 		string $gateway,
-		string $payment_type,
+		?string $payment_type = null,
 		bool $is_saved_payment_method = false,
 		?CardPaymentMethodData $card = null
 	) {

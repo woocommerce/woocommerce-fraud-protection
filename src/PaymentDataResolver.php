@@ -23,8 +23,8 @@ defined( 'ABSPATH' ) || exit;
  * before calling resolve() (e.g. BlocksCheckoutProtector normalizes the
  * Store API [{key, value}, ...] format; shortcode checkout already has flat POST data).
  *
- * Implements a fail-open pattern: returns null if no gateway resolves the data
- * or if resolution fails for any reason.
+ * Implements a fail-open pattern: falls back to the baseline (with just the
+ * gateway ID) if resolution fails for any reason.
  *
  * @internal
  */
@@ -35,10 +35,11 @@ class PaymentDataResolver {
 	 *
 	 * @param string $payment_method The gateway ID (e.g. 'woocommerce_payments', 'stripe').
 	 * @param array  $payment_data   Flat key-value map of payment data.
-	 * @return ?PaymentMethodData Resolved payment data, or null if unresolved.
+	 * @return PaymentMethodData Resolved payment data (at minimum contains the gateway ID).
 	 */
-	public function resolve( string $payment_method, array $payment_data ): ?PaymentMethodData {
-		$pre_resolved_payment_data = $this->resolve_from_wc_token( $payment_method, $payment_data );
+	public function resolve( string $payment_method, array $payment_data ): PaymentMethodData {
+		$pre_resolved_payment_data = $this->resolve_from_wc_token( $payment_method, $payment_data )
+			?? new PaymentMethodData( $payment_method );
 
 		try {
 			/**
@@ -53,9 +54,9 @@ class PaymentDataResolver {
 			 *
 			 * @since 1.0.0
 			 *
-			 * @param ?PaymentMethodData $resolved               The resolved payment data (pre-resolved from WC token, or null).
-			 * @param string             $payment_method          The gateway ID.
-			 * @param array              $payment_data Flat key-value map of payment data.
+			 * @param PaymentMethodData $resolved       The resolved payment data (baseline or pre-resolved from WC token).
+			 * @param string            $payment_method The gateway ID.
+			 * @param array             $payment_data   Flat key-value map of payment data.
 			 */
 			$resolved_payment_data = apply_filters(
 				'woocommerce_fraud_protection_resolved_payment_data',
