@@ -33,19 +33,18 @@ class SquarePaymentDataCompat {
 			return;
 		}
 
-		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 3 );
+		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 2 );
 	}
 
 	/**
 	 * Resolve Square payment data.
 	 *
-	 * @param ?PaymentMethodData $resolved       Previously resolved data.
-	 * @param string             $payment_method The gateway ID.
-	 * @param array              $payment_data   Normalized key-value payment data.
-	 * @return ?PaymentMethodData Resolved data, or pass-through.
+	 * @param PaymentMethodData $resolved     Previously resolved data.
+	 * @param array             $payment_data Normalized key-value payment data.
+	 * @return PaymentMethodData Resolved data, or pass-through.
 	 */
-	public function resolve( ?PaymentMethodData $resolved, string $payment_method, array $payment_data ): ?PaymentMethodData {
-		if ( 'square_credit_card' !== $payment_method ) {
+	public function resolve( PaymentMethodData $resolved, array $payment_data ): PaymentMethodData {
+		if ( 'square_credit_card' !== $resolved->get_gateway() ) {
 			return $resolved;
 		}
 
@@ -62,7 +61,7 @@ class SquarePaymentDataCompat {
 		$postcode    = $payment_data['wc-square-credit-card-payment-postcode'] ?? null;
 
 		// Saved cards have empty card keys — pass through the token-based data.
-		if ( empty( $brand ) && empty( $last4 ) && $resolved instanceof PaymentMethodData ) {
+		if ( empty( $brand ) && empty( $last4 ) ) {
 			return $resolved;
 		}
 

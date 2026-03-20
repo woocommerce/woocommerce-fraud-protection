@@ -71,6 +71,15 @@ class PaymentMethodData {
 	}
 
 	/**
+	 * Get the gateway ID.
+	 *
+	 * @return string
+	 */
+	public function get_gateway(): string {
+		return $this->gateway;
+	}
+
+	/**
 	 * Serialize to array.
 	 *
 	 * @return array

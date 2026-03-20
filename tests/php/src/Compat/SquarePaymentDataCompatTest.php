@@ -39,11 +39,10 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * @testdox Returns resolved for non-Square payment methods.
 	 */
 	public function test_returns_resolved_for_non_square(): void {
-		$resolved = new PaymentMethodData( 'stripe', 'test' );
+		$resolved = new PaymentMethodData( 'stripe', 'card' );
 
 		$result = $this->sut->resolve(
 			$resolved,
-			'stripe',
 			array( 'wc-square-credit-card-card-type' => 'visa' )
 		);
 
@@ -55,8 +54,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 */
 	public function test_extracts_card_details(): void {
 		$result = $this->sut->resolve(
-			null,
-			'square_credit_card',
+			new PaymentMethodData( 'square_credit_card' ),
 			array(
 				'wc-square-credit-card-card-type'         => 'visa',
 				'wc-square-credit-card-last-four'         => '1234',
@@ -66,7 +64,6 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertSame(
 			array(
 				'gateway'                 => 'square_credit_card',
@@ -92,8 +89,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 */
 	public function test_detects_saved_card(): void {
 		$result = $this->sut->resolve(
-			null,
-			'square_credit_card',
+			new PaymentMethodData( 'square_credit_card' ),
 			array(
 				'wc-square-credit-card-payment-token' => 'token_abc123',
 				'wc-square-credit-card-card-type'     => 'mastercard',
@@ -101,7 +97,6 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertTrue( $result->to_array()['is_saved_payment_method'] );
 	}
 
@@ -110,8 +105,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 */
 	public function test_not_saved_when_payment_token_is_new(): void {
 		$result = $this->sut->resolve(
-			null,
-			'square_credit_card',
+			new PaymentMethodData( 'square_credit_card' ),
 			array(
 				'wc-square-credit-card-payment-token' => 'new',
 				'wc-square-credit-card-card-type'     => 'visa',
@@ -119,7 +113,6 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			)
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertFalse( $result->to_array()['is_saved_payment_method'] );
 	}
 
@@ -136,7 +129,6 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve(
 			$token_data,
-			'square_credit_card',
 			array(
 				'wc-square-credit-card-payment-token' => 'token_abc123',
 			)

@@ -49,19 +49,19 @@ class PaymentDataResolver {
 			 * into a structured PaymentMethodData record object containing normalized
 			 * payment instrument details (card brand, last4, funding type, etc.).
 			 *
-			 * When a saved WC payment token is present, the initial value will be
-			 * pre-resolved from the token. Compat layers may override or pass through.
+			 * The initial value is always a PaymentMethodData: either pre-resolved
+			 * from a saved WC payment token, or a baseline with just the gateway ID.
+			 * Compat layers may enrich it or replace it entirely. The gateway ID
+			 * is available via $resolved->get_gateway().
 			 *
 			 * @since 1.0.0
 			 *
-			 * @param PaymentMethodData $resolved       The resolved payment data (baseline or pre-resolved from WC token).
-			 * @param string            $payment_method The gateway ID.
-			 * @param array             $payment_data   Flat key-value map of payment data.
+			 * @param PaymentMethodData $resolved     The resolved payment data (baseline or pre-resolved from WC token).
+			 * @param array             $payment_data Flat key-value map of payment data.
 			 */
 			$resolved_payment_data = apply_filters(
 				'woocommerce_fraud_protection_resolved_payment_data',
 				$pre_resolved_payment_data,
-				$payment_method,
 				$payment_data
 			);
 		} catch ( \Throwable $e ) {

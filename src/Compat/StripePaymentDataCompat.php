@@ -40,19 +40,18 @@ class StripePaymentDataCompat {
 			return;
 		}
 
-		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 3 );
+		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 2 );
 	}
 
 	/**
 	 * Resolve Stripe payment data.
 	 *
-	 * @param ?PaymentMethodData $resolved       Previously resolved data.
-	 * @param string             $payment_method The gateway ID.
-	 * @param array              $payment_data   Normalized key-value payment data.
-	 * @return ?PaymentMethodData Resolved data, or pass-through.
+	 * @param PaymentMethodData $resolved     Previously resolved data.
+	 * @param array             $payment_data Normalized key-value payment data.
+	 * @return PaymentMethodData Resolved data, or pass-through.
 	 */
-	public function resolve( ?PaymentMethodData $resolved, string $payment_method, array $payment_data ): ?PaymentMethodData {
-		if ( ! $this->is_stripe_gateway( $payment_method ) ) {
+	public function resolve( PaymentMethodData $resolved, array $payment_data ): PaymentMethodData {
+		if ( ! $this->is_stripe_gateway( $resolved->get_gateway() ) ) {
 			return $resolved;
 		}
 
@@ -76,7 +75,7 @@ class StripePaymentDataCompat {
 
 		if ( 'card' !== $pm_details->type || ! isset( $pm_details->card ) ) {
 			return new PaymentMethodData(
-				$payment_method,
+				$resolved->get_gateway(),
 				$pm_details->type,
 				$is_saved
 			);
@@ -85,7 +84,7 @@ class StripePaymentDataCompat {
 		$postcode = $pm_details->billing_details->address->postal_code ?? null;
 
 		return new PaymentMethodData(
-			$payment_method,
+			$resolved->get_gateway(),
 			'card',
 			$is_saved,
 			new CardPaymentMethodData(

@@ -162,21 +162,21 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Passes payment_method and flat key-value payment_data to the filter.
+	 * @testdox Passes baseline PaymentMethodData and flat key-value payment_data to the filter.
 	 */
-	public function test_passes_payment_method_and_data_to_filter(): void {
-		$captured_method = null;
-		$captured_data   = null;
+	public function test_passes_baseline_and_data_to_filter(): void {
+		$captured_resolved = null;
+		$captured_data     = null;
 
 		add_filter(
 			'woocommerce_fraud_protection_resolved_payment_data',
-			function ( $resolved, $payment_method, $payment_data ) use ( &$captured_method, &$captured_data ) {
-				$captured_method = $payment_method;
-				$captured_data   = $payment_data;
+			function ( $resolved, $payment_data ) use ( &$captured_resolved, &$captured_data ) {
+				$captured_resolved = $resolved;
+				$captured_data     = $payment_data;
 				return null; // Filter returns null — resolver falls back to baseline.
 			},
 			10,
-			3
+			2
 		);
 
 		$input = array(
@@ -186,7 +186,8 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve( 'woocommerce_payments', $input );
 
-		$this->assertSame( 'woocommerce_payments', $captured_method );
+		$this->assertInstanceOf( PaymentMethodData::class, $captured_resolved );
+		$this->assertSame( 'woocommerce_payments', $captured_resolved->get_gateway() );
 		$this->assertSame( $input, $captured_data );
 		$this->assertSame( 'woocommerce_payments', $result->to_array()['gateway'] );
 	}
