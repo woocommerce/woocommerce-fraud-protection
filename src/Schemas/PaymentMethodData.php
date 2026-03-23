@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -34,6 +36,13 @@ class PaymentMethodData {
 	 * Transaction mode value when no gateway-specific resolver is available.
 	 */
 	public const MODE_UNKNOWN = null;
+
+	/**
+	 * Valid transaction mode values.
+	 *
+	 * @var array<int, ?string>
+	 */
+	public const VALID_MODES = array( self::MODE_TEST, self::MODE_LIVE, self::MODE_UNKNOWN );
 
 	/**
 	 * Gateway ID that originated this payment method (e.g. 'stripe', 'square_credit_card').
@@ -82,20 +91,20 @@ class PaymentMethodData {
 	 * @param ?string                $payment_type            Payment type identifier, or null when unresolved.
 	 * @param bool                   $is_saved_payment_method Whether saved/tokenized.
 	 * @param ?CardPaymentMethodData $card                    Card details, if applicable.
-	 * @param ?string                $transaction_mode        Transaction mode: 'test', 'live', or null.
+	 * @param ?string                $transaction_mode        Transaction mode (MODE_TEST, MODE_LIVE, or MODE_UNKNOWN).
 	 */
 	public function __construct(
 		string $gateway,
 		?string $payment_type = null,
 		bool $is_saved_payment_method = false,
 		?CardPaymentMethodData $card = null,
-		?string $transaction_mode = null
+		?string $transaction_mode = self::MODE_UNKNOWN
 	) {
 		$this->gateway                 = $gateway;
 		$this->payment_type            = $payment_type;
 		$this->is_saved_payment_method = $is_saved_payment_method;
 		$this->card                    = 'card' === $payment_type ? $card ?? new CardPaymentMethodData() : null;
-		$this->transaction_mode        = $transaction_mode;
+		$this->transaction_mode        = self::validate_transaction_mode( $transaction_mode );
 	}
 
 	/**
@@ -113,7 +122,7 @@ class PaymentMethodData {
 	 * Used by gateway compat layers to augment pre-resolved payment data
 	 * (e.g. from WC token) with the gateway's test/live mode.
 	 *
-	 * @param ?string $transaction_mode Transaction mode: 'test', 'live', or null.
+	 * @param ?string $transaction_mode Transaction mode (MODE_TEST, MODE_LIVE, or MODE_UNKNOWN).
 	 * @return self
 	 */
 	public function with_transaction_mode( ?string $transaction_mode ): self {
@@ -124,6 +133,27 @@ class PaymentMethodData {
 			$this->card,
 			$transaction_mode
 		);
+	}
+
+	/**
+	 * Validate a transaction mode value.
+	 *
+	 * Falls back to MODE_UNKNOWN and logs a warning for invalid values.
+	 *
+	 * @param ?string $mode The mode to validate.
+	 * @return ?string A valid mode constant value.
+	 */
+	private static function validate_transaction_mode( ?string $mode ): ?string {
+		if ( in_array( $mode, self::VALID_MODES, true ) ) {
+			return $mode;
+		}
+
+		FraudProtectionController::log(
+			'warning',
+			sprintf( 'Invalid transaction_mode value: %s — falling back to MODE_UNKNOWN', (string) $mode )
+		);
+
+		return self::MODE_UNKNOWN;
 	}
 
 	/**
