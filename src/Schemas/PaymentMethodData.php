@@ -104,7 +104,7 @@ class PaymentMethodData {
 		$this->payment_type            = $payment_type;
 		$this->is_saved_payment_method = $is_saved_payment_method;
 		$this->card                    = 'card' === $payment_type ? $card ?? new CardPaymentMethodData() : null;
-		$this->transaction_mode        = self::validate_transaction_mode( $transaction_mode );
+		$this->transaction_mode        = self::sanitize_transaction_mode( $transaction_mode );
 	}
 
 	/**
@@ -136,14 +136,14 @@ class PaymentMethodData {
 	}
 
 	/**
-	 * Validate a transaction mode value.
+	 * Sanitize a transaction mode value.
 	 *
 	 * Falls back to MODE_UNKNOWN and logs a warning for invalid values.
 	 *
-	 * @param ?string $mode The mode to validate.
+	 * @param ?string $mode The mode to sanitize.
 	 * @return ?string A valid mode constant value.
 	 */
-	private static function validate_transaction_mode( ?string $mode ): ?string {
+	private static function sanitize_transaction_mode( ?string $mode ): ?string {
 		if ( in_array( $mode, self::VALID_MODES, true ) ) {
 			return $mode;
 		}
