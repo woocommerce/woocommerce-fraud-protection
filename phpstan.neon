@@ -18,6 +18,10 @@ parameters:
 		- stubs/wc-unit-test-case.stub
 		- stubs/constants.stub
 		- stubs/wc-stripe-api.stub
+		- stubs/wc-stripe-mode.stub
+		- stubs/wc-payments.stub
+		- stubs/wc-square.stub
+		- stubs/wc-paypal.stub
 	treatPhpDocTypesAsCertain: false
 	ignoreErrors:
 		- identifier: missingType.iterableValue

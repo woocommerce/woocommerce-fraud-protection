@@ -45,15 +45,16 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Returns null when no filter callback resolves the data.
+	 * @testdox Returns baseline when no filter callback resolves the data.
 	 */
-	public function test_returns_null_when_no_filter(): void {
+	public function test_returns_baseline_when_no_filter(): void {
 		$result = $this->sut->resolve(
 			'woocommerce_payments',
 			array( 'wcpay-payment-method' => 'pm_123' )
 		);
 
-		$this->assertNull( $result );
+		$this->assertSame( 'woocommerce_payments', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
@@ -80,7 +81,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Discards non-PaymentMethodData filter returns (type safety).
+	 * @testdox Discards non-PaymentMethodData filter returns and falls back to baseline.
 	 */
 	public function test_discards_invalid_filter_return(): void {
 		add_filter(
@@ -92,7 +93,8 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve( 'test_gateway', array() );
 
-		$this->assertNull( $result );
+		$this->assertSame( 'test_gateway', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
@@ -121,15 +123,14 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'token' => (string) $token->get_id() )
 		);
 
-		// Falls back to token pre-resolution, not null.
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
+		// Falls back to token pre-resolution, not baseline.
 		$this->assertSame( 'visa', $result->to_array()['card']['brand'] );
 	}
 
 	/**
-	 * @testdox Returns null when filter throws and no pre-resolved data exists.
+	 * @testdox Returns baseline when filter throws and no pre-resolved token data exists.
 	 */
-	public function test_returns_null_when_filter_throws_without_preresolved(): void {
+	public function test_returns_baseline_when_filter_throws_without_preresolved(): void {
 		add_filter( // @phpstan-ignore return.missing
 			'woocommerce_fraud_protection_resolved_payment_data',
 			function () {
@@ -139,11 +140,12 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve( 'stripe', array() ); // @phpstan-ignore deadCode.unreachable
 
-		$this->assertNull( $result );
+		$this->assertSame( 'stripe', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
-	 * @testdox Discards array filter returns (type safety).
+	 * @testdox Discards array filter returns and falls back to baseline.
 	 */
 	public function test_discards_array_filter_return(): void {
 		add_filter(
@@ -155,25 +157,26 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->resolve( 'test_gateway', array() );
 
-		$this->assertNull( $result );
+		$this->assertSame( 'test_gateway', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
-	 * @testdox Passes payment_method and flat key-value payment_data to the filter.
+	 * @testdox Passes baseline PaymentMethodData and flat key-value payment_data to the filter.
 	 */
-	public function test_passes_payment_method_and_data_to_filter(): void {
-		$captured_method = null;
-		$captured_data   = null;
+	public function test_passes_baseline_and_data_to_filter(): void {
+		$captured_resolved = null;
+		$captured_data     = null;
 
 		add_filter(
 			'woocommerce_fraud_protection_resolved_payment_data',
-			function ( $resolved, $payment_method, $payment_data ) use ( &$captured_method, &$captured_data ) {
-				$captured_method = $payment_method;
-				$captured_data   = $payment_data;
-				return null;
+			function ( $resolved, $payment_data ) use ( &$captured_resolved, &$captured_data ) {
+				$captured_resolved = $resolved;
+				$captured_data     = $payment_data;
+				return null; // Filter returns null — resolver falls back to baseline.
 			},
 			10,
-			3
+			2
 		);
 
 		$input = array(
@@ -181,10 +184,12 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			'baz' => 'qux',
 		);
 
-		$this->sut->resolve( 'woocommerce_payments', $input );
+		$result = $this->sut->resolve( 'woocommerce_payments', $input );
 
-		$this->assertSame( 'woocommerce_payments', $captured_method );
+		$this->assertInstanceOf( PaymentMethodData::class, $captured_resolved );
+		$this->assertSame( 'woocommerce_payments', $captured_resolved->get_gateway() );
 		$this->assertSame( $input, $captured_data );
+		$this->assertSame( 'woocommerce_payments', $result->to_array()['gateway'] );
 	}
 
 	/**
@@ -206,7 +211,6 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'token' => (string) $token->get_id() )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$array = $result->to_array();
 		$this->assertSame( 'card', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
@@ -218,9 +222,9 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Pre-resolution returns null when token belongs to a different user.
+	 * @testdox Pre-resolution returns baseline when token belongs to a different user.
 	 */
-	public function test_token_preresolution_returns_null_for_other_users_token(): void {
+	public function test_token_preresolution_returns_baseline_for_other_users_token(): void {
 		$token = new \WC_Payment_Token_CC();
 		$token->set_gateway_id( 'stripe' );
 		$token->set_card_type( 'visa' );
@@ -236,31 +240,34 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'token' => (string) $token->get_id() )
 		);
 
-		$this->assertNull( $result );
+		$this->assertSame( 'stripe', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
-	 * @testdox Pre-resolution returns null for invalid or missing token IDs.
+	 * @testdox Pre-resolution returns baseline for invalid or missing token IDs.
 	 */
-	public function test_token_preresolution_returns_null_for_invalid_token(): void {
+	public function test_token_preresolution_returns_baseline_for_invalid_token(): void {
 		$result = $this->sut->resolve(
 			'stripe',
 			array( 'token' => '999999' )
 		);
 
-		$this->assertNull( $result );
+		$this->assertSame( 'stripe', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
-	 * @testdox Pre-resolution returns null when token key is absent.
+	 * @testdox Pre-resolution returns baseline when token key is absent.
 	 */
-	public function test_token_preresolution_returns_null_when_no_token_key(): void {
+	public function test_token_preresolution_returns_baseline_when_no_token_key(): void {
 		$result = $this->sut->resolve(
 			'stripe',
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertNull( $result );
+		$this->assertSame( 'stripe', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
@@ -282,7 +289,6 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'wc-stripe-payment-token' => (string) $token->get_id() )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$array = $result->to_array();
 		$this->assertSame( 'stripe', $array['gateway'] );
 		$this->assertSame( 'visa', $array['card']['brand'] );
@@ -309,7 +315,6 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'wc-square-credit-card-payment-token' => (string) $token->get_id() )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$array = $result->to_array();
 		$this->assertSame( 'square_credit_card', $array['gateway'] );
 		$this->assertSame( 'visa', $array['card']['brand'] );
@@ -336,20 +341,20 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'token' => (string) $token->get_id() )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertSame( 'mastercard', $result->to_array()['card']['brand'] );
 	}
 
 	/**
-	 * @testdox Pre-resolution returns null when classic key value is "new".
+	 * @testdox Pre-resolution returns baseline when classic key value is "new".
 	 */
-	public function test_token_preresolution_returns_null_for_new_payment_method(): void {
+	public function test_token_preresolution_returns_baseline_for_new_payment_method(): void {
 		$result = $this->sut->resolve(
 			'stripe',
 			array( 'wc-stripe-payment-token' => 'new' )
 		);
 
-		$this->assertNull( $result );
+		$this->assertSame( 'stripe', $result->to_array()['gateway'] );
+		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 
 	/**
@@ -417,7 +422,6 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'token' => (string) $token->get_id() )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $captured_initial );
 		$this->assertSame( $captured_initial, $result );
 		$this->assertSame( 'mastercard', $result->to_array()['card']['brand'] );
 	}

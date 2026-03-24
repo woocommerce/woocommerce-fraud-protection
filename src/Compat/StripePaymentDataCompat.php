@@ -40,52 +40,55 @@ class StripePaymentDataCompat {
 			return;
 		}
 
-		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 3 );
+		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 2 );
 	}
 
 	/**
 	 * Resolve Stripe payment data.
 	 *
-	 * @param ?PaymentMethodData $resolved       Previously resolved data.
-	 * @param string             $payment_method The gateway ID.
-	 * @param array              $payment_data   Normalized key-value payment data.
-	 * @return ?PaymentMethodData Resolved data, or pass-through.
+	 * @param PaymentMethodData $resolved               Previously resolved data.
+	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.
+	 * @return PaymentMethodData Resolved data, or pass-through.
 	 */
-	public function resolve( ?PaymentMethodData $resolved, string $payment_method, array $payment_data ): ?PaymentMethodData {
-		if ( ! $this->is_stripe_gateway( $payment_method ) ) {
+	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
+		if ( ! $this->is_stripe_gateway( $resolved->get_gateway() ) ) {
 			return $resolved;
 		}
 
-		$pm_id = $payment_data['wc-stripe-payment-method'] ?? ( $payment_data['stripe_source'] ?? '' );
+		$transaction_mode = $this->resolve_transaction_mode();
+
+		$pm_id = $checkout_payment_fields['wc-stripe-payment-method'] ?? ( $checkout_payment_fields['stripe_source'] ?? '' );
 		if ( empty( $pm_id ) ) {
-			return $resolved;
+			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
-		$token_value = $payment_data['wc-stripe-payment-token'] ?? '';
+		$token_value = $checkout_payment_fields['wc-stripe-payment-token'] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
-			return $resolved;
+			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
 		$pm_details = \WC_Stripe_API::get_payment_method( $pm_id );
 
 		if ( is_wp_error( $pm_details ) || ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
-			return $resolved;
+			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
 		if ( 'card' !== $pm_details->type || ! isset( $pm_details->card ) ) {
 			return new PaymentMethodData(
-				$payment_method,
+				$resolved->get_gateway(),
 				$pm_details->type,
-				$is_saved
+				$is_saved,
+				null,
+				$transaction_mode
 			);
 		}
 
 		$postcode = $pm_details->billing_details->address->postal_code ?? null;
 
 		return new PaymentMethodData(
-			$payment_method,
+			$resolved->get_gateway(),
 			'card',
 			$is_saved,
 			new CardPaymentMethodData(
@@ -97,8 +100,29 @@ class StripePaymentDataCompat {
 				isset( $pm_details->card->exp_month ) ? (int) $pm_details->card->exp_month : null,
 				isset( $pm_details->card->exp_year ) ? (int) $pm_details->card->exp_year : null,
 				$postcode
-			)
+			),
+			$transaction_mode
 		);
+	}
+
+	/**
+	 * Resolve the Stripe transaction mode.
+	 *
+	 * Uses the Stripe gateway's own mode API when available, which is the same
+	 * method Stripe uses internally to select API keys during payment processing.
+	 *
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
+	 */
+	private function resolve_transaction_mode(): string {
+		if ( ! class_exists( '\WC_Stripe_Mode' ) ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
+
+		try {
+			return \WC_Stripe_Mode::is_live() ? PaymentMethodData::MODE_LIVE : PaymentMethodData::MODE_TEST;
+		} catch ( \Throwable $e ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
 	}
 
 	/**

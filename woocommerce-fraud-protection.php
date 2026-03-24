@@ -37,6 +37,8 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentMethodData.ph
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentDataResolver.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/StripePaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SquarePaymentDataCompat.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/PayPalPaymentDataCompat.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/WooPaymentsPaymentDataCompat.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php';
@@ -98,6 +100,12 @@ add_action(
 
 		$square_compat = new \Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat();
 		$square_compat->register();
+
+		$paypal_payment_data_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalPaymentDataCompat();
+		$paypal_payment_data_compat->register();
+
+		$woopayments_compat = new \Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat();
+		$woopayments_compat->register();
 
 		$paypal_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat();
 		$paypal_compat->init( $session_verifier, $blocked_notice );

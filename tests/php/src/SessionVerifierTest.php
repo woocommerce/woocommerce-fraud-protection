@@ -123,18 +123,20 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			->with( $order_id )
 			->willReturn( $collected_data );
 
+		$resolved_payment = new PaymentMethodData( 'woocommerce_payments' );
+
 		$this->payment_data_resolver
 			->expects( $this->once() )
 			->method( 'resolve' )
 			->with( 'woocommerce_payments', array() )
-			->willReturn( null );
+			->willReturn( $resolved_payment );
 
 		$expected_payload = array_merge(
 			$collected_data,
 			array(
 				'source'       => 'blocks_checkout',
 				'request_data' => $request_data,
-				'payment'      => null,
+				'payment'      => $resolved_payment->to_array(),
 			)
 		);
 

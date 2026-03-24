@@ -1,0 +1,28 @@
+<?php
+/**
+ * PHPStan stubs for WooCommerce Square.
+ *
+ * Used by SquarePaymentDataCompat to resolve transaction mode via the
+ * gateway's own API rather than reading settings directly.
+ */
+
+/**
+ * @return \WooCommerce\Square\Plugin
+ */
+function wc_square(): \WooCommerce\Square\Plugin {}
+
+namespace WooCommerce\Square;
+
+class Plugin {
+	/**
+	 * @return \WooCommerce\Square\Settings
+	 */
+	public function get_settings_handler(): Settings {}
+}
+
+class Settings {
+	/**
+	 * @return bool
+	 */
+	public function is_sandbox(): bool {}
+}

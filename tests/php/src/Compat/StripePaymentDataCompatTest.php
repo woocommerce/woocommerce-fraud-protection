@@ -57,6 +57,41 @@ if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 	class_alias( __NAMESPACE__ . '\WC_Stripe_API_Stub', 'WC_Stripe_API' );
 }
 
+// Stub WC_Stripe_Mode if the real class isn't loaded.
+if ( ! class_exists( '\WC_Stripe_Mode', false ) ) {
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WC_Stripe_Mode_Stub {
+
+		/**
+		 * Whether Stripe is in live mode.
+		 *
+		 * @var bool
+		 */
+		private static bool $live = true;
+
+		/**
+		 * Set the live state for testing.
+		 *
+		 * @param bool $live True = live, false = test.
+		 * @return void
+		 */
+		public static function set_live( bool $live ): void {
+			self::$live = $live;
+		}
+
+		/**
+		 * Whether Stripe is in live mode.
+		 *
+		 * @return bool
+		 */
+		public static function is_live(): bool {
+			return self::$live;
+		}
+	}
+
+	class_alias( __NAMESPACE__ . '\WC_Stripe_Mode_Stub', 'WC_Stripe_Mode' );
+}
+
 /**
  * Tests for the StripePaymentDataCompat class.
  *
@@ -85,6 +120,7 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 */
 	public function tearDown(): void {
 		\WC_Stripe_API::reset();
+		WC_Stripe_Mode_Stub::set_live( true );
 		parent::tearDown();
 	}
 
@@ -92,11 +128,10 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * @testdox Returns resolved for non-Stripe payment methods.
 	 */
 	public function test_returns_resolved_for_non_stripe(): void {
-		$resolved = new PaymentMethodData( 'woocommerce_payments', 'test' );
+		$resolved = new PaymentMethodData( 'woocommerce_payments', 'card' );
 
 		$result = $this->sut->resolve(
 			$resolved,
-			'woocommerce_payments',
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
@@ -104,31 +139,33 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Returns resolved when PM ID is missing from payment data.
+	 * @testdox Returns data with mode applied when PM ID is missing from payment data.
 	 */
 	public function test_returns_resolved_for_missing_pm_id(): void {
-		$result = $this->sut->resolve(
-			null,
-			'stripe',
-			array()
-		);
+		$resolved = new PaymentMethodData( 'stripe' );
 
-		$this->assertNull( $result );
+		$result = $this->sut->resolve( $resolved, array() );
+
+		$array = $result->to_array();
+		$this->assertSame( 'stripe', $array['gateway'] );
+		$this->assertNull( $array['payment_type'] );
 	}
 
 	/**
-	 * @testdox Passes through previously resolved data.
+	 * @testdox Passes through previously resolved data with mode applied.
 	 */
 	public function test_passes_through_resolved_data(): void {
 		$existing = new PaymentMethodData( 'stripe', 'card', false );
 
 		$result = $this->sut->resolve(
 			$existing,
-			'stripe',
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertSame( $existing, $result );
+		$array = $result->to_array();
+		$this->assertSame( 'stripe', $array['gateway'] );
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertFalse( $array['is_saved_payment_method'] );
 	}
 
 	/**
@@ -138,12 +175,10 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
 		$result = $this->sut->resolve(
-			null,
-			'stripe',
+			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertSame( 'card', $result->to_array()['payment_type'] );
 	}
 
@@ -157,12 +192,10 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		\WC_Stripe_API::set_mock_response( $response );
 
 		$result = $this->sut->resolve(
-			null,
-			'stripe_sepa_debit',
+			new PaymentMethodData( 'stripe_sepa_debit' ),
 			array( 'wc-stripe-payment-method' => 'pm_sepa_123' )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$array = $result->to_array();
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
 		$this->assertNull( $array['card'] );
@@ -178,12 +211,10 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		\WC_Stripe_API::set_mock_response( $response );
 
 		$result = $this->sut->resolve(
-			null,
-			'stripe_ideal',
+			new PaymentMethodData( 'stripe_ideal' ),
 			array( 'wc-stripe-payment-method' => 'pm_ideal_123' )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertSame( 'ideal', $result->to_array()['payment_type'] );
 	}
 
@@ -194,12 +225,10 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
 		$result = $this->sut->resolve(
-			null,
-			'stripe',
+			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_card_123' )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertSame(
 			array(
 				'gateway'                 => 'stripe',
@@ -215,6 +244,7 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 					'exp_year'         => 2025,
 					'billing_postcode' => '10001',
 				),
+				'transaction_mode'        => PaymentMethodData::MODE_LIVE,
 			),
 			$result->to_array()
 		);
@@ -227,12 +257,11 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
 		$result = $this->sut->resolve(
-			null,
-			'stripe',
+			new PaymentMethodData( 'stripe' ),
 			array( 'stripe_source' => 'src_legacy_123' )
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
+		$this->assertSame( 'card', $result->to_array()['payment_type'] );
 	}
 
 	/**
@@ -242,15 +271,13 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
 		$result = $this->sut->resolve(
-			null,
-			'stripe',
+			new PaymentMethodData( 'stripe' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_saved_123',
 				'wc-stripe-payment-token'  => 'token_abc',
 			)
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertTrue( $result->to_array()['is_saved_payment_method'] );
 	}
 
@@ -261,59 +288,152 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
 		$result = $this->sut->resolve(
-			null,
-			'stripe',
+			new PaymentMethodData( 'stripe' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_new_123',
 				'wc-stripe-payment-token'  => 'new',
 			)
 		);
 
-		$this->assertInstanceOf( PaymentMethodData::class, $result );
 		$this->assertFalse( $result->to_array()['is_saved_payment_method'] );
 	}
 
 	/**
-	 * @testdox Returns resolved when API returns null.
+	 * @testdox Returns data with mode applied when API returns null.
 	 */
 	public function test_returns_resolved_when_api_returns_null(): void {
 		// Mock response is null by default (set in setUp via reset).
+		$resolved = new PaymentMethodData( 'stripe' );
+
 		$result = $this->sut->resolve(
-			null,
-			'stripe',
+			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertNull( $result );
+		$array = $result->to_array();
+		$this->assertSame( 'stripe', $array['gateway'] );
+		$this->assertNull( $array['payment_type'] );
 	}
 
-
 	/**
-	 * @testdox Returns resolved when API returns a WP_Error.
+	 * @testdox Returns data with mode applied when API returns a WP_Error.
 	 */
 	public function test_returns_resolved_when_api_returns_wp_error(): void {
 		\WC_Stripe_API::set_mock_response( new \WP_Error( 'stripe_error', 'Connection failed' ) );
 
+		$resolved = new PaymentMethodData( 'stripe' );
+
 		$result = $this->sut->resolve(
-			null,
-			'stripe',
+			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertNull( $result );
+		$array = $result->to_array();
+		$this->assertSame( 'stripe', $array['gateway'] );
+		$this->assertNull( $array['payment_type'] );
 	}
 
 	/**
 	 * @testdox Does not match 'stripe_something' incorrectly as non-Stripe gateway.
 	 */
 	public function test_does_not_match_stripe_partial_prefix(): void {
+		$resolved = new PaymentMethodData( 'stripez_custom' );
+
 		$result = $this->sut->resolve(
-			null,
-			'stripez_custom',
+			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertNull( $result );
+		$this->assertSame( $resolved, $result );
+	}
+
+	/**
+	 * @testdox Includes test mode when Stripe is not in live mode.
+	 */
+	public function test_includes_test_mode(): void {
+		WC_Stripe_Mode_Stub::set_live( false );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array( 'wc-stripe-payment-method' => 'pm_123' )
+		);
+
+		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Includes live mode when Stripe is in live mode.
+	 */
+	public function test_includes_live_mode(): void {
+		WC_Stripe_Mode_Stub::set_live( true );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array( 'wc-stripe-payment-method' => 'pm_123' )
+		);
+
+		$this->assertSame( PaymentMethodData::MODE_LIVE, $result->to_array()['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Augments pre-resolved token data with transaction mode when PM ID is missing.
+	 */
+	public function test_augments_preresolved_with_mode_on_missing_pm_id(): void {
+		WC_Stripe_Mode_Stub::set_live( false );
+
+		$resolved = new PaymentMethodData( 'stripe', 'card', true );
+
+		$result = $this->sut->resolve( $resolved, array() );
+
+		$this->assertNotSame( $resolved, $result );
+		$array = $result->to_array();
+		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertTrue( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @testdox Augments pre-resolved token data with transaction mode on API error.
+	 */
+	public function test_augments_preresolved_with_mode_on_api_error(): void {
+		WC_Stripe_Mode_Stub::set_live( true );
+		\WC_Stripe_API::set_mock_response( new \WP_Error( 'stripe_error', 'Fail' ) );
+
+		$resolved = new PaymentMethodData( 'stripe', 'card', true );
+
+		$result = $this->sut->resolve(
+			$resolved,
+			array( 'wc-stripe-payment-method' => 'pm_123' )
+		);
+
+		$this->assertNotSame( $resolved, $result );
+		$array = $result->to_array();
+		$this->assertSame( PaymentMethodData::MODE_LIVE, $array['transaction_mode'] );
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertTrue( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @testdox Includes transaction mode for non-card payment types.
+	 */
+	public function test_includes_mode_for_non_card_types(): void {
+		WC_Stripe_Mode_Stub::set_live( false );
+
+		$response       = new \stdClass();
+		$response->type = 'sepa_debit';
+
+		\WC_Stripe_API::set_mock_response( $response );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'stripe_sepa_debit' ),
+			array( 'wc-stripe-payment-method' => 'pm_sepa_123' )
+		);
+
+		$array = $result->to_array();
+		$this->assertSame( 'sepa_debit', $array['payment_type'] );
+		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
 	}
 
 	/**
