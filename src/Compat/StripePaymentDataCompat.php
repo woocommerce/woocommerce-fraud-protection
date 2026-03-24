@@ -46,23 +46,23 @@ class StripePaymentDataCompat {
 	/**
 	 * Resolve Stripe payment data.
 	 *
-	 * @param PaymentMethodData $resolved     Previously resolved data.
-	 * @param array             $payment_data Normalized key-value payment data.
+	 * @param PaymentMethodData $resolved               Previously resolved data.
+	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.
 	 * @return PaymentMethodData Resolved data, or pass-through.
 	 */
-	public function resolve( PaymentMethodData $resolved, array $payment_data ): PaymentMethodData {
+	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
 		if ( ! $this->is_stripe_gateway( $resolved->get_gateway() ) ) {
 			return $resolved;
 		}
 
 		$transaction_mode = $this->resolve_transaction_mode();
 
-		$pm_id = $payment_data['wc-stripe-payment-method'] ?? ( $payment_data['stripe_source'] ?? '' );
+		$pm_id = $checkout_payment_fields['wc-stripe-payment-method'] ?? ( $checkout_payment_fields['stripe_source'] ?? '' );
 		if ( empty( $pm_id ) ) {
 			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
-		$token_value = $payment_data['wc-stripe-payment-token'] ?? '';
+		$token_value = $checkout_payment_fields['wc-stripe-payment-token'] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
