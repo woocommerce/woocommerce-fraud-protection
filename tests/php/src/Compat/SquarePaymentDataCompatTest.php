@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat;
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
@@ -80,7 +80,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 				'gateway'                 => 'square_credit_card',
 				'payment_type'            => 'card',
 				'is_saved_payment_method' => false,
-				'card'                    => array(
+				'instrument'              => array(
 					'brand'            => 'visa',
 					'funding'          => null,
 					'last4'            => '1234',
@@ -136,7 +136,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			'square_credit_card',
 			'card',
 			true,
-			new CardPaymentMethodData( 'visa', null, '4242', null, null, 12, 2028 )
+			new PaymentInstrumentData( 'visa', null, '4242', null, null, 12, 2028 )
 		);
 
 		$result = $this->sut->resolve(
@@ -150,8 +150,8 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 		$array = $result->to_array();
 		$this->assertSame( 'card', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
-		$this->assertSame( 'visa', $array['card']['brand'] );
-		$this->assertSame( '4242', $array['card']['last4'] );
+		$this->assertSame( 'visa', $array['instrument']['brand'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
 	}
 
 	/**
@@ -164,7 +164,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			'square_credit_card',
 			'card',
 			true,
-			new CardPaymentMethodData( 'visa', null, '4242', null, null, 12, 2028 )
+			new PaymentInstrumentData( 'visa', null, '4242', null, null, 12, 2028 )
 		);
 
 		$result = $this->sut->resolve(
@@ -177,8 +177,8 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 		$this->assertNotSame( $token_data, $result );
 		$array = $result->to_array();
 		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
-		$this->assertSame( 'visa', $array['card']['brand'] );
-		$this->assertSame( '4242', $array['card']['last4'] );
+		$this->assertSame( 'visa', $array['instrument']['brand'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
 	}
 
 	/**

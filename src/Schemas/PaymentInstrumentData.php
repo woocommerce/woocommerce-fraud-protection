@@ -1,6 +1,6 @@
 <?php
 /**
- * CardPaymentMethodData class file.
+ * PaymentInstrumentData class file.
  */
 
 declare( strict_types=1 );
@@ -10,14 +10,15 @@ namespace Automattic\WooCommerce\FraudProtection\Schemas;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Immutable record object for card-specific payment method details.
+ * Immutable record object for payment instrument details.
  *
- * Contains normalized card information (brand, last4, funding, etc.)
- * resolved from gateway-specific payment data.
+ * Contains normalized information about the payment instrument (card, bank
+ * account, etc.) resolved from gateway-specific payment data. Fields are
+ * nullable — only those applicable to the instrument type are populated.
  *
  * @internal
  */
-class CardPaymentMethodData {
+class PaymentInstrumentData {
 
 	/**
 	 * Card brand (e.g. 'visa', 'mastercard', 'amex').
@@ -34,21 +35,21 @@ class CardPaymentMethodData {
 	private ?string $funding;
 
 	/**
-	 * Last four digits of the card number.
+	 * Last four digits of the card number, bank account, or IBAN.
 	 *
 	 * @var ?string
 	 */
 	private ?string $last4;
 
 	/**
-	 * Unique card fingerprint for cross-transaction matching.
+	 * Unique fingerprint for cross-transaction matching.
 	 *
 	 * @var ?string
 	 */
 	private ?string $fingerprint;
 
 	/**
-	 * Two-letter country code where the card was issued (e.g. 'US', 'GB').
+	 * Two-letter country code (e.g. 'US', 'DE').
 	 *
 	 * @var ?string
 	 */
@@ -69,7 +70,7 @@ class CardPaymentMethodData {
 	private ?int $exp_year;
 
 	/**
-	 * Billing postcode associated with the card payment.
+	 * Billing postcode associated with the payment.
 	 *
 	 * @var ?string
 	 */
@@ -81,8 +82,8 @@ class CardPaymentMethodData {
 	 * @param ?string $brand            Card brand.
 	 * @param ?string $funding          Card funding type.
 	 * @param ?string $last4            Last four digits.
-	 * @param ?string $fingerprint      Card fingerprint.
-	 * @param ?string $country          Issuing country code.
+	 * @param ?string $fingerprint      Fingerprint.
+	 * @param ?string $country          Country code.
 	 * @param ?int    $exp_month        Expiration month.
 	 * @param ?int    $exp_year         Expiration year.
 	 * @param ?string $billing_postcode Billing postcode.

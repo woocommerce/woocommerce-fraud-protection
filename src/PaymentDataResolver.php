@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection;
 
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 
 defined( 'ABSPATH' ) || exit;
@@ -144,7 +144,7 @@ class PaymentDataResolver {
 			$token->get_gateway_id(),
 			'card',
 			true,
-			new CardPaymentMethodData(
+			new PaymentInstrumentData(
 				$token->get_card_type() ? $token->get_card_type() : null,
 				null,
 				$token->get_last4() ? $token->get_last4() : null,

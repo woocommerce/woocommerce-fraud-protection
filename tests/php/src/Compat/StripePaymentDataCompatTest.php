@@ -198,7 +198,7 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
-		$this->assertNull( $array['card'] );
+		$this->assertNull( $array['instrument'] );
 	}
 
 	/**
@@ -234,7 +234,7 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 				'gateway'                 => 'stripe',
 				'payment_type'            => 'card',
 				'is_saved_payment_method' => false,
-				'card'                    => array(
+				'instrument'              => array(
 					'brand'            => 'visa',
 					'funding'          => 'credit',
 					'last4'            => '4242',

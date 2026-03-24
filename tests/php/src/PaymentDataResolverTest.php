@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal;
 
 use Automattic\WooCommerce\FraudProtection\PaymentDataResolver;
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
@@ -65,7 +65,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			'test_gateway',
 			'card',
 			false,
-			new CardPaymentMethodData( 'visa', 'credit', '4242' )
+			new PaymentInstrumentData( 'visa', 'credit', '4242' )
 		);
 
 		add_filter(
@@ -124,7 +124,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 		);
 
 		// Falls back to token pre-resolution, not baseline.
-		$this->assertSame( 'visa', $result->to_array()['card']['brand'] );
+		$this->assertSame( 'visa', $result->to_array()['instrument']['brand'] );
 	}
 
 	/**
@@ -215,10 +215,10 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 		$this->assertSame( 'card', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
 		$this->assertSame( 'stripe', $array['gateway'] );
-		$this->assertSame( 'visa', $array['card']['brand'] );
-		$this->assertSame( '4242', $array['card']['last4'] );
-		$this->assertSame( 12, $array['card']['exp_month'] );
-		$this->assertSame( 2028, $array['card']['exp_year'] );
+		$this->assertSame( 'visa', $array['instrument']['brand'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertSame( 12, $array['instrument']['exp_month'] );
+		$this->assertSame( 2028, $array['instrument']['exp_year'] );
 	}
 
 	/**
@@ -291,8 +291,8 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertSame( 'stripe', $array['gateway'] );
-		$this->assertSame( 'visa', $array['card']['brand'] );
-		$this->assertSame( '4242', $array['card']['last4'] );
+		$this->assertSame( 'visa', $array['instrument']['brand'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
 	}
 
@@ -317,8 +317,8 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertSame( 'square_credit_card', $array['gateway'] );
-		$this->assertSame( 'visa', $array['card']['brand'] );
-		$this->assertSame( '1111', $array['card']['last4'] );
+		$this->assertSame( 'visa', $array['instrument']['brand'] );
+		$this->assertSame( '1111', $array['instrument']['last4'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
 	}
 
@@ -341,7 +341,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			array( 'token' => (string) $token->get_id() )
 		);
 
-		$this->assertSame( 'mastercard', $result->to_array()['card']['brand'] );
+		$this->assertSame( 'mastercard', $result->to_array()['instrument']['brand'] );
 	}
 
 	/**
@@ -375,7 +375,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			'stripe',
 			'card',
 			true,
-			new CardPaymentMethodData( 'visa', 'credit', '4242', 'fp_abc', 'US', 12, 2028 )
+			new PaymentInstrumentData( 'visa', 'credit', '4242', 'fp_abc', 'US', 12, 2028 )
 		);
 
 		add_filter(
@@ -423,6 +423,6 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 		);
 
 		$this->assertSame( $captured_initial, $result );
-		$this->assertSame( 'mastercard', $result->to_array()['card']['brand'] );
+		$this->assertSame( 'mastercard', $result->to_array()['instrument']['brand'] );
 	}
 }
