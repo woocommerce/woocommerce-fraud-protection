@@ -41,6 +41,12 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 				'exp_month'        => 12,
 				'exp_year'         => 2025,
 				'billing_postcode' => null,
+				'wallet'           => null,
+				'bank_code'        => null,
+				'bin'                => null,
+				'cvc_check'          => null,
+				'avs_address_check'  => null,
+				'avs_postcode_check' => null,
 			),
 			$instrument->to_array()
 		);
@@ -62,8 +68,62 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 				'exp_month'        => null,
 				'exp_year'         => null,
 				'billing_postcode' => null,
+				'wallet'           => null,
+				'bank_code'        => null,
+				'bin'                => null,
+				'cvc_check'          => null,
+				'avs_address_check'  => null,
+				'avs_postcode_check' => null,
 			),
 			$instrument->to_array()
 		);
+	}
+
+	/**
+	 * @testdox is_empty() returns true when all fields are null.
+	 */
+	public function test_is_empty_returns_true_when_all_null(): void {
+		$this->assertTrue( ( new PaymentInstrumentData() )->is_empty() );
+	}
+
+	/**
+	 * @testdox is_empty() returns false when any field is set.
+	 */
+	public function test_is_empty_returns_false_when_any_field_set(): void {
+		$this->assertFalse( ( new PaymentInstrumentData( 'visa' ) )->is_empty() );
+	}
+
+	/**
+	 * @testdox sanitize_check() accepts valid check constants.
+	 */
+	public function test_sanitize_check_accepts_valid_values(): void {
+		$instrument = new PaymentInstrumentData(
+			null, null, null, null, null, null, null, null, null, null, null,
+			PaymentInstrumentData::CHECK_PASS,
+			PaymentInstrumentData::CHECK_FAIL,
+			PaymentInstrumentData::CHECK_UNAVAILABLE
+		);
+
+		$array = $instrument->to_array();
+		$this->assertSame( PaymentInstrumentData::CHECK_PASS, $array['cvc_check'] );
+		$this->assertSame( PaymentInstrumentData::CHECK_FAIL, $array['avs_address_check'] );
+		$this->assertSame( PaymentInstrumentData::CHECK_UNAVAILABLE, $array['avs_postcode_check'] );
+	}
+
+	/**
+	 * @testdox sanitize_check() drops unrecognized values to null (fail-open).
+	 */
+	public function test_sanitize_check_drops_invalid_values(): void {
+		$instrument = new PaymentInstrumentData(
+			null, null, null, null, null, null, null, null, null, null, null,
+			'invalid_value',
+			'also_invalid',
+			null
+		);
+
+		$array = $instrument->to_array();
+		$this->assertNull( $array['cvc_check'] );
+		$this->assertNull( $array['avs_address_check'] );
+		$this->assertNull( $array['avs_postcode_check'] );
 	}
 }

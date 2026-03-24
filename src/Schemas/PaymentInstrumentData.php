@@ -21,6 +21,38 @@ defined( 'ABSPATH' ) || exit;
 class PaymentInstrumentData {
 
 	/**
+	 * Verification check passed — the value matches what the issuer has on file.
+	 */
+	public const CHECK_PASS = 'pass';
+
+	/**
+	 * Verification check failed — the value does not match.
+	 */
+	public const CHECK_FAIL = 'fail';
+
+	/**
+	 * Verification check unavailable — the issuer does not support this check.
+	 */
+	public const CHECK_UNAVAILABLE = 'unavailable';
+
+	/**
+	 * Verification check not performed — the check was not run for this transaction.
+	 */
+	public const CHECK_UNCHECKED = 'unchecked';
+
+	/**
+	 * Valid verification check result values.
+	 *
+	 * @var array<int, string>
+	 */
+	public const VALID_CHECK_RESULTS = array(
+		self::CHECK_PASS,
+		self::CHECK_FAIL,
+		self::CHECK_UNAVAILABLE,
+		self::CHECK_UNCHECKED,
+	);
+
+	/**
 	 * Card brand (e.g. 'visa', 'mastercard', 'amex').
 	 *
 	 * @var ?string
@@ -77,16 +109,64 @@ class PaymentInstrumentData {
 	private ?string $billing_postcode;
 
 	/**
+	 * Digital wallet type for express checkout methods (e.g. 'apple_pay', 'google_pay', 'link').
+	 *
+	 * @var ?string
+	 */
+	private ?string $wallet;
+
+	/**
+	 * Bank routing code (e.g. SEPA bank_code, BECS bsb_number, US routing_number, iDEAL bic).
+	 *
+	 * @var ?string
+	 */
+	private ?string $bank_code;
+
+	/**
+	 * Bank Identification Number (first 6 digits of card number, a.k.a. IIN).
+	 *
+	 * @var ?string
+	 */
+	private ?string $bin;
+
+	/**
+	 * CVC verification result ('pass', 'fail', 'unavailable', 'unchecked').
+	 *
+	 * @var ?string
+	 */
+	private ?string $cvc_check;
+
+	/**
+	 * AVS street address verification result.
+	 *
+	 * @var ?string
+	 */
+	private ?string $avs_address_check;
+
+	/**
+	 * AVS postal code verification result.
+	 *
+	 * @var ?string
+	 */
+	private ?string $avs_postcode_check;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param ?string $brand            Card brand.
-	 * @param ?string $funding          Card funding type.
-	 * @param ?string $last4            Last four digits.
-	 * @param ?string $fingerprint      Fingerprint.
-	 * @param ?string $country          Country code.
-	 * @param ?int    $exp_month        Expiration month.
-	 * @param ?int    $exp_year         Expiration year.
-	 * @param ?string $billing_postcode Billing postcode.
+	 * @param ?string $brand              Card brand.
+	 * @param ?string $funding            Card funding type.
+	 * @param ?string $last4              Last four digits.
+	 * @param ?string $fingerprint        Fingerprint.
+	 * @param ?string $country            Country code.
+	 * @param ?int    $exp_month          Expiration month.
+	 * @param ?int    $exp_year           Expiration year.
+	 * @param ?string $billing_postcode   Billing postcode.
+	 * @param ?string $wallet             Digital wallet type.
+	 * @param ?string $bank_code          Bank routing code.
+	 * @param ?string $bin                Bank Identification Number.
+	 * @param ?string $cvc_check          CVC verification result.
+	 * @param ?string $avs_address_check  AVS street address result.
+	 * @param ?string $avs_postcode_check AVS postal code result.
 	 */
 	public function __construct(
 		?string $brand = null,
@@ -96,16 +176,66 @@ class PaymentInstrumentData {
 		?string $country = null,
 		?int $exp_month = null,
 		?int $exp_year = null,
-		?string $billing_postcode = null
+		?string $billing_postcode = null,
+		?string $wallet = null,
+		?string $bank_code = null,
+		?string $bin = null,
+		?string $cvc_check = null,
+		?string $avs_address_check = null,
+		?string $avs_postcode_check = null
 	) {
-		$this->brand            = $brand;
-		$this->funding          = $funding;
-		$this->last4            = $last4;
-		$this->fingerprint      = $fingerprint;
-		$this->country          = $country;
-		$this->exp_month        = $exp_month;
-		$this->exp_year         = $exp_year;
-		$this->billing_postcode = $billing_postcode;
+		$this->brand              = $brand;
+		$this->funding            = $funding;
+		$this->last4              = $last4;
+		$this->fingerprint        = $fingerprint;
+		$this->country            = $country;
+		$this->exp_month          = $exp_month;
+		$this->exp_year           = $exp_year;
+		$this->billing_postcode   = $billing_postcode;
+		$this->wallet             = $wallet;
+		$this->bank_code          = $bank_code;
+		$this->bin                = $bin;
+		$this->cvc_check          = self::sanitize_check( $cvc_check );
+		$this->avs_address_check  = self::sanitize_check( $avs_address_check );
+		$this->avs_postcode_check = self::sanitize_check( $avs_postcode_check );
+	}
+
+	/**
+	 * Sanitize a verification check result.
+	 *
+	 * Returns null for unrecognized values to avoid blocking on unknown results.
+	 *
+	 * @param ?string $value The check result to sanitize.
+	 * @return ?string A valid check constant, or null.
+	 */
+	private static function sanitize_check( ?string $value ): ?string {
+		if ( null === $value || in_array( $value, self::VALID_CHECK_RESULTS, true ) ) {
+			return $value;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Whether all fields are null (no instrument data was resolved).
+	 *
+	 * @return bool
+	 */
+	public function is_empty(): bool {
+		return null === $this->brand
+			&& null === $this->funding
+			&& null === $this->last4
+			&& null === $this->fingerprint
+			&& null === $this->country
+			&& null === $this->exp_month
+			&& null === $this->exp_year
+			&& null === $this->billing_postcode
+			&& null === $this->wallet
+			&& null === $this->bank_code
+			&& null === $this->bin
+			&& null === $this->cvc_check
+			&& null === $this->avs_address_check
+			&& null === $this->avs_postcode_check;
 	}
 
 	/**
@@ -115,14 +245,20 @@ class PaymentInstrumentData {
 	 */
 	public function to_array(): array {
 		return array(
-			'brand'            => $this->brand,
-			'funding'          => $this->funding,
-			'last4'            => $this->last4,
-			'fingerprint'      => $this->fingerprint,
-			'country'          => $this->country,
-			'exp_month'        => $this->exp_month,
-			'exp_year'         => $this->exp_year,
-			'billing_postcode' => $this->billing_postcode,
+			'brand'              => $this->brand,
+			'funding'            => $this->funding,
+			'last4'              => $this->last4,
+			'fingerprint'        => $this->fingerprint,
+			'country'            => $this->country,
+			'exp_month'          => $this->exp_month,
+			'exp_year'           => $this->exp_year,
+			'billing_postcode'   => $this->billing_postcode,
+			'wallet'             => $this->wallet,
+			'bank_code'          => $this->bank_code,
+			'bin'                => $this->bin,
+			'cvc_check'          => $this->cvc_check,
+			'avs_address_check'  => $this->avs_address_check,
+			'avs_postcode_check' => $this->avs_postcode_check,
 		);
 	}
 }
