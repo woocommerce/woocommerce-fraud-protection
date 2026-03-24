@@ -934,4 +934,46 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertEquals( 'checkout_started', $result['collected_events'][1]['event_type'] );
 		$this->assertEquals( array( 'gateway' => 'stripe' ), $result['collected_events'][1]['event_data'] );
 	}
+
+	// ========================================
+	// Clear Collected Events Tests
+	// ========================================
+
+	/**
+	 * @testdox clear_collected_events() removes all event data from session.
+	 */
+	public function test_clear_collected_events_removes_data_from_session(): void {
+		$this->sut->collect( 'cart_page_loaded', array() );
+		$this->sut->collect( 'checkout_page_loaded', array() );
+
+		$this->sut->clear_collected_events();
+
+		$this->assertNull( WC()->session->get( 'fraud_protection_collected_data' ) );
+	}
+
+	/**
+	 * @testdox clear_collected_events() does not throw when no data has been collected.
+	 */
+	public function test_clear_collected_events_handles_no_existing_data(): void {
+		$this->sut->clear_collected_events();
+
+		$this->assertNull( WC()->session->get( 'fraud_protection_collected_data' ) );
+	}
+
+	/**
+	 * @testdox New events can be collected after clear_collected_events() is called.
+	 */
+	public function test_clear_collected_events_allows_fresh_collection_after_clearing(): void {
+		$this->sut->collect( 'cart_page_loaded', array() );
+		$this->sut->collect( 'checkout_page_loaded', array() );
+
+		$this->sut->clear_collected_events();
+
+		$this->sut->collect( 'order_placed', array( 'order_id' => 456 ) );
+
+		$stored_data = WC()->session->get( 'fraud_protection_collected_data' );
+		$this->assertIsArray( $stored_data );
+		$this->assertCount( 1, $stored_data );
+		$this->assertEquals( 'order_placed', $stored_data[0]['event_type'] );
+	}
 }
