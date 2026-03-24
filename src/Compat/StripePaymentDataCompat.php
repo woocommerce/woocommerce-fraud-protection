@@ -106,18 +106,23 @@ class StripePaymentDataCompat {
 	}
 
 	/**
-	 * Resolve the Stripe transaction mode from settings.
+	 * Resolve the Stripe transaction mode.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * Uses the Stripe gateway's own mode API when available, which is the same
+	 * method Stripe uses internally to select API keys during payment processing.
+	 *
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
 	 */
 	private function resolve_transaction_mode(): string {
-		$settings = get_option( 'woocommerce_stripe_settings' );
-
-		if ( ! is_array( $settings ) || ! isset( $settings['testmode'] ) ) {
+		if ( ! class_exists( '\WC_Stripe_Mode' ) ) {
 			return PaymentMethodData::MODE_UNKNOWN;
 		}
 
-		return 'yes' === $settings['testmode'] ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
+		try {
+			return \WC_Stripe_Mode::is_live() ? PaymentMethodData::MODE_LIVE : PaymentMethodData::MODE_TEST;
+		} catch ( \Throwable $e ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
 	}
 
 	/**

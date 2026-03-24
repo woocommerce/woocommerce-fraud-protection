@@ -11,6 +11,78 @@ use Automattic\WooCommerce\FraudProtection\Compat\PayPalPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
+// Stub PayPal Payments PPCP and ConnectionState if not loaded.
+if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
+
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class PPCP_ConnectionState_Stub {
+
+		/**
+		 * Whether the merchant is connected and in sandbox mode.
+		 *
+		 * @var ?bool True = sandbox, false = production, null = not connected.
+		 */
+		private static ?bool $sandbox = null;
+
+		/**
+		 * Set the sandbox state for testing.
+		 *
+		 * @param ?bool $sandbox True = sandbox, false = production, null = not connected.
+		 * @return void
+		 */
+		public static function set_sandbox( ?bool $sandbox ): void {
+			self::$sandbox = $sandbox;
+		}
+
+		/**
+		 * Whether the merchant is connected and in sandbox mode.
+		 *
+		 * @return bool
+		 */
+		public function is_sandbox(): bool {
+			return true === self::$sandbox;
+		}
+
+		/**
+		 * Whether the merchant is connected and in production mode.
+		 *
+		 * @return bool
+		 */
+		public function is_production(): bool {
+			return false === self::$sandbox;
+		}
+	}
+
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class PPCP_Container_Stub {
+
+		/**
+		 * Get a service by ID.
+		 *
+		 * @param string $id Service ID.
+		 * @return PPCP_ConnectionState_Stub
+		 */
+		public function get( string $id ): PPCP_ConnectionState_Stub {
+			return new PPCP_ConnectionState_Stub();
+		}
+	}
+
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class PPCP_Stub {
+
+		/**
+		 * Get the container.
+		 *
+		 * @return PPCP_Container_Stub
+		 */
+		public static function container(): PPCP_Container_Stub {
+			return new PPCP_Container_Stub();
+		}
+	}
+
+	class_alias( __NAMESPACE__ . '\PPCP_Stub', 'WooCommerce\PayPalCommerce\PPCP' );
+}
+
 /**
  * Tests for the PayPalPaymentDataCompat class.
  *
@@ -38,8 +110,7 @@ class PayPalPaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
-		delete_option( 'woocommerce-ppcp-settings' );
-		delete_option( 'woocommerce-ppcp-data-common' );
+		PPCP_ConnectionState_Stub::set_sandbox( null );
 		parent::tearDown();
 	}
 
@@ -55,13 +126,10 @@ class PayPalPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Includes test mode when PayPal sandbox_on setting is enabled.
+	 * @testdox Includes test mode when PayPal is in sandbox.
 	 */
-	public function test_includes_test_mode_from_settings(): void {
-		update_option(
-			'woocommerce-ppcp-settings',
-			array( 'sandbox_on' => '1' )
-		);
+	public function test_includes_test_mode(): void {
+		PPCP_ConnectionState_Stub::set_sandbox( true );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' )
@@ -71,13 +139,10 @@ class PayPalPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Includes live mode when PayPal sandbox_on setting is empty.
+	 * @testdox Includes live mode when PayPal is in production.
 	 */
-	public function test_includes_live_mode_from_settings(): void {
-		update_option(
-			'woocommerce-ppcp-settings',
-			array( 'sandbox_on' => '' )
-		);
+	public function test_includes_live_mode(): void {
+		PPCP_ConnectionState_Stub::set_sandbox( false );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' )
@@ -87,61 +152,10 @@ class PayPalPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Resolves test mode from new settings format (use_sandbox boolean).
+	 * @testdox Transaction mode is unknown when PayPal merchant is not connected.
 	 */
-	public function test_includes_test_mode_from_new_settings_format(): void {
-		update_option(
-			'woocommerce-ppcp-data-common',
-			array( 'use_sandbox' => true )
-		);
-
-		$result = $this->sut->resolve(
-			new PaymentMethodData( 'ppcp-gateway' )
-		);
-
-		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
-	}
-
-	/**
-	 * @testdox Resolves live mode from new settings format (use_sandbox false).
-	 */
-	public function test_includes_live_mode_from_new_settings_format(): void {
-		update_option(
-			'woocommerce-ppcp-data-common',
-			array( 'use_sandbox' => false )
-		);
-
-		$result = $this->sut->resolve(
-			new PaymentMethodData( 'ppcp-gateway' )
-		);
-
-		$this->assertSame( PaymentMethodData::MODE_LIVE, $result->to_array()['transaction_mode'] );
-	}
-
-	/**
-	 * @testdox New settings format takes precedence over legacy.
-	 */
-	public function test_new_settings_format_takes_precedence(): void {
-		update_option(
-			'woocommerce-ppcp-data-common',
-			array( 'use_sandbox' => true )
-		);
-		update_option(
-			'woocommerce-ppcp-settings',
-			array( 'sandbox_on' => '' )
-		);
-
-		$result = $this->sut->resolve(
-			new PaymentMethodData( 'ppcp-gateway' )
-		);
-
-		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
-	}
-
-	/**
-	 * @testdox Transaction mode is unknown when PayPal settings are absent.
-	 */
-	public function test_transaction_mode_unknown_without_settings(): void {
+	public function test_transaction_mode_unknown_when_not_connected(): void {
+		// Default state: not connected (null).
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' )
 		);
@@ -153,10 +167,7 @@ class PayPalPaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * @testdox Matches ppcp-card-button-gateway as a PayPal gateway.
 	 */
 	public function test_matches_ppcp_card_button_gateway(): void {
-		update_option(
-			'woocommerce-ppcp-settings',
-			array( 'sandbox_on' => '1' )
-		);
+		PPCP_ConnectionState_Stub::set_sandbox( true );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-card-button-gateway' )
@@ -169,10 +180,7 @@ class PayPalPaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * @testdox Augments pre-resolved data with transaction mode.
 	 */
 	public function test_augments_preresolved_with_mode(): void {
-		update_option(
-			'woocommerce-ppcp-settings',
-			array( 'sandbox_on' => '1' )
-		);
+		PPCP_ConnectionState_Stub::set_sandbox( true );
 
 		$resolved = new PaymentMethodData( 'ppcp-gateway', 'paypal', true );
 

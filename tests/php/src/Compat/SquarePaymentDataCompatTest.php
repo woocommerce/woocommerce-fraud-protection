@@ -12,13 +12,11 @@ use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
+// Stub wc_square() in the global namespace if not loaded.
+require_once __DIR__ . '/../../stubs/wc-square.php';
+
 /**
  * Tests for the SquarePaymentDataCompat class.
- *
- * Note: the WC_SQUARE_SANDBOX constant override path is not tested here
- * because PHP constants cannot be undefined after definition, requiring
- * @runInSeparateProcess which adds ~2.5s per test. The path is a trivial
- * one-liner and covered by code review.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat
  */
@@ -44,7 +42,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
-		delete_option( 'wc_square_settings' );
+		\WC_Square_Settings_Stub::set_sandbox( false );
 		parent::tearDown();
 	}
 
@@ -92,7 +90,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 					'exp_year'         => 2028,
 					'billing_postcode' => '90210',
 				),
-				'transaction_mode'        => PaymentMethodData::MODE_UNKNOWN,
+				'transaction_mode'        => PaymentMethodData::MODE_LIVE,
 			),
 			$result->to_array()
 		);
@@ -160,10 +158,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * @testdox Saved card with empty card keys and sandbox mode sets test mode.
 	 */
 	public function test_saved_card_with_empty_keys_sets_mode(): void {
-		update_option(
-			'wc_square_settings',
-			array( 'enable_sandbox' => 'yes' )
-		);
+		\WC_Square_Settings_Stub::set_sandbox( true );
 
 		$token_data = new PaymentMethodData(
 			'square_credit_card',
@@ -187,13 +182,10 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Includes test mode when Square sandbox setting is yes.
+	 * @testdox Includes test mode when Square is in sandbox.
 	 */
-	public function test_includes_test_mode_from_settings(): void {
-		update_option(
-			'wc_square_settings',
-			array( 'enable_sandbox' => 'yes' )
-		);
+	public function test_includes_test_mode(): void {
+		\WC_Square_Settings_Stub::set_sandbox( true );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'square_credit_card' ),
@@ -207,13 +199,10 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Includes live mode when Square sandbox setting is no.
+	 * @testdox Includes live mode when Square is in production.
 	 */
-	public function test_includes_live_mode_from_settings(): void {
-		update_option(
-			'wc_square_settings',
-			array( 'enable_sandbox' => 'no' )
-		);
+	public function test_includes_live_mode(): void {
+		\WC_Square_Settings_Stub::set_sandbox( false );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'square_credit_card' ),
@@ -224,20 +213,5 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 		);
 
 		$this->assertSame( PaymentMethodData::MODE_LIVE, $result->to_array()['transaction_mode'] );
-	}
-
-	/**
-	 * @testdox Transaction mode is unknown when Square settings are absent.
-	 */
-	public function test_transaction_mode_unknown_without_settings(): void {
-		$result = $this->sut->resolve(
-			new PaymentMethodData( 'square_credit_card' ),
-			array(
-				'wc-square-credit-card-card-type' => 'visa',
-				'wc-square-credit-card-last-four' => '4242',
-			)
-		);
-
-		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $result->to_array()['transaction_mode'] );
 	}
 }

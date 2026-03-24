@@ -86,24 +86,22 @@ class SquarePaymentDataCompat {
 	}
 
 	/**
-	 * Resolve the Square transaction mode from settings.
+	 * Resolve the Square transaction mode.
 	 *
-	 * Checks the WC_SQUARE_SANDBOX constant first (development override),
-	 * then falls back to the enable_sandbox setting.
+	 * Uses the Square gateway's own settings handler when available, which is
+	 * the same method Square uses internally to select the API environment.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
 	 */
 	private function resolve_transaction_mode(): string {
-		if ( defined( 'WC_SQUARE_SANDBOX' ) && WC_SQUARE_SANDBOX ) {
-			return PaymentMethodData::MODE_TEST;
-		}
-
-		$settings = get_option( 'wc_square_settings' );
-
-		if ( ! is_array( $settings ) || ! isset( $settings['enable_sandbox'] ) ) {
+		if ( ! function_exists( 'wc_square' ) ) {
 			return PaymentMethodData::MODE_UNKNOWN;
 		}
 
-		return 'yes' === $settings['enable_sandbox'] ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
+		try {
+			return wc_square()->get_settings_handler()->is_sandbox() ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
+		} catch ( \Throwable $e ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
 	}
 }

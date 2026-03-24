@@ -16,8 +16,8 @@ defined( 'ABSPATH' ) || exit;
  * Resolves PayPal Payments transaction mode into PaymentMethodData.
  *
  * PayPal does not expose structured card/instrument data, so this compat
- * only resolves the test/live transaction mode based on the sandbox_on
- * setting.
+ * only resolves the test/live transaction mode based on the gateway's
+ * ConnectionState API.
  *
  * @internal
  */
@@ -58,28 +58,32 @@ class PayPalPaymentDataCompat {
 	}
 
 	/**
-	 * Resolve the PayPal transaction mode from settings.
+	 * Resolve the PayPal transaction mode.
 	 *
-	 * PayPal Payments has two settings formats:
-	 * - New (v3+): woocommerce-ppcp-data-common['use_sandbox'] (boolean).
-	 * - Legacy: woocommerce-ppcp-settings['sandbox_on'] ('1'/'' truthy/falsy).
+	 * Uses the PayPal Payments ConnectionState API when available, which is the
+	 * same method PayPal uses internally to select API endpoints (sandbox vs
+	 * production). Falls back to MODE_UNKNOWN when the gateway is unavailable
+	 * or the merchant is not connected.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
 	 */
 	private function resolve_transaction_mode(): string {
-		// New settings format (PayPal Payments v3+).
-		$common = get_option( 'woocommerce-ppcp-data-common' );
-		if ( is_array( $common ) && array_key_exists( 'use_sandbox', $common ) ) {
-			return ! empty( $common['use_sandbox'] ) ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
+		if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP' ) ) {
+			return PaymentMethodData::MODE_UNKNOWN;
 		}
 
-		// Legacy settings format — sandbox_on stored as '1'/'' (truthy/falsy), not 'yes'/'no'.
-		$settings = get_option( 'woocommerce-ppcp-settings' );
-		if ( is_array( $settings ) && array_key_exists( 'sandbox_on', $settings ) ) {
-			return ! empty( $settings['sandbox_on'] ) ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
-		}
+		try {
+			$connection_state = \WooCommerce\PayPalCommerce\PPCP::container()->get( 'settings.connection-state' );
 
-		return PaymentMethodData::MODE_UNKNOWN;
+			if ( $connection_state->is_production() ) {
+				return PaymentMethodData::MODE_LIVE;
+			}
+
+			// Not production: either sandbox (test) or not connected (unknown).
+			return $connection_state->is_sandbox() ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_UNKNOWN;
+		} catch ( \Throwable $e ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
 	}
 
 	/**

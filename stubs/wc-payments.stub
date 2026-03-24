@@ -1,0 +1,22 @@
+<?php
+/**
+ * PHPStan stub for WC_Payments and its Mode class.
+ *
+ * Used by WooPaymentsPaymentDataCompat to resolve transaction mode via the
+ * gateway's own API rather than reading settings directly.
+ */
+class WC_Payments {
+	/**
+	 * @return ?\WCPay\Core\Mode
+	 */
+	public static function mode(): ?\WCPay\Core\Mode {}
+}
+
+namespace WCPay\Core;
+
+class Mode {
+	/**
+	 * @return bool
+	 */
+	public function is_live(): bool {}
+}

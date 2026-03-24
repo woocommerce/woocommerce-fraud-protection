@@ -1,0 +1,27 @@
+<?php
+/**
+ * PHPStan stubs for WooCommerce PayPal Payments.
+ *
+ * Used by PayPalPaymentDataCompat to resolve transaction mode via the
+ * gateway's own API rather than reading settings directly.
+ */
+
+namespace WooCommerce\PayPalCommerce;
+
+class PPCP {
+	/**
+	 * @return PPCPContainer
+	 */
+	public static function container(): PPCPContainer {}
+}
+
+/**
+ * Minimal container interface for PHPStan.
+ */
+class PPCPContainer {
+	/**
+	 * @param string $id
+	 * @return mixed
+	 */
+	public function get( string $id ) {}
+}

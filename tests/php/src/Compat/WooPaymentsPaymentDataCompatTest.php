@@ -11,13 +11,73 @@ use Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
+// Stub WC_Payments and its Mode class if not loaded.
+if ( ! class_exists( '\WC_Payments', false ) ) {
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WCPay_Mode_Stub {
+
+		/**
+		 * Whether WooPayments is in live mode.
+		 *
+		 * @var bool
+		 */
+		private static bool $live = true;
+
+		/**
+		 * Set the live state for testing.
+		 *
+		 * @param bool $live True = live, false = test.
+		 * @return void
+		 */
+		public static function set_live( bool $live ): void {
+			self::$live = $live;
+		}
+
+		/**
+		 * Whether WooPayments is in live mode.
+		 *
+		 * @return bool
+		 */
+		public function is_live(): bool {
+			return self::$live;
+		}
+	}
+
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WC_Payments_Stub {
+
+		/**
+		 * Whether mode() returns a Mode instance or null.
+		 *
+		 * @var bool
+		 */
+		private static bool $mode_available = true;
+
+		/**
+		 * Set whether mode() returns a Mode instance.
+		 *
+		 * @param bool $available True = returns Mode, false = returns null.
+		 * @return void
+		 */
+		public static function set_mode_available( bool $available ): void {
+			self::$mode_available = $available;
+		}
+
+		/**
+		 * Get the mode instance.
+		 *
+		 * @return ?WCPay_Mode_Stub
+		 */
+		public static function mode(): ?WCPay_Mode_Stub {
+			return self::$mode_available ? new WCPay_Mode_Stub() : null;
+		}
+	}
+
+	class_alias( __NAMESPACE__ . '\WC_Payments_Stub', 'WC_Payments' );
+}
+
 /**
  * Tests for the WooPaymentsPaymentDataCompat class.
- *
- * Note: the WCPAY_DEV_MODE constant override path is not tested here
- * because PHP constants cannot be undefined after definition, requiring
- * @runInSeparateProcess which adds ~2.5s per test. The path is a trivial
- * one-liner and covered by code review.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat
  */
@@ -43,7 +103,8 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
-		delete_option( 'woocommerce_woocommerce_payments_settings' );
+		WCPay_Mode_Stub::set_live( true );
+		WC_Payments_Stub::set_mode_available( true );
 		parent::tearDown();
 	}
 
@@ -59,13 +120,10 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Includes test mode when WooPayments test_mode setting is yes.
+	 * @testdox Includes test mode when WooPayments is not in live mode.
 	 */
-	public function test_includes_test_mode_from_settings(): void {
-		update_option(
-			'woocommerce_woocommerce_payments_settings',
-			array( 'test_mode' => 'yes' )
-		);
+	public function test_includes_test_mode(): void {
+		WCPay_Mode_Stub::set_live( false );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' )
@@ -75,13 +133,10 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Includes live mode when WooPayments test_mode setting is no.
+	 * @testdox Includes live mode when WooPayments is in live mode.
 	 */
-	public function test_includes_live_mode_from_settings(): void {
-		update_option(
-			'woocommerce_woocommerce_payments_settings',
-			array( 'test_mode' => 'no' )
-		);
+	public function test_includes_live_mode(): void {
+		WCPay_Mode_Stub::set_live( true );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' )
@@ -91,24 +146,10 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Transaction mode is unknown when WooPayments settings are absent.
-	 */
-	public function test_transaction_mode_unknown_without_settings(): void {
-		$result = $this->sut->resolve(
-			new PaymentMethodData( 'woocommerce_payments' )
-		);
-
-		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $result->to_array()['transaction_mode'] );
-	}
-
-	/**
 	 * @testdox Matches APM gateways like woocommerce_payments_bancontact.
 	 */
 	public function test_matches_apm_gateway(): void {
-		update_option(
-			'woocommerce_woocommerce_payments_settings',
-			array( 'test_mode' => 'yes' )
-		);
+		WCPay_Mode_Stub::set_live( false );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments_bancontact' )
@@ -129,13 +170,23 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Transaction mode is unknown when WooPayments Mode is unavailable.
+	 */
+	public function test_transaction_mode_unknown_when_mode_unavailable(): void {
+		WC_Payments_Stub::set_mode_available( false );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' )
+		);
+
+		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $result->to_array()['transaction_mode'] );
+	}
+
+	/**
 	 * @testdox Augments pre-resolved data with transaction mode.
 	 */
 	public function test_augments_preresolved_with_mode(): void {
-		update_option(
-			'woocommerce_woocommerce_payments_settings',
-			array( 'test_mode' => 'no' )
-		);
+		WCPay_Mode_Stub::set_live( true );
 
 		$resolved = new PaymentMethodData( 'woocommerce_payments', 'card', true );
 

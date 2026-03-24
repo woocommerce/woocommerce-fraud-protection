@@ -77,8 +77,8 @@ class PaymentMethodData {
 	/**
 	 * Transaction mode: MODE_TEST, MODE_LIVE, or MODE_UNKNOWN.
 	 *
-	 * Resolved by gateway compat layers based on gateway-specific settings
-	 * (e.g. Stripe testmode, Square sandbox, PayPal sandbox_on).
+	 * Resolved by gateway compat layers based on gateway-specific APIs
+	 * (e.g. Stripe WC_Stripe_Mode, Square settings handler, PayPal ConnectionState).
 	 *
 	 * @var string
 	 */

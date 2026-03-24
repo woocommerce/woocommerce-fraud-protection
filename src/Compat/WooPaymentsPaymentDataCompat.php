@@ -58,22 +58,30 @@ class WooPaymentsPaymentDataCompat {
 	}
 
 	/**
-	 * Resolve the WooPayments transaction mode from settings.
+	 * Resolve the WooPayments transaction mode.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * Uses the WooPayments Mode API when available, which is the same method
+	 * WooPayments uses to select API keys and store mode in order metadata.
+	 * This also covers dev mode, onboarding test mode, and filter overrides.
+	 *
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
 	 */
 	private function resolve_transaction_mode(): string {
-		if ( defined( 'WCPAY_DEV_MODE' ) && WCPAY_DEV_MODE ) {
-			return PaymentMethodData::MODE_TEST;
-		}
-
-		$settings = get_option( 'woocommerce_woocommerce_payments_settings' );
-
-		if ( ! is_array( $settings ) || ! isset( $settings['test_mode'] ) ) {
+		if ( ! class_exists( '\WC_Payments' ) ) {
 			return PaymentMethodData::MODE_UNKNOWN;
 		}
 
-		return 'yes' === $settings['test_mode'] ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
+		try {
+			$mode = \WC_Payments::mode();
+
+			if ( null === $mode ) {
+				return PaymentMethodData::MODE_UNKNOWN;
+			}
+
+			return $mode->is_live() ? PaymentMethodData::MODE_LIVE : PaymentMethodData::MODE_TEST;
+		} catch ( \Throwable $e ) {
+			return PaymentMethodData::MODE_UNKNOWN;
+		}
 	}
 
 	/**

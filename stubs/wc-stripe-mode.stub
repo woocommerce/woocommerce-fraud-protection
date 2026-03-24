@@ -1,0 +1,13 @@
+<?php
+/**
+ * PHPStan stub for WC_Stripe_Mode.
+ *
+ * Used by StripePaymentDataCompat to resolve transaction mode via the
+ * gateway's own API rather than reading settings directly.
+ */
+class WC_Stripe_Mode {
+	/**
+	 * @return bool
+	 */
+	public static function is_live(): bool {}
+}
