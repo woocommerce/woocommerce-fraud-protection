@@ -35,12 +35,12 @@ class PaymentMethodData {
 	/**
 	 * Transaction mode value when no gateway-specific resolver is available.
 	 */
-	public const MODE_UNKNOWN = null;
+	public const MODE_UNKNOWN = 'unknown';
 
 	/**
 	 * Valid transaction mode values.
 	 *
-	 * @var array<int, ?string>
+	 * @var array<int, string>
 	 */
 	public const VALID_MODES = array( self::MODE_TEST, self::MODE_LIVE, self::MODE_UNKNOWN );
 
@@ -80,9 +80,9 @@ class PaymentMethodData {
 	 * Resolved by gateway compat layers based on gateway-specific settings
 	 * (e.g. Stripe testmode, Square sandbox, PayPal sandbox_on).
 	 *
-	 * @var ?string
+	 * @var string
 	 */
-	private ?string $transaction_mode;
+	private string $transaction_mode;
 
 	/**
 	 * Constructor.
@@ -91,14 +91,14 @@ class PaymentMethodData {
 	 * @param ?string                $payment_type            Payment type identifier, or null when unresolved.
 	 * @param bool                   $is_saved_payment_method Whether saved/tokenized.
 	 * @param ?CardPaymentMethodData $card                    Card details, if applicable.
-	 * @param ?string                $transaction_mode        Transaction mode (MODE_TEST, MODE_LIVE, or MODE_UNKNOWN).
+	 * @param string                 $transaction_mode        Transaction mode (MODE_TEST, MODE_LIVE, or MODE_UNKNOWN).
 	 */
 	public function __construct(
 		string $gateway,
 		?string $payment_type = null,
 		bool $is_saved_payment_method = false,
 		?CardPaymentMethodData $card = null,
-		?string $transaction_mode = self::MODE_UNKNOWN
+		string $transaction_mode = self::MODE_UNKNOWN
 	) {
 		$this->gateway                 = $gateway;
 		$this->payment_type            = $payment_type;
@@ -122,10 +122,10 @@ class PaymentMethodData {
 	 * Used by gateway compat layers to augment pre-resolved payment data
 	 * (e.g. from WC token) with the gateway's test/live mode.
 	 *
-	 * @param ?string $transaction_mode Transaction mode (MODE_TEST, MODE_LIVE, or MODE_UNKNOWN).
+	 * @param string $transaction_mode Transaction mode (MODE_TEST, MODE_LIVE, or MODE_UNKNOWN).
 	 * @return self
 	 */
-	public function with_transaction_mode( ?string $transaction_mode ): self {
+	public function with_transaction_mode( string $transaction_mode ): self {
 		return new self(
 			$this->gateway,
 			$this->payment_type,
@@ -140,17 +140,17 @@ class PaymentMethodData {
 	 *
 	 * Falls back to MODE_UNKNOWN and logs a warning for invalid values.
 	 *
-	 * @param ?string $mode The mode to sanitize.
-	 * @return ?string A valid mode constant value.
+	 * @param string $mode The mode to sanitize.
+	 * @return string A valid mode constant value.
 	 */
-	private static function sanitize_transaction_mode( ?string $mode ): ?string {
+	private static function sanitize_transaction_mode( string $mode ): string {
 		if ( in_array( $mode, self::VALID_MODES, true ) ) {
 			return $mode;
 		}
 
 		FraudProtectionController::log(
 			'warning',
-			sprintf( 'Invalid transaction_mode value: %s — falling back to MODE_UNKNOWN', (string) $mode )
+			sprintf( 'Invalid transaction_mode value: %s — falling back to MODE_UNKNOWN', $mode )
 		);
 
 		return self::MODE_UNKNOWN;

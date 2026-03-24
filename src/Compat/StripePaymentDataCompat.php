@@ -108,9 +108,9 @@ class StripePaymentDataCompat {
 	/**
 	 * Resolve the Stripe transaction mode from settings.
 	 *
-	 * @return ?string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
 	 */
-	private function resolve_transaction_mode(): ?string {
+	private function resolve_transaction_mode(): string {
 		$settings = get_option( 'woocommerce_stripe_settings' );
 
 		if ( ! is_array( $settings ) || ! isset( $settings['testmode'] ) ) {

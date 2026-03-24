@@ -60,9 +60,9 @@ class WooPaymentsPaymentDataCompat {
 	/**
 	 * Resolve the WooPayments transaction mode from settings.
 	 *
-	 * @return ?string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
 	 */
-	private function resolve_transaction_mode(): ?string {
+	private function resolve_transaction_mode(): string {
 		if ( defined( 'WCPAY_DEV_MODE' ) && WCPAY_DEV_MODE ) {
 			return PaymentMethodData::MODE_TEST;
 		}

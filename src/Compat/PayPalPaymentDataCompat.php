@@ -64,9 +64,9 @@ class PayPalPaymentDataCompat {
 	 * - New (v3+): woocommerce-ppcp-data-common['use_sandbox'] (boolean).
 	 * - Legacy: woocommerce-ppcp-settings['sandbox_on'] ('1'/'' truthy/falsy).
 	 *
-	 * @return ?string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
 	 */
-	private function resolve_transaction_mode(): ?string {
+	private function resolve_transaction_mode(): string {
 		// New settings format (PayPal Payments v3+).
 		$common = get_option( 'woocommerce-ppcp-data-common' );
 		if ( is_array( $common ) && array_key_exists( 'use_sandbox', $common ) ) {

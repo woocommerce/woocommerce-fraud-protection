@@ -91,9 +91,9 @@ class SquarePaymentDataCompat {
 	 * Checks the WC_SQUARE_SANDBOX constant first (development override),
 	 * then falls back to the enable_sandbox setting.
 	 *
-	 * @return ?string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
+	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if settings are unavailable.
 	 */
-	private function resolve_transaction_mode(): ?string {
+	private function resolve_transaction_mode(): string {
 		if ( defined( 'WC_SQUARE_SANDBOX' ) && WC_SQUARE_SANDBOX ) {
 			return PaymentMethodData::MODE_TEST;
 		}
