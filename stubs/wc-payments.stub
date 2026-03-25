@@ -17,6 +17,9 @@ namespace {
 		/** @return ?WC_Payments_API_Client */
 		public static function get_payments_api_client(): ?WC_Payments_API_Client {}
 
+		/** @param bool $live */
+		public static function set_live( bool $live ): void {}
+
 		/** @param bool $available */
 		public static function set_mode_available( bool $available ): void {}
 
@@ -32,14 +35,6 @@ namespace {
 		 * @return array
 		 */
 		public function get_payment_method( string $payment_method_id ): array {}
-
-		/** @param mixed $response */
-		public static function set_mock_response( $response ): void {}
-
-		/** @param ?\Throwable $throwable */
-		public static function set_throw( ?\Throwable $throwable ): void {}
-
-		public static function reset(): void {}
 	}
 
 	class WC_Payments_Features {
@@ -57,8 +52,5 @@ namespace WCPay\Core {
 	class Mode {
 		/** @return bool */
 		public function is_live(): bool {}
-
-		/** @param bool $live */
-		public static function set_live( bool $live ): void {}
 	}
 }
