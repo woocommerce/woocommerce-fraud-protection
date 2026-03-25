@@ -82,14 +82,22 @@ class WooPaymentsPaymentDataCompat {
 			return $resolved->with_transaction_mode( $transaction_mode );
 		}
 
-		$pm_id = $this->extract_payment_method_id( $checkout_payment_fields );
-		if ( empty( $pm_id ) ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
-		}
-
 		$token_key   = 'wc-' . $resolved->get_gateway() . '-payment-token';
 		$token_value = $checkout_payment_fields[ $token_key ] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
+
+		$pm_id = $this->extract_payment_method_id( $checkout_payment_fields );
+
+		// For saved payment methods the checkout sends a WC token ID but no
+		// wcpay-payment-method key. Resolve the Stripe pm_ ID from the token
+		// so we can call the API for full instrument data.
+		if ( empty( $pm_id ) && $is_saved ) {
+			$pm_id = $this->resolve_pm_id_from_token( (int) $token_value );
+		}
+
+		if ( empty( $pm_id ) ) {
+			return $resolved->with_transaction_mode( $transaction_mode );
+		}
 
 		$api_client = \WC_Payments::get_payments_api_client();
 		if ( null === $api_client ) {
@@ -215,6 +223,35 @@ class WooPaymentsPaymentDataCompat {
 		} catch ( \Throwable $e ) {
 			return PaymentMethodData::MODE_UNKNOWN;
 		}
+	}
+
+	/**
+	 * Resolve a Stripe pm_ ID from a WC payment token.
+	 *
+	 * For saved payment methods, WooPayments sends only a WC token ID in the
+	 * checkout payload with no wcpay-payment-method key.
+	 *
+	 * @param int $token_id WC payment token ID.
+	 * @return string Stripe payment method ID, or empty string.
+	 */
+	private function resolve_pm_id_from_token( int $token_id ): string {
+		$wc_token = \WC_Payment_Tokens::get( $token_id );
+
+		if ( ! $wc_token ) {
+			return '';
+		}
+
+		if ( $wc_token->get_user_id() !== get_current_user_id() ) {
+			return '';
+		}
+
+		if ( ! $this->is_woopayments_gateway( $wc_token->get_gateway_id() ) ) {
+			return '';
+		}
+
+		$token = $wc_token->get_token();
+
+		return $token ? $token : '';
 	}
 
 	/**

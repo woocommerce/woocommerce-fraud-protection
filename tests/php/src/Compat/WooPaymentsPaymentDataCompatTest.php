@@ -593,6 +593,111 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 		$this->assertFalse( $result->to_array()['is_saved_payment_method'] );
 	}
 
+	/**
+	 * @testdox Resolves full instrument data for saved card via WC token, passing the token's pm_ ID to the API.
+	 */
+	public function test_resolves_saved_card_via_wc_token(): void {
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'woocommerce_payments' );
+		$token->set_token( 'pm_saved_xyz' );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '4242' );
+		$token->set_expiry_month( '12' );
+		$token->set_expiry_year( '2028' );
+		$token->set_user_id( get_current_user_id() );
+		$token->save();
+
+		$api_mock = $this->createMock( \WC_Payments_API_Client::class );
+		$api_mock->expects( $this->once() )
+			->method( 'get_payment_method' )
+			->with( 'pm_saved_xyz' )
+			->willReturn( $this->create_card_response() );
+		\WC_Payments::set_api_client( $api_mock );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array(
+				'wc-woocommerce_payments-payment-token' => (string) $token->get_id(),
+			)
+		);
+
+		$array = $result->to_array();
+		$this->assertTrue( $array['is_saved_payment_method'] );
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertSame( 'visa', $array['instrument']['brand'] );
+		$this->assertSame( 'fp_wcpay123', $array['instrument']['fingerprint'] );
+	}
+
+	/**
+	 * @testdox Falls back to mode-only when token belongs to another user.
+	 */
+	public function test_falls_back_when_token_belongs_to_another_user(): void {
+		WCPay_Mode_Stub::set_live( false );
+
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'woocommerce_payments' );
+		$token->set_token( 'pm_other_user' );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '1234' );
+		$token->set_expiry_month( '01' );
+		$token->set_expiry_year( '2030' );
+		$token->set_user_id( 99999 ); // different user
+		$token->save();
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array(
+				'wc-woocommerce_payments-payment-token' => (string) $token->get_id(),
+			)
+		);
+
+		$this->assertNull( $result->to_array()['payment_type'] );
+	}
+
+	/**
+	 * @testdox Falls back to mode-only when token belongs to a different gateway.
+	 */
+	public function test_falls_back_when_token_belongs_to_different_gateway(): void {
+		WCPay_Mode_Stub::set_live( false );
+
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'stripe' );
+		$token->set_token( 'pm_stripe_token' );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '4242' );
+		$token->set_expiry_month( '12' );
+		$token->set_expiry_year( '2030' );
+		$token->set_user_id( get_current_user_id() );
+		$token->save();
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array(
+				'wc-woocommerce_payments-payment-token' => (string) $token->get_id(),
+			)
+		);
+
+		$this->assertNull( $result->to_array()['payment_type'] );
+	}
+
+	/**
+	 * @testdox Falls back to mode-only when saved token ID does not exist.
+	 */
+	public function test_falls_back_when_saved_token_not_found(): void {
+		WCPay_Mode_Stub::set_live( false );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array(
+				'wc-woocommerce_payments-payment-token' => '99999',
+			)
+		);
+
+		$array = $result->to_array();
+		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
+		$this->assertNull( $array['payment_type'] );
+	}
+
 	// --- WooPay guard ---
 
 	/**
