@@ -65,7 +65,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			'test_gateway',
 			'card',
 			false,
-			new PaymentInstrumentData( 'visa', 'credit', '4242' )
+			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) )
 		);
 
 		add_filter(
@@ -375,7 +375,7 @@ class PaymentDataResolverTest extends WC_Unit_Test_Case {
 			'stripe',
 			'card',
 			true,
-			new PaymentInstrumentData( 'visa', 'credit', '4242', 'fp_abc', 'US', 12, 2028 )
+			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242', 'fingerprint' => 'fp_abc', 'country' => 'US', 'exp_month' => 12, 'exp_year' => 2028 ) )
 		);
 
 		add_filter(

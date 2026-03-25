@@ -144,14 +144,13 @@ class PaymentDataResolver {
 			$token->get_gateway_id(),
 			'card',
 			true,
-			new PaymentInstrumentData(
-				$token->get_card_type() ? $token->get_card_type() : null,
-				null,
-				$token->get_last4() ? $token->get_last4() : null,
-				null,
-				null,
-				$token->get_expiry_month() ? (int) $token->get_expiry_month() : null,
-				$token->get_expiry_year() ? (int) $token->get_expiry_year() : null
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'     => $token->get_card_type() ? $token->get_card_type() : null,
+					'last4'     => $token->get_last4() ? $token->get_last4() : null,
+					'exp_month' => $token->get_expiry_month() ? $token->get_expiry_month() : null,
+					'exp_year'  => $token->get_expiry_year() ? $token->get_expiry_year() : null,
+				)
 			)
 		);
 	}

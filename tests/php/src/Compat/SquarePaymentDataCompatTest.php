@@ -142,7 +142,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			'square_credit_card',
 			'card',
 			true,
-			new PaymentInstrumentData( 'visa', null, '4242', null, null, 12, 2028 )
+			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242', 'exp_month' => 12, 'exp_year' => 2028 ) )
 		);
 
 		$result = $this->sut->resolve(
@@ -170,7 +170,7 @@ class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
 			'square_credit_card',
 			'card',
 			true,
-			new PaymentInstrumentData( 'visa', null, '4242', null, null, 12, 2028 )
+			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242', 'exp_month' => 12, 'exp_year' => 2028 ) )
 		);
 
 		$result = $this->sut->resolve(

@@ -22,7 +22,7 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 	 * @testdox Constructor sets all properties; to_array() returns correct values.
 	 */
 	public function test_constructor_and_to_array(): void {
-		$instrument = new PaymentInstrumentData( 'visa', 'credit', '4242' );
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) );
 		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$result = $data->to_array();
@@ -59,7 +59,7 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 	 * @testdox to_array() includes full instrument data when instrument is present.
 	 */
 	public function test_to_array_with_full_instrument(): void {
-		$instrument = new PaymentInstrumentData( 'mastercard', 'debit', '5678', 'fp_abc', 'GB', 11, 2026 );
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'mastercard', 'funding' => 'debit', 'last4' => '5678', 'fingerprint' => 'fp_abc', 'country' => 'GB', 'exp_month' => 11, 'exp_year' => 2026 ) );
 		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$this->assertSame(
@@ -125,7 +125,7 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 	 * @testdox with_transaction_mode() preserves all other fields.
 	 */
 	public function test_with_transaction_mode_preserves_fields(): void {
-		$instrument = new PaymentInstrumentData( 'visa', 'credit', '4242', 'fp_abc', 'US', 12, 2028, '10001' );
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242', 'fingerprint' => 'fp_abc', 'country' => 'US', 'exp_month' => 12, 'exp_year' => 2028, 'billing_postcode' => '10001' ) );
 		$original   = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$result = $original->with_transaction_mode( PaymentMethodData::MODE_TEST );

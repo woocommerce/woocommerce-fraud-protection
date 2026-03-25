@@ -151,6 +151,34 @@ class PaymentInstrumentData {
 	private ?string $avs_postcode_check;
 
 	/**
+	 * Create from an associative array.
+	 *
+	 * Keys correspond to property names. Missing keys default to null.
+	 * Unrecognized keys are silently ignored.
+	 *
+	 * @param array $data Instrument fields.
+	 * @return self
+	 */
+	public static function from_array( array $data = array() ): self {
+		return new self(
+			$data['brand'] ?? null,
+			$data['funding'] ?? null,
+			$data['last4'] ?? null,
+			$data['fingerprint'] ?? null,
+			$data['country'] ?? null,
+			isset( $data['exp_month'] ) ? (int) $data['exp_month'] : null,
+			isset( $data['exp_year'] ) ? (int) $data['exp_year'] : null,
+			$data['billing_postcode'] ?? null,
+			$data['wallet'] ?? null,
+			$data['bank_code'] ?? null,
+			$data['bin'] ?? null,
+			$data['cvc_check'] ?? null,
+			$data['avs_address_check'] ?? null,
+			$data['avs_postcode_check'] ?? null
+		);
+	}
+
+	/**
 	 * Constructor.
 	 *
 	 * @param ?string $brand              Card brand.
@@ -168,21 +196,21 @@ class PaymentInstrumentData {
 	 * @param ?string $avs_address_check  AVS street address result.
 	 * @param ?string $avs_postcode_check AVS postal code result.
 	 */
-	public function __construct(
-		?string $brand = null,
-		?string $funding = null,
-		?string $last4 = null,
-		?string $fingerprint = null,
-		?string $country = null,
-		?int $exp_month = null,
-		?int $exp_year = null,
-		?string $billing_postcode = null,
-		?string $wallet = null,
-		?string $bank_code = null,
-		?string $bin = null,
-		?string $cvc_check = null,
-		?string $avs_address_check = null,
-		?string $avs_postcode_check = null
+	private function __construct(
+		?string $brand,
+		?string $funding,
+		?string $last4,
+		?string $fingerprint,
+		?string $country,
+		?int $exp_month,
+		?int $exp_year,
+		?string $billing_postcode,
+		?string $wallet,
+		?string $bank_code,
+		?string $bin,
+		?string $cvc_check,
+		?string $avs_address_check,
+		?string $avs_postcode_check
 	) {
 		$this->brand              = $brand;
 		$this->funding            = $funding;

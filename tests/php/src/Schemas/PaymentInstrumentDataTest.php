@@ -18,17 +18,19 @@ use WC_Unit_Test_Case;
 class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 
 	/**
-	 * @testdox Constructor sets all properties; to_array() returns correct values.
+	 * @testdox from_array() sets all properties; to_array() returns correct values.
 	 */
-	public function test_constructor_and_to_array(): void {
-		$instrument = new PaymentInstrumentData(
-			'visa',
-			'credit',
-			'4242',
-			'fp_abc123',
-			'US',
-			12,
-			2025
+	public function test_from_array_and_to_array(): void {
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand'       => 'visa',
+				'funding'     => 'credit',
+				'last4'       => '4242',
+				'fingerprint' => 'fp_abc123',
+				'country'     => 'US',
+				'exp_month'   => 12,
+				'exp_year'    => 2025,
+			)
 		);
 
 		$this->assertSame(
@@ -56,7 +58,7 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 	 * @testdox Nullable fields default to null in to_array().
 	 */
 	public function test_nullable_fields_default_to_null(): void {
-		$instrument = new PaymentInstrumentData();
+		$instrument = PaymentInstrumentData::from_array();
 
 		$this->assertSame(
 			array(
@@ -83,25 +85,26 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 	 * @testdox is_empty() returns true when all fields are null.
 	 */
 	public function test_is_empty_returns_true_when_all_null(): void {
-		$this->assertTrue( ( new PaymentInstrumentData() )->is_empty() );
+		$this->assertTrue( PaymentInstrumentData::from_array()->is_empty() );
 	}
 
 	/**
 	 * @testdox is_empty() returns false when any field is set.
 	 */
 	public function test_is_empty_returns_false_when_any_field_set(): void {
-		$this->assertFalse( ( new PaymentInstrumentData( 'visa' ) )->is_empty() );
+		$this->assertFalse( PaymentInstrumentData::from_array( array( 'brand' => 'visa' ) )->is_empty() );
 	}
 
 	/**
 	 * @testdox sanitize_check() accepts valid check constants.
 	 */
 	public function test_sanitize_check_accepts_valid_values(): void {
-		$instrument = new PaymentInstrumentData(
-			null, null, null, null, null, null, null, null, null, null, null,
-			PaymentInstrumentData::CHECK_PASS,
-			PaymentInstrumentData::CHECK_FAIL,
-			PaymentInstrumentData::CHECK_UNAVAILABLE
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'cvc_check'          => PaymentInstrumentData::CHECK_PASS,
+				'avs_address_check'  => PaymentInstrumentData::CHECK_FAIL,
+				'avs_postcode_check' => PaymentInstrumentData::CHECK_UNAVAILABLE,
+			)
 		);
 
 		$array = $instrument->to_array();
@@ -114,11 +117,11 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 	 * @testdox sanitize_check() drops unrecognized values to null (fail-open).
 	 */
 	public function test_sanitize_check_drops_invalid_values(): void {
-		$instrument = new PaymentInstrumentData(
-			null, null, null, null, null, null, null, null, null, null, null,
-			'invalid_value',
-			'also_invalid',
-			null
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'cvc_check'         => 'invalid_value',
+				'avs_address_check' => 'also_invalid',
+			)
 		);
 
 		$array = $instrument->to_array();

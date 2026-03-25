@@ -193,7 +193,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			'stripe',
 			'card',
 			false,
-			new PaymentInstrumentData( 'visa', 'credit', '4242' )
+			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) )
 		);
 
 		$request_data = array(

@@ -71,15 +71,14 @@ class SquarePaymentDataCompat {
 			'square_credit_card',
 			'card',
 			$is_saved,
-			new PaymentInstrumentData(
-				$brand,
-				null,
-				$last4,
-				null,
-				null,
-				$exp_month,
-				$exp_year,
-				$postcode
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'            => $brand,
+					'last4'            => $last4,
+					'exp_month'        => $exp_month,
+					'exp_year'         => $exp_year,
+					'billing_postcode' => $postcode,
+				)
 			),
 			$transaction_mode
 		);

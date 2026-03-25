@@ -172,27 +172,30 @@ class WooPaymentsPaymentDataCompat {
 			?? $type_data['bic']
 			?? null;
 
+		// 'iin' (BIN) is undocumented but present in Stripe PaymentMethod responses.
 		$bin                = $type_data['iin'] ?? null;
 		$checks             = is_array( $type_data['checks'] ?? null ) ? $type_data['checks'] : array();
 		$cvc_check          = self::CHECK_MAP[ $checks['cvc_check'] ?? '' ] ?? null;
 		$avs_address_check  = self::CHECK_MAP[ $checks['address_line1_check'] ?? '' ] ?? null;
 		$avs_postcode_check = self::CHECK_MAP[ $checks['address_postal_code_check'] ?? '' ] ?? null;
 
-		$instrument = new PaymentInstrumentData(
-			$brand,
-			$funding,
-			$last4,
-			$fingerprint,
-			$country,
-			$exp_month,
-			$exp_year,
-			$postcode,
-			$wallet,
-			$bank_code,
-			$bin,
-			$cvc_check,
-			$avs_address_check,
-			$avs_postcode_check
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand'              => $brand,
+				'funding'            => $funding,
+				'last4'              => $last4,
+				'fingerprint'        => $fingerprint,
+				'country'            => $country,
+				'exp_month'          => $exp_month,
+				'exp_year'           => $exp_year,
+				'billing_postcode'   => $postcode,
+				'wallet'             => $wallet,
+				'bank_code'          => $bank_code,
+				'bin'                => $bin,
+				'cvc_check'          => $cvc_check,
+				'avs_address_check'  => $avs_address_check,
+				'avs_postcode_check' => $avs_postcode_check,
+			)
 		);
 
 		return $instrument->is_empty() ? null : $instrument;

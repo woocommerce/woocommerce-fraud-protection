@@ -821,7 +821,7 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		\WC_Payments_API_Client::set_throw( new \RuntimeException( 'API error' ) );
 
-		$instrument = new PaymentInstrumentData( 'visa', null, '4242' );
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242' ) );
 		$resolved   = new PaymentMethodData( 'woocommerce_payments', 'card', true, $instrument );
 
 		$result = $this->sut->resolve(
