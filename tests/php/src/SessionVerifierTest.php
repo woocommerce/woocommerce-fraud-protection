@@ -134,9 +134,8 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$expected_payload = array_merge(
 			$collected_data,
 			array(
-				'source'       => 'blocks_checkout',
-				'request_data' => $request_data,
-				'payment'      => $resolved_payment->to_array(),
+				'source'  => 'blocks_checkout',
+				'payment' => $resolved_payment->to_array(),
 			)
 		);
 

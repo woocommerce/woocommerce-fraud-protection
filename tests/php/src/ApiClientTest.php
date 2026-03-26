@@ -90,6 +90,55 @@ class ApiClientTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox verify() strips null and empty-string values from the outgoing payload
+	 */
+	public function test_verify_strips_null_and_empty_values(): void {
+		$captured_body = null;
+
+		add_filter(
+			'pre_http_request',
+			function ( $_preempt, $args ) use ( &$captured_body ) {
+				$captured_body = json_decode( $args['body'], true );
+				return array(
+					'response' => array( 'code' => 200 ),
+					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
+				);
+			},
+			10,
+			2
+		);
+
+		$this->sut->verify(
+			'test-session-id',
+			array(
+				'keep_string'  => 'hello',
+				'keep_false'   => false,
+				'keep_zero'    => 0,
+				'keep_float'   => 0.0,
+				'keep_array'   => array(),
+				'drop_null'    => null,
+				'drop_empty'   => '',
+				'nested'       => array(
+					'keep'  => 'yes',
+					'drop'  => null,
+				),
+			)
+		);
+
+		$context = $captured_body['context'];
+
+		$this->assertSame( 'hello', $context['keep_string'] );
+		$this->assertFalse( $context['keep_false'] );
+		$this->assertSame( 0, $context['keep_zero'] );
+		$this->assertSame( 0, $context['keep_float'] ); // JSON encodes 0.0 as 0.
+		$this->assertSame( array(), $context['keep_array'] );
+		$this->assertArrayNotHasKey( 'drop_null', $context );
+		$this->assertArrayNotHasKey( 'drop_empty', $context );
+		$this->assertSame( 'yes', $context['nested']['keep'] );
+		$this->assertArrayNotHasKey( 'drop', $context['nested'] );
+	}
+
+	/**
 	 * Test verify returns allow decision.
 	 *
 	 * @testdox verify() returns allow decision from API

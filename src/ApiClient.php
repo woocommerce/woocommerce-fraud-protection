@@ -145,6 +145,8 @@ class ApiClient {
 			'context' => $payload,
 		);
 
+		$payload = $this->filter_empty_values( $payload );
+
 		$response = $this->make_request(
 			'POST',
 			self::VERIFY_ENDPOINT,
@@ -366,6 +368,28 @@ class ApiClient {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Recursively remove null and empty-string values from an array.
+	 *
+	 * Preserves false, 0, 0.0, and empty arrays since those carry semantic meaning.
+	 *
+	 * @param array<string, mixed> $data The array to filter.
+	 * @return array<string, mixed> Filtered array.
+	 */
+	private function filter_empty_values( array $data ): array {
+		$filtered = array();
+		foreach ( $data as $key => $value ) {
+			if ( null === $value || '' === $value ) {
+				continue;
+			}
+			if ( is_array( $value ) ) {
+				$value = $this->filter_empty_values( $value );
+			}
+			$filtered[ $key ] = $value;
+		}
+		return $filtered;
 	}
 
 	/**
