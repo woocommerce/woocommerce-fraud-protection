@@ -50,6 +50,7 @@ class DecisionHandlerTest extends WC_Unit_Test_Case {
 	 */
 	public function tearDown(): void {
 		remove_all_filters( 'woocommerce_fraud_protection_decision' );
+		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
 		parent::tearDown();
 	}
 
@@ -100,6 +101,8 @@ class DecisionHandlerTest extends WC_Unit_Test_Case {
 	 * @testdox Should apply block decision and update session to blocked.
 	 */
 	public function test_apply_block_decision(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
 		$this->session_manager
 			->expects( $this->once() )
 			->method( 'block_session' );
@@ -162,6 +165,8 @@ class DecisionHandlerTest extends WC_Unit_Test_Case {
 	 * @testdox Should allow filter to override decision from allow to block.
 	 */
 	public function test_filter_can_override_allow_to_block(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
@@ -185,6 +190,8 @@ class DecisionHandlerTest extends WC_Unit_Test_Case {
 	 * @testdox Should reject invalid filter return value and use original decision.
 	 */
 	public function test_filter_invalid_return_uses_original_decision(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
@@ -200,5 +207,62 @@ class DecisionHandlerTest extends WC_Unit_Test_Case {
 
 		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
 		$this->assertLogged( 'warning', 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "totally_invalid"' );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| Learning Mode Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox Learning mode suppresses block decision from API.
+	 */
+	public function test_learning_mode_suppresses_block(): void {
+		$this->session_manager
+			->method( 'is_session_blocked' )
+			->willReturn( false );
+
+		$this->session_manager
+			->expects( $this->once() )
+			->method( 'allow_session' );
+
+		$this->session_manager
+			->expects( $this->never() )
+			->method( 'block_session' );
+
+		$result = $this->sut->apply_decision( ApiClient::DECISION_BLOCK, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
+	}
+
+	/**
+	 * @testdox Learning mode suppresses filter override to block.
+	 */
+	public function test_learning_mode_suppresses_filter_override_to_block(): void {
+		add_filter(
+			'woocommerce_fraud_protection_decision',
+			function () {
+				return ApiClient::DECISION_BLOCK;
+			}
+		);
+
+		$this->session_manager
+			->method( 'is_session_blocked' )
+			->willReturn( false );
+
+		$this->session_manager
+			->expects( $this->once() )
+			->method( 'allow_session' );
+
+		$this->session_manager
+			->expects( $this->never() )
+			->method( 'block_session' );
+
+		$result = $this->sut->apply_decision( ApiClient::DECISION_ALLOW, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
 	}
 }
