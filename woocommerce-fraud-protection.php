@@ -16,6 +16,10 @@ define( 'WC_FRAUD_PROTECTION_VERSION', '1.0.0' );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', __DIR__ );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
+// Force-disable WC Core's built-in fraud protection feature to prevent
+// session and script conflicts with this plugin's implementation.
+add_filter( 'woocommerce_feature_fraud_protection_enabled', '__return_false', 999 );
+
 // Require class files (no autoloader).
 // Order matters: typed properties require dependencies to be loaded first.
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionClearanceManager.php';

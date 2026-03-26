@@ -169,6 +169,16 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox WC Core fraud protection feature is force-disabled to prevent conflicts.
+	 */
+	public function test_wc_core_fraud_protection_feature_is_disabled(): void {
+		$this->assertFalse(
+			apply_filters( 'woocommerce_feature_fraud_protection_enabled', true ),
+			'WC Core fraud protection feature should be force-disabled'
+		);
+	}
+
+	/**
 	 * Cleanup after test.
 	 */
 	public function tearDown(): void {
