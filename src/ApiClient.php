@@ -128,10 +128,20 @@ class ApiClient {
 	 * returns "allow" decision and logs the error.
 	 *
 	 * @param string               $session_id Session ID to verify.
-	 * @param array<string, mixed> $payload    Event data to send to the endpoint.
+	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
 	 * @return string Decision: "allow" or "block".
 	 */
-	public function verify( string $session_id, array $payload ): string {
+	public function verify( string $session_id, array $context ): string {
+		$payload = array( 'context' => $context );
+
+		// No-session case: send visitor_ip and full_headers at top level.
+		if ( '' === $session_id ) {
+			$payload['visitor_ip']   = Schemas\SessionInfo::get_ip_address();
+			$payload['full_headers'] = self::get_request_headers();
+		}
+
+		$payload = $this->filter_empty_values( $payload );
+
 		FraudProtectionController::log(
 			'info',
 			'Verifying session with Blackbox API',
@@ -140,12 +150,6 @@ class ApiClient {
 				'payload'    => $payload,
 			)
 		);
-
-		$payload = array(
-			'context' => $payload,
-		);
-
-		$payload = $this->filter_empty_values( $payload );
 
 		$response = $this->make_request(
 			'POST',
@@ -243,9 +247,10 @@ class ApiClient {
 			return self::DECISION_ALLOW;
 		}
 
-		$session    = is_array( $event_data['session'] ?? null ) ? $event_data['session'] : array();
+		$context    = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
+		$session    = is_array( $context['session'] ?? null ) ? $context['session'] : array();
 		$session_id = $session['wc_identity_id'] ?? 'unknown';
-		$source     = $event_data['source'] ?? 'unknown';
+		$source     = $context['source'] ?? 'unknown';
 		FraudProtectionController::log(
 			'info',
 			sprintf(
@@ -390,6 +395,38 @@ class ApiClient {
 			$filtered[ $key ] = $value;
 		}
 		return $filtered;
+	}
+
+	/**
+	 * Get all HTTP request headers for the no-session case.
+	 *
+	 * Uses getallheaders() when available, augmented with GEOIP and
+	 * crawler server variables.
+	 *
+	 * @return array<string, ?string> Header name => value map.
+	 */
+	private static function get_request_headers(): array {
+		$headers = function_exists( 'getallheaders' ) ? getallheaders() : false;
+		if ( ! is_array( $headers ) ) {
+			$headers = array();
+		}
+
+		$server_keys = array(
+			'GEOIP_COUNTRY_CODE',
+			'GEOIP_ASN',
+			'GEOIP_REGISTERED_COUNTRY_CODE',
+			'GEOIP_CITY',
+			'GEOIP_LATITUDE',
+			'GEOIP_LONGITUDE',
+			'GEOIP_TIME_ZONE',
+			'HTTP_X_IS_CRAWLER',
+		);
+		foreach ( $server_keys as $key ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized below.
+			$headers[ $key ] = isset( $_SERVER[ $key ] ) ? \sanitize_text_field( \wp_unslash( $_SERVER[ $key ] ) ) : null;
+		}
+
+		return $headers;
 	}
 
 	/**

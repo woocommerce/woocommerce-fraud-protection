@@ -24,13 +24,6 @@ class SessionInfo {
 	private ?string $wc_identity_id;
 
 	/**
-	 * IP address.
-	 *
-	 * @var ?string
-	 */
-	private ?string $ip_address;
-
-	/**
 	 * WordPress user email (logged-in users only).
 	 *
 	 * @var ?string
@@ -38,30 +31,17 @@ class SessionInfo {
 	private ?string $email;
 
 	/**
-	 * User agent string.
-	 *
-	 * @var ?string
-	 */
-	private ?string $user_agent;
-
-	/**
 	 * Private constructor — use factory methods.
 	 *
 	 * @param ?string $wc_identity_id WooCommerce session ID.
-	 * @param ?string $ip_address    IP address.
 	 * @param ?string $email         WordPress user email.
-	 * @param ?string $user_agent    User agent string.
 	 */
 	private function __construct(
 		?string $wc_identity_id = null,
-		?string $ip_address = null,
-		?string $email = null,
-		?string $user_agent = null
+		?string $email = null
 	) {
 		$this->wc_identity_id = $wc_identity_id;
-		$this->ip_address     = $ip_address;
 		$this->email          = $email;
-		$this->user_agent     = $user_agent;
 	}
 
 	/**
@@ -73,9 +53,7 @@ class SessionInfo {
 	public static function from_request( string $wc_identity_id ): self {
 		return new self(
 			$wc_identity_id,
-			self::get_ip_address(),
 			self::get_email(),
-			self::get_user_agent(),
 		);
 	}
 
@@ -91,9 +69,11 @@ class SessionInfo {
 	/**
 	 * Get client IP address using WooCommerce geolocation utility.
 	 *
+	 * Public for use by ApiClient in the no-session case (visitor_ip).
+	 *
 	 * @return ?string IP address or null.
 	 */
-	private static function get_ip_address(): ?string {
+	public static function get_ip_address(): ?string {
 		if ( class_exists( 'WC_Geolocation' ) ) {
 			$ip = \WC_Geolocation::get_ip_address();
 			return $ip ? $ip : null;
@@ -120,18 +100,6 @@ class SessionInfo {
 	}
 
 	/**
-	 * Get user agent string from HTTP headers.
-	 *
-	 * @return ?string User agent or null.
-	 */
-	private static function get_user_agent(): ?string {
-		if ( isset( $_SERVER['HTTP_USER_AGENT'] ) ) {
-			return \sanitize_text_field( \wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) );
-		}
-		return null;
-	}
-
-	/**
 	 * Serialize to array.
 	 *
 	 * @return array
@@ -139,9 +107,7 @@ class SessionInfo {
 	public function to_array(): array {
 		return array(
 			'wc_identity_id' => $this->wc_identity_id,
-			'ip_address'     => $this->ip_address,
 			'email'          => $this->email,
-			'user_agent'     => $this->user_agent,
 		);
 	}
 }

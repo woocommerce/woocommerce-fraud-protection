@@ -205,11 +205,9 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$result = $this->sut->get_collected_data();
 
 		$this->assertIsArray( $result['session'] );
-		$this->assertCount( 4, $result['session'] );
+		$this->assertCount( 2, $result['session'] );
 		$this->assertArrayHasKey( 'wc_identity_id', $result['session'] );
-		$this->assertArrayHasKey( 'ip_address', $result['session'] );
 		$this->assertArrayHasKey( 'email', $result['session'] );
-		$this->assertArrayHasKey( 'user_agent', $result['session'] );
 	}
 
 	/**
