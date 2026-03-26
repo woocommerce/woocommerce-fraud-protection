@@ -35,17 +35,15 @@ class SessionInfoTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox from_request() builds SessionInfo with all 4 keys.
+	 * @testdox from_request() builds SessionInfo with wc_identity_id and email.
 	 */
 	public function test_from_request_builds_session_info(): void {
 		$info = SessionInfo::from_request( $this->session_id );
 		$arr  = $info->to_array();
 
-		$this->assertCount( 4, $arr );
+		$this->assertCount( 2, $arr );
 		$this->assertArrayHasKey( 'wc_identity_id', $arr );
-		$this->assertArrayHasKey( 'ip_address', $arr );
 		$this->assertArrayHasKey( 'email', $arr );
-		$this->assertArrayHasKey( 'user_agent', $arr );
 	}
 
 	/**
@@ -93,10 +91,8 @@ class SessionInfoTest extends \WC_Unit_Test_Case {
 		$info = SessionInfo::empty();
 		$arr  = $info->to_array();
 
-		$this->assertCount( 4, $arr );
+		$this->assertCount( 2, $arr );
 		$this->assertNull( $arr['wc_identity_id'] );
-		$this->assertNull( $arr['ip_address'] );
 		$this->assertNull( $arr['email'] );
-		$this->assertNull( $arr['user_agent'] );
 	}
 }
