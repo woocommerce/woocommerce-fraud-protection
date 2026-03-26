@@ -426,6 +426,14 @@ class ApiClient {
 			$headers[ $key ] = isset( $_SERVER[ $key ] ) ? \sanitize_text_field( \wp_unslash( $_SERVER[ $key ] ) ) : null;
 		}
 
+		// Strip sensitive headers (case-insensitive — header names vary by server).
+		$sensitive = array( 'cookie', 'authorization', 'x-wp-nonce', 'x-woo-session', 'nonce' );
+		foreach ( array_keys( $headers ) as $name ) {
+			if ( in_array( strtolower( $name ), $sensitive, true ) ) {
+				unset( $headers[ $name ] );
+			}
+		}
+
 		return $headers;
 	}
 
