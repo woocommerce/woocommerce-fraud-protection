@@ -17,18 +17,18 @@ defined( 'ABSPATH' ) || exit;
 class CartItem {
 
 	/**
+	 * WooCommerce product ID.
+	 *
+	 * @var int
+	 */
+	private int $product_id;
+
+	/**
 	 * Product name.
 	 *
 	 * @var ?string
 	 */
 	private ?string $name;
-
-	/**
-	 * Product description.
-	 *
-	 * @var ?string
-	 */
-	private ?string $description;
 
 	/**
 	 * Comma-separated category names.
@@ -103,8 +103,8 @@ class CartItem {
 	/**
 	 * Private constructor — use factory methods.
 	 *
+	 * @param int     $product_id           WooCommerce product ID.
 	 * @param ?string $name                 Product name.
-	 * @param ?string $description          Product description.
 	 * @param ?string $category             Comma-separated category names.
 	 * @param ?string $sku                  Product SKU.
 	 * @param int     $quantity             Quantity in cart.
@@ -117,8 +117,8 @@ class CartItem {
 	 * @param array   $attributes           Product attributes.
 	 */
 	private function __construct(
+		int $product_id,
 		?string $name,
-		?string $description,
 		?string $category,
 		?string $sku,
 		int $quantity,
@@ -130,8 +130,8 @@ class CartItem {
 		bool $is_downloadable,
 		array $attributes
 	) {
+		$this->product_id           = $product_id;
 		$this->name                 = $name;
-		$this->description          = $description;
 		$this->category             = $category;
 		$this->sku                  = $sku;
 		$this->quantity             = $quantity;
@@ -162,8 +162,8 @@ class CartItem {
 		$category   = self::get_product_category_names( $product );
 
 		return new self(
+			$product->get_id(),
 			$product->get_name() ? $product->get_name() : null,
-			$product->get_description() ? $product->get_description() : null,
 			$category,
 			$product->get_sku() ? $product->get_sku() : null,
 			$quantity,
@@ -204,8 +204,8 @@ class CartItem {
 	 */
 	public function to_array(): array {
 		return array(
+			'product_id'           => $this->product_id,
 			'name'                 => $this->name,
-			'description'          => $this->description,
 			'category'             => $this->category,
 			'sku'                  => $this->sku,
 			'quantity'             => $this->quantity,
