@@ -49,6 +49,7 @@ class CheckoutEventTracker {
 		add_action( 'woocommerce_checkout_update_order_review', array( $this, 'track_shortcode_checkout_field_update' ), 10, 1 );
 		add_action( 'woocommerce_store_api_checkout_update_customer_from_request', array( $this, 'track_blocks_checkout_update' ), 10, 0 );
 		add_action( 'template_redirect', array( $this, 'track_checkout_page_loaded' ), 10, 0 );
+		add_action( 'woocommerce_order_status_changed', array( $this, 'clear_events_on_successful_payment' ), 10, 3 );
 	}
 
 	/**
@@ -311,5 +312,42 @@ class CheckoutEventTracker {
 	 */
 	public function track_order_placed_from_store_api( \WC_Order $order ): void {
 		$this->track_order_placed( $order->get_id(), $order );
+	}
+
+	/**
+	 * Clear collected session events when an order payment succeeds.
+	 *
+	 * Hooked to `woocommerce_order_status_changed` with guards to only fire
+	 * on initial checkout transitions (checkout-draft/pending/failed → processing/completed/on-hold).
+	 * This ensures events from a completed order do not carry over to subsequent
+	 * orders in the same session, while preserving events across payment retries.
+	 *
+	 * This covers online (same-request and redirect) and offline gateways, since
+	 * the status transition happens during the customer's request where the WC
+	 * session is available. In non-customer contexts (webhook, cron),
+	 * `WC()->session` is unavailable and `clear_collected_events()` is a no-op.
+	 *
+	 * @internal
+	 *
+	 * @param int    $order_id   The order ID.
+	 * @param string $old_status The old order status.
+	 * @param string $new_status The new order status.
+	 * @return void
+	 */
+	public function clear_events_on_successful_payment( int $order_id, string $old_status, string $new_status ): void {
+		$initial_checkout_statuses               = array( 'checkout-draft', 'pending', 'failed' );
+		$successful_checkout_transition_statuses = array( 'processing', 'completed', 'on-hold' );
+
+		// Skip for transitions starting on non initial checkout statuses.
+		if ( ! in_array( $old_status, $initial_checkout_statuses, true ) ) {
+			return;
+		}
+
+		// Skip for transitions ending on non checkout success statuses (e.g., 'failed' or 'cancelled').
+		if ( ! in_array( $new_status, $successful_checkout_transition_statuses, true ) ) {
+			return;
+		}
+
+		$this->session_data_collector->clear_collected_events();
 	}
 }

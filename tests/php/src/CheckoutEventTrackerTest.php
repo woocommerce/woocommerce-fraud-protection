@@ -80,6 +80,10 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 			has_action( 'template_redirect', array( $this->sut, 'track_checkout_page_loaded' ) ),
 			'template_redirect hook should be registered'
 		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_order_status_changed', array( $this->sut, 'clear_events_on_successful_payment' ) ),
+			'woocommerce_order_status_changed hook should be registered'
+		);
 	}
 
 	// ========================================
@@ -436,5 +440,66 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 		$this->sut->track_order_placed( $order->get_id(), $order );
 
 		$order->delete( true );
+	}
+
+	// ========================================
+	// Event Clearing on Successful Payment Tests
+	// ========================================
+
+	/**
+	 * Provide status transitions that should trigger event clearing.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function successful_checkout_transitions(): array {
+		return array(
+			'checkout-draft → processing (pay-for-order link)' => array( 'checkout-draft', 'processing' ),
+			'checkout-draft → completed (pay-for-order link)'  => array( 'checkout-draft', 'completed' ),
+			'checkout-draft → on-hold (pay-for-order link)'    => array( 'checkout-draft', 'on-hold' ),
+			'pending → processing (online gateway)'            => array( 'pending', 'processing' ),
+			'pending → completed (virtual product)'            => array( 'pending', 'completed' ),
+			'pending → on-hold (offline gateway)'              => array( 'pending', 'on-hold' ),
+			'failed → processing (pay-for-order)'              => array( 'failed', 'processing' ),
+			'failed → completed (pay-for-order)'               => array( 'failed', 'completed' ),
+			'failed → on-hold (pay-for-order offline)'         => array( 'failed', 'on-hold' ),
+		);
+	}
+
+	/**
+	 * Provide status transitions that should NOT trigger event clearing.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function non_clearing_transitions(): array {
+		return array(
+			'pending → failed (payment failure)'       => array( 'pending', 'failed' ),
+			'pending → cancelled'                      => array( 'pending', 'cancelled' ),
+			'processing → completed (admin/lifecycle)' => array( 'processing', 'completed' ),
+			'on-hold → processing (admin action)'      => array( 'on-hold', 'processing' ),
+		);
+	}
+
+	/**
+	 * @testdox clear_events_on_successful_payment() clears events on successful checkout transitions.
+	 * @dataProvider successful_checkout_transitions
+	 */
+	public function test_clear_events_on_successful_payment_clears( string $old_status, string $new_status ): void {
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'clear_collected_events' );
+
+		$this->sut->clear_events_on_successful_payment( 1, $old_status, $new_status );
+	}
+
+	/**
+	 * @testdox clear_events_on_successful_payment() does NOT clear events for non checkout or unsuccessful transitions.
+	 * @dataProvider non_clearing_transitions
+	 */
+	public function test_clear_events_on_successful_payment_skips( string $old_status, string $new_status ): void {
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'clear_collected_events' );
+
+		$this->sut->clear_events_on_successful_payment( 1, $old_status, $new_status );
 	}
 }

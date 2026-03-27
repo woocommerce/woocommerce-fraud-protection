@@ -89,6 +89,18 @@ class SessionDataCollector {
 	}
 
 	/**
+	 * Clear all collected fraud protection events from the session.
+	 *
+	 * Called after a successful payment to ensure events from a completed
+	 * order do not carry over to subsequent orders in the same session.
+	 */
+	public function clear_collected_events(): void {
+		if ( WC()->session instanceof \WC_Session ) {
+			WC()->session->set( 'fraud_protection_collected_data', null );
+		}
+	}
+
+	/**
 	 * Get all collected fraud protection data from the session.
 	 *
 	 * Retrieves the array of collected event data stored during this session.
