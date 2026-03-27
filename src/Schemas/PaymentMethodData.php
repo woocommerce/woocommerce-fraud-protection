@@ -70,9 +70,9 @@ class PaymentMethodData {
 	/**
 	 * Payment instrument details (card data, bank data, etc.).
 	 *
-	 * @var ?PaymentInstrumentData
+	 * @var PaymentInstrumentData
 	 */
-	private ?PaymentInstrumentData $instrument;
+	private PaymentInstrumentData $instrument;
 
 	/**
 	 * Transaction mode: MODE_TEST, MODE_LIVE, or MODE_UNKNOWN.
@@ -103,7 +103,7 @@ class PaymentMethodData {
 		$this->gateway                 = $gateway;
 		$this->payment_type            = $payment_type;
 		$this->is_saved_payment_method = $is_saved_payment_method;
-		$this->instrument              = $instrument;
+		$this->instrument              = $instrument ? $instrument : PaymentInstrumentData::empty();
 		$this->transaction_mode        = self::sanitize_transaction_mode( $transaction_mode );
 	}
 
@@ -166,7 +166,7 @@ class PaymentMethodData {
 			'gateway'                 => $this->gateway,
 			'payment_type'            => $this->payment_type,
 			'is_saved_payment_method' => $this->is_saved_payment_method,
-			'instrument'              => $this->instrument ? $this->instrument->to_array() : null,
+			'instrument'              => $this->instrument->to_array(),
 			'transaction_mode'        => $this->transaction_mode,
 		);
 	}

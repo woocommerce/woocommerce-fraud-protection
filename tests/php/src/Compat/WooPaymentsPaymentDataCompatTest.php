@@ -363,9 +363,9 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Returns null instrument for non-bank type (link).
+	 * @testdox Returns empty instrument for non-bank type (link).
 	 */
-	public function test_returns_null_instrument_for_non_bank_type(): void {
+	public function test_returns_empty_instrument_for_non_bank_type(): void {
 		$this->mock_api_response(
 			array(
 				'type' => 'link',
@@ -382,13 +382,13 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertSame( 'link', $array['payment_type'] );
-		$this->assertNull( $array['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 	}
 
 	/**
-	 * @testdox Returns null instrument when type_data is not an array.
+	 * @testdox Returns empty instrument when type_data is not an array.
 	 */
-	public function test_returns_null_instrument_for_non_array_type_data(): void {
+	public function test_returns_empty_instrument_for_non_array_type_data(): void {
 		$this->mock_api_response(
 			array(
 				'type' => 'card',
@@ -401,7 +401,7 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 			array( 'wcpay-payment-method' => 'pm_123' )
 		);
 
-		$this->assertNull( $result->to_array()['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $result->to_array()['instrument'] );
 	}
 
 	// --- Saved payments ---
@@ -563,7 +563,7 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertNull( $array['payment_type'] );
-		$this->assertNull( $array['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
 	}
 
@@ -601,7 +601,7 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 		$array = $result->to_array();
 		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertNull( $array['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 	}
 
 	/**
@@ -620,7 +620,7 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 		$array = $result->to_array();
 		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertNull( $array['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 	}
 
 	/**
@@ -639,7 +639,7 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 		$array = $result->to_array();
 		$this->assertSame( PaymentMethodData::MODE_LIVE, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertNull( $array['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 	}
 
 	/**
@@ -657,7 +657,7 @@ class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertNull( $array['payment_type'] );
-		$this->assertNull( $array['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 	}
 
 	/**

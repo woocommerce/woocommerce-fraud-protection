@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
@@ -198,7 +199,7 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
-		$this->assertNull( $array['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 	}
 
 	/**

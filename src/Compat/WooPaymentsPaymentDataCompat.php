@@ -145,13 +145,13 @@ class WooPaymentsPaymentDataCompat {
 	 *
 	 * @param string $type       Payment type from the API response.
 	 * @param array  $pm_details Full API response.
-	 * @return ?PaymentInstrumentData Instrument data, or null if no fields populated.
+	 * @return PaymentInstrumentData Instrument data (empty when no fields populated).
 	 */
-	private function build_instrument( string $type, array $pm_details ): ?PaymentInstrumentData {
+	private function build_instrument( string $type, array $pm_details ): PaymentInstrumentData {
 		$type_data = $pm_details[ $type ] ?? array();
 
 		if ( ! is_array( $type_data ) ) {
-			return null;
+			return PaymentInstrumentData::empty();
 		}
 
 		$brand       = $type_data['brand'] ?? null;
@@ -198,7 +198,7 @@ class WooPaymentsPaymentDataCompat {
 			)
 		);
 
-		return $instrument->is_empty() ? null : $instrument;
+		return $instrument;
 	}
 
 	/**

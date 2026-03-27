@@ -151,6 +151,15 @@ class PaymentInstrumentData {
 	private ?string $avs_postcode_check;
 
 	/**
+	 * Build an empty instrument (all nulls) for graceful degradation.
+	 *
+	 * @return self
+	 */
+	public static function empty(): self {
+		return self::from_array();
+	}
+
+	/**
 	 * Create from an associative array.
 	 *
 	 * Keys correspond to property names. Missing keys default to null.
@@ -242,28 +251,6 @@ class PaymentInstrumentData {
 		}
 
 		return null;
-	}
-
-	/**
-	 * Whether all fields are null (no instrument data was resolved).
-	 *
-	 * @return bool
-	 */
-	public function is_empty(): bool {
-		return null === $this->brand
-			&& null === $this->funding
-			&& null === $this->last4
-			&& null === $this->fingerprint
-			&& null === $this->country
-			&& null === $this->exp_month
-			&& null === $this->exp_year
-			&& null === $this->billing_postcode
-			&& null === $this->wallet
-			&& null === $this->bank_code
-			&& null === $this->bin
-			&& null === $this->cvc_check
-			&& null === $this->avs_address_check
-			&& null === $this->avs_postcode_check;
 	}
 
 	/**

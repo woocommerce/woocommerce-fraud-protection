@@ -81,19 +81,6 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 		);
 	}
 
-	/**
-	 * @testdox is_empty() returns true when all fields are null.
-	 */
-	public function test_is_empty_returns_true_when_all_null(): void {
-		$this->assertTrue( PaymentInstrumentData::from_array()->is_empty() );
-	}
-
-	/**
-	 * @testdox is_empty() returns false when any field is set.
-	 */
-	public function test_is_empty_returns_false_when_any_field_set(): void {
-		$this->assertFalse( PaymentInstrumentData::from_array( array( 'brand' => 'visa' ) )->is_empty() );
-	}
 
 	/**
 	 * @testdox sanitize_check() accepts valid check constants.

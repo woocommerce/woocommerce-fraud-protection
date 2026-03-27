@@ -43,16 +43,16 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox to_array() produces null instrument when no instrument data.
+	 * @testdox to_array() produces empty instrument when no instrument data.
 	 */
-	public function test_to_array_null_instrument(): void {
+	public function test_to_array_empty_instrument(): void {
 		$data = new PaymentMethodData( 'stripe_ideal', 'ideal', false );
 
 		$result = $data->to_array();
 
 		$this->assertSame( 'ideal', $result['payment_type'] );
 		$this->assertFalse( $result['is_saved_payment_method'] );
-		$this->assertNull( $result['instrument'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $result['instrument'] );
 	}
 
 	/**
