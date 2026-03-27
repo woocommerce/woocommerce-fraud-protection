@@ -32,7 +32,7 @@ require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/CheckoutEventTracker.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentMethodEventTracker.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlackboxScriptHandler.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlockedSessionNotice.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CardPaymentMethodData.php';
+require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentInstrumentData.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentMethodData.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentDataResolver.php';
 require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/StripePaymentDataCompat.php';

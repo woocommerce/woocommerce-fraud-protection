@@ -8,7 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection\Compat;
 
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 
 defined( 'ABSPATH' ) || exit;
@@ -91,15 +91,17 @@ class StripePaymentDataCompat {
 			$resolved->get_gateway(),
 			'card',
 			$is_saved,
-			new CardPaymentMethodData(
-				$pm_details->card->brand ?? null,
-				$pm_details->card->funding ?? null,
-				$pm_details->card->last4 ?? null,
-				$pm_details->card->fingerprint ?? null,
-				$pm_details->card->country ?? null,
-				isset( $pm_details->card->exp_month ) ? (int) $pm_details->card->exp_month : null,
-				isset( $pm_details->card->exp_year ) ? (int) $pm_details->card->exp_year : null,
-				$postcode
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'            => $pm_details->card->brand ?? null,
+					'funding'          => $pm_details->card->funding ?? null,
+					'last4'            => $pm_details->card->last4 ?? null,
+					'fingerprint'      => $pm_details->card->fingerprint ?? null,
+					'country'          => $pm_details->card->country ?? null,
+					'exp_month'        => $pm_details->card->exp_month ?? null,
+					'exp_year'         => $pm_details->card->exp_year ?? null,
+					'billing_postcode' => $postcode,
+				)
 			),
 			$transaction_mode
 		);

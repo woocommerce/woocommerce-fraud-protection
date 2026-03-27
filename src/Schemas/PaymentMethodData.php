@@ -68,11 +68,11 @@ class PaymentMethodData {
 	private bool $is_saved_payment_method;
 
 	/**
-	 * Card-specific payment details (non-null when payment_type === 'card').
+	 * Payment instrument details (card data, bank data, etc.).
 	 *
-	 * @var ?CardPaymentMethodData
+	 * @var PaymentInstrumentData
 	 */
-	private ?CardPaymentMethodData $card;
+	private PaymentInstrumentData $instrument;
 
 	/**
 	 * Transaction mode: MODE_TEST, MODE_LIVE, or MODE_UNKNOWN.
@@ -90,20 +90,20 @@ class PaymentMethodData {
 	 * @param string                 $gateway                 Gateway ID.
 	 * @param ?string                $payment_type            Payment type identifier, or null when unresolved.
 	 * @param bool                   $is_saved_payment_method Whether saved/tokenized.
-	 * @param ?CardPaymentMethodData $card                    Card details, if applicable.
+	 * @param ?PaymentInstrumentData $instrument              Instrument details, if applicable.
 	 * @param string                 $transaction_mode        Transaction mode (MODE_TEST, MODE_LIVE, or MODE_UNKNOWN).
 	 */
 	public function __construct(
 		string $gateway,
 		?string $payment_type = null,
 		bool $is_saved_payment_method = false,
-		?CardPaymentMethodData $card = null,
+		?PaymentInstrumentData $instrument = null,
 		string $transaction_mode = self::MODE_UNKNOWN
 	) {
 		$this->gateway                 = $gateway;
 		$this->payment_type            = $payment_type;
 		$this->is_saved_payment_method = $is_saved_payment_method;
-		$this->card                    = 'card' === $payment_type ? $card ?? new CardPaymentMethodData() : null;
+		$this->instrument              = $instrument ? $instrument : PaymentInstrumentData::empty();
 		$this->transaction_mode        = self::sanitize_transaction_mode( $transaction_mode );
 	}
 
@@ -130,7 +130,7 @@ class PaymentMethodData {
 			$this->gateway,
 			$this->payment_type,
 			$this->is_saved_payment_method,
-			$this->card,
+			$this->instrument,
 			$transaction_mode
 		);
 	}
@@ -166,7 +166,7 @@ class PaymentMethodData {
 			'gateway'                 => $this->gateway,
 			'payment_type'            => $this->payment_type,
 			'is_saved_payment_method' => $this->is_saved_payment_method,
-			'card'                    => $this->card ? $this->card->to_array() : null,
+			'instrument'              => $this->instrument->to_array(),
 			'transaction_mode'        => $this->transaction_mode,
 		);
 	}

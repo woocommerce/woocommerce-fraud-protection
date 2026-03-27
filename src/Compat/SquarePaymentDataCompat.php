@@ -8,7 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection\Compat;
 
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 
 defined( 'ABSPATH' ) || exit;
@@ -71,15 +71,14 @@ class SquarePaymentDataCompat {
 			'square_credit_card',
 			'card',
 			$is_saved,
-			new CardPaymentMethodData(
-				$brand,
-				null,
-				$last4,
-				null,
-				null,
-				$exp_month,
-				$exp_year,
-				$postcode
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'            => $brand,
+					'last4'            => $last4,
+					'exp_month'        => $exp_month,
+					'exp_year'         => $exp_year,
+					'billing_postcode' => $postcode,
+				)
 			),
 			$transaction_mode
 		);

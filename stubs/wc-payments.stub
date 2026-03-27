@@ -1,22 +1,56 @@
 <?php
 /**
- * PHPStan stub for WC_Payments and its Mode class.
+ * PHPStan stub for WC_Payments, WC_Payments_API_Client, WC_Payments_Features,
+ * and WCPay\Core\Mode.
  *
- * Used by WooPaymentsPaymentDataCompat to resolve transaction mode via the
- * gateway's own API rather than reading settings directly.
+ * The test suite conditionally defines stubs via class_alias() which PHPStan
+ * cannot follow. This stub declares the methods used in production and test code.
  */
-class WC_Payments {
-	/**
-	 * @return ?\WCPay\Core\Mode
-	 */
-	public static function mode(): ?\WCPay\Core\Mode {}
+
+// phpcs:disable
+
+namespace {
+	class WC_Payments {
+		/** @return ?\WCPay\Core\Mode */
+		public static function mode(): ?\WCPay\Core\Mode {}
+
+		/** @return ?WC_Payments_API_Client */
+		public static function get_payments_api_client(): ?WC_Payments_API_Client {}
+
+		/** @param bool $live */
+		public static function set_live( bool $live ): void {}
+
+		/** @param bool $available */
+		public static function set_mode_available( bool $available ): void {}
+
+		/** @param ?WC_Payments_API_Client $client */
+		public static function set_api_client( ?WC_Payments_API_Client $client ): void {}
+
+		public static function reset(): void {}
+	}
+
+	class WC_Payments_API_Client {
+		/**
+		 * @param string $payment_method_id
+		 * @return array
+		 */
+		public function get_payment_method( string $payment_method_id ): array {}
+	}
+
+	class WC_Payments_Features {
+		/** @return bool */
+		public static function is_woopay_enabled(): bool {}
+
+		/** @param bool $enabled */
+		public static function set_woopay_enabled( bool $enabled ): void {}
+
+		public static function reset(): void {}
+	}
 }
 
-namespace WCPay\Core;
-
-class Mode {
-	/**
-	 * @return bool
-	 */
-	public function is_live(): bool {}
+namespace WCPay\Core {
+	class Mode {
+		/** @return bool */
+		public function is_live(): bool {}
+	}
 }

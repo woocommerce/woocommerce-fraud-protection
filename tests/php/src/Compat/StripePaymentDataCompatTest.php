@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
@@ -198,7 +199,7 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 
 		$array = $result->to_array();
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
-		$this->assertNull( $array['card'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 	}
 
 	/**
@@ -234,7 +235,7 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 				'gateway'                 => 'stripe',
 				'payment_type'            => 'card',
 				'is_saved_payment_method' => false,
-				'card'                    => array(
+				'instrument'              => array(
 					'brand'            => 'visa',
 					'funding'          => 'credit',
 					'last4'            => '4242',
@@ -243,6 +244,12 @@ class StripePaymentDataCompatTest extends WC_Unit_Test_Case {
 					'exp_month'        => 12,
 					'exp_year'         => 2025,
 					'billing_postcode' => '10001',
+					'wallet'           => null,
+					'bank_code'        => null,
+					'bin'                => null,
+					'cvc_check'          => null,
+					'avs_address_check'  => null,
+					'avs_postcode_check' => null,
 				),
 				'transaction_mode'        => PaymentMethodData::MODE_LIVE,
 			),

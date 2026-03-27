@@ -7,7 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
-use Automattic\WooCommerce\FraudProtection\Schemas\CardPaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use WC_Unit_Test_Case;
 
@@ -22,15 +22,15 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 	 * @testdox Constructor sets all properties; to_array() returns correct values.
 	 */
 	public function test_constructor_and_to_array(): void {
-		$card = new CardPaymentMethodData( 'visa', 'credit', '4242' );
-		$data = new PaymentMethodData( 'stripe', 'card', true, $card );
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) );
+		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$result = $data->to_array();
 
 		$this->assertSame( 'card', $result['payment_type'] );
 		$this->assertTrue( $result['is_saved_payment_method'] );
-		$this->assertIsArray( $result['card'] );
-		$this->assertSame( 'visa', $result['card']['brand'] );
+		$this->assertIsArray( $result['instrument'] );
+		$this->assertSame( 'visa', $result['instrument']['brand'] );
 	}
 
 	/**
@@ -43,31 +43,31 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox to_array() produces null card when no card data.
+	 * @testdox to_array() produces empty instrument when no instrument data.
 	 */
-	public function test_to_array_null_card(): void {
+	public function test_to_array_empty_instrument(): void {
 		$data = new PaymentMethodData( 'stripe_ideal', 'ideal', false );
 
 		$result = $data->to_array();
 
 		$this->assertSame( 'ideal', $result['payment_type'] );
 		$this->assertFalse( $result['is_saved_payment_method'] );
-		$this->assertNull( $result['card'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $result['instrument'] );
 	}
 
 	/**
-	 * @testdox to_array() includes full card data when card is present.
+	 * @testdox to_array() includes full instrument data when instrument is present.
 	 */
-	public function test_to_array_with_full_card(): void {
-		$card = new CardPaymentMethodData( 'mastercard', 'debit', '5678', 'fp_abc', 'GB', 11, 2026 );
-		$data = new PaymentMethodData( 'stripe', 'card', true, $card );
+	public function test_to_array_with_full_instrument(): void {
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'mastercard', 'funding' => 'debit', 'last4' => '5678', 'fingerprint' => 'fp_abc', 'country' => 'GB', 'exp_month' => 11, 'exp_year' => 2026 ) );
+		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$this->assertSame(
 			array(
 				'gateway'                 => 'stripe',
 				'payment_type'            => 'card',
 				'is_saved_payment_method' => true,
-				'card'                    => array(
+				'instrument'              => array(
 					'brand'            => 'mastercard',
 					'funding'          => 'debit',
 					'last4'            => '5678',
@@ -76,6 +76,12 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 					'exp_month'        => 11,
 					'exp_year'         => 2026,
 					'billing_postcode' => null,
+					'wallet'           => null,
+					'bank_code'        => null,
+					'bin'                => null,
+					'cvc_check'          => null,
+					'avs_address_check'  => null,
+					'avs_postcode_check' => null,
 				),
 				'transaction_mode'        => PaymentMethodData::MODE_UNKNOWN,
 			),
@@ -119,8 +125,8 @@ class PaymentMethodDataTest extends WC_Unit_Test_Case {
 	 * @testdox with_transaction_mode() preserves all other fields.
 	 */
 	public function test_with_transaction_mode_preserves_fields(): void {
-		$card     = new CardPaymentMethodData( 'visa', 'credit', '4242', 'fp_abc', 'US', 12, 2028, '10001' );
-		$original = new PaymentMethodData( 'stripe', 'card', true, $card );
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242', 'fingerprint' => 'fp_abc', 'country' => 'US', 'exp_month' => 12, 'exp_year' => 2028, 'billing_postcode' => '10001' ) );
+		$original   = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$result = $original->with_transaction_mode( PaymentMethodData::MODE_TEST );
 
