@@ -29,7 +29,7 @@ class SessionClearanceManager {
 	/**
 	 * Session key for storing customer identity ID.
 	 */
-	private const CUSTOMER_IDENTITY_ID_KEY = '_fraud_protection_customer_identity_id';
+	public const CUSTOMER_IDENTITY_ID_KEY = '_fraud_protection_customer_identity_id';
 
 	/**
 	 * Session status: pending clearance.
@@ -233,14 +233,12 @@ class SessionClearanceManager {
 	 * @return void
 	 */
 	private function log_session_update_event( string $action ): void {
-		$session_id = $this->get_identity_id();
-		$user_id    = get_current_user_id();
-		$user_info  = $user_id ? "User: {$user_id}" : 'User: guest';
-		$timestamp  = current_time( 'mysql' );
+		$user_id   = get_current_user_id();
+		$user_info = $user_id ? "User: {$user_id}" : 'User: guest';
+		$timestamp = current_time( 'mysql' );
 
 		$message = sprintf(
-			'Session updated: %s | %s | Action: %s | Timestamp: %s',
-			$session_id,
+			'Session updated | %s | Action: %s | Timestamp: %s',
 			$user_info,
 			$action,
 			$timestamp

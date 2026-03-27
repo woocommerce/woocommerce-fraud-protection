@@ -241,16 +241,13 @@ class ApiClient {
 			return self::DECISION_ALLOW;
 		}
 
-		$session    = is_array( $event_data['session'] ?? null ) ? $event_data['session'] : array();
-		$session_id = $session['wc_identity_id'] ?? 'unknown';
-		$source     = $event_data['source'] ?? 'unknown';
+		$source = $event_data['source'] ?? 'unknown';
 		FraudProtectionController::log(
 			'info',
 			sprintf(
-				'Fraud decision received: %s | Source: %s | Session: %s',
+				'Fraud decision received: %s | Source: %s',
 				$decision,
-				$source,
-				$session_id
+				$source
 			),
 			array( 'response' => $response )
 		);

@@ -5,11 +5,15 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Tests\Internal;
 
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
+use Automattic\WooCommerce\FraudProtection\SessionClearanceManager;
+use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 
 /**
  * Tests for the FraudProtectionController class.
  */
 class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
+
+	use LoggerSpyTrait;
 
 	/**
 	 * Set up test fixtures.
@@ -20,6 +24,11 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 		// Set jetpack_activation_source option to prevent "Cannot use bool as array" error
 		// in Jetpack Connection Manager's apply_activation_source_to_args method.
 		update_option( 'jetpack_activation_source', array( '', '' ) );
+
+		// Clear identity ID so log messages don't get an unexpected prefix.
+		if ( WC()->session ) {
+			WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
+		}
 	}
 
 	/**
@@ -169,6 +178,38 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
+	 * Test that log message is prefixed with identity ID when available in session.
+	 */
+	public function test_log_prepends_identity_id_when_available(): void {
+		WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, 'test-identity-123' );
+
+		FraudProtectionController::log( 'info', 'Test message' );
+
+		$this->assertLogged( 'info', 'Identity: test-identity-123 | Test message' );
+	}
+
+	/**
+	 * Test that log message has no prefix when identity ID is not in session.
+	 */
+	public function test_log_has_no_prefix_when_identity_id_not_in_session(): void {
+		// Ensure no identity ID is set.
+		WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
+
+		FraudProtectionController::log( 'info', 'Test message' );
+
+		$this->assertLogged( 'info', 'Test message' );
+
+		// Verify the message does NOT start with the identity prefix.
+		$logs = array_values(
+			array_filter(
+				$this->captured_logs,
+				fn( $log ) => 'info' === $log['level']
+			)
+		);
+		$this->assertStringStartsNotWith( 'Identity:', $logs[0]['message'] );
+	}
+
+	/**
 	 * Cleanup after test.
 	 */
 	public function tearDown(): void {
@@ -181,5 +222,10 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 
 		// Remove any init hooks registered by the controller.
 		remove_all_actions( 'init' );
+
+		// Clean up session identity ID.
+		if ( WC()->session ) {
+			WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
+		}
 	}
 }
