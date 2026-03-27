@@ -318,7 +318,7 @@ class CheckoutEventTracker {
 	 * Clear collected session events when an order payment succeeds.
 	 *
 	 * Hooked to `woocommerce_order_status_changed` with guards to only fire
-	 * on initial checkout transitions (pending/failed → processing/completed/on-hold).
+	 * on initial checkout transitions (checkout-draft/pending/failed → processing/completed/on-hold).
 	 * This ensures events from a completed order do not carry over to subsequent
 	 * orders in the same session, while preserving events across payment retries.
 	 *
@@ -335,7 +335,7 @@ class CheckoutEventTracker {
 	 * @return void
 	 */
 	public function clear_events_on_successful_payment( int $order_id, string $old_status, string $new_status ): void {
-		$initial_checkout_statuses               = array( 'pending', 'failed' );
+		$initial_checkout_statuses               = array( 'checkout-draft', 'pending', 'failed' );
 		$successful_checkout_transition_statuses = array( 'processing', 'completed', 'on-hold' );
 
 		// Skip for transitions starting on non initial checkout statuses.

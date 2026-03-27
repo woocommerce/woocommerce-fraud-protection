@@ -453,12 +453,15 @@ class CheckoutEventTrackerTest extends \WC_Unit_Test_Case {
 	 */
 	public function successful_checkout_transitions(): array {
 		return array(
-			'pending → processing (online gateway)'    => array( 'pending', 'processing' ),
-			'pending → completed (virtual product)'    => array( 'pending', 'completed' ),
-			'pending → on-hold (offline gateway)'      => array( 'pending', 'on-hold' ),
-			'failed → processing (pay-for-order)'      => array( 'failed', 'processing' ),
-			'failed → completed (pay-for-order)'       => array( 'failed', 'completed' ),
-			'failed → on-hold (pay-for-order offline)' => array( 'failed', 'on-hold' ),
+			'checkout-draft → processing (pay-for-order link)' => array( 'checkout-draft', 'processing' ),
+			'checkout-draft → completed (pay-for-order link)'  => array( 'checkout-draft', 'completed' ),
+			'checkout-draft → on-hold (pay-for-order link)'    => array( 'checkout-draft', 'on-hold' ),
+			'pending → processing (online gateway)'            => array( 'pending', 'processing' ),
+			'pending → completed (virtual product)'            => array( 'pending', 'completed' ),
+			'pending → on-hold (offline gateway)'              => array( 'pending', 'on-hold' ),
+			'failed → processing (pay-for-order)'              => array( 'failed', 'processing' ),
+			'failed → completed (pay-for-order)'               => array( 'failed', 'completed' ),
+			'failed → on-hold (pay-for-order offline)'         => array( 'failed', 'on-hold' ),
 		);
 	}
 
