@@ -142,12 +142,17 @@ class ApiClient {
 
 		$payload = $this->filter_empty_values( $payload );
 
+		$log_payload = $payload;
+		if ( isset( $log_payload['full_headers'] ) ) {
+			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
+		}
+
 		FraudProtectionController::log(
 			'info',
 			'Verifying session with Blackbox API',
 			array(
 				'session_id' => $session_id,
-				'payload'    => $payload,
+				'payload'    => $log_payload,
 			)
 		);
 
@@ -406,9 +411,12 @@ class ApiClient {
 	 * @return array<string, ?string> Header name => value map.
 	 */
 	private static function get_request_headers(): array {
-		$headers = function_exists( 'getallheaders' ) ? getallheaders() : false;
-		if ( ! is_array( $headers ) ) {
-			$headers = array();
+		$raw_headers = function_exists( 'getallheaders' ) ? getallheaders() : false;
+		$headers     = array();
+		if ( is_array( $raw_headers ) ) {
+			foreach ( $raw_headers as $name => $value ) {
+				$headers[ \sanitize_text_field( $name ) ] = \wp_strip_all_tags( $value );
+			}
 		}
 
 		$server_keys = array(
@@ -422,8 +430,9 @@ class ApiClient {
 			'HTTP_X_IS_CRAWLER',
 		);
 		foreach ( $server_keys as $key ) {
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized below.
-			$headers[ $key ] = isset( $_SERVER[ $key ] ) ? \sanitize_text_field( \wp_unslash( $_SERVER[ $key ] ) ) : null;
+			if ( isset( $_SERVER[ $key ] ) ) {
+				$headers[ $key ] = \wp_strip_all_tags( \wp_unslash( $_SERVER[ $key ] ) );
+			}
 		}
 
 		// Strip sensitive headers (case-insensitive — header names vary by server).
