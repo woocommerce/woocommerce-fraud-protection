@@ -126,17 +126,7 @@ describe( 'blocks-checkout', () => {
 		} );
 	} );
 
-	describe( 'reset after checkout', () => {
-		it( 'calls reset on checkout success', () => {
-			setupFraudProtection();
-			loadScript();
-
-			const successCallback = mockOnCheckoutSuccess.mock.calls[ 0 ][ 0 ];
-			successCallback();
-
-			expect( mockReset ).toHaveBeenCalledTimes( 1 );
-		} );
-
+	describe( 'reset after checkout failure', () => {
 		it( 'calls reset on checkout failure', () => {
 			setupFraudProtection();
 			loadScript();
@@ -147,13 +137,20 @@ describe( 'blocks-checkout', () => {
 			expect( mockReset ).toHaveBeenCalledTimes( 1 );
 		} );
 
+		it( 'does not register an onCheckoutSuccess callback', () => {
+			setupFraudProtection();
+			loadScript();
+
+			expect( mockOnCheckoutSuccess ).not.toHaveBeenCalled();
+		} );
+
 		it( 'does not call reset when wcFraudProtection is missing', () => {
 			loadScript();
 
-			const successCallback = mockOnCheckoutSuccess.mock.calls[ 0 ][ 0 ];
+			const failCallback = mockOnCheckoutFail.mock.calls[ 0 ][ 0 ];
 
 			expect( () => {
-				successCallback();
+				failCallback();
 			} ).not.toThrow();
 
 			expect( mockReset ).not.toHaveBeenCalled();

@@ -3,7 +3,7 @@
  *
  * Gates checkout submission via wcFraudProtection.acquireSessionId(),
  * sets the session ID as extension data for the checkout POST, then
- * lets the request proceed. Resets after checkout completes.
+ * lets the request proceed. Resets after checkout failure for retry.
  *
  * Depends on blackbox-init.js (wcFraudProtection), wp-data (checkout
  * store), and wc-blocks-checkout-events (validation + success/fail hooks).
@@ -56,6 +56,8 @@
 		}
 	};
 
-	checkoutEvents.onCheckoutSuccess( resetFraudProtection );
+	// Reset only on failure — user stays on the page and may retry with a fresh session.
+	// No reset on success: the page navigates to order-received, so the collect triggered
+	// by reset() would be wasted.
 	checkoutEvents.onCheckoutFail( resetFraudProtection );
 } )();
