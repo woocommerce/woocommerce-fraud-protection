@@ -90,9 +90,9 @@ class ApiClientTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox verify() strips null and empty-string values from the outgoing payload
+	 * @testdox verify() strips null and empty-string values from context but preserves top-level fields
 	 */
-	public function test_verify_strips_null_and_empty_values(): void {
+	public function test_verify_filters_empty_values_only_in_context(): void {
 		$captured_body = null;
 
 		add_filter(
@@ -108,8 +108,9 @@ class ApiClientTest extends WC_Unit_Test_Case {
 			2
 		);
 
+		// Use empty session_id to trigger no-session top-level fields.
 		$this->sut->verify(
-			'test-session-id',
+			'',
 			array(
 				'keep_string'  => 'hello',
 				'keep_false'   => false,
@@ -127,6 +128,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$context = $captured_body['context'];
 
+		// Null and empty-string values stripped inside context.
 		$this->assertSame( 'hello', $context['keep_string'] );
 		$this->assertFalse( $context['keep_false'] );
 		$this->assertSame( 0, $context['keep_zero'] );
@@ -136,6 +138,9 @@ class ApiClientTest extends WC_Unit_Test_Case {
 		$this->assertArrayNotHasKey( 'drop_empty', $context );
 		$this->assertSame( 'yes', $context['nested']['keep'] );
 		$this->assertArrayNotHasKey( 'drop', $context['nested'] );
+
+		// Top-level fields are NOT filtered — empty session_id preserved.
+		$this->assertSame( '', $captured_body['session_id'] );
 	}
 
 	/**
