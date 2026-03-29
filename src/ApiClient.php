@@ -132,15 +132,13 @@ class ApiClient {
 	 * @return string Decision: "allow" or "block".
 	 */
 	public function verify( string $session_id, array $context ): string {
-		$payload = array( 'context' => $context );
+		$payload = array( 'context' => $this->filter_empty_values( $context ) );
 
 		// No-session case: send visitor_ip and full_headers at top level.
 		if ( '' === $session_id ) {
 			$payload['visitor_ip']   = Schemas\SessionInfo::get_ip_address();
 			$payload['full_headers'] = self::get_request_headers();
 		}
-
-		$payload = $this->filter_empty_values( $payload );
 
 		$log_payload = $payload;
 		if ( isset( $log_payload['full_headers'] ) ) {
