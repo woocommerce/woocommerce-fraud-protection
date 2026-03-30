@@ -85,14 +85,16 @@ class BlackboxScriptHandler {
 	 * @return void
 	 */
 	public function maybe_enqueue_scripts(): void {
-		global $wp;
+		global $wp, $post;
+
+		$has_checkout_block = \WC_Blocks_Utils::has_block_in_page( $post, 'woocommerce/checkout' );
 
 		// is_add_payment_method_page returns true for the payment methods list, check for the actual
 		// add payment method page where payment details are collected.
 		$is_add_payment_method_page = is_add_payment_method_page() && isset( $wp->query_vars['add-payment-method'] );
 
 		$is_payment_page = is_checkout() ||
-			has_block( 'woocommerce/checkout' ) ||
+			$has_checkout_block ||
 			is_checkout_pay_page() ||
 			$is_add_payment_method_page;
 
