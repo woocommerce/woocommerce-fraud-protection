@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WooCommerce Fraud Protection
  * Description: A plugin to protect WooCommerce from fraud.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Author: Automattic
  *
  * @package WooCommerce\FraudProtection
@@ -14,17 +14,12 @@ use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
 
-// Kill-switch: allows WPCloud to disable the plugin without removing files.
-// For 0.1.0: default to disabled for safe initial rollout.
-if ( ! defined( 'WC_FRAUD_PROTECTION_DISABLED' ) ) {
-	define( 'WC_FRAUD_PROTECTION_DISABLED', true );
-}
-
-if ( defined( 'WC_FRAUD_PROTECTION_DISABLED' ) && WC_FRAUD_PROTECTION_DISABLED ) { // @phpstan-ignore booleanAnd.rightAlwaysTrue (guard kept for 0.1.1 when define() default is removed)
+// Kill-switch: define WC_FRAUD_PROTECTION_DISABLED as true to disable.
+if ( defined( 'WC_FRAUD_PROTECTION_DISABLED' ) && WC_FRAUD_PROTECTION_DISABLED ) {
 	return;
 }
 
-define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.0' );
+define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.1' );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', __DIR__ );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
