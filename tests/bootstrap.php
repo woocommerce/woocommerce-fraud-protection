@@ -78,6 +78,9 @@ function _manually_load_plugins() {
 		exit( 1 );
 	}
 
+	// Disable the kill-switch so the plugin loads in tests.
+	define( 'WC_FRAUD_PROTECTION_DISABLED', false );
+
 	// Load this plugin (hooks registration only, classes already loaded above).
 	require $plugin_dir . '/woocommerce-fraud-protection.php';
 }
