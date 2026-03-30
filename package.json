@@ -17,7 +17,7 @@
 		"start": "wp-scripts start",
 		"lint": "npm run lint:js && npm run lint:css && npm run lint:php",
 		"lint:js": "wp-scripts lint-js assets/js",
-		"lint:css": "wp-scripts lint-style assets/css",
+		"lint:css": "wp-scripts lint-style assets/css --allow-empty-input",
 		"lint:php": "vendor/bin/phpcs",
 		"lint:php:autofix": "vendor/bin/phpcbf",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
