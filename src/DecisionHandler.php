@@ -86,6 +86,8 @@ class DecisionHandler {
 		 * Note: This filter can only change the decision to ApiClient::VALID_DECISIONS.
 		 * Any other value will be rejected and the original decision will be used.
 		 *
+		 * @since 0.1.0
+		 *
 		 * @param string               $decision     The decision from the API (allow, block).
 		 * @param array<string, mixed> $session_data The session data that was analyzed.
 		 */
@@ -133,6 +135,8 @@ class DecisionHandler {
 		 *
 		 * To enable enforcement (blocking), return false:
 		 * `add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );`
+		 *
+		 * @since 0.1.0
 		 *
 		 * @param bool $learning_mode Whether learning mode is active. Default true.
 		 */

@@ -1,11 +1,12 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-2026-02-06 - version 1.0.0
-* Added - Fraud protection integration with Blackbox API
-* Added - Session-based clearance management
-* Added - Cart event tracking (add, remove, update, restore)
-* Added - Checkout event tracking (page load, field updates, order placed)
-* Added - Payment method event tracking
-* Added - Blocked session notices with customizable messaging
-* Added - Cart restrictions for blocked sessions
-* Added - Filter hooks for customizing fraud protection behavior
+2026-03-30 - version 0.1.0
+* Added - Fraud protection via Blackbox API with session-based clearance management
+* Added - Checkout protection for blocks, shortcode, pay-for-order, and add-payment-method flows
+* Added - Subscriptions change-payment-method integration
+* Added - Payment data resolution for WooPayments
+* Added - Cart and checkout event tracking (add, remove, update, page load, field updates)
+* Added - Blocked session notices and cart restrictions
+* Added - Order event reporting with session ID persistence
+* Added - Learning mode and no-session support for initial deployment
+* Added - MU-plugin loader with WC_FRAUD_PROTECTION_DISABLED kill-switch

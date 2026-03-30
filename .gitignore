@@ -58,6 +58,7 @@ tmp/
 .phpunit.result.cache
 coverage/
 woocommerce-fraud-protection.zip
+build/
 .DS_Store
 
 # Claude local config files

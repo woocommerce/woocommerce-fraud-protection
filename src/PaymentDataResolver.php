@@ -54,7 +54,7 @@ class PaymentDataResolver {
 			 * Compat layers may enrich it or replace it entirely. The gateway ID
 			 * is available via $resolved->get_gateway().
 			 *
-			 * @since 1.0.0
+			 * @since 0.1.0
 			 *
 			 * @param PaymentMethodData $resolved               The resolved payment data (baseline or pre-resolved from WC token).
 			 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.
