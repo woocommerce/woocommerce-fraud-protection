@@ -98,7 +98,7 @@ The plugin bootstraps on the `woocommerce_loaded` action (not `plugins_loaded` �
 
 **Protector pattern**: `*Protector` classes (e.g. `BlocksCheckoutProtector`, `ShortcodeCheckoutProtector`) share the same shape — they take `SessionVerifier`, `BlockedSessionNotice`, and `PaymentDataResolver` via `init()`, hook a verification filter/action + a JS enqueue action in `register()`, and call `verify_and_block()` with fail-open try-catch blocks. Each defines a unique `SOURCE` constant (e.g. `'blocks_checkout'`) and has a companion JS file in `assets/js/` that gates form submission to acquire a session ID. New integrations should follow this pattern.
 
-**Blocks integration (JS)**: Gates checkout via `onCheckoutValidation` → `getSessionId()` raced against a 5s timeout (fail-open) → `setExtensionData`. Resets Blackbox via `onCheckoutSuccess`/`onCheckoutFail`.
+**Blocks integration (JS)**: Gates checkout via `onCheckoutValidation` → `getSessionId()` raced against a 5s timeout (fail-open) → `setExtensionData`. Resets Blackbox via `onCheckoutFail` (success navigates away; no reset needed).
 
 **Classic/shortcode integration (JS)**: Gates form submission via `checkout_place_order` event → `getSessionId()` raced against a 5s timeout (fail-open) → hidden field injection → re-submit. Resets Blackbox via deferred cleanup after the re-submitted form goes through.
 

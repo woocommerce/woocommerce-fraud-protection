@@ -58,6 +58,7 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	public function tearDown(): void {
 		remove_all_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts' );
 		remove_all_filters( 'woocommerce_is_checkout' );
+		remove_all_filters( 'woocommerce_is_order_received_page' );
 		remove_all_filters( 'pre_option_jetpack_options' );
 		remove_all_filters( 'pre_option_woocommerce_myaccount_page_id' );
 		wp_dequeue_script( 'wc-fraud-protection-blackbox' );
@@ -68,6 +69,7 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 		// Clean up global query vars and post.
 		global $wp, $post;
 		unset( $wp->query_vars['order-pay'] );
+		unset( $wp->query_vars['order-received'] );
 		unset( $wp->query_vars['add-payment-method'] );
 		$post = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Test teardown cleanup.
 
@@ -134,6 +136,19 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox', 'enqueued' ), 'Blackbox SDK should be enqueued on custom checkout block page' );
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'Blackbox init script should be enqueued on custom checkout block page' );
+	}
+
+	/**
+	 * @testdox Should not enqueue Blackbox scripts on order-received page.
+	 */
+	public function test_does_not_enqueue_scripts_on_order_received(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->mock_wc_page( 'order-received' );
+
+		do_action( 'wp_enqueue_scripts' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox', 'enqueued' ), 'Blackbox SDK should not be enqueued on order-received page' );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'Blackbox init script should not be enqueued on order-received page' );
 	}
 
 	/**
@@ -215,7 +230,7 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 	/**
 	 * Mock a WooCommerce page URL.
 	 *
-	 * @param string $page The page to mock (e.g., 'checkout', 'custom-blocks-checkout', 'order-pay', 'add-payment-method').
+	 * @param string $page The page to mock (e.g., 'checkout', 'custom-blocks-checkout', 'order-received', 'order-pay', 'add-payment-method').
 	 */
 	private function mock_wc_page( string $page ): void {
 		global $wp, $post, $wp_query;
@@ -232,6 +247,13 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 			case 'order-pay':
 				$wp->query_vars['order-pay'] = true;
 				add_filter( 'woocommerce_is_checkout', '__return_true' );
+				break;
+			case 'order-received':
+				// Order-received is the same WP page as checkout, so is_checkout() returns true
+				// and has_block('woocommerce/checkout') matches the post content. Simulate both.
+				add_filter( 'woocommerce_is_checkout', '__return_true' );
+				add_filter( 'woocommerce_is_order_received_page', '__return_true' );
+				$wp->query_vars['order-received'] = '123';
 				break;
 			case 'add-payment-method':
 				$page_id = $this->factory()->post->create(
