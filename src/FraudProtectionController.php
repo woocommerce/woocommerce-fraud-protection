@@ -198,10 +198,32 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 			return;
 		}
 
+		$identity_id = self::get_session_identity_id();
+		if ( $identity_id ) {
+			$message = sprintf( 'Identity: %s | %s', $identity_id, $message );
+		}
+
 		wc_get_logger()->log(
 			$level,
 			$message,
 			array_merge( $context, array( 'source' => 'woo-fraud-protection' ) )
 		);
+	}
+
+	/**
+	 * Get the identity ID from the current WC session, if available.
+	 *
+	 * This is a read-only lookup — it will not initialize a session or generate an identity ID.
+	 *
+	 * @return string Identity ID, or empty string if not available.
+	 */
+	private static function get_session_identity_id(): string {
+		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			return '';
+		}
+
+		$identity_id = WC()->session->get( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY );
+
+		return is_string( $identity_id ) ? $identity_id : '';
 	}
 }
