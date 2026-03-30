@@ -7,8 +7,8 @@
 	"files": [
 		"assets",
 		"src",
-		"vendor",
 		"changelog.txt",
+		"woocommerce-fraud-protection-loader.php",
 		"woocommerce-fraud-protection.php"
 	],
 	"scripts": {
@@ -21,7 +21,7 @@
 		"lint:php": "vendor/bin/phpcs",
 		"lint:php:autofix": "vendor/bin/phpcbf",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
-		"plugin-zip": "composer install --no-dev && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip package.json README.md && composer install",
+		"plugin-zip": "composer install --no-dev && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip woocommerce-fraud-protection/package.json woocommerce-fraud-protection/README.md && composer install",
 		"test": "npm run test:php && npm run test:js",
 		"test:js": "wp-scripts test-unit-js",
 		"test:php": "vendor/bin/phpunit",
@@ -31,7 +31,7 @@
 	},
 	"devDependencies": {
 		"@babel/runtime": "^7.24.0",
-		"@wordpress/scripts": "^28.0.0",
+		"@wordpress/scripts": "^31.7.0",
 		"jquery": "^3.7.1"
 	},
 	"engines": {
