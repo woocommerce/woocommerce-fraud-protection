@@ -128,21 +128,30 @@ class ApiClient {
 	 * returns "allow" decision and logs the error.
 	 *
 	 * @param string               $session_id Session ID to verify.
-	 * @param array<string, mixed> $payload    Event data to send to the endpoint.
+	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
 	 * @return string Decision: "allow" or "block".
 	 */
-	public function verify( string $session_id, array $payload ): string {
+	public function verify( string $session_id, array $context ): string {
+		$payload = array( 'context' => $this->filter_empty_values( $context ) );
+
+		// No-session case: send visitor_ip and full_headers at top level.
+		if ( '' === $session_id ) {
+			$payload['visitor_ip']   = Schemas\SessionInfo::get_ip_address();
+			$payload['full_headers'] = self::get_request_headers();
+		}
+
+		$log_payload = $payload;
+		if ( isset( $log_payload['full_headers'] ) ) {
+			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
+		}
+
 		FraudProtectionController::log(
 			'info',
 			'Verifying session with Blackbox API',
 			array(
 				'session_id' => $session_id,
-				'payload'    => $payload,
+				'payload'    => $log_payload,
 			)
-		);
-
-		$payload = array(
-			'context' => $payload,
 		);
 
 		$response = $this->make_request(
@@ -241,7 +250,8 @@ class ApiClient {
 			return self::DECISION_ALLOW;
 		}
 
-		$source = $event_data['source'] ?? 'unknown';
+		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
+		$source  = $context['source'] ?? 'unknown';
 		FraudProtectionController::log(
 			'info',
 			sprintf(
@@ -363,6 +373,72 @@ class ApiClient {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Recursively remove null and empty-string values from an array.
+	 *
+	 * Preserves false, 0, 0.0, and empty arrays since those carry semantic meaning.
+	 *
+	 * @param array<string, mixed> $data The array to filter.
+	 * @return array<string, mixed> Filtered array.
+	 */
+	private function filter_empty_values( array $data ): array {
+		$filtered = array();
+		foreach ( $data as $key => $value ) {
+			if ( null === $value || '' === $value ) {
+				continue;
+			}
+			if ( is_array( $value ) ) {
+				$value = $this->filter_empty_values( $value );
+			}
+			$filtered[ $key ] = $value;
+		}
+		return $filtered;
+	}
+
+	/**
+	 * Get all HTTP request headers for the no-session case.
+	 *
+	 * Uses getallheaders() when available, augmented with GEOIP and
+	 * crawler server variables.
+	 *
+	 * @return array<string, ?string> Header name => value map.
+	 */
+	private static function get_request_headers(): array {
+		$raw_headers = function_exists( 'getallheaders' ) ? getallheaders() : false;
+		$headers     = array();
+		if ( is_array( $raw_headers ) ) {
+			foreach ( $raw_headers as $name => $value ) {
+				$headers[ \sanitize_text_field( $name ) ] = \wp_strip_all_tags( $value );
+			}
+		}
+
+		$server_keys = array(
+			'GEOIP_COUNTRY_CODE',
+			'GEOIP_ASN',
+			'GEOIP_REGISTERED_COUNTRY_CODE',
+			'GEOIP_CITY',
+			'GEOIP_LATITUDE',
+			'GEOIP_LONGITUDE',
+			'GEOIP_TIME_ZONE',
+			'HTTP_X_IS_CRAWLER',
+		);
+		foreach ( $server_keys as $key ) {
+			if ( isset( $_SERVER[ $key ] ) ) {
+				$headers[ $key ] = \wp_strip_all_tags( \wp_unslash( $_SERVER[ $key ] ) );
+			}
+		}
+
+		// Strip sensitive headers (case-insensitive — header names vary by server).
+		$sensitive = array( 'cookie', 'authorization', 'x-wp-nonce', 'x-woo-session', 'nonce' );
+		foreach ( array_keys( $headers ) as $name ) {
+			if ( in_array( strtolower( $name ), $sensitive, true ) ) {
+				unset( $headers[ $name ] );
+			}
+		}
+
+		return $headers;
 	}
 
 	/**

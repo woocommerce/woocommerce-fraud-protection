@@ -90,6 +90,60 @@ class ApiClientTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox verify() strips null and empty-string values from context but preserves top-level fields
+	 */
+	public function test_verify_filters_empty_values_only_in_context(): void {
+		$captured_body = null;
+
+		add_filter(
+			'pre_http_request',
+			function ( $_preempt, $args ) use ( &$captured_body ) {
+				$captured_body = json_decode( $args['body'], true );
+				return array(
+					'response' => array( 'code' => 200 ),
+					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
+				);
+			},
+			10,
+			2
+		);
+
+		// Use empty session_id to trigger no-session top-level fields.
+		$this->sut->verify(
+			'',
+			array(
+				'keep_string'  => 'hello',
+				'keep_false'   => false,
+				'keep_zero'    => 0,
+				'keep_float'   => 0.0,
+				'keep_array'   => array(),
+				'drop_null'    => null,
+				'drop_empty'   => '',
+				'nested'       => array(
+					'keep'  => 'yes',
+					'drop'  => null,
+				),
+			)
+		);
+
+		$context = $captured_body['context'];
+
+		// Null and empty-string values stripped inside context.
+		$this->assertSame( 'hello', $context['keep_string'] );
+		$this->assertFalse( $context['keep_false'] );
+		$this->assertSame( 0, $context['keep_zero'] );
+		$this->assertSame( 0, $context['keep_float'] ); // JSON encodes 0.0 as 0.
+		$this->assertSame( array(), $context['keep_array'] );
+		$this->assertArrayNotHasKey( 'drop_null', $context );
+		$this->assertArrayNotHasKey( 'drop_empty', $context );
+		$this->assertSame( 'yes', $context['nested']['keep'] );
+		$this->assertArrayNotHasKey( 'drop', $context['nested'] );
+
+		// Top-level fields are NOT filtered — empty session_id preserved.
+		$this->assertSame( '', $captured_body['session_id'] );
+	}
+
+	/**
 	 * Test verify returns allow decision.
 	 *
 	 * @testdox verify() returns allow decision from API
@@ -236,6 +290,87 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged( 'error', 'Invalid decision value' );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| No-session payload tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox verify() adds visitor_ip and full_headers when session_id is empty
+	 */
+	public function test_verify_adds_visitor_ip_and_full_headers_for_no_session(): void {
+		$captured_body = null;
+
+		add_filter(
+			'pre_http_request',
+			function ( $_preempt, $args ) use ( &$captured_body ) {
+				$captured_body = json_decode( $args['body'], true );
+				return array(
+					'response' => array( 'code' => 200 ),
+					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
+				);
+			},
+			10,
+			2
+		);
+
+		$this->sut->verify(
+			'',
+			array(
+				'session' => array(
+					'wc_identity_id' => 'abc',
+					'email'          => 'test@example.com',
+				),
+				'source'  => 'blocks_checkout',
+			)
+		);
+
+		// Session fields preserved in context.
+		$this->assertSame( 'abc', $captured_body['context']['session']['wc_identity_id'] );
+		$this->assertSame( 'test@example.com', $captured_body['context']['session']['email'] );
+
+		// Top-level no-session fields present.
+		$this->assertArrayHasKey( 'visitor_ip', $captured_body );
+		$this->assertArrayHasKey( 'full_headers', $captured_body );
+		$this->assertIsArray( $captured_body['full_headers'] );
+	}
+
+	/**
+	 * @testdox verify() does not restructure payload when session_id is present
+	 */
+	public function test_verify_keeps_normal_payload_with_session(): void {
+		$captured_body = null;
+
+		add_filter(
+			'pre_http_request',
+			function ( $_preempt, $args ) use ( &$captured_body ) {
+				$captured_body = json_decode( $args['body'], true );
+				return array(
+					'response' => array( 'code' => 200 ),
+					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
+				);
+			},
+			10,
+			2
+		);
+
+		$this->sut->verify(
+			'has-session',
+			array(
+				'session' => array(
+					'wc_identity_id' => 'abc',
+					'email'          => 'test@example.com',
+				),
+				'source'  => 'blocks_checkout',
+			)
+		);
+
+		// No top-level no-session fields when session_id is present.
+		$this->assertArrayNotHasKey( 'visitor_ip', $captured_body );
+		$this->assertArrayNotHasKey( 'full_headers', $captured_body );
 	}
 
 	/*

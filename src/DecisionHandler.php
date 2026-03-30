@@ -56,12 +56,18 @@ class DecisionHandler {
 	 * @return string The final applied decision after any filter overrides.
 	 */
 	public function apply_decision( string $decision, array $session_data ): string {
+		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
+		$log_context = array(
+			'wc_identity_id' => $session['wc_identity_id'] ?? 'unknown',
+			'verify_source'  => $session_data['source'] ?? 'unknown',
+		);
+
 		// Validate input decision and fail open if invalid.
 		if ( ! $this->is_valid_decision( $decision ) ) {
 			FraudProtectionController::log(
 				'warning',
 				sprintf( 'Invalid decision "%s" received. Defaulting to "allow".', $decision ),
-				array( 'session_data' => $session_data )
+				$log_context
 			);
 			$decision = ApiClient::DECISION_ALLOW;
 		}
@@ -90,10 +96,12 @@ class DecisionHandler {
 			FraudProtectionController::log(
 				'warning',
 				sprintf( 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "%s". Using original decision "%s".', $decision, $original_decision ),
-				array(
-					'original_decision' => $original_decision,
-					'filtered_decision' => $decision,
-					'session_data'      => $session_data,
+				array_merge(
+					$log_context,
+					array(
+						'original_decision' => $original_decision,
+						'filtered_decision' => $decision,
+					)
 				)
 			);
 			$decision = $original_decision;
@@ -104,12 +112,39 @@ class DecisionHandler {
 			FraudProtectionController::log(
 				'info',
 				sprintf( 'Decision overridden by filter `woocommerce_fraud_protection_decision`: "%s" -> "%s"', $original_decision, $decision ),
-				array(
-					'original_decision' => $original_decision,
-					'final_decision'    => $decision,
-					'session_data'      => $session_data,
+				array_merge(
+					$log_context,
+					array(
+						'original_decision' => $original_decision,
+						'final_decision'    => $decision,
+					)
 				)
 			);
+		}
+
+		/**
+		 * Filters whether learning mode is active.
+		 *
+		 * When learning mode is enabled (default), block decisions are suppressed
+		 * and treated as "allow", regardless of whether the decision came from the
+		 * API or was set by the `woocommerce_fraud_protection_decision` filter.
+		 * This allows the plugin to observe fraud signals without affecting real
+		 * transactions.
+		 *
+		 * To enable enforcement (blocking), return false:
+		 * `add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );`
+		 *
+		 * @param bool $learning_mode Whether learning mode is active. Default true.
+		 */
+		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true );
+
+		if ( $learning_mode && ApiClient::DECISION_BLOCK === $decision ) {
+			FraudProtectionController::log(
+				'info',
+				sprintf( 'Learning mode: suppressing "%s" decision, allowing session.', $decision ),
+				$log_context
+			);
+			$decision = ApiClient::DECISION_ALLOW;
 		}
 
 		// Apply the decision to the session.

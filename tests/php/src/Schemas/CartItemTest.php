@@ -37,7 +37,6 @@ class CartItemTest extends \WC_Unit_Test_Case {
 
 		$product = \WC_Helper_Product::create_simple_product();
 		$product->set_name( 'Test Widget' );
-		$product->set_description( 'A test widget' );
 		$product->set_sku( 'WDG-001' );
 		$product->set_regular_price( '25.00' );
 		$product->save();
@@ -53,8 +52,9 @@ class CartItemTest extends \WC_Unit_Test_Case {
 		$item = CartItem::from_cart_entry( $cart_item, $cart_item['data'] );
 		$arr  = $item->to_array();
 
+		$this->assertEquals( $product->get_id(), $arr['product_id'] );
 		$this->assertEquals( 'Test Widget', $arr['name'] );
-		$this->assertEquals( 'A test widget', $arr['description'] );
+		$this->assertArrayNotHasKey( 'description', $arr );
 		$this->assertEquals( 'Electronics', $arr['category'] );
 		$this->assertEquals( 'WDG-001', $arr['sku'] );
 		$this->assertEquals( 3, $arr['quantity'] );

@@ -205,11 +205,9 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$result = $this->sut->get_collected_data();
 
 		$this->assertIsArray( $result['session'] );
-		$this->assertCount( 4, $result['session'] );
+		$this->assertCount( 2, $result['session'] );
 		$this->assertArrayHasKey( 'wc_identity_id', $result['session'] );
-		$this->assertArrayHasKey( 'ip_address', $result['session'] );
 		$this->assertArrayHasKey( 'email', $result['session'] );
-		$this->assertArrayHasKey( 'user_agent', $result['session'] );
 	}
 
 	/**
@@ -416,7 +414,6 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 
 		$product = \WC_Helper_Product::create_simple_product();
 		$product->set_name( 'Test Product' );
-		$product->set_description( 'Test product description' );
 		$product->set_sku( 'TEST-SKU-123' );
 		$product->set_regular_price( '25.00' );
 		$product->save();
@@ -435,8 +432,8 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertCount( 1, $result['order']['items'] );
 
 		$item = $result['order']['items'][0];
+		$this->assertArrayHasKey( 'product_id', $item );
 		$this->assertArrayHasKey( 'name', $item );
-		$this->assertArrayHasKey( 'description', $item );
 		$this->assertArrayHasKey( 'category', $item );
 		$this->assertArrayHasKey( 'sku', $item );
 		$this->assertArrayHasKey( 'quantity', $item );
@@ -448,8 +445,8 @@ class SessionDataCollectorTest extends \WC_Unit_Test_Case {
 		$this->assertArrayHasKey( 'is_downloadable', $item );
 		$this->assertArrayHasKey( 'attributes', $item );
 
+		$this->assertEquals( $product->get_id(), $item['product_id'] );
 		$this->assertEquals( 'Test Product', $item['name'] );
-		$this->assertEquals( 'Test product description', $item['description'] );
 		$this->assertEquals( 'TEST-SKU-123', $item['sku'] );
 		$this->assertEquals( 2, $item['quantity'] );
 		$this->assertEquals( 'simple', $item['product_type'] );
