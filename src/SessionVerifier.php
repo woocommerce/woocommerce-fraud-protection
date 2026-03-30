@@ -146,6 +146,8 @@ class SessionVerifier {
 			 *
 			 * Fail-open: truthy values skip verification (session is allowed).
 			 *
+			 * @since 0.1.0
+			 *
 			 * @param bool   $skip         Whether to skip verification. Default false.
 			 * @param string $source       Source identifier (e.g. 'blocks_checkout').
 			 * @param array  $request_data Request data with payment_method, payment_data, etc.

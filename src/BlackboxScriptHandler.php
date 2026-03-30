@@ -16,7 +16,6 @@ defined( 'ABSPATH' ) || exit;
  * on checkout, pay-for-order, and add-payment-method pages. The init script
  * calls Blackbox.configure() with the site's API key and Jetpack blog ID.
  *
- * @since 10.6.0
  * @internal This class is part of the internal API and is subject to change without notice.
  */
 class BlackboxScriptHandler {
@@ -108,7 +107,7 @@ class BlackboxScriptHandler {
 		 * Extensions can return true to load scripts on additional pages where payment methods
 		 * are rendered (e.g., product pages for express checkout buttons).
 		 *
-		 * @since 10.6.0
+		 * @since 0.1.0
 		 *
 		 * @param bool $should_enqueue Whether to enqueue Blackbox scripts on the current page.
 		 */
