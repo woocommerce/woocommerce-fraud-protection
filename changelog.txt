@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-03-30 - version 0.1.1
+* Updated - Enable plugin by default (remove WC_FRAUD_PROTECTION_DISABLED kill-switch default)
+
 2026-03-30 - version 0.1.0
 * Added - Fraud protection via Blackbox API with session-based clearance management
 * Added - Checkout protection for blocks, shortcode, pay-for-order, and add-payment-method flows

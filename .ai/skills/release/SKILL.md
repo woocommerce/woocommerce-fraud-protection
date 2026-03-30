@@ -41,7 +41,7 @@ Build the plugin zip and create a GitHub Release.
    ```
    gh release create "v{{version}}" \
      woocommerce-fraud-protection.zip \
-     --title "{{version}}" \
+     --title "v{{version}}" \
      --notes "{{notes}}"
    ```
 
