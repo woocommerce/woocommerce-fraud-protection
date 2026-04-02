@@ -23,49 +23,49 @@ define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.1' );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', __DIR__ );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-// Force-disable WC Core's built-in fraud protection feature to prevent
-// session and script conflicts with this plugin's implementation.
-add_filter( 'woocommerce_feature_fraud_protection_enabled', '__return_false', 999 );
-
-// Require class files (no autoloader).
-// Order matters: typed properties require dependencies to be loaded first.
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionClearanceManager.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/Address.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CartItem.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/OrderData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/SessionInfo.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CustomerData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionDataCollector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ApiClient.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/DecisionHandler.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/CartEventTracker.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/CheckoutEventTracker.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentMethodEventTracker.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlackboxScriptHandler.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlockedSessionNotice.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentInstrumentData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentMethodData.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentDataResolver.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/StripePaymentDataCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SquarePaymentDataCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/PayPalPaymentDataCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/WooPaymentsPaymentDataCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ClassicFormDataExtractionTrait.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SubscriptionsChangePaymentCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/AddPaymentMethodProtector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PayForOrderProtector.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/PayPalCompat.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionBlockingHandler.php';
-require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/FraudProtectionController.php';
-
 // Bootstrap after WooCommerce loads (MU-plugins load before regular plugins).
 add_action(
 	'woocommerce_loaded',
 	function () {
+		// Force-disable WC Core's built-in fraud protection feature to prevent
+		// session and script conflicts with this plugin's implementation.
+		add_filter( 'woocommerce_feature_fraud_protection_enabled', '__return_false', 999 );
+
+		// Require class files (no autoloader).
+		// Order matters: typed properties require dependencies to be loaded first.
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionClearanceManager.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/Address.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CartItem.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/OrderData.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/SessionInfo.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/CustomerData.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionDataCollector.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ApiClient.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/DecisionHandler.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/CartEventTracker.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/CheckoutEventTracker.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentMethodEventTracker.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlackboxScriptHandler.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlockedSessionNotice.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentInstrumentData.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Schemas/PaymentMethodData.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PaymentDataResolver.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/StripePaymentDataCompat.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SquarePaymentDataCompat.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/PayPalPaymentDataCompat.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/WooPaymentsPaymentDataCompat.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/BlocksCheckoutProtector.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ClassicFormDataExtractionTrait.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/SubscriptionsChangePaymentCompat.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ShortcodeCheckoutProtector.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/AddPaymentMethodProtector.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/PayForOrderProtector.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/Compat/PayPalCompat.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionBlockingHandler.php';
+		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/FraudProtectionController.php';
+
 		// Core dependencies.
 		$session_manager = new \Automattic\WooCommerce\FraudProtection\SessionClearanceManager();
 
@@ -172,6 +172,11 @@ add_action(
  * @param string    $notes  Free-form notes describing the event.
  */
 function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
+	// Load classes on demand for 3rd-party callers outside the woocommerce_loaded flow.
+	require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ApiClient.php';
+	require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
+	require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/FraudProtectionController.php';
+
 	if ( ! FraudProtectionController::feature_is_enabled() ) {
 		return;
 	}
