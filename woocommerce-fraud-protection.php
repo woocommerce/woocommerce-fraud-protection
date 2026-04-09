@@ -140,7 +140,7 @@ add_action(
  * @param string    $notes  Free-form notes describing the event.
  */
 function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
-	if ( ! FraudProtectionController::feature_is_enabled() ) {
+	if ( ! function_exists( 'WC' ) || ! FraudProtectionController::feature_is_enabled() ) {
 		return;
 	}
 
