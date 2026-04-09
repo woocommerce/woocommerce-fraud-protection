@@ -63,11 +63,11 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **Strict types**: All PHP files MUST declare `declare(strict_types=1)`.
 
-**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. To add a new component: (1) create the class in `src/`, (2) add `require_once` in `woocommerce-fraud-protection.php` after its dependencies, (3) instantiate and call `init()` in the bootstrap closure, (4) add a typed property to `FraudProtectionController` + parameter to its `init()`, (5) call `$this->component->register()` in `on_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
+**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. To add a new component: (1) create the class in `src/`, (2) instantiate and call `init()` in the bootstrap closure, (3) add a typed property to `FraudProtectionController` + parameter to its `init()`, (4) call `$this->component->register()` in `on_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
 
 **No short ternary**: The `?:` operator is disallowed by PHPCS (`Universal.Operators.DisallowShortTernary`). Always use full ternary `$x ? $x : $default`.
 
-**Bootstrap order**: No autoloader — manual `require_once` in `woocommerce-fraud-protection.php`. Order matters because typed properties require their dependency classes to be loaded first. When adding a new class, place its `require_once` after its dependencies.
+**Autoloading**: PSR-4 autoloader via Composer (`vendor/autoload.php`), loaded inside the `woocommerce_loaded` callback. Classes are resolved lazily on first use — no manual `require_once` needed when adding new classes.
 
 **Namespace**: PSR-4 under `Automattic\WooCommerce\FraudProtection\`.
 
