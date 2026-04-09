@@ -174,6 +174,7 @@ add_action(
 function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
 	// Load classes on demand for 3rd-party callers outside the woocommerce_loaded flow.
 	require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/ApiClient.php';
+	require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/SessionVerifier.php';
 	require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/OrderEventsTracker.php';
 	require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/src/FraudProtectionController.php';
 
