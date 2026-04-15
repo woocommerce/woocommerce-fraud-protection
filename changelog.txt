@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-MM-DD - version 0.1.2
+* Added - WooCommerce Admin Inbox notification announcing that fraud protection is running on the store
+
 2026-03-30 - version 0.1.1
 * Updated - Enable plugin by default (remove WC_FRAUD_PROTECTION_DISABLED kill-switch default)
 
