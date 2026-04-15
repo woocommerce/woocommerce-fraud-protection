@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\FraudProtection\Notes;
 
 use Automattic\WooCommerce\Admin\Notes\Note;
 use Automattic\WooCommerce\Admin\Notes\Notes;
+use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
 /**
@@ -17,6 +18,8 @@ use WC_Unit_Test_Case;
  * @covers \Automattic\WooCommerce\FraudProtection\Notes\IntroInboxNote
  */
 class IntroInboxNoteTest extends WC_Unit_Test_Case {
+
+	use LoggerSpyTrait;
 
 	/**
 	 * The System Under Test.
@@ -136,6 +139,27 @@ class IntroInboxNoteTest extends WC_Unit_Test_Case {
 		$this->sut->maybe_create_note();
 
 		$this->assertSame( false, Notes::get_note_by_name( IntroInboxNote::NOTE_NAME ) );
+	}
+
+	/**
+	 * @testdox Fails open and logs when the Notes data store is unavailable.
+	 *
+	 * Forces WC_Data_Store::load('admin-note') to throw by pointing the
+	 * admin-note store at a class that doesn't exist. The exception must not
+	 * bubble out of maybe_create_note() — that's the fail-open contract.
+	 */
+	public function test_fails_open_when_data_store_is_broken(): void {
+		$break_admin_note_store = function ( $stores ) {
+			$stores['admin-note'] = 'Automattic\\WooCommerce\\FraudProtection\\Notes\\NonexistentDataStoreForTest';
+			return $stores;
+		};
+		add_filter( 'woocommerce_data_stores', $break_admin_note_store );
+
+		$this->sut->maybe_create_note();
+
+		remove_filter( 'woocommerce_data_stores', $break_admin_note_store );
+
+		$this->assertLogged( 'warning', 'Failed to create fraud protection intro inbox note' );
 	}
 
 	/**
