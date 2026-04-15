@@ -106,6 +106,9 @@ add_action(
 		$pay_for_order_protector = new \Automattic\WooCommerce\FraudProtection\PayForOrderProtector();
 		$pay_for_order_protector->init( $session_verifier, $blocked_notice );
 
+		$intro_inbox_note = new \Automattic\WooCommerce\FraudProtection\Notes\IntroInboxNote();
+		$intro_inbox_note->init();
+
 		// Main controller.
 		$controller = new \Automattic\WooCommerce\FraudProtection\FraudProtectionController();
 		$controller->init(
@@ -119,7 +122,8 @@ add_action(
 			$blocks_checkout_protector,
 			$shortcode_checkout_protector,
 			$add_payment_method_protector,
-			$pay_for_order_protector
+			$pay_for_order_protector,
+			$intro_inbox_note
 		);
 		$controller->register();
 	}
