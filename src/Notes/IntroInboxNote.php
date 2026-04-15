@@ -40,17 +40,6 @@ class IntroInboxNote {
 	private const LEARN_MORE_URL = 'https://woocommerce.com/document/fraud-protection/';
 
 	/**
-	 * Initialize dependencies.
-	 *
-	 * Kept for consistency with the other first-party components even though
-	 * this note has no collaborators.
-	 *
-	 * @internal
-	 */
-	final public function init(): void {
-	}
-
-	/**
 	 * Register hooks for creating the Inbox note.
 	 *
 	 * Called from FraudProtectionController::on_init() which already checks

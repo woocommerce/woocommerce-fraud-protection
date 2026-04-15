@@ -107,7 +107,6 @@ add_action(
 		$pay_for_order_protector->init( $session_verifier, $blocked_notice );
 
 		$intro_inbox_note = new \Automattic\WooCommerce\FraudProtection\Notes\IntroInboxNote();
-		$intro_inbox_note->init();
 
 		// Main controller.
 		$controller = new \Automattic\WooCommerce\FraudProtection\FraudProtectionController();

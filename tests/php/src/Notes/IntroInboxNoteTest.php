@@ -34,7 +34,6 @@ class IntroInboxNoteTest extends WC_Unit_Test_Case {
 		$this->delete_intro_notes();
 
 		$this->sut = new IntroInboxNote();
-		$this->sut->init();
 	}
 
 	/**
