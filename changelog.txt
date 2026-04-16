@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+yyyy-mm-dd - version x.y.z
+* Fixed - Broken asset URLs when the plugin file is located outside of WP_CONTENT_DIR
+
 2026-03-30 - version 0.1.1
 * Updated - Enable plugin by default (remove WC_FRAUD_PROTECTION_DISABLED kill-switch default)
 
