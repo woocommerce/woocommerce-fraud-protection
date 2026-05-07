@@ -71,3 +71,7 @@ build/
 .idea/vcs.xml
 .idea/woocommerce-fraud-protection.iml
 .idea/inspectionProfiles/Project_Default.xml
+
+# Codex local files
+
+.agents/
