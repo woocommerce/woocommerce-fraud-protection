@@ -28,7 +28,7 @@
 			return originalFetch.call( this, resource, init );
 		}
 
-		// Acquire session ID (5s timeout, fail-open on timeout).
+		// Acquire session ID (fail-open on timeout, see SESSION_ID_TIMEOUT_MS).
 		const sessionId = await fp.acquireSessionId();
 
 		try {

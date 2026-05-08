@@ -29,11 +29,12 @@ class ApiClient {
 	/**
 	 * Default timeout for API requests in seconds.
 	 *
-	 * Using 10 seconds as a reasonable timeout for fraud verification during checkout.
-	 * This balances giving the API enough time to respond while not blocking
-	 * checkout for too long if the service is slow.
+	 * Sized above the Blackbox API's observed p99 server response time with
+	 * headroom for network jitter. Bounds checkout latency when the service is
+	 * slow while still letting normal verifications complete; failures fall
+	 * back to the fail-open path.
 	 */
-	private const DEFAULT_TIMEOUT = 10;
+	private const DEFAULT_TIMEOUT = 3;
 
 	/**
 	 * Blackbox API base URL.

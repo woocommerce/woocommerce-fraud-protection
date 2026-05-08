@@ -34,7 +34,7 @@ afterEach( () => {
 } );
 
 function setupAndLoad() {
-	window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 5000, sessionIdField: 'wc_fraud_protection_session_id' } };
+	window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
 	window.Blackbox = {
 		configure: mockConfigure,
 		getSessionId: mockGetSessionId,
@@ -69,7 +69,7 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'does not error when Blackbox is missing', () => {
-			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 5000, sessionIdField: 'wc_fraud_protection_session_id' } };
+			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
 
 			expect( () => {
 				jest.isolateModules( () => {
@@ -99,7 +99,7 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'is NOT set when SDK is missing', () => {
-			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 5000, sessionIdField: 'wc_fraud_protection_session_id' } };
+			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
 
 			jest.isolateModules( () => {
 				require( '../../assets/js/blackbox-init' );
@@ -119,13 +119,13 @@ describe( 'blackbox-init', () => {
 			expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'resolves with empty string after 5s when getSessionId never resolves', async () => {
+		it( 'resolves with empty string after the configured timeout when getSessionId never resolves', async () => {
 			mockGetSessionId.mockReturnValue( new Promise( () => {} ) );
 			setupAndLoad();
 
 			const resultPromise = window.wcFraudProtection.acquireSessionId();
 
-			const result = await jest.advanceTimersByTimeAsync( 5000 ).then( () => resultPromise );
+			const result = await jest.advanceTimersByTimeAsync( 3000 ).then( () => resultPromise );
 
 			expect( result ).toBe( '' );
 		} );
