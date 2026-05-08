@@ -25,4 +25,12 @@ function woocommerce_fraud_protection_symlinked_plugins_url( $url ) {
 }
 add_filter( 'plugins_url', 'woocommerce_fraud_protection_symlinked_plugins_url', 0, 1 );
 
-require_once WPMU_PLUGIN_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection.php';
+$woocommerce_fraud_protection_target = WPMU_PLUGIN_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection.php';
+
+if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
+	// Symlink missing or chroot misconfigured. Bail out instead of fatalling the site.
+	error_log( 'WooCommerce Fraud Protection: target plugin file is not readable at ' . $woocommerce_fraud_protection_target ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Last-resort logging on broken rollout symlink, before the plugin's own logger is available.
+	return;
+}
+
+require_once $woocommerce_fraud_protection_target;

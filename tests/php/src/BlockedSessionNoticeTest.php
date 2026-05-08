@@ -244,4 +244,22 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 		$this->assertEquals( $expected, $message_default, 'Default context should return generic message' );
 		$this->assertEquals( $expected, $message_explicit, 'Explicit generic context should return generic message' );
 	}
+
+	/**
+	 * Test support email fallback to admin_email when from address is unset.
+	 *
+	 * @testdox Should fall back to admin_email when woocommerce_email_from_address is unset.
+	 */
+	public function test_get_message_falls_back_to_admin_email_when_from_address_unset(): void {
+		delete_option( 'woocommerce_email_from_address' );
+		update_option( 'admin_email', 'admin-fallback@example.com' );
+
+		$message = $this->sut->get_message_plaintext( 'purchase' );
+
+		$this->assertStringContainsString(
+			'admin-fallback@example.com',
+			$message,
+			'Helper must fall back to admin_email when from address is empty.'
+		);
+	}
 }

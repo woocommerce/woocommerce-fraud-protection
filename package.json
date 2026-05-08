@@ -23,10 +23,11 @@
 		"lint:php:autofix": "vendor/bin/phpcbf",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
 		"plugin-zip": "composer install --no-dev && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip woocommerce-fraud-protection/package.json woocommerce-fraud-protection/README.md && composer install",
-		"test": "npm run test:php && npm run test:js",
+		"test": "npm run test:smoke && npm run test:php && npm run test:js",
 		"test:js": "wp-scripts test-unit-js",
 		"test:php": "vendor/bin/phpunit",
 		"test:php:env": "vendor/bin/phpunit",
+		"test:smoke": "tests/php/smoke/run.sh",
 		"phpstan": "vendor/bin/phpstan analyse --memory-limit=2G",
 		"phpstan:baseline": "vendor/bin/phpstan analyse --memory-limit=2G --generate-baseline=phpstan-baseline.neon"
 	},

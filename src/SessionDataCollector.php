@@ -110,8 +110,10 @@ class SessionDataCollector {
 	 * @return array Array of collected fraud protection event data.
 	 */
 	public function get_collected_data( int $order_id = 0 ): array {
+		$wc = function_exists( 'WC' ) ? WC() : null;
+
 		$data = array(
-			'wc_version'       => WC()->version,
+			'wc_version'       => isset( $wc->version ) ? (string) $wc->version : '',
 			'session'          => $this->get_session_data()->to_array(),
 			'customer'         => $this->get_customer_data()->to_array(),
 			'order'            => $this->get_order_data( $order_id )->to_array(),
@@ -122,8 +124,8 @@ class SessionDataCollector {
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used for size calculation only.
 		$base_size = strlen( serialize( $data ) );
 
-		if ( WC()->session instanceof \WC_Session ) {
-			$collected_data = WC()->session->get( 'fraud_protection_collected_data' );
+		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {
+			$collected_data = $wc->session->get( 'fraud_protection_collected_data' );
 			if ( is_array( $collected_data ) ) {
 				$data['collected_events'] = $this->trim_to_max_size( $collected_data, $base_size );
 			}

@@ -115,7 +115,7 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	 * @return string HTML message with mailto link.
 	 */
 	public function get_message_html( string $context = 'generic' ): string {
-		$email = WC()->mailer()->get_from_address();
+		$email = $this->get_support_email();
 
 		if ( 'purchase' === $context ) {
 			return sprintf(
@@ -143,7 +143,7 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	 * @return string Plaintext message with email address.
 	 */
 	public function get_message_plaintext( string $context = 'generic' ): string {
-		$email = WC()->mailer()->get_from_address();
+		$email = $this->get_support_email();
 
 		if ( 'purchase' === $context ) {
 			return sprintf(
@@ -158,5 +158,31 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 			__( 'We are unable to process this request online. Please contact support (%s) for assistance.', 'woocommerce-fraud-protection' ),
 			$email
 		);
+	}
+
+	/**
+	 * Resolve the support email shown in blocked-session messages.
+	 *
+	 * Falls back along the chain: WooCommerce mailer "from" address -> admin_email.
+	 * The WC_Emails mailer can be unavailable on early page renders or partial WC bootstraps,
+	 * so the chain is wrapped in defensive checks to avoid fatalling render-time hooks.
+	 *
+	 * @return string Support email address. May be empty if no source produces a value.
+	 */
+	private function get_support_email(): string {
+		if ( function_exists( 'WC' ) ) {
+			$wc     = WC();
+			$mailer = $wc instanceof \WooCommerce ? $wc->mailer() : null;
+			if ( $mailer instanceof \WC_Emails ) {
+				$from = $mailer->get_from_address();
+				if ( is_string( $from ) && '' !== $from ) {
+					return $from;
+				}
+			}
+		}
+
+		$admin_email = get_option( 'admin_email', '' );
+
+		return is_string( $admin_email ) ? $admin_email : '';
 	}
 }

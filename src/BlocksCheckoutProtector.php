@@ -193,6 +193,12 @@ class BlocksCheckoutProtector {
 			return;
 		}
 
+		// CheckoutSchema may be absent if the Store API package is partially loaded
+		// (e.g., older WC version that exposes the registration function from a different schema build).
+		if ( ! class_exists( CheckoutSchema::class ) ) {
+			return;
+		}
+
 		woocommerce_store_api_register_endpoint_data(
 			array(
 				'endpoint'        => CheckoutSchema::IDENTIFIER,
