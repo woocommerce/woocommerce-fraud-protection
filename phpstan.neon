@@ -10,6 +10,11 @@ parameters:
 		- woocommerce-fraud-protection.php
 		- src/
 		- tests/php/
+	excludePaths:
+		# Smoke tests are isolated process-level scripts that intentionally
+		# shadow WP/WC functions and classes with loose stubs. They are not
+		# meaningful to type-check against the real WordPress stubs.
+		- tests/php/smoke/
 	bootstrapFiles:
 		- vendor/autoload.php
 	scanFiles:
