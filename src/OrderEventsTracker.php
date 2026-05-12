@@ -53,6 +53,7 @@ class OrderEventsTracker {
 	 * @param string    $notes  The notes of the event.
 	 */
 	public function fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
+		$session_id = '';
 		try {
 			if ( ! in_array( $source, ApiClient::VALID_REPORT_SOURCES, true ) ) {
 				FraudProtectionController::log(
@@ -90,8 +91,18 @@ class OrderEventsTracker {
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'error',
-				'Failed to report 3rd party event to Blackbox API: ' . $e->getMessage(),
-				array( 'error' => $e->getTraceAsString() )
+				'Failed to report 3rd party event to Blackbox API',
+				array(
+					'source'            => 'order_event_report',
+					'session_id'        => $session_id,
+					'order_id'          => $order->get_id(),
+					'error'             => $e->getTraceAsString(),
+					'exception_class'   => get_class( $e ),
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+				),
+				true
 			);
 		}
 	}

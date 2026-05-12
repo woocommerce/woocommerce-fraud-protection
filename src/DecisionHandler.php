@@ -58,8 +58,8 @@ class DecisionHandler {
 	public function apply_decision( string $decision, array $session_data ): string {
 		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
 		$log_context = array(
-			'wc_identity_id' => $session['wc_identity_id'] ?? 'unknown',
-			'verify_source'  => $session_data['source'] ?? 'unknown',
+			'identity_id' => $session['wc_identity_id'] ?? 'unknown',
+			'source'      => $session_data['source'] ?? 'unknown',
 		);
 
 		// Validate input decision and fail open if invalid.
@@ -67,7 +67,13 @@ class DecisionHandler {
 			FraudProtectionController::log(
 				'warning',
 				sprintf( 'Invalid decision "%s" received. Defaulting to "allow".', $decision ),
-				$log_context
+				array_merge(
+					$log_context,
+					array(
+						'decision_received' => $decision,
+					)
+				),
+				true
 			);
 			$decision = ApiClient::DECISION_ALLOW;
 		}
@@ -101,10 +107,14 @@ class DecisionHandler {
 				array_merge(
 					$log_context,
 					array(
+						'filter'            => 'woocommerce_fraud_protection_decision',
+						'decision_received' => is_string( $decision ) ? $decision : gettype( $decision ),
+						'argument_type'     => gettype( $decision ),
 						'original_decision' => $original_decision,
 						'filtered_decision' => $decision,
 					)
-				)
+				),
+				true
 			);
 			$decision = $original_decision;
 		}

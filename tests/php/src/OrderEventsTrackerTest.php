@@ -161,7 +161,7 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 
 		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'bad', 'Payment failed.' );
 
-		$this->assertLogged( 'error', 'Failed to report 3rd party event to Blackbox API: API connection failed' );
+		$this->assertLogged( 'error', 'Failed to report 3rd party event to Blackbox API' );
 	}
 
 }
