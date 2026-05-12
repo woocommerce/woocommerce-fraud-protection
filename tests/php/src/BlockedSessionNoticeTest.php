@@ -244,4 +244,53 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 		$this->assertEquals( $expected, $message_default, 'Default context should return generic message' );
 		$this->assertEquals( $expected, $message_explicit, 'Explicit generic context should return generic message' );
 	}
+
+	/**
+	 * Test support email fallback to admin_email when from address is unset.
+	 *
+	 * @testdox Should fall back to admin_email when woocommerce_email_from_address is unset.
+	 */
+	public function test_get_message_falls_back_to_admin_email_when_from_address_unset(): void {
+		delete_option( 'woocommerce_email_from_address' );
+		$original_admin_email = get_option( 'admin_email' );
+		update_option( 'admin_email', 'admin-fallback@example.com' );
+
+		try {
+			$message = $this->sut->get_message_plaintext( 'purchase' );
+
+			$this->assertStringContainsString(
+				'admin-fallback@example.com',
+				$message,
+				'Helper must fall back to admin_email when from address is empty.'
+			);
+		} finally {
+			update_option( 'admin_email', $original_admin_email );
+		}
+	}
+
+	/**
+	 * Test message omits support-contact sentence when no email is available.
+	 *
+	 * @testdox Should return base message without empty "contact support ()" parenthetical when no email is resolvable.
+	 */
+	public function test_get_message_omits_support_contact_when_email_empty(): void {
+		// WP's sanitize_option layer rejects an empty admin_email and keeps the previous value,
+		// so we use pre_option_* filters to force-return empty for both options. These short-circuit
+		// the option resolution before sanitize_option runs, simulating a true "no email available" state.
+		add_filter( 'pre_option_woocommerce_email_from_address', '__return_empty_string' );
+		add_filter( 'pre_option_admin_email', '__return_empty_string' );
+
+		try {
+			$html_purchase     = $this->sut->get_message_html( 'purchase' );
+			$plaintext_generic = $this->sut->get_message_plaintext();
+
+			$this->assertStringNotContainsString( '()', $html_purchase, 'HTML message must not render an empty parenthetical.' );
+			$this->assertStringNotContainsString( 'contact support', $html_purchase, 'HTML message must omit the unactionable contact-support sentence when no email is available.' );
+			$this->assertStringNotContainsString( '()', $plaintext_generic, 'Plaintext message must not render an empty parenthetical.' );
+			$this->assertStringNotContainsString( 'contact support', $plaintext_generic, 'Plaintext message must omit the unactionable contact-support sentence when no email is available.' );
+		} finally {
+			remove_filter( 'pre_option_woocommerce_email_from_address', '__return_empty_string' );
+			remove_filter( 'pre_option_admin_email', '__return_empty_string' );
+		}
+	}
 }

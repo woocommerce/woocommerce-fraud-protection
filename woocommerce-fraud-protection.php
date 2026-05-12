@@ -32,7 +32,13 @@ add_action(
 	'woocommerce_loaded',
 	function () {
 		// PSR-4 autoloader: classes are loaded lazily on first use.
-		require_once WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
+		$autoload = WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
+		if ( ! is_readable( $autoload ) ) {
+			// vendor/ missing (broken build / partial deploy). Bail before touching any namespaced class.
+			error_log( 'WooCommerce Fraud Protection: autoloader is not readable at ' . $autoload ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
+			return;
+		}
+		require_once $autoload;
 
 		// Core dependencies.
 		$session_manager = new \Automattic\WooCommerce\FraudProtection\SessionClearanceManager();
@@ -140,7 +146,21 @@ add_action(
  * @param string    $notes  Free-form notes describing the event.
  */
 function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
-	if ( ! function_exists( 'WC' ) || ! FraudProtectionController::feature_is_enabled() ) {
+	if ( ! function_exists( 'WC' ) ) {
+		return;
+	}
+
+	// Callers may reach this before woocommerce_loaded fires, so the autoloader
+	// may not yet be required. Defensively load it before touching any namespaced class.
+	if ( ! class_exists( FraudProtectionController::class, false ) ) {
+		$autoload = WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
+		if ( ! is_readable( $autoload ) ) {
+			return;
+		}
+		require_once $autoload;
+	}
+
+	if ( ! class_exists( FraudProtectionController::class ) || ! FraudProtectionController::feature_is_enabled() ) {
 		return;
 	}
 
