@@ -252,14 +252,19 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_get_message_falls_back_to_admin_email_when_from_address_unset(): void {
 		delete_option( 'woocommerce_email_from_address' );
+		$original_admin_email = get_option( 'admin_email' );
 		update_option( 'admin_email', 'admin-fallback@example.com' );
 
-		$message = $this->sut->get_message_plaintext( 'purchase' );
+		try {
+			$message = $this->sut->get_message_plaintext( 'purchase' );
 
-		$this->assertStringContainsString(
-			'admin-fallback@example.com',
-			$message,
-			'Helper must fall back to admin_email when from address is empty.'
-		);
+			$this->assertStringContainsString(
+				'admin-fallback@example.com',
+				$message,
+				'Helper must fall back to admin_email when from address is empty.'
+			);
+		} finally {
+			update_option( 'admin_email', $original_admin_email );
+		}
 	}
 }
