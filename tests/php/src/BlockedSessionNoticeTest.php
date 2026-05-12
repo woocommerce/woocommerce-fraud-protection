@@ -267,4 +267,27 @@ class BlockedSessionNoticeTest extends \WC_Unit_Test_Case {
 			update_option( 'admin_email', $original_admin_email );
 		}
 	}
+
+	/**
+	 * Test message omits support-contact sentence when no email is available.
+	 *
+	 * @testdox Should return base message without empty "contact support ()" parenthetical when no email is resolvable.
+	 */
+	public function test_get_message_omits_support_contact_when_email_empty(): void {
+		delete_option( 'woocommerce_email_from_address' );
+		$original_admin_email = get_option( 'admin_email' );
+		update_option( 'admin_email', '' );
+
+		try {
+			$html_purchase      = $this->sut->get_message_html( 'purchase' );
+			$plaintext_generic  = $this->sut->get_message_plaintext();
+
+			$this->assertStringNotContainsString( '()', $html_purchase, 'HTML message must not render an empty parenthetical.' );
+			$this->assertStringNotContainsString( 'contact support', $html_purchase, 'HTML message must omit the unactionable contact-support sentence when no email is available.' );
+			$this->assertStringNotContainsString( '()', $plaintext_generic, 'Plaintext message must not render an empty parenthetical.' );
+			$this->assertStringNotContainsString( 'contact support', $plaintext_generic, 'Plaintext message must omit the unactionable contact-support sentence when no email is available.' );
+		} finally {
+			update_option( 'admin_email', $original_admin_email );
+		}
+	}
 }

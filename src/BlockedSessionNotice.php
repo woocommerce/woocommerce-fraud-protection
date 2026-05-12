@@ -117,6 +117,10 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	public function get_message_html( string $context = 'generic' ): string {
 		$email = $this->get_support_email();
 
+		if ( '' === $email ) {
+			return __( 'We are unable to process this request online.', 'woocommerce-fraud-protection' );
+		}
+
 		if ( 'purchase' === $context ) {
 			return sprintf(
 				/* translators: %1$s: mailto link, %2$s: email address */
@@ -144,6 +148,10 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	 */
 	public function get_message_plaintext( string $context = 'generic' ): string {
 		$email = $this->get_support_email();
+
+		if ( '' === $email ) {
+			return __( 'We are unable to process this request online.', 'woocommerce-fraud-protection' );
+		}
 
 		if ( 'purchase' === $context ) {
 			return sprintf(
