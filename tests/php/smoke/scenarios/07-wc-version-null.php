@@ -51,4 +51,9 @@ wfp_smoke_assert(
 	'When WC() returns a stub without version, wc_version must be empty string. Got: ' . var_export( $data['wc_version'] ?? null, true )
 );
 
+// 3. clear_collected_events() must not fatal when WC() is null.
+// Pre-fix this fatals on `WC()->session` chain deref.
+$GLOBALS['wfp_smoke_wc_value'] = null;
+$collector->clear_collected_events();
+
 echo "OK\n";

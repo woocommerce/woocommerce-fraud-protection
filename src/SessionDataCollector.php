@@ -65,16 +65,18 @@ class SessionDataCollector {
 			'event_data' => $event_data,
 		);
 
+		$wc = function_exists( 'WC' ) ? WC() : null;
+
 		// Save the collected data in the session for fraud analysis tracking, preserving multiple calls.
-		if ( WC()->session instanceof \WC_Session ) {
+		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {
 			// Retrieve existing data array or initialize if not present.
-			$collected_data = WC()->session->get( 'fraud_protection_collected_data' );
+			$collected_data = $wc->session->get( 'fraud_protection_collected_data' );
 			if ( ! is_array( $collected_data ) ) {
 				$collected_data = array();
 			}
 			$collected_data[] = $data;
 			$collected_data   = $this->trim_to_max_size( $collected_data );
-			WC()->session->set( 'fraud_protection_collected_data', $collected_data );
+			$wc->session->set( 'fraud_protection_collected_data', $collected_data );
 		} else {
 			FraudProtectionController::log(
 				'error',
@@ -95,8 +97,9 @@ class SessionDataCollector {
 	 * order do not carry over to subsequent orders in the same session.
 	 */
 	public function clear_collected_events(): void {
-		if ( WC()->session instanceof \WC_Session ) {
-			WC()->session->set( 'fraud_protection_collected_data', null );
+		$wc = function_exists( 'WC' ) ? WC() : null;
+		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {
+			$wc->session->set( 'fraud_protection_collected_data', null );
 		}
 	}
 

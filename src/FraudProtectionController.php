@@ -218,11 +218,12 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @return string Identity ID, or empty string if not available.
 	 */
 	private static function get_session_identity_id(): string {
-		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+		$wc = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $wc instanceof \WooCommerce || ! $wc->session instanceof \WC_Session ) {
 			return '';
 		}
 
-		$identity_id = WC()->session->get( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY );
+		$identity_id = $wc->session->get( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY );
 
 		return is_string( $identity_id ) ? $identity_id : '';
 	}
