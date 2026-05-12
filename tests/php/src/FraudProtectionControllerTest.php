@@ -238,4 +238,124 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 			WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
 		}
 	}
+
+	/**
+	 * Capture lines written via PHP error_log() during $callback.
+	 *
+	 * @param callable $callback Code that may call error_log().
+	 *
+	 * @return string Captured output.
+	 */
+	private function capture_error_log( callable $callback ): string {
+		$captured      = '';
+		$tmp_file      = tempnam( sys_get_temp_dir(), 'wfp-elog-' );
+		$previous_dest = ini_get( 'error_log' );
+		ini_set( 'error_log', $tmp_file );
+
+		try {
+			$callback();
+			$captured = is_string( $tmp_file ) && file_exists( $tmp_file ) ? (string) file_get_contents( $tmp_file ) : '';
+		} finally {
+			ini_set( 'error_log', false === $previous_dest ? '' : $previous_dest );
+			if ( is_string( $tmp_file ) && file_exists( $tmp_file ) ) {
+				unlink( $tmp_file );
+			}
+		}
+
+		return $captured;
+	}
+
+	/**
+	 * Without `$forward_to_platform_log = true`, log() must not write to the
+	 * PHP error log, regardless of severity.
+	 */
+	public function test_log_does_not_forward_when_flag_unset(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log( 'error', 'Local-only error' );
+			}
+		);
+
+		$this->assertSame( '', trim( $captured ) );
+	}
+
+	/**
+	 * Entries with the flag set must be forwarded with the documented tag
+	 * prefix and a JSON-encoded sanitized context.
+	 */
+	public function test_log_forwards_to_platform_with_tag(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log(
+					'error',
+					'Blackbox API request failed',
+					array(
+						'source'     => 'api_verify',
+						'error_code' => 'http_request_failed',
+					),
+					true
+				);
+			}
+		);
+
+		$this->assertStringContainsString( '[woo-fraud-protection error]:', $captured );
+		$this->assertStringContainsString( 'Blackbox API request failed', $captured );
+		$this->assertStringContainsString( '"source":"api_verify"', $captured );
+		$this->assertStringContainsString( '"error_code":"http_request_failed"', $captured );
+	}
+
+	/**
+	 * Non-allowlisted context keys must not appear in the forwarded line.
+	 */
+	public function test_log_strips_non_allowlisted_context_when_forwarding(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log(
+					'error',
+					'Test',
+					array(
+						'source'     => 'api_verify',
+						'email'      => 'shopper@example.com',
+						'visitor_ip' => '203.0.113.42',
+						'payload'    => array( 'card' => 'tok_visa' ),
+					),
+					true
+				);
+			}
+		);
+
+		$this->assertStringContainsString( '"source":"api_verify"', $captured );
+		$this->assertStringNotContainsString( 'shopper@example.com', $captured );
+		$this->assertStringNotContainsString( '203.0.113.42', $captured );
+		$this->assertStringNotContainsString( 'tok_visa', $captured );
+	}
+
+	/**
+	 * The local WC log receives the entry even when platform forwarding is
+	 * not requested.
+	 */
+	public function test_log_writes_local_wc_log_when_not_forwarding(): void {
+		$logger = $this->getMockBuilder( \WC_Logger_Interface::class )->getMock();
+		$logger->expects( $this->once() )
+			->method( 'log' )
+			->with(
+				$this->equalTo( 'error' ),
+				$this->equalTo( 'Local log entry' ),
+				$this->callback(
+					static function ( $context ) {
+						return is_array( $context )
+							&& 'woo-fraud-protection' === ( $context['source'] ?? null );
+					}
+				)
+			);
+
+		add_filter(
+			'woocommerce_logging_class',
+			static function () use ( $logger ) {
+				return $logger;
+			}
+		);
+
+		FraudProtectionController::log( 'error', 'Local log entry' );
+	}
 }
