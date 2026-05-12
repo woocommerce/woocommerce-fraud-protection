@@ -35,7 +35,7 @@ add_action(
 		$autoload = WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
 		if ( ! is_readable( $autoload ) ) {
 			// vendor/ missing (broken build / partial deploy). Bail before touching any namespaced class.
-			error_log( 'WooCommerce Fraud Protection: autoloader is not readable at ' . $autoload ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Last-resort logging before the plugin's own logger is available.
+			error_log( 'WooCommerce Fraud Protection: autoloader is not readable at ' . $autoload ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
 			return;
 		}
 		require_once $autoload;

@@ -29,7 +29,7 @@ $woocommerce_fraud_protection_target = WPMU_PLUGIN_DIR . '/woocommerce-fraud-pro
 
 if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
 	// Symlink missing or chroot misconfigured. Bail out instead of fatalling the site.
-	error_log( 'WooCommerce Fraud Protection: target plugin file is not readable at ' . $woocommerce_fraud_protection_target ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Last-resort logging on broken rollout symlink, before the plugin's own logger is available.
+	error_log( 'WooCommerce Fraud Protection: target plugin file is not readable at ' . $woocommerce_fraud_protection_target ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging on broken rollout symlink, before the plugin's own logger is available.
 	return;
 }
 
