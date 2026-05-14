@@ -53,13 +53,15 @@ final class LogContextSanitizer {
 	 *
 	 * Grouped (by intent) but stored as a flat list:
 	 * - Correlation IDs: session_id, identity_id, order_id.
-	 * - Where in the plugin: source, filter, hook, callback_name, request_uri.
-	 * - What we got: decision, decision_received, argument_type, http_status.
+	 * - Where in the plugin: event_source, filter, hook, api_endpoint.
+	 * - What we got: decision_received, argument_type, http_status.
 	 * - Why it failed: error_code, exception_class, exception_message,
 	 *   exception_file, exception_line.
-	 * - Environment: plugin_version, wp_version, php_version, wc_version.
-	 * - Performance: latency_ms.
-	 * - Integration: gateway, payment_type, payment_method_slug.
+	 * - Integration: payment_type.
+	 *
+	 * Note: `source` is intentionally NOT on the allowlist - WooCommerce's
+	 * logger uses it as the log channel name and {@see FraudProtectionController::log()}
+	 * overrides it to 'woo-fraud-protection'. Use `event_source` instead.
 	 *
 	 * @var string[]
 	 */
@@ -67,12 +69,10 @@ final class LogContextSanitizer {
 		'session_id',
 		'identity_id',
 		'order_id',
-		'source',
+		'event_source',
 		'filter',
 		'hook',
-		'callback_name',
-		'request_uri',
-		'decision',
+		'api_endpoint',
 		'decision_received',
 		'argument_type',
 		'http_status',
@@ -81,18 +81,12 @@ final class LogContextSanitizer {
 		'exception_message',
 		'exception_file',
 		'exception_line',
-		'plugin_version',
-		'wp_version',
-		'php_version',
-		'wc_version',
-		'latency_ms',
-		'gateway',
 		'payment_type',
-		'payment_method_slug',
 	);
 
 	/**
-	 * Maximum character length for any string value forwarded.
+	 * Maximum character length for any string value forwarded. Measured in
+	 * characters (not bytes) so multibyte strings are not split mid-codepoint.
 	 */
 	private const MAX_VALUE_LENGTH = 200;
 
@@ -126,8 +120,8 @@ final class LogContextSanitizer {
 				continue;
 			}
 
-			if ( is_string( $value ) && strlen( $value ) > self::MAX_VALUE_LENGTH ) {
-				$value = substr( $value, 0, self::MAX_VALUE_LENGTH );
+			if ( is_string( $value ) && mb_strlen( $value ) > self::MAX_VALUE_LENGTH ) {
+				$value = mb_substr( $value, 0, self::MAX_VALUE_LENGTH );
 			}
 
 			$safe[ $key ] = $value;

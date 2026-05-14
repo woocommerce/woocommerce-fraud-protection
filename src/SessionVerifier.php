@@ -167,7 +167,7 @@ class SessionVerifier {
 				'warning',
 				'`woocommerce_fraud_protection_skip_session_verify` filter threw',
 				array(
-					'source'            => $source,
+					'event_source'      => $source,
 					'session_id'        => $session_id,
 					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
 					'exception'         => $e,
@@ -192,7 +192,7 @@ class SessionVerifier {
 				'warning',
 				'Payment data resolution failed',
 				array(
-					'source'            => $source,
+					'event_source'      => $source,
 					'session_id'        => $session_id,
 					'order_id'          => $order_id,
 					'payment_type'      => $request_data['payment_method'] ?? '',
@@ -229,7 +229,7 @@ class SessionVerifier {
 				'error',
 				'Session verification failed, allowing',
 				array(
-					'source'            => $source,
+					'event_source'      => $source,
 					'session_id'        => $session_id,
 					'order_id'          => $order_id,
 					'hook'              => 'session_verify',

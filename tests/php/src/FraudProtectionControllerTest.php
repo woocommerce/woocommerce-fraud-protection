@@ -290,8 +290,8 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 					'error',
 					'Blackbox API request failed',
 					array(
-						'source'     => 'api_verify',
-						'error_code' => 'http_request_failed',
+						'event_source' => 'api_verify',
+						'error_code'   => 'http_request_failed',
 					),
 					true
 				);
@@ -300,7 +300,7 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 
 		$this->assertStringContainsString( '[woo-fraud-protection error]:', $captured );
 		$this->assertStringContainsString( 'Blackbox API request failed', $captured );
-		$this->assertStringContainsString( '"source":"api_verify"', $captured );
+		$this->assertStringContainsString( '"event_source":"api_verify"', $captured );
 		$this->assertStringContainsString( '"error_code":"http_request_failed"', $captured );
 	}
 
@@ -314,17 +314,17 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 					'error',
 					'Test',
 					array(
-						'source'     => 'api_verify',
-						'email'      => 'shopper@example.com',
-						'visitor_ip' => '203.0.113.42',
-						'payload'    => array( 'card' => 'tok_visa' ),
+						'event_source' => 'api_verify',
+						'email'        => 'shopper@example.com',
+						'visitor_ip'   => '203.0.113.42',
+						'payload'      => array( 'card' => 'tok_visa' ),
 					),
 					true
 				);
 			}
 		);
 
-		$this->assertStringContainsString( '"source":"api_verify"', $captured );
+		$this->assertStringContainsString( '"event_source":"api_verify"', $captured );
 		$this->assertStringNotContainsString( 'shopper@example.com', $captured );
 		$this->assertStringNotContainsString( '203.0.113.42', $captured );
 		$this->assertStringNotContainsString( 'tok_visa', $captured );

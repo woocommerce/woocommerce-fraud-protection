@@ -23,31 +23,22 @@ class LogContextSanitizerTest extends \WC_Unit_Test_Case {
 	 */
 	public function test_allowlisted_scalar_keys_pass_through(): void {
 		$context = array(
-			'session_id'          => 'abc-123',
-			'identity_id'         => 'customer_abc-30char-hash',
-			'order_id'            => 4242,
-			'source'              => 'blocks_checkout',
-			'filter'              => 'woocommerce_fraud_protection_decision',
-			'hook'                => 'session_verify',
-			'callback_name'       => 'My_Plugin\\Compat::callback',
-			'request_uri'         => '/verify',
-			'decision'            => 'allow',
-			'decision_received'   => 'maybe',
-			'argument_type'       => 'array',
-			'http_status'         => 503,
-			'error_code'          => 'http_request_failed',
-			'exception_class'     => 'RuntimeException',
-			'exception_message'   => 'Something broke',
-			'exception_file'      => '/srv/htdocs/wp-content/plugins/x/y.php',
-			'exception_line'      => 142,
-			'plugin_version'      => '0.1.3',
-			'wp_version'          => '6.7.1',
-			'php_version'         => '7.4.33',
-			'wc_version'          => '10.6.0',
-			'latency_ms'          => 1234,
-			'gateway'             => 'stripe',
-			'payment_type'        => 'card',
-			'payment_method_slug' => 'woocommerce_payments',
+			'session_id'        => 'abc-123',
+			'identity_id'       => 'customer_abc-30char-hash',
+			'order_id'          => 4242,
+			'event_source'      => 'blocks_checkout',
+			'filter'            => 'woocommerce_fraud_protection_decision',
+			'hook'              => 'session_verify',
+			'api_endpoint'      => '/verify',
+			'decision_received' => 'maybe',
+			'argument_type'     => 'array',
+			'http_status'       => 503,
+			'error_code'        => 'http_request_failed',
+			'exception_class'   => 'RuntimeException',
+			'exception_message' => 'Something broke',
+			'exception_file'    => '/srv/htdocs/wp-content/plugins/x/y.php',
+			'exception_line'    => 142,
+			'payment_type'      => 'card',
 		);
 
 		$encoded = LogContextSanitizer::sanitize( $context );
@@ -96,12 +87,16 @@ class LogContextSanitizerTest extends \WC_Unit_Test_Case {
 
 			// Payment identifiers.
 			'card_fingerprint' => array( 'card_fingerprint', 'fp_xyz' ),
-			'last4'             => array( 'last4', '4242' ),
+			'last4'            => array( 'last4', '4242' ),
 
 			// Raw exception / trace - safe pieces (class/message/file/line) are
 			// extracted at the call site and passed under allowlisted keys.
 			'exception'        => array( 'exception', new \RuntimeException( 'boom' ) ),
 			'error'            => array( 'error', 'boom' ),
+
+			// `source` is reserved for WooCommerce's log channel name and
+			// must not propagate to the platform log.
+			'source'           => array( 'source', 'woo-fraud-protection' ),
 		);
 	}
 
@@ -134,13 +129,31 @@ class LogContextSanitizerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
+	 * Multibyte strings should be truncated on character boundaries, never
+	 * mid-codepoint, so the result remains valid UTF-8 and JSON-encodable.
+	 */
+	public function test_multibyte_string_values_truncate_on_character_boundary(): void {
+		$mb_char  = '🦀'; // 4 bytes per character.
+		$long_mb  = str_repeat( $mb_char, 250 );
+		$short_mb = str_repeat( $mb_char, 200 );
+
+		$encoded = LogContextSanitizer::sanitize( array( 'exception_message' => $long_mb ) );
+
+		$this->assertNotSame( '', $encoded, 'Multibyte truncation must not break JSON encoding.' );
+
+		$decoded = json_decode( $encoded, true );
+		$this->assertIsArray( $decoded );
+		$this->assertSame( $short_mb, $decoded['exception_message'] );
+	}
+
+	/**
 	 * Mixed input should keep only allowlisted scalars, dropping everything
 	 * else.
 	 */
 	public function test_mixed_context_keeps_only_allowlisted_scalars(): void {
 		$context = array(
 			'session_id'        => 'abc-123',
-			'gateway'           => 'stripe',
+			'payment_type'      => 'card',
 			'exception_message' => 'Boom',
 			'email'             => 'shopper@example.com',
 			'visitor_ip'        => '203.0.113.42',
@@ -153,12 +166,12 @@ class LogContextSanitizerTest extends \WC_Unit_Test_Case {
 		$this->assertIsArray( $decoded );
 		// Sanitizer iterates ALLOWED_KEYS in declaration order, so output is
 		// stably ordered by allowlist position (session_id, exception_message,
-		// gateway) regardless of input order.
+		// payment_type) regardless of input order.
 		$this->assertSame(
 			array(
 				'session_id'        => 'abc-123',
 				'exception_message' => 'Boom',
-				'gateway'           => 'stripe',
+				'payment_type'      => 'card',
 			),
 			$decoded
 		);

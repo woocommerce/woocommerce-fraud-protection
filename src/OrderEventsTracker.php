@@ -93,7 +93,7 @@ class OrderEventsTracker {
 				'error',
 				'Failed to report 3rd party event to Blackbox API',
 				array(
-					'source'            => 'order_event_report',
+					'event_source'      => 'order_event_report',
 					'session_id'        => $session_id,
 					'order_id'          => $order->get_id(),
 					'error'             => $e->getTraceAsString(),

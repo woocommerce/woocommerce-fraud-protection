@@ -197,10 +197,10 @@ class ApiClient {
 				array_merge(
 					$error_data,
 					array(
-						'source'      => 'api_report',
-						'session_id'  => $session_id,
-						'request_uri' => self::REPORT_ENDPOINT,
-						'error_code'  => (string) $response->get_error_code(),
+						'event_source' => 'api_report',
+						'session_id'   => $session_id,
+						'api_endpoint' => self::REPORT_ENDPOINT,
+						'error_code'   => (string) $response->get_error_code(),
 					)
 				),
 				true
@@ -238,10 +238,10 @@ class ApiClient {
 				array_merge(
 					$error_data,
 					array(
-						'source'      => 'api_verify',
-						'session_id'  => $session_id,
-						'request_uri' => self::VERIFY_ENDPOINT,
-						'error_code'  => (string) $response->get_error_code(),
+						'event_source' => 'api_verify',
+						'session_id'   => $session_id,
+						'api_endpoint' => self::VERIFY_ENDPOINT,
+						'error_code'   => (string) $response->get_error_code(),
 					)
 				),
 				true
@@ -256,11 +256,11 @@ class ApiClient {
 				'error',
 				'Could not extract decision from response. Failing open with "allow" decision.',
 				array(
-					'source'      => 'api_verify',
-					'session_id'  => $session_id,
-					'request_uri' => self::VERIFY_ENDPOINT,
-					'http_status' => (int) wp_remote_retrieve_response_code( $response ),
-					'response'    => $response,
+					'event_source' => 'api_verify',
+					'session_id'   => $session_id,
+					'api_endpoint' => self::VERIFY_ENDPOINT,
+					'http_status'  => (int) wp_remote_retrieve_response_code( $response ),
+					'response'     => $response,
 				),
 				true
 			);
@@ -275,9 +275,9 @@ class ApiClient {
 					$decision
 				),
 				array(
-					'source'            => 'api_verify',
+					'event_source'      => 'api_verify',
 					'session_id'        => $session_id,
-					'request_uri'       => self::VERIFY_ENDPOINT,
+					'api_endpoint'      => self::VERIFY_ENDPOINT,
 					'http_status'       => (int) wp_remote_retrieve_response_code( $response ),
 					'decision_received' => $decision,
 					'response'          => $response,

@@ -58,8 +58,8 @@ class DecisionHandler {
 	public function apply_decision( string $decision, array $session_data ): string {
 		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
 		$log_context = array(
-			'identity_id' => $session['wc_identity_id'] ?? 'unknown',
-			'source'      => $session_data['source'] ?? 'unknown',
+			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
+			'event_source' => $session_data['source'] ?? 'unknown',
 		);
 
 		// Validate input decision and fail open if invalid.
