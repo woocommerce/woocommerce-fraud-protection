@@ -280,8 +280,10 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Entries with the flag set must be forwarded with the documented tag
-	 * prefix and a JSON-encoded sanitized context.
+	 * Entries with the flag set must be forwarded as a `PHP Warning:` line
+	 * carrying the plugin tag, the message, and the JSON-encoded sanitized
+	 * context, with the parser-recognised `in <file> on line <N>` marker
+	 * at the very end.
 	 */
 	public function test_log_forwards_to_platform_with_tag(): void {
 		$captured = $this->capture_error_log(
@@ -298,10 +300,86 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 			}
 		);
 
-		$this->assertStringContainsString( '[woo-fraud-protection error]:', $captured );
-		$this->assertStringContainsString( 'Blackbox API request failed', $captured );
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection error\] Blackbox API request failed \{[^}]+\} in \S+/woocommerce-fraud-protection\.php on line -20$#m',
+			trim( $captured )
+		);
 		$this->assertStringContainsString( '"event_source":"api_verify"', $captured );
 		$this->assertStringContainsString( '"error_code":"http_request_failed"', $captured );
+	}
+
+	/**
+	 * With no allowlisted context, the JSON segment is omitted (no trailing
+	 * empty braces) and the `in ... on line ...` marker still sits at the
+	 * end so the host parser can extract `file` / `line`.
+	 */
+	public function test_log_forwards_without_json_when_context_empty(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log( 'error', 'No context here', array(), true );
+			}
+		);
+
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection error\] No context here in \S+/woocommerce-fraud-protection\.php on line -20$#m',
+			trim( $captured )
+		);
+		$this->assertStringNotContainsString( '{}', $captured );
+	}
+
+	/**
+	 * Each forwarded severity must encode its app-level into the trailing
+	 * `on line <N>` field per the documented mapping.
+	 *
+	 * @dataProvider forwarded_level_to_line_code_provider
+	 *
+	 * @param string $level     Log level to forward.
+	 * @param int    $line_code Expected encoded line number.
+	 */
+	public function test_log_encodes_app_level_in_line_code( string $level, int $line_code ): void {
+		$captured = $this->capture_error_log(
+			static function () use ( $level ) {
+				FraudProtectionController::log( $level, 'severity test', array(), true );
+			}
+		);
+
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection ' . preg_quote( $level, '#' ) . '\] severity test in \S+/woocommerce-fraud-protection\.php on line ' . $line_code . '$#m',
+			trim( $captured )
+		);
+	}
+
+	/**
+	 * Provider for {@see test_log_encodes_app_level_in_line_code}.
+	 *
+	 * @return array<string, array{string, int}>
+	 */
+	public function forwarded_level_to_line_code_provider(): array {
+		return array(
+			'warning'   => array( 'warning', -10 ),
+			'error'     => array( 'error', -20 ),
+			'critical'  => array( 'critical', -30 ),
+			'alert'     => array( 'alert', -40 ),
+			'emergency' => array( 'emergency', -50 ),
+		);
+	}
+
+	/**
+	 * Levels that fall outside the documented mapping must still emit a
+	 * forwarded line (using the `warning` line code) rather than being
+	 * silently dropped at the formatting step.
+	 */
+	public function test_log_unmapped_level_falls_back_to_warning_code(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log( 'info', 'unmapped level', array(), true );
+			}
+		);
+
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection info\] unmapped level in \S+/woocommerce-fraud-protection\.php on line -10$#m',
+			trim( $captured )
+		);
 	}
 
 	/**

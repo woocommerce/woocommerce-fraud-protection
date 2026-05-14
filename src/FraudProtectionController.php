@@ -190,6 +190,29 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private const PLATFORM_LOG_TAG = 'woo-fraud-protection';
 
 	/**
+	 * App-level severity to encoded line-number value used in the trailing
+	 * `on line <N>` marker of forwarded entries.
+	 *
+	 * The host platform's PHP-errors parser extracts the integer after
+	 * `on line` into a structured `line` field. Real PHP errors emit
+	 * positive line numbers; parse-failure cases default to -1. The
+	 * range [-50, -10] is reserved here to encode our app-level severity
+	 * while staying collision-safe against both. Lucene query
+	 * `line:[-50 TO -10]` isolates our intentional emissions.
+	 *
+	 * Levels below `warning` are not forwarded today; if a caller passes
+	 * an unmapped level, {@see forward_to_platform_log()} falls back to
+	 * the `warning` code.
+	 */
+	private const LEVEL_LINE_CODES = array(
+		'warning'   => -10,
+		'error'     => -20,
+		'critical'  => -30,
+		'alert'     => -40,
+		'emergency' => -50,
+	);
+
+	/**
 	 * Log helper method for consistent logging across all fraud protection components.
 	 *
 	 * Always writes to the local WooCommerce log with source
@@ -237,6 +260,24 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * opt-in via the WooCommerce `remote_logging` feature. Independent of
 	 * the local WooCommerce log; runs even when WooCommerce isn't loaded.
 	 *
+	 * Line shape (consumed by the host's PHP-errors parser):
+	 *
+	 *     PHP Warning: [woo-fraud-protection <level>] <message>[ <json>] in <file> on line <N>
+	 *
+	 * - `PHP Warning:` is the parser-recognised prefix that maps the
+	 *   entry to `severity:"Warning"`. The app-level severity is encoded
+	 *   in the trailing `on line <N>` field per {@see LEVEL_LINE_CODES},
+	 *   so a single `severity` value covers all forwarded levels and we
+	 *   discriminate via `line`.
+	 * - The `in <file> on line <N>` marker MUST be the final segment;
+	 *   the parser regex is end-anchored. JSON content that happens to
+	 *   contain `in /x on line 99` is safe because it sits before our
+	 *   marker.
+	 * - `<file>` is a fixed plugin-main-file path - not the real call
+	 *   site. We only need it to be a stable path that lets the parser
+	 *   extract `kind` (e.g. mu-plugins) and `name` consistently so the
+	 *   entries can be filtered by plugin in the downstream index.
+	 *
 	 * @param string               $level   Log severity.
 	 * @param string               $message Log message (already prefixed with identity ID if applicable).
 	 * @param array<string, mixed> $context Original (unsanitized) context; the sanitizer enforces the allowlist.
@@ -245,11 +286,37 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 */
 	private static function forward_to_platform_log( string $level, string $message, array $context ): void {
 		$sanitized = LogContextSanitizer::sanitize( $context );
-		$line      = '' === $sanitized
-			? sprintf( '[%s %s]: %s', self::PLATFORM_LOG_TAG, $level, $message )
-			: sprintf( '[%s %s]: %s %s', self::PLATFORM_LOG_TAG, $level, $message, $sanitized );
+		$line_code = self::LEVEL_LINE_CODES[ $level ] ?? self::LEVEL_LINE_CODES['warning'];
+
+		$body = sprintf( '[%s %s] %s', self::PLATFORM_LOG_TAG, $level, $message );
+		if ( '' !== $sanitized ) {
+			$body .= ' ' . $sanitized;
+		}
+
+		$line = sprintf(
+			'PHP Warning: %s in %s on line %d',
+			$body,
+			self::get_plugin_marker_file(),
+			$line_code
+		);
 
 		error_log( $line ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log,QITStandard.PHP.DebugCode.DebugFunctionFound
+	}
+
+	/**
+	 * Build the plugin-main-file path used in the parser-recognised
+	 * `in <file>` marker of forwarded log entries.
+	 *
+	 * The path doesn't have to match the call site that produced the
+	 * entry - the parser only uses it to extract `kind` and `name`
+	 * fields in the downstream index. A fixed plugin-main-file path
+	 * keeps those fields stable across emissions so the plugin's
+	 * entries can be filtered as a single cohort.
+	 *
+	 * @return string Absolute path to the plugin's main file.
+	 */
+	private static function get_plugin_marker_file(): string {
+		return dirname( __DIR__ ) . '/woocommerce-fraud-protection.php';
 	}
 
 	/**
