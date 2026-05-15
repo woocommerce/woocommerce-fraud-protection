@@ -185,7 +185,8 @@ class BlackboxScriptHandlerTest extends WC_Unit_Test_Case {
 		do_action( 'wp_enqueue_scripts' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
 
 		$data = wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
-		$this->assertStringContainsString( '"woo:42:mock-session-id"', $data, 'Should contain API key with blog ID and session ID' );
+		$this->assertStringContainsString( '"apiKey":"woo:42"', $data, 'apiKey should be woo:{blog_id} with no identity segment' );
+		$this->assertStringContainsString( '"identityKey":"mock-session-id"', $data, 'identityKey should carry the WC identity ID separately' );
 	}
 
 	/**

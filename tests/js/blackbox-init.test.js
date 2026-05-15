@@ -15,6 +15,7 @@
 const flushPromises = () => new Promise( jest.requireActual( 'timers' ).setImmediate );
 
 let mockConfigure;
+let mockInit;
 let mockGetSessionId;
 let mockReset;
 
@@ -25,6 +26,7 @@ beforeEach( () => {
 	jest.useFakeTimers();
 
 	mockConfigure = jest.fn();
+	mockInit = jest.fn( () => Promise.resolve() );
 	mockGetSessionId = jest.fn( () => Promise.resolve( 'test-session-id' ) );
 	mockReset = jest.fn( () => Promise.resolve() );
 } );
@@ -34,9 +36,10 @@ afterEach( () => {
 } );
 
 function setupAndLoad() {
-	window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
+	window.wcFraudProtection = { config: { apiKey: 'test-key', identityKey: 'test-identity', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
 	window.Blackbox = {
 		configure: mockConfigure,
+		init: mockInit,
 		getSessionId: mockGetSessionId,
 		reset: mockReset,
 	};
@@ -48,16 +51,27 @@ function setupAndLoad() {
 
 describe( 'blackbox-init', () => {
 	describe( 'configure', () => {
-		it( 'calls Blackbox.configure with the apiKey from config', () => {
+		it( 'calls Blackbox.configure with apiKey and identityKey from config', () => {
 			setupAndLoad();
 
 			expect( mockConfigure ).toHaveBeenCalledWith( {
 				apiKey: 'test-key',
+				identityKey: 'test-identity',
 			} );
 		} );
 
+		it( 'calls Blackbox.init() after configure()', () => {
+			setupAndLoad();
+
+			expect( mockInit ).toHaveBeenCalledTimes( 1 );
+			expect( mockInit ).toHaveBeenCalledWith();
+			expect(
+				mockConfigure.mock.invocationCallOrder[ 0 ] < mockInit.mock.invocationCallOrder[ 0 ]
+			).toBe( true );
+		} );
+
 		it( 'does not error when config is missing', () => {
-			window.Blackbox = { configure: mockConfigure };
+			window.Blackbox = { configure: mockConfigure, init: mockInit };
 
 			expect( () => {
 				jest.isolateModules( () => {
@@ -69,13 +83,25 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'does not error when Blackbox is missing', () => {
-			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
+			window.wcFraudProtection = { config: { apiKey: 'test-key', identityKey: 'test-identity', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
 
 			expect( () => {
 				jest.isolateModules( () => {
 					require( '../../assets/js/blackbox-init' );
 				} );
 			} ).not.toThrow();
+		} );
+
+		it( 'does not call configure or init when Blackbox.init is missing', () => {
+			window.wcFraudProtection = { config: { apiKey: 'test-key', identityKey: 'test-identity', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
+			window.Blackbox = { configure: mockConfigure };
+
+			jest.isolateModules( () => {
+				require( '../../assets/js/blackbox-init' );
+			} );
+
+			expect( mockConfigure ).not.toHaveBeenCalled();
+			expect( mockInit ).not.toHaveBeenCalled();
 		} );
 	} );
 

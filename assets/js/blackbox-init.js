@@ -13,13 +13,22 @@
 		return;
 	}
 
-	if ( ! window.Blackbox || ! window.Blackbox.configure ) {
+	if (
+		! window.Blackbox ||
+		! window.Blackbox.configure ||
+		! window.Blackbox.init
+	) {
 		return;
 	}
 
 	window.Blackbox.configure( {
 		apiKey: fraudProtection.config.apiKey,
+		identityKey: fraudProtection.config.identityKey,
 	} );
+
+	// Fire-and-forget: the SDK wraps errors into a returned BlackboxError rather than
+	// throwing, and downstream consumers already fail open on empty session IDs.
+	window.Blackbox.init();
 
 	/**
 	 * Acquire a Blackbox session ID (fail-open: empty string on timeout/error).
