@@ -129,7 +129,9 @@ class BlackboxScriptHandler {
 		if ( ! $blog_id ) {
 			FraudProtectionController::log(
 				'error',
-				'Blackbox scripts not loaded: Jetpack blog ID not available. Is the site connected to Jetpack?'
+				'Blackbox scripts not loaded: Jetpack blog ID not available. Is the site connected to Jetpack?',
+				array( 'event_source' => 'blackbox_script_enqueue' ),
+				true
 			);
 			return;
 		}

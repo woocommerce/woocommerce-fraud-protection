@@ -262,7 +262,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged(
 			'warning',
-			'Payment data resolution failed: Compat layer exploded',
+			'Payment data resolution failed',
 			array(
 				'verify_context' => array(
 					'source'       => 'checkout',
@@ -297,7 +297,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged(
 			'error',
-			'Session verification failed, allowing: API call failed',
+			'Session verification failed, allowing',
 			array(
 				'verify_context' => array(
 					'source'     => 'checkout',
@@ -328,7 +328,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
 		$this->assertLogged(
 			'error',
-			'Session verification failed, allowing: Decision handler exploded',
+			'Session verification failed, allowing',
 			array(
 				'verify_context' => array(
 					'source'     => 'checkout',
@@ -596,7 +596,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
-		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw: Filter exploded' );
+		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw' );
 	}
 
 }

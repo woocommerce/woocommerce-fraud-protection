@@ -165,8 +165,18 @@ class SessionVerifier {
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
-				'`woocommerce_fraud_protection_skip_session_verify` filter threw: ' . $e->getMessage(),
-				array( 'exception' => $e )
+				'`woocommerce_fraud_protection_skip_session_verify` filter threw',
+				array(
+					'event_source'      => $source,
+					'session_id'        => $session_id,
+					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
+					'exception'         => $e,
+					'exception_class'   => get_class( $e ),
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+				),
+				true
 			);
 		}
 
@@ -180,16 +190,26 @@ class SessionVerifier {
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
-				'Payment data resolution failed: ' . $e->getMessage(),
+				'Payment data resolution failed',
 				array(
-					'exception'      => $e,
-					'verify_context' => array(
+					'event_source'      => $source,
+					'session_id'        => $session_id,
+					'order_id'          => $order_id,
+					'payment_type'      => $request_data['payment_method'] ?? '',
+					'hook'              => 'payment_data_resolution',
+					'exception'         => $e,
+					'exception_class'   => get_class( $e ),
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+					'verify_context'    => array(
 						'source'       => $source,
 						'session_id'   => $session_id,
 						'order_id'     => $order_id,
 						'request_data' => $request_data,
 					),
-				)
+				),
+				true
 			);
 		}
 
@@ -207,16 +227,25 @@ class SessionVerifier {
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'error',
-				'Session verification failed, allowing: ' . $e->getMessage(),
+				'Session verification failed, allowing',
 				array(
-					'exception'      => $e,
-					'verify_context' => array(
+					'event_source'      => $source,
+					'session_id'        => $session_id,
+					'order_id'          => $order_id,
+					'hook'              => 'session_verify',
+					'exception'         => $e,
+					'exception_class'   => get_class( $e ),
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+					'verify_context'    => array(
 						'source'       => $source,
 						'session_id'   => $session_id,
 						'order_id'     => $order_id,
 						'request_data' => $request_data,
 					),
-				)
+				),
+				true
 			);
 			return ApiClient::DECISION_ALLOW;
 		}

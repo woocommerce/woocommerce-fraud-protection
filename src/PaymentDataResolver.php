@@ -67,13 +67,19 @@ class PaymentDataResolver {
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
-				sprintf( 'Filter `woocommerce_fraud_protection_resolved_payment_data` threw error: %s', $e->getMessage() ),
+				'Filter `woocommerce_fraud_protection_resolved_payment_data` threw',
 				array(
+					'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
+					'payment_type'              => $payment_method,
 					'error'                     => $e,
-					'payment_method'            => $payment_method,
+					'exception_class'           => get_class( $e ),
+					'exception_message'         => $e->getMessage(),
+					'exception_file'            => $e->getFile(),
+					'exception_line'            => $e->getLine(),
 					'checkout_payment_fields'   => $checkout_payment_fields,
 					'pre_resolved_payment_data' => $pre_resolved_payment_data,
-				)
+				),
+				true
 			);
 			return $pre_resolved_payment_data;
 		}
@@ -86,11 +92,14 @@ class PaymentDataResolver {
 					gettype( $resolved_payment_data )
 				),
 				array(
-					'payment_method'            => $payment_method,
+					'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
+					'payment_type'              => $payment_method,
+					'argument_type'             => gettype( $resolved_payment_data ),
 					'checkout_payment_fields'   => $checkout_payment_fields,
 					'pre_resolved_payment_data' => $pre_resolved_payment_data,
 					'resolved_payment_data'     => $resolved_payment_data,
-				)
+				),
+				true
 			);
 		}
 

@@ -162,7 +162,7 @@ class ApiClient {
 			$payload
 		);
 
-		return $this->process_decision_response( $response, $payload );
+		return $this->process_decision_response( $response, $payload, $session_id );
 	}
 
 	/**
@@ -186,13 +186,24 @@ class ApiClient {
 		$response = $this->make_request( 'POST', self::REPORT_ENDPOINT, $session_id, $payload );
 
 		if ( is_wp_error( $response ) ) {
+			$error_data = $response->get_error_data() ?? array();
+			$error_data = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
 			FraudProtectionController::log(
 				'error',
 				sprintf(
 					'Failed to report event to Blackbox API: %s',
 					$response->get_error_message()
 				),
-				array( 'error' => $response->get_error_data() )
+				array_merge(
+					$error_data,
+					array(
+						'event_source' => 'api_report',
+						'session_id'   => $session_id,
+						'api_endpoint' => self::REPORT_ENDPOINT,
+						'error_code'   => (string) $response->get_error_code(),
+					)
+				),
+				true
 			);
 			return false;
 		}
@@ -211,9 +222,10 @@ class ApiClient {
 	 *
 	 * @param array<string, mixed>|\WP_Error $response   API response or WP_Error.
 	 * @param array<string, mixed>           $event_data Event data for logging.
+	 * @param string                         $session_id Session ID associated with the request, included in log context for cross-system tracing.
 	 * @return string Decision: "allow" or "block".
 	 */
-	private function process_decision_response( $response, array $event_data ): string {
+	private function process_decision_response( $response, array $event_data, string $session_id ): string {
 		if ( is_wp_error( $response ) ) {
 			$error_data = $response->get_error_data() ?? array();
 			$error_data = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
@@ -223,7 +235,16 @@ class ApiClient {
 					'Blackbox API request failed: %s. Failing open with "allow" decision.',
 					$response->get_error_message()
 				),
-				$error_data
+				array_merge(
+					$error_data,
+					array(
+						'event_source' => 'api_verify',
+						'session_id'   => $session_id,
+						'api_endpoint' => self::VERIFY_ENDPOINT,
+						'error_code'   => (string) $response->get_error_code(),
+					)
+				),
+				true
 			);
 			return self::DECISION_ALLOW;
 		}
@@ -234,7 +255,14 @@ class ApiClient {
 			FraudProtectionController::log(
 				'error',
 				'Could not extract decision from response. Failing open with "allow" decision.',
-				array( 'response' => $response )
+				array(
+					'event_source' => 'api_verify',
+					'session_id'   => $session_id,
+					'api_endpoint' => self::VERIFY_ENDPOINT,
+					'http_status'  => (int) wp_remote_retrieve_response_code( $response ),
+					'response'     => $response,
+				),
+				true
 			);
 			return self::DECISION_ALLOW;
 		}
@@ -246,7 +274,15 @@ class ApiClient {
 					'Invalid decision value "%s". Failing open with "allow" decision.',
 					$decision
 				),
-				array( 'response' => $response )
+				array(
+					'event_source'      => 'api_verify',
+					'session_id'        => $session_id,
+					'api_endpoint'      => self::VERIFY_ENDPOINT,
+					'http_status'       => (int) wp_remote_retrieve_response_code( $response ),
+					'decision_received' => $decision,
+					'response'          => $response,
+				),
+				true
 			);
 			return self::DECISION_ALLOW;
 		}

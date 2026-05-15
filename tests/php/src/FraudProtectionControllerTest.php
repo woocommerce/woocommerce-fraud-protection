@@ -238,4 +238,202 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 			WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
 		}
 	}
+
+	/**
+	 * Capture lines written via PHP error_log() during $callback.
+	 *
+	 * @param callable $callback Code that may call error_log().
+	 *
+	 * @return string Captured output.
+	 */
+	private function capture_error_log( callable $callback ): string {
+		$captured      = '';
+		$tmp_file      = tempnam( sys_get_temp_dir(), 'wfp-elog-' );
+		$previous_dest = ini_get( 'error_log' );
+		ini_set( 'error_log', $tmp_file );
+
+		try {
+			$callback();
+			$captured = is_string( $tmp_file ) && file_exists( $tmp_file ) ? (string) file_get_contents( $tmp_file ) : '';
+		} finally {
+			ini_set( 'error_log', false === $previous_dest ? '' : $previous_dest );
+			if ( is_string( $tmp_file ) && file_exists( $tmp_file ) ) {
+				unlink( $tmp_file );
+			}
+		}
+
+		return $captured;
+	}
+
+	/**
+	 * Without `$forward_to_platform_log = true`, log() must not write to the
+	 * PHP error log, regardless of severity.
+	 */
+	public function test_log_does_not_forward_when_flag_unset(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log( 'error', 'Local-only error' );
+			}
+		);
+
+		$this->assertSame( '', trim( $captured ) );
+	}
+
+	/**
+	 * Entries with the flag set must be forwarded as a `PHP Warning:` line
+	 * carrying the plugin tag, the message, and the JSON-encoded sanitized
+	 * context, with the parser-recognised `in <file> on line <N>` marker
+	 * at the very end.
+	 */
+	public function test_log_forwards_to_platform_with_tag(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log(
+					'error',
+					'Blackbox API request failed',
+					array(
+						'event_source' => 'api_verify',
+						'error_code'   => 'http_request_failed',
+					),
+					true
+				);
+			}
+		);
+
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection error\] Blackbox API request failed \{[^}]+\} in \S+/woocommerce-fraud-protection\.php on line -20$#m',
+			trim( $captured )
+		);
+		$this->assertStringContainsString( '"event_source":"api_verify"', $captured );
+		$this->assertStringContainsString( '"error_code":"http_request_failed"', $captured );
+	}
+
+	/**
+	 * With no allowlisted context, the JSON segment is omitted (no trailing
+	 * empty braces) and the `in ... on line ...` marker still sits at the
+	 * end so the host parser can extract `file` / `line`.
+	 */
+	public function test_log_forwards_without_json_when_context_empty(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log( 'error', 'No context here', array(), true );
+			}
+		);
+
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection error\] No context here in \S+/woocommerce-fraud-protection\.php on line -20$#m',
+			trim( $captured )
+		);
+		$this->assertStringNotContainsString( '{}', $captured );
+	}
+
+	/**
+	 * Each forwarded severity must encode its app-level into the trailing
+	 * `on line <N>` field per the documented mapping.
+	 *
+	 * @dataProvider forwarded_level_to_line_code_provider
+	 *
+	 * @param string $level     Log level to forward.
+	 * @param int    $line_code Expected encoded line number.
+	 */
+	public function test_log_encodes_app_level_in_line_code( string $level, int $line_code ): void {
+		$captured = $this->capture_error_log(
+			static function () use ( $level ) {
+				FraudProtectionController::log( $level, 'severity test', array(), true );
+			}
+		);
+
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection ' . preg_quote( $level, '#' ) . '\] severity test in \S+/woocommerce-fraud-protection\.php on line ' . $line_code . '$#m',
+			trim( $captured )
+		);
+	}
+
+	/**
+	 * Provider for {@see test_log_encodes_app_level_in_line_code}.
+	 *
+	 * @return array<string, array{string, int}>
+	 */
+	public function forwarded_level_to_line_code_provider(): array {
+		return array(
+			'warning'   => array( 'warning', -10 ),
+			'error'     => array( 'error', -20 ),
+			'critical'  => array( 'critical', -30 ),
+			'alert'     => array( 'alert', -40 ),
+			'emergency' => array( 'emergency', -50 ),
+		);
+	}
+
+	/**
+	 * Levels that fall outside the documented mapping must still emit a
+	 * forwarded line (using the `warning` line code) rather than being
+	 * silently dropped at the formatting step.
+	 */
+	public function test_log_unmapped_level_falls_back_to_warning_code(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log( 'info', 'unmapped level', array(), true );
+			}
+		);
+
+		$this->assertMatchesRegularExpression(
+			'#PHP Warning: \[woo-fraud-protection info\] unmapped level in \S+/woocommerce-fraud-protection\.php on line -10$#m',
+			trim( $captured )
+		);
+	}
+
+	/**
+	 * Non-allowlisted context keys must not appear in the forwarded line.
+	 */
+	public function test_log_strips_non_allowlisted_context_when_forwarding(): void {
+		$captured = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log(
+					'error',
+					'Test',
+					array(
+						'event_source' => 'api_verify',
+						'email'        => 'shopper@example.com',
+						'visitor_ip'   => '203.0.113.42',
+						'payload'      => array( 'card' => 'tok_visa' ),
+					),
+					true
+				);
+			}
+		);
+
+		$this->assertStringContainsString( '"event_source":"api_verify"', $captured );
+		$this->assertStringNotContainsString( 'shopper@example.com', $captured );
+		$this->assertStringNotContainsString( '203.0.113.42', $captured );
+		$this->assertStringNotContainsString( 'tok_visa', $captured );
+	}
+
+	/**
+	 * The local WC log receives the entry even when platform forwarding is
+	 * not requested.
+	 */
+	public function test_log_writes_local_wc_log_when_not_forwarding(): void {
+		$logger = $this->getMockBuilder( \WC_Logger_Interface::class )->getMock();
+		$logger->expects( $this->once() )
+			->method( 'log' )
+			->with(
+				$this->equalTo( 'error' ),
+				$this->equalTo( 'Local log entry' ),
+				$this->callback(
+					static function ( $context ) {
+						return is_array( $context )
+							&& 'woo-fraud-protection' === ( $context['source'] ?? null );
+					}
+				)
+			);
+
+		add_filter(
+			'woocommerce_logging_class',
+			static function () use ( $logger ) {
+				return $logger;
+			}
+		);
+
+		FraudProtectionController::log( 'error', 'Local log entry' );
+	}
 }

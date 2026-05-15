@@ -73,7 +73,9 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **i18n**: All user-facing text must be translatable. Text domain: `woocommerce-fraud-protection`. Log messages stay in English.
 
-**Logging**: Always use `FraudProtectionController::log()`. Include context like filter names, decision values, and session data.
+**Logging**: Always use `FraudProtectionController::log()`. Include context like filter names, decision values, and session data. The optional 4th parameter `$forward_to_platform_log` (default `false`) opts an entry into PHP `error_log()` forwarding when set to `true`, via a strict allowlist sanitizer (see `LogContextSanitizer::ALLOWED_KEYS`). Reserve this for entries that signal something an operator would want centrally aggregated (transport failures, response parsing failures, plugin exception paths, third-party filter failures). The forwarded message string is shipped verbatim - do NOT interpolate form fields, raw payment data, or third-party exception text with embedded user input into log messages; pass structured data via context keys instead. Adding a key to the sanitizer allowlist requires a privacy review note in the PR.
+
+Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <message>[ <sanitized-json>] in <plugin-main-file> on line <code>`. The `PHP Warning:` prefix and the trailing `in <file> on line <N>` marker are required for the host's PHP-errors parser to map the entry to a structured record (`severity:"Warning"`, plus `file`/`kind`/`name`/`line`). App-level severity is encoded into the trailing `line` field per `FraudProtectionController::LEVEL_LINE_CODES` (warning -10, error -20, critical -30, alert -40, emergency -50), so `line:[-50 TO -10]` isolates our intentional emissions. The `<plugin-main-file>` path is a fixed plugin path - it does not point at the real call site - and is only there to keep `kind`/`name` stable for filtering.
 
 **Schema objects**: DTOs in `src/Schemas/` use private constructors with static factory methods (`from_wc_customer_billing()`, `from_cart()`, `empty()`). Do NOT use `new` directly — factory methods also handle sanitization.
 
