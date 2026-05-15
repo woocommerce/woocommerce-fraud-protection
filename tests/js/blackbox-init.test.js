@@ -101,6 +101,7 @@ describe( 'blackbox-init', () => {
 			} );
 
 			expect( mockConfigure ).not.toHaveBeenCalled();
+			expect( mockInit ).not.toHaveBeenCalled();
 		} );
 	} );
 
