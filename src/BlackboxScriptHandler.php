@@ -170,7 +170,8 @@ class BlackboxScriptHandler {
 			'wcFraudProtection',
 			array(
 				'config' => array(
-					'apiKey'         => self::API_KEY_PREFIX . ':' . $blog_id . ':' . $wc_identity_id,
+					'apiKey'         => self::API_KEY_PREFIX . ':' . $blog_id,
+					'identityKey'    => $wc_identity_id,
 					'timeout'        => self::SESSION_ID_TIMEOUT_MS,
 					'sessionIdField' => self::SESSION_ID_FIELD,
 				),
