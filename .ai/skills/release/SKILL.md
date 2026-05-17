@@ -4,45 +4,105 @@ description: Build and publish a GitHub Release for the WooCommerce Fraud Protec
 user_invocable: true
 arguments:
   - name: version
-    description: "Version to release (e.g., 0.1.0). Must match the version in the plugin header."
-    required: true
+    description: "Version to release (e.g., 0.1.3). If omitted, propose the next version from the latest git tag and ask the user to confirm."
+    required: false
 ---
 
 # Release
 
-Build the plugin zip and create a GitHub Release.
+Bump the version, build the plugin zip, ship a release PR, and create a GitHub Release once it merges.
+
+## Inputs
+
+- `version` (optional): target version like `0.1.3`. If omitted, propose the next patch bump from the latest `v*` git tag and confirm with the user before proceeding.
 
 ## Instructions
 
-1. **Validate version** — confirm the `version` argument matches all three locations:
+1. **Pick the target version**
+   - Read the current version from `package.json` and the latest `v*` git tag (`git tag --list 'v*' | sort -V | tail -1`).
+   - If the user supplied `{{version}}`, use it. Otherwise propose the next patch bump and confirm.
+   - Stop and ask if the proposed version is already tagged in git.
+
+2. **Gather commits since the last release**
+   - Run `git log v<last>..HEAD --no-merges --oneline` on `trunk` to see what landed.
+   - Fetch the corresponding PR descriptions (`gh pr view <num> --json title,body`) to understand intent.
+
+3. **Bump version in three locations** (all must match the target version):
    - `woocommerce-fraud-protection.php` plugin header (`Version:`)
    - `woocommerce-fraud-protection.php` constant (`WC_FRAUD_PROTECTION_VERSION`)
    - `package.json` (`version`)
 
-   If they don't match, stop and tell the user.
+4. **Apply changelog framing rules** to every candidate bullet. This is a public release; bullets must be appropriate for a public audience. Consult with the user before continuing.
 
-2. **Run checks** — run these in parallel:
+5. **Draft the `changelog.txt` entry** following step 4's rules and show it to the user for review before continuing.
+   - Format: `YYYY-MM-DD - version <version>` heading followed by `* Added|Updated|Fixed - ...` bullets, matching prior entries.
+   - Use today's date in `YYYY-MM-DD` form, not a planned rollout date.
+   - Pause for explicit user approval of the wording before writing any files.
+
+6. **Run checks locally** (parallel where possible):
    ```
-   npm run lint
-   npm run test
+   npm run lint -- --ignore='*/sdd/*'   # phpcs picks up the untracked sdd/ scratch dir locally
+   npm run test:js                       # skip npm run test:php; PHP unit tests run on CI
    npm run phpstan
    ```
-   If any fail, stop and fix before releasing.
+   - PHP unit tests are intentionally deferred to CI - do not bootstrap the WP PHPUnit env locally.
+   - If lint reports failures only inside `sdd/`, those are local scratch files (gitignored). Confirm product code is clean by re-running with `--ignore='*/sdd/*'`.
+   - If any check fails on product code, stop and fix before releasing.
 
-3. **Build the zip**:
+7. **Build the zip**:
    ```
    npm run build:release
    ```
-   Verify `woocommerce-fraud-protection.zip` was created. List its contents and confirm it only includes the expected files: `woocommerce-fraud-protection-loader.php`, `woocommerce-fraud-protection.php`, `changelog.txt`, `assets/js/*.js`, and `src/**/*.php`. All files should be inside a `woocommerce-fraud-protection` directory. Flag anything unexpected.
+   Confirm `woocommerce-fraud-protection.zip` was created. Detailed content verification happens in step 8.
 
-4. **Extract release notes** from `changelog.txt` — find the section for `{{version}}` and extract the bullet points. Format them as the release body.
+8. **Verify the zip's contents** before shipping.
+   - List the archive and confirm all entries are under a top-level `woocommerce-fraud-protection/` directory. Expected files:
+     - `woocommerce-fraud-protection-loader.php`
+     - `woocommerce-fraud-protection.php`
+     - `changelog.txt`
+     - `assets/js/*.js`
+     - `src/**/*.php`
+     - `vendor/autoload.php` and `vendor/composer/*` (PSR-4 autoloader; required at runtime - bootstrap requires it)
+   - Confirm the plugin file inside the zip has the new version:
+     ```
+     unzip -p woocommerce-fraud-protection.zip woocommerce-fraud-protection/woocommerce-fraud-protection.php | grep -E "Version:|WC_FRAUD_PROTECTION_VERSION"
+     ```
+   - Confirm the changelog inside the zip has the new entry at the top:
+     ```
+     unzip -p woocommerce-fraud-protection.zip woocommerce-fraud-protection/changelog.txt | head -3
+     ```
+   - Flag anything unexpected (extra files, tests bundled, `node_modules/`, missing `vendor/`). Stop and ask the user before continuing if anything is off.
 
-5. **Create the GitHub Release**:
+9. **Open a release PR** (do NOT push the bump commit directly to `trunk`):
+   - Create branch `release/<version>` from `trunk`.
+   - Commit the bump with title `Fraud Protection: Bump version to <version>` (stage only `woocommerce-fraud-protection.php`, `package.json`, `changelog.txt` - never `sdd/`).
+   - `git push -u origin release/<version>`.
+   - Open PR with `gh pr create --base trunk --head release/<version>` including the changelog bullets in the body and a short test plan.
+   - Hand the PR URL to the user and wait for them to merge it (CI must be green first).
+
+10. **After merge, pull trunk and rebuild**:
+    ```
+    git switch trunk && git pull --ff-only origin trunk
+    npm run build:release
+    ```
+    Re-run step 8 on the rebuilt zip (the merged commit may differ from the PR-branch commit).
+
+11. **Create the GitHub Release**:
    ```
-   gh release create "v{{version}}" \
+   gh release create "v<version>" \
      woocommerce-fraud-protection.zip \
-     --title "v{{version}}" \
-     --notes "{{notes}}"
+     --title "v<version>" \
+     --notes "<changelog bullets for this version, verbatim from changelog.txt>"
    ```
+   Verify with `gh release view v<version>` that:
+   - `isDraft: false`, `isPrerelease: false`
+   - The `woocommerce-fraud-protection.zip` asset uploaded successfully
 
-6. **Report** — show the release URL to the user.
+12. **Report** - share the release URL with the user. Offer to clean up the local `release/<version>` branch (`git branch -d release/<version>`) since the remote branch is deleted on merge.
+
+## Gotchas
+
+- **Never push the version-bump commit directly to `trunk`.** Always go through a `release/<version>` PR so CI runs against the release commit.
+- **The `sdd/` directory is local-only** and gitignored. Never stage it; ignore it during phpcs.
+- **`vendor/` belongs in the zip.** The bootstrap requires `vendor/autoload.php`. If the build excludes it, the plugin will fatal on load.
+- **Changelog dates use today's date** in `YYYY-MM-DD` form, not a future or rollout-planned date.
