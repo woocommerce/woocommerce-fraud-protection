@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WooCommerce Fraud Protection
  * Description: A plugin to protect WooCommerce from fraud.
- * Version: 0.1.2
+ * Version: 0.1.3
  * Author: Automattic
  *
  * @package WooCommerce\FraudProtection
@@ -19,7 +19,7 @@ if ( defined( 'WC_FRAUD_PROTECTION_DISABLED' ) && WC_FRAUD_PROTECTION_DISABLED )
 	return;
 }
 
-define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.2' );
+define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.3' );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', __DIR__ );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 

@@ -1,5 +1,11 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-05-17 - version 0.1.3
+* Updated - Update init logic to match the latest changes in Blackbox SDK.
+* Updated - Reduce Blackbox request timeouts to 3 seconds (browser SDK and server-side verify/report calls) to bound worst-case checkout latency.
+* Updated - Harden plugin startup so missing dependencies (autoloader, WooCommerce Blocks classes, optional checkout schemas) fail open instead of producing a fatal.
+* Added - Optional PHP error log forwarding for selected operational events (transport failures, response parsing failures, third-party filter failures) with a strict context-key allowlist.
+
 2026-04-16 - version 0.1.2
 * Fixed - Broken asset URLs when the plugin file is located outside of WP_CONTENT_DIR
 * Updated - Switch to PSR-4 autoloading to load files only when needed
