@@ -14,6 +14,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\VerifyResult;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
@@ -143,7 +144,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 			->expects( $this->once() )
 			->method( 'verify' )
 			->with( $session_id, $expected_payload )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
 
 		$this->decision_handler
 			->expects( $this->once() )
@@ -167,7 +168,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		// API returns BLOCK, but a filter overrides to ALLOW.
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_BLOCK, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -219,7 +220,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 					return $payload['payment'] === $resolved->to_array();
 				} )
 			)
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -249,7 +250,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 					return null === $payload['payment'];
 				} )
 			)
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -317,7 +318,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_BLOCK, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -467,6 +468,101 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox verify_session() persists the Blackbox-returned session ID on the no-session path.
+	 */
+	public function test_verify_session_persists_returned_session_id_on_no_session_path(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->stub_verification_with_returned_id( 'bb-generated-noss' );
+
+		// No collect ID was sent (collect failed / timed out); Blackbox generated one.
+		$this->sut->verify_session( '', 'shortcode_checkout', $order->get_id() );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
+		$this->assertSame(
+			'bb-generated-noss',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+		$this->assertSame(
+			'bb-generated-noss',
+			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() keeps the collect ID when present, even if the response returns a different ID.
+	 */
+	public function test_verify_session_keeps_collect_id_when_present(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->stub_verification_with_returned_id( 'bb-returned-xyz' );
+
+		$this->sut->verify_session( 'collect-abc', 'blocks_checkout', $order->get_id() );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
+		$this->assertSame(
+			'collect-abc',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() does not attach a prior checkout's session ID to a new order when the current verify has none.
+	 */
+	public function test_verify_session_does_not_attach_stale_session_id_to_new_order(): void {
+		$this->sut->register();
+
+		// A prior checkout left an ID in the WC session.
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'stale-prior-id' );
+
+		// A no-session verify for the new checkout returns no ID.
+		$this->stub_verification_with_returned_id( '' );
+		$this->sut->verify_session( '', 'shortcode_checkout', 0 );
+
+		// The new order must not inherit the stale ID.
+		$order = \WC_Helper_Order::create_order();
+		do_action( 'woocommerce_checkout_order_created', $order );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
+		$this->assertSame(
+			'',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox No-session generated ID survives to order meta via the deferred order-created hook.
+	 */
+	public function test_no_session_generated_id_reaches_order_meta_via_deferred_hook(): void {
+		$this->sut->register();
+
+		$this->stub_verification_with_returned_id( 'bb-generated-deferred' );
+
+		// Shortcode checkout no-session verify: empty collect ID, no order yet.
+		$this->sut->verify_session( '', 'shortcode_checkout', 0 );
+
+		// Generated ID landed in the WC session.
+		$this->assertSame(
+			'bb-generated-deferred',
+			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+
+		// Order is created; the deferred hook copies the ID to order meta for reporting.
+		$order = \WC_Helper_Order::create_order();
+		do_action( 'woocommerce_checkout_order_created', $order );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
+		$this->assertSame(
+			'bb-generated-deferred',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
 	 * @testdox register() hooks persist_session_id_to_order to woocommerce_checkout_order_created.
 	 */
 	public function test_register_hooks_deferred_persistence(): void {
@@ -487,7 +583,26 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 
 		$this->api_client
 			->method( 'verify' )
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
 			->willReturn( ApiClient::DECISION_ALLOW );
+	}
+
+	/**
+	 * Stub a verification pipeline where the API returns a specific session ID.
+	 *
+	 * @param string $returned_session_id The session ID Blackbox returns in the verify response.
+	 */
+	private function stub_verification_with_returned_id( string $returned_session_id ): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, $returned_session_id ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -529,7 +644,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -558,7 +673,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -587,7 +702,7 @@ class SessionVerifierTest extends WC_Unit_Test_Case {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
