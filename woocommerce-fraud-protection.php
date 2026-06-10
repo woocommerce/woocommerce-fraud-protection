@@ -93,6 +93,9 @@ add_action(
 		$woopayments_compat = new \Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat();
 		$woopayments_compat->register();
 
+		$woopayments_report_compat = new \Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsReportCompat();
+		$woopayments_report_compat->register();
+
 		$paypal_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat();
 		$paypal_compat->init( $session_verifier, $blocked_notice );
 		$paypal_compat->register();
