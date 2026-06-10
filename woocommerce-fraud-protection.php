@@ -11,6 +11,7 @@
 declare( strict_types = 1 );
 
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -132,20 +133,21 @@ add_action(
 );
 
 /**
- * Report an order event to the Blackbox API.
+ * Report a normalized payment-outcome event to the Blackbox API.
  *
- * This is the public API for 3rd-party plugins (e.g. payment gateways) to
- * report outcomes (success / failure) correlated with the original fraud-check session.
+ * This is the public API for 3rd-party plugins (e.g. payment gateways) to report
+ * payment, dispute, and refund outcomes correlated with the original fraud-check
+ * session. Build `$context` with `ReportContextData::from_array()`.
  *
  * Must be called after the session ID has been persisted to order meta
  * (i.e. after `woocommerce_store_api_checkout_order_processed`).
  *
- * @param \WC_Order $order  The order to report on.
- * @param string    $source The source of the event. Use ApiClient::REPORT_SOURCE_* constants.
- * @param string    $status The status of the event. Use ApiClient::REPORT_STATUS_GOOD or ApiClient::REPORT_STATUS_BAD.
- * @param string    $notes  Free-form notes describing the event.
+ * @param \WC_Order         $order   The order to report on.
+ * @param string            $source  The source of the event. Use ApiClient::REPORT_SOURCE_* constants; an unknown value defaults to REPORT_SOURCE_API.
+ * @param ReportContextData $context The normalized event context.
+ * @param string            $notes   Free-form notes. Must not contain raw gateway or customer data.
  */
-function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
+function wc_fraud_protection_report( \WC_Order $order, string $source, ReportContextData $context, string $notes = '' ): void {
 	if ( ! function_exists( 'WC' ) ) {
 		return;
 	}
@@ -168,5 +170,5 @@ function wc_fraud_protection_report( \WC_Order $order, string $source, string $s
 
 	$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
 	$order_events_tracker->init( $api_client );
-	$order_events_tracker->fraud_protection_report( $order, $source, $status, $notes );
+	$order_events_tracker->fraud_protection_report( $order, $source, $context, $notes );
 }

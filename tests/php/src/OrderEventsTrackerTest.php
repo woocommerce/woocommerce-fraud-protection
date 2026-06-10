@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal;
 use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\OrderEventsTracker;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
@@ -48,6 +49,27 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 		$this->sut->init( $this->api_client );
 	}
 
+	/**
+	 * Build a minimal valid report context.
+	 *
+	 * @param array<string, mixed> $overrides Fields merged over the defaults.
+	 * @return ReportContextData
+	 */
+	private function make_context( array $overrides = array() ): ReportContextData {
+		$context = ReportContextData::from_array(
+			array_merge(
+				array(
+					'type'   => 'payment',
+					'result' => 'captured',
+				),
+				$overrides
+			)
+		);
+
+		$this->assertInstanceOf( ReportContextData::class, $context );
+		return $context;
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Fraud Protection Report Tests
@@ -55,12 +77,25 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 	*/
 
 	/**
-	 * @testdox fraud_protection_report() calls report with correct payload when session ID exists.
+	 * @testdox fraud_protection_report() sends source, notes, and context when a session ID exists.
 	 */
-	public function test_fraud_protection_report_reports_when_session_id_exists(): void {
+	public function test_fraud_protection_report_sends_context_payload(): void {
 		$order = \WC_Helper_Order::create_order();
 		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-123' );
 		$order->save_meta_data();
+
+		$context = $this->make_context(
+			array(
+				'type'        => 'dispute',
+				'result'      => 'lost',
+				'reason'      => 'fraud',
+				'gateway'     => 'woocommerce_payments',
+				'correlation' => array(
+					'order_id'   => 555,
+					'dispute_id' => 'dp_1',
+				),
+			)
+		);
 
 		$this->api_client
 			->expects( $this->once() )
@@ -68,40 +103,68 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 			->with(
 				'bb-session-123',
 				array(
-					'label'  => 'bad',
-					'source' => ApiClient::REPORT_SOURCE_API,
-					'notes'  => 'Payment failed via Stripe.',
+					'source'  => ApiClient::REPORT_SOURCE_CHARGEBACK,
+					'notes'   => 'Visa CB 10.4 fraud.',
+					'context' => $context->to_array(),
 				)
 			);
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'bad', 'Payment failed via Stripe.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_CHARGEBACK, $context, 'Visa CB 10.4 fraud.' );
 	}
 
 	/**
-	 * @testdox fraud_protection_report() calls report with 'good' status when payment succeeds.
+	 * @testdox fraud_protection_report() backfills gateway and order_id from the order.
 	 */
-	public function test_fraud_protection_report_reports_good_status(): void {
+	public function test_fraud_protection_report_enriches_context_from_order(): void {
 		$order = \WC_Helper_Order::create_order();
-		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-456' );
-		$order->save_meta_data();
+		$order->set_payment_method( 'stripe' );
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-789' );
+		$order->save();
 
+		$captured = array();
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'report' )
-			->with(
-				'bb-session-456',
-				array(
-					'label'  => 'good',
-					'source' => ApiClient::REPORT_SOURCE_API,
-					'notes'  => 'Payment completed successfully.',
-				)
+			->willReturnCallback(
+				function ( string $session_id, array $payload ) use ( &$captured ) {
+					$captured = $payload;
+					return true;
+				}
 			);
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'good', 'Payment completed successfully.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, $this->make_context() );
+
+		$this->assertSame( 'stripe', $captured['context']['gateway'], 'gateway should be backfilled from the order' );
+		$this->assertSame( $order->get_id(), $captured['context']['correlation']['order_id'], 'order_id should be backfilled from the order' );
 	}
 
 	/**
-	 * @testdox fraud_protection_report() skips reporting when order has no session ID.
+	 * @testdox fraud_protection_report() defaults an unknown source to 'api' and still reports.
+	 */
+	public function test_fraud_protection_report_defaults_unknown_source(): void {
+		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-123' );
+		$order->save_meta_data();
+
+		$captured = array();
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'report' )
+			->willReturnCallback(
+				function ( string $session_id, array $payload ) use ( &$captured ) {
+					$captured = $payload;
+					return true;
+				}
+			);
+
+		$this->sut->fraud_protection_report( $order, 'made_up_source', $this->make_context() );
+
+		$this->assertSame( ApiClient::REPORT_SOURCE_API, $captured['source'] );
+		$this->assertLogged( 'warning', 'Unknown report source "made_up_source", defaulting to "api".' );
+	}
+
+	/**
+	 * @testdox fraud_protection_report() skips reporting when the order has no session ID.
 	 */
 	public function test_fraud_protection_report_skips_when_no_session_id(): void {
 		$order = \WC_Helper_Order::create_order();
@@ -110,45 +173,13 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 			->expects( $this->never() )
 			->method( 'report' );
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'bad', 'Some notes.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, $this->make_context() );
+
+		$this->assertLogged( 'warning', 'Missing session ID in order meta, skipping Blackbox API report.' );
 	}
 
 	/**
-	 * @testdox fraud_protection_report() skips reporting and logs warning when status is invalid.
-	 */
-	public function test_fraud_protection_report_skips_when_invalid_status(): void {
-		$order = \WC_Helper_Order::create_order();
-		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-123' );
-		$order->save_meta_data();
-
-		$this->api_client
-			->expects( $this->never() )
-			->method( 'report' );
-
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'invalid_status', 'Some notes.' );
-
-		$this->assertLogged( 'warning', 'Invalid report status "invalid_status", skipping report.' );
-	}
-
-	/**
-	 * @testdox fraud_protection_report() skips reporting and logs warning when source is invalid.
-	 */
-	public function test_fraud_protection_report_skips_when_invalid_source(): void {
-		$order = \WC_Helper_Order::create_order();
-		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-123' );
-		$order->save_meta_data();
-
-		$this->api_client
-			->expects( $this->never() )
-			->method( 'report' );
-
-		$this->sut->fraud_protection_report( $order, 'invalid_source', 'bad', 'Some notes.' );
-
-		$this->assertLogged( 'warning', 'Invalid report source "invalid_source", skipping report.' );
-	}
-
-	/**
-	 * @testdox fraud_protection_report() catches exceptions and logs error.
+	 * @testdox fraud_protection_report() catches exceptions and logs an error.
 	 */
 	public function test_fraud_protection_report_catches_exceptions(): void {
 		$order = \WC_Helper_Order::create_order();
@@ -159,9 +190,8 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 			->method( 'report' )
 			->willThrowException( new \RuntimeException( 'API connection failed' ) );
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, 'bad', 'Payment failed.' );
+		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, $this->make_context() );
 
 		$this->assertLogged( 'error', 'Failed to report 3rd party event to Blackbox API' );
 	}
-
 }
