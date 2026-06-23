@@ -19,6 +19,7 @@ use Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Compat\SubscriptionsChangePaymentCompat;
 use Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
+use Automattic\WooCommerce\FraudProtection\OrderEventsTracker;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 
 defined( 'ABSPATH' ) || exit;
@@ -102,9 +103,6 @@ function wc_fraud_protection_report( \WC_Order $order, string $source, ?ReportCo
 		return;
 	}
 
-	$api_client = new \Automattic\WooCommerce\FraudProtection\ApiClient();
-
-	$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
-	$order_events_tracker->init( $api_client );
+	$order_events_tracker = wc_get_container()->get( OrderEventsTracker::class );
 	$order_events_tracker->fraud_protection_report( $order, $source, $context, $notes );
 }
