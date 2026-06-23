@@ -134,7 +134,7 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 		$array = $instrument->to_array();
 		$this->assertSame( '424242', $array['bin'], 'a numeric bin is coerced to string, preserving the value' );
 		$this->assertSame( '4242', $array['last4'] );
-		$this->assertLogged( 'warning', 'Coerced payment instrument field "bin" from integer to string.' );
+		$this->assertLogged( 'warning', 'Coerced PaymentInstrumentData field "bin" from integer to string.' );
 	}
 
 	/**
@@ -151,14 +151,14 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 		$array = $instrument->to_array();
 		$this->assertNull( $array['fingerprint'], 'an array fingerprint is dropped, not thrown on' );
 		$this->assertNull( $array['brand'], 'a boolean brand is dropped' );
-		$this->assertLogged( 'error', 'Dropped payment instrument field "fingerprint" with unsupported type array.' );
-		$this->assertLogged( 'error', 'Dropped payment instrument field "brand" with unsupported type boolean.' );
+		$this->assertLogged( 'error', 'Dropped PaymentInstrumentData field "fingerprint" with unsupported type array.' );
+		$this->assertLogged( 'error', 'Dropped PaymentInstrumentData field "brand" with unsupported type boolean.' );
 	}
 
 	/**
-	 * @testdox from_array() drops a non-numeric expiry field to null and logs an error.
+	 * @testdox from_array() drops a non-integer expiry field to null and logs an error.
 	 */
-	public function test_non_numeric_expiry_field_is_dropped_and_logged(): void {
+	public function test_non_integer_expiry_field_is_dropped_and_logged(): void {
 		$instrument = PaymentInstrumentData::from_array(
 			array(
 				'exp_month' => 'not-a-month',
@@ -169,8 +169,25 @@ class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
 		$array = $instrument->to_array();
 		$this->assertNull( $array['exp_month'] );
 		$this->assertNull( $array['exp_year'] );
-		$this->assertLogged( 'error', 'Dropped payment instrument field "exp_month" with non-numeric type string.' );
-		$this->assertLogged( 'error', 'Dropped payment instrument field "exp_year" with non-numeric type array.' );
+		$this->assertLogged( 'error', 'Dropped PaymentInstrumentData field "exp_month" with a non-integer value (string).' );
+		$this->assertLogged( 'error', 'Dropped PaymentInstrumentData field "exp_year" with a non-integer value (array).' );
+	}
+
+	/**
+	 * @testdox from_array() drops a fractional expiry rather than silently truncating it.
+	 */
+	public function test_fractional_expiry_field_is_dropped_and_logged(): void {
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'exp_month' => 12.5,
+				'exp_year'  => 2025,
+			)
+		);
+
+		$array = $instrument->to_array();
+		$this->assertNull( $array['exp_month'], 'a fractional exp_month is dropped, not truncated to 12' );
+		$this->assertSame( 2025, $array['exp_year'], 'a whole exp_year still passes' );
+		$this->assertLogged( 'error', 'Dropped PaymentInstrumentData field "exp_month" with a non-integer value (double).' );
 	}
 
 	/**

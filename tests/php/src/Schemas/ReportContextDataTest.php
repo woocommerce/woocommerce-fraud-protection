@@ -21,48 +21,44 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	use LoggerSpyTrait;
 
 	/**
-	 * @testdox from_array() builds a full context with normalized facts and nested amount/correlation.
+	 * @testdox from_array() builds a full context with normalized facts, all fields flat.
 	 */
 	public function test_from_array_builds_full_context(): void {
 		$context = ReportContextData::from_array(
 			array(
-				'type'            => 'dispute',
-				'result'          => 'lost',
-				'reason'          => 'fraud',
-				'liability_shift' => 'shifted',
-				'amount'          => array(
-					'minor_units' => 9900,
-					'currency'    => 'usd',
-				),
-				'occurred_at'     => '2026-06-03T12:00:00Z',
-				'gateway'         => 'woocommerce_payments',
-				'correlation'     => array(
-					'order_id'       => 12345,
-					'transaction_id' => 'ch_3N',
-					'dispute_id'     => 'dp_1N',
-				),
+				'type'                       => 'dispute',
+				'result'                     => 'lost',
+				'reason'                     => 'fraud',
+				'liability_shift'            => 'shifted',
+				'amount_minor_units'         => 9900,
+				'amount_currency'            => 'usd',
+				'occurred_at'                => '2026-06-03T12:00:00Z',
+				'gateway'                    => 'woocommerce_payments',
+				'correlation_order_id'       => 12345,
+				'correlation_transaction_id' => 'ch_3N',
+				'correlation_dispute_id'     => 'dp_1N',
 			)
 		);
 
 		$this->assertInstanceOf( ReportContextData::class, $context );
 		$this->assertSame(
 			array(
-				'schema_version'  => 1,
-				'type'            => 'dispute',
-				'result'          => 'lost',
-				'reason'          => 'fraud',
-				'liability_shift' => 'shifted',
-				'amount'          => array(
-					'minor_units' => 9900,
-					'currency'    => 'USD',
-				),
-				'occurred_at'     => '2026-06-03T12:00:00Z',
-				'gateway'         => 'woocommerce_payments',
-				'correlation'     => array(
-					'order_id'       => 12345,
-					'transaction_id' => 'ch_3N',
-					'dispute_id'     => 'dp_1N',
-				),
+				'schema_version'                     => 1,
+				'type'                               => 'dispute',
+				'result'                             => 'lost',
+				'reason'                             => 'fraud',
+				'liability_shift'                    => 'shifted',
+				'amount_minor_units'                 => 9900,
+				'amount_currency'                    => 'USD',
+				'occurred_at'                        => '2026-06-03T12:00:00Z',
+				'gateway'                            => 'woocommerce_payments',
+				'correlation_order_id'               => 12345,
+				'correlation_transaction_id'         => 'ch_3N',
+				'correlation_payment_attempt_id'     => null,
+				'correlation_dispute_id'             => 'dp_1N',
+				'correlation_refund_id'              => null,
+				'correlation_network_transaction_id' => null,
+				'instrument'                         => null,
 			),
 			$context->to_array()
 		);
@@ -74,17 +70,15 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	public function test_wire_contains_only_normalized_fact_fields(): void {
 		$context = ReportContextData::from_array(
 			array(
-				'type'            => 'dispute',
-				'result'          => 'lost',
-				'reason'          => 'fraud',
-				'liability_shift' => 'shifted',
-				'amount'          => array(
-					'minor_units' => 100,
-					'currency'    => 'usd',
-				),
-				'gateway'         => 'woocommerce_payments',
-				'correlation'     => array( 'order_id' => 5 ),
-				'instrument'      => array( 'fingerprint' => 'fp_1' ),
+				'type'                 => 'dispute',
+				'result'               => 'lost',
+				'reason'               => 'fraud',
+				'liability_shift'      => 'shifted',
+				'amount_minor_units'   => 100,
+				'amount_currency'      => 'usd',
+				'gateway'              => 'woocommerce_payments',
+				'correlation_order_id' => 5,
+				'instrument'           => array( 'fingerprint' => 'fp_1' ),
 			)
 		);
 
@@ -96,10 +90,16 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 			'result',
 			'reason',
 			'liability_shift',
-			'amount',
+			'amount_minor_units',
+			'amount_currency',
 			'occurred_at',
 			'gateway',
-			'correlation',
+			'correlation_order_id',
+			'correlation_transaction_id',
+			'correlation_payment_attempt_id',
+			'correlation_dispute_id',
+			'correlation_refund_id',
+			'correlation_network_transaction_id',
 			'instrument',
 		);
 		$this->assertSame(
@@ -222,7 +222,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 
 		$this->assertInstanceOf( ReportContextData::class, $context );
 		$wire = $context->to_array();
-		$this->assertArrayNotHasKey( 'reason', $wire, 'a blocked payment no longer falls back to suspected_fraud' );
+		$this->assertNull( $wire['reason'], 'a blocked payment no longer falls back to suspected_fraud' );
 		$this->assertSame( 'blocked', $wire['result'], 'result still carries the outcome' );
 	}
 
@@ -238,8 +238,8 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $declined );
-		$this->assertArrayNotHasKey( 'reason', $declined->to_array(), 'a masked decline no longer falls back to generic_decline' );
-		$this->assertLogged( 'warning', 'Unmapped report reason "totally_unknown_code" for type "payment"' );
+		$this->assertNull( $declined->to_array()['reason'], 'a masked decline no longer falls back to generic_decline' );
+		$this->assertLogged( 'warning', 'Dropped ReportContextData field "reason" with an unrecognized value.' );
 
 		$dispute = ReportContextData::from_array(
 			array(
@@ -249,8 +249,8 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $dispute, 'an unmapped dispute reason no longer skips the report' );
-		$this->assertArrayNotHasKey( 'reason', $dispute->to_array(), 'the unmapped reason is omitted, never bucketed to other' );
-		$this->assertLogged( 'warning', 'Unmapped report reason "mystery_reason" for type "dispute"' );
+		$this->assertNull( $dispute->to_array()['reason'], 'the unmapped reason is null, never bucketed to other' );
+		$this->assertLogged( 'warning', 'Dropped ReportContextData field "reason" with an unrecognized value.' );
 	}
 
 	/**
@@ -266,7 +266,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 
 		$this->assertInstanceOf( ReportContextData::class, $context );
 		$wire = $context->to_array();
-		$this->assertArrayNotHasKey( 'reason', $wire );
+		$this->assertNull( $wire['reason'] );
 		$this->assertSame( 'dispute', $wire['type'] );
 		$this->assertSame( 'lost', $wire['result'] );
 	}
@@ -284,7 +284,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 		);
 
 		$this->assertInstanceOf( ReportContextData::class, $context );
-		$this->assertArrayNotHasKey( 'reason', $context->to_array() );
+		$this->assertNull( $context->to_array()['reason'] );
 	}
 
 	/**
@@ -311,7 +311,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $invalid );
-		$this->assertArrayNotHasKey( 'liability_shift', $invalid->to_array(), 'an unknown liability_shift is dropped' );
+		$this->assertNull( $invalid->to_array()['liability_shift'], 'an unknown liability_shift is dropped' );
 
 		$absent = ReportContextData::from_array(
 			array(
@@ -320,7 +320,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $absent );
-		$this->assertArrayNotHasKey( 'liability_shift', $absent->to_array() );
+		$this->assertNull( $absent->to_array()['liability_shift'] );
 	}
 
 	/**
@@ -354,13 +354,13 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox instrument is omitted when absent, empty, or carrying no recognized fields.
+	 * @testdox instrument is null when absent, empty, or carrying no recognized fields.
 	 */
-	public function test_instrument_omitted_when_empty(): void {
+	public function test_instrument_null_when_empty(): void {
 		$inputs = array(
-			'absent'        => null,
-			'empty array'   => array(),
-			'unknown keys'  => array( 'unknown_key' => 'x' ),
+			'absent'       => null,
+			'empty array'  => array(),
+			'unknown keys' => array( 'unknown_key' => 'x' ),
 		);
 
 		foreach ( $inputs as $case => $instrument_input ) {
@@ -374,7 +374,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 
 			$context = ReportContextData::from_array( $data );
 			$this->assertInstanceOf( ReportContextData::class, $context );
-			$this->assertArrayNotHasKey( 'instrument', $context->to_array(), "instrument should be omitted ({$case})" );
+			$this->assertNull( $context->to_array()['instrument'], "instrument should be null ({$case})" );
 		}
 	}
 
@@ -402,9 +402,9 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox to_array() omits empty optionals and always emits required fields.
+	 * @testdox to_array() emits a fixed shape, with null for every optional that did not resolve.
 	 */
-	public function test_to_array_omits_empty_optionals(): void {
+	public function test_to_array_emits_fixed_shape_with_nulls(): void {
 		$context = ReportContextData::from_array(
 			array(
 				'type'    => 'payment',
@@ -416,95 +416,108 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 		$this->assertInstanceOf( ReportContextData::class, $context );
 		$wire = $context->to_array();
 
-		$this->assertArrayHasKey( 'schema_version', $wire );
-		$this->assertArrayHasKey( 'occurred_at', $wire );
 		$this->assertSame( 'stripe', $wire['gateway'] );
-		$this->assertArrayNotHasKey( 'reason', $wire );
-		$this->assertArrayNotHasKey( 'liability_shift', $wire );
-		$this->assertArrayNotHasKey( 'amount', $wire );
-		$this->assertArrayNotHasKey( 'correlation', $wire );
-		$this->assertArrayNotHasKey( 'instrument', $wire );
+		$this->assertArrayHasKey( 'occurred_at', $wire );
+		// Optionals are present as null, not omitted — the verify-side convention.
+		$this->assertNull( $wire['reason'] );
+		$this->assertNull( $wire['liability_shift'] );
+		$this->assertNull( $wire['amount_minor_units'] );
+		$this->assertNull( $wire['amount_currency'] );
+		$this->assertNull( $wire['correlation_order_id'] );
+		$this->assertNull( $wire['instrument'] );
 	}
 
 	/**
-	 * @testdox amount is emitted only when both minor_units and a valid currency resolve.
+	 * @testdox amount fields are sent independently; an invalid one is null, never coupled.
 	 */
-	public function test_amount_requires_both_fields(): void {
-		$missing_currency = ReportContextData::from_array(
+	public function test_amount_fields_are_independent(): void {
+		// minor_units without a currency is still sent.
+		$units_only = $this->to_wire(
 			array(
-				'type'   => 'payment',
-				'result' => 'captured',
-				'amount' => array( 'minor_units' => 500 ),
+				'type'               => 'payment',
+				'result'             => 'captured',
+				'amount_minor_units' => 500,
 			)
 		);
-		$this->assertInstanceOf( ReportContextData::class, $missing_currency );
-		$this->assertArrayNotHasKey( 'amount', $missing_currency->to_array() );
+		$this->assertSame( 500, $units_only['amount_minor_units'] );
+		$this->assertNull( $units_only['amount_currency'] );
 
-		$invalid_currency = ReportContextData::from_array(
+		// An invalid currency is null but does not drop minor_units.
+		$bad_currency = $this->to_wire(
 			array(
-				'type'   => 'payment',
-				'result' => 'captured',
-				'amount' => array(
-					'minor_units' => 500,
-					'currency'    => 'dollars',
-				),
+				'type'               => 'payment',
+				'result'             => 'captured',
+				'amount_minor_units' => 500,
+				'amount_currency'    => 'dollars',
 			)
 		);
-		$this->assertInstanceOf( ReportContextData::class, $invalid_currency );
-		$this->assertArrayNotHasKey( 'amount', $invalid_currency->to_array() );
+		$this->assertSame( 500, $bad_currency['amount_minor_units'] );
+		$this->assertNull( $bad_currency['amount_currency'] );
 
-		$valid = ReportContextData::from_array(
+		// Both valid.
+		$both = $this->to_wire(
 			array(
-				'type'   => 'payment',
-				'result' => 'captured',
-				'amount' => array(
-					'minor_units' => 500,
-					'currency'    => 'eur',
-				),
+				'type'               => 'payment',
+				'result'             => 'captured',
+				'amount_minor_units' => 500,
+				'amount_currency'    => 'eur',
 			)
 		);
-		$this->assertInstanceOf( ReportContextData::class, $valid );
-		$this->assertSame(
-			array(
-				'minor_units' => 500,
-				'currency'    => 'EUR',
-			),
-			$valid->to_array()['amount']
-		);
+		$this->assertSame( 500, $both['amount_minor_units'] );
+		$this->assertSame( 'EUR', $both['amount_currency'] );
 
+		// A negative or fractional minor_units is dropped to null; the valid currency stays.
 		foreach ( array( 'negative' => -500, 'fractional' => 99.99 ) as $case => $bad_minor ) {
-			$rejected = ReportContextData::from_array(
+			$rejected = $this->to_wire(
 				array(
-					'type'   => 'payment',
-					'result' => 'captured',
-					'amount' => array(
-						'minor_units' => $bad_minor,
-						'currency'    => 'usd',
-					),
+					'type'               => 'payment',
+					'result'             => 'captured',
+					'amount_minor_units' => $bad_minor,
+					'amount_currency'    => 'usd',
 				)
 			);
-			$this->assertInstanceOf( ReportContextData::class, $rejected );
-			$this->assertArrayNotHasKey( 'amount', $rejected->to_array(), "amount with a {$case} minor_units is dropped" );
+			$this->assertNull( $rejected['amount_minor_units'], "a {$case} minor_units is dropped" );
+			$this->assertSame( 'USD', $rejected['amount_currency'] );
 		}
 	}
 
 	/**
-	 * @testdox A non-array amount or correlation is tolerated and simply omitted.
+	 * Build a context and return its wire array, asserting it was reportable.
+	 *
+	 * @param array<string, mixed> $data Context input.
+	 * @return array<string, mixed>
 	 */
-	public function test_non_array_amount_and_correlation_are_tolerated(): void {
+	private function to_wire( array $data ): array {
+		$context = ReportContextData::from_array( $data );
+		$this->assertInstanceOf( ReportContextData::class, $context );
+		return $context->to_array();
+	}
+
+	/**
+	 * @testdox A wrongly-typed amount or correlation field is tolerated and sanitized to null.
+	 */
+	public function test_garbage_amount_and_correlation_fields_are_tolerated(): void {
 		$context = ReportContextData::from_array(
 			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'amount'      => 'not-an-array',
-				'correlation' => 'also-not-an-array',
+				'type'                       => 'payment',
+				'result'                     => 'captured',
+				'amount_minor_units'         => 'not-a-number',
+				'amount_currency'            => array( 'usd' ),
+				'correlation_order_id'       => 'not-a-number',
+				'correlation_transaction_id' => array( 'x' ),
 			)
 		);
 
 		$this->assertInstanceOf( ReportContextData::class, $context );
 		$wire = $context->to_array();
-		$this->assertArrayNotHasKey( 'amount', $wire );
-		$this->assertArrayNotHasKey( 'correlation', $wire );
+		$this->assertNull( $wire['amount_minor_units'] );
+		$this->assertNull( $wire['amount_currency'] );
+		$this->assertNull( $wire['correlation_order_id'] );
+		$this->assertNull( $wire['correlation_transaction_id'] );
+
+		// Every drop is logged so a malformed integration is identifiable.
+		$this->assertLogged( 'warning', 'Dropped ReportContextData field "amount_currency" (not a valid ISO-4217 currency).' );
+		$this->assertLogged( 'warning', 'Dropped ReportContextData field "correlation_transaction_id" (unsupported type array).' );
 	}
 
 	/**
@@ -579,21 +592,21 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 
 		$filled = $bare->with_order_defaults( 777, 'stripe' )->to_array();
 		$this->assertSame( 'stripe', $filled['gateway'] );
-		$this->assertSame( 777, $filled['correlation']['order_id'] );
+		$this->assertSame( 777, $filled['correlation_order_id'] );
 
 		$prefilled = ReportContextData::from_array(
 			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'gateway'     => 'square_credit_card',
-				'correlation' => array( 'order_id' => 999 ),
+				'type'                 => 'payment',
+				'result'               => 'captured',
+				'gateway'              => 'square_credit_card',
+				'correlation_order_id' => 999,
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $prefilled );
 
 		$kept = $prefilled->with_order_defaults( 777, 'stripe' )->to_array();
 		$this->assertSame( 'square_credit_card', $kept['gateway'], 'caller-supplied gateway must win' );
-		$this->assertSame( 999, $kept['correlation']['order_id'], 'caller-supplied order_id must win' );
+		$this->assertSame( 999, $kept['correlation_order_id'], 'caller-supplied order_id must win' );
 	}
 
 	/**
@@ -602,24 +615,22 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	public function test_correlation_sanitized_and_empty_dropped(): void {
 		$context = ReportContextData::from_array(
 			array(
-				'type'        => 'dispute',
-				'result'      => 'open',
-				'reason'      => 'fraud',
-				'correlation' => array(
-					'order_id'               => '54321',
-					'dispute_id'             => 'dp_9',
-					'transaction_id'         => '',
-					'network_transaction_id' => null,
-				),
+				'type'                               => 'dispute',
+				'result'                             => 'open',
+				'reason'                             => 'fraud',
+				'correlation_order_id'               => '54321',
+				'correlation_dispute_id'             => 'dp_9',
+				'correlation_transaction_id'         => '',
+				'correlation_network_transaction_id' => null,
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $context );
 
-		$correlation = $context->to_array()['correlation'];
-		$this->assertSame( 54321, $correlation['order_id'], 'numeric order_id is cast to int' );
-		$this->assertSame( 'dp_9', $correlation['dispute_id'] );
-		$this->assertArrayNotHasKey( 'transaction_id', $correlation, 'empty string ID is dropped' );
-		$this->assertArrayNotHasKey( 'network_transaction_id', $correlation, 'null ID is dropped' );
+		$wire = $context->to_array();
+		$this->assertSame( 54321, $wire['correlation_order_id'], 'numeric order_id is cast to int' );
+		$this->assertSame( 'dp_9', $wire['correlation_dispute_id'] );
+		$this->assertNull( $wire['correlation_transaction_id'], 'empty string ID is null' );
+		$this->assertNull( $wire['correlation_network_transaction_id'], 'null ID is null' );
 	}
 
 	/**
@@ -628,25 +639,26 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	public function test_non_positive_order_id_is_treated_as_missing(): void {
 		$zero = ReportContextData::from_array(
 			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'correlation' => array( 'order_id' => 0 ),
+				'type'                 => 'payment',
+				'result'               => 'captured',
+				'correlation_order_id' => 0,
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $zero );
-		$this->assertArrayNotHasKey( 'correlation', $zero->to_array(), 'order_id 0 must not produce a correlation block' );
+		$this->assertNull( $zero->to_array()['correlation_order_id'], 'order_id 0 reads as missing' );
+		$this->assertLogged( 'warning', 'Dropped ReportContextData field "correlation_order_id" (non-positive value).' );
 
 		$backfilled = $zero->with_order_defaults( 555, 'stripe' )->to_array();
-		$this->assertSame( 555, $backfilled['correlation']['order_id'], 'with_order_defaults must backfill when order_id was non-positive' );
+		$this->assertSame( 555, $backfilled['correlation_order_id'], 'with_order_defaults must backfill when order_id was non-positive' );
 
 		$negative = ReportContextData::from_array(
 			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'correlation' => array( 'order_id' => -5 ),
+				'type'                 => 'payment',
+				'result'               => 'captured',
+				'correlation_order_id' => -5,
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $negative );
-		$this->assertArrayNotHasKey( 'correlation', $negative->to_array(), 'negative order_id must be dropped' );
+		$this->assertNull( $negative->to_array()['correlation_order_id'], 'negative order_id is dropped' );
 	}
 }

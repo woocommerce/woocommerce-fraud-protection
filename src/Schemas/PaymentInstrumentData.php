@@ -7,8 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
-use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
-
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -21,6 +19,8 @@ defined( 'ABSPATH' ) || exit;
  * @internal
  */
 class PaymentInstrumentData {
+
+	use SanitizesScalarFields;
 
 	/**
 	 * Verification check passed — the value matches what the issuer has on file.
@@ -186,80 +186,10 @@ class PaymentInstrumentData {
 			self::sanitize_string_field( $data, 'wallet' ),
 			self::sanitize_string_field( $data, 'bank_code' ),
 			self::sanitize_string_field( $data, 'bin' ),
-			self::sanitize_string_field( $data, 'cvc_check' ),
-			self::sanitize_string_field( $data, 'avs_address_check' ),
-			self::sanitize_string_field( $data, 'avs_postcode_check' )
+			self::sanitize_enum( $data, 'cvc_check', self::VALID_CHECK_RESULTS ),
+			self::sanitize_enum( $data, 'avs_address_check', self::VALID_CHECK_RESULTS ),
+			self::sanitize_enum( $data, 'avs_postcode_check', self::VALID_CHECK_RESULTS )
 		);
-	}
-
-	/**
-	 * Sanitize a string instrument field, coercing or dropping a wrongly-typed value.
-	 *
-	 * Strings and null pass through. A scalar number is coerced to string and logged as
-	 * a warning, since the value survives. Any other type is dropped to null and logged
-	 * as an error, since the value is lost. Both are forwarded so a rogue integration is
-	 * visible centrally. The malformed value itself is never logged — only the field
-	 * name and its type — so no payment data or PII is emitted.
-	 *
-	 * @param array<string, mixed> $data  Raw instrument fields.
-	 * @param string               $field Field name to read and sanitize.
-	 * @return ?string
-	 */
-	private static function sanitize_string_field( array $data, string $field ): ?string {
-		$value = $data[ $field ] ?? null;
-
-		if ( null === $value || is_string( $value ) ) {
-			return $value;
-		}
-
-		if ( is_int( $value ) || is_float( $value ) ) {
-			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Coerced payment instrument field "%s" from %s to string.', $field, gettype( $value ) ),
-				array(),
-				true
-			);
-			return (string) $value;
-		}
-
-		FraudProtectionController::log(
-			'error',
-			sprintf( 'Dropped payment instrument field "%s" with unsupported type %s.', $field, gettype( $value ) ),
-			array(),
-			true
-		);
-		return null;
-	}
-
-	/**
-	 * Sanitize an integer instrument field, dropping a non-numeric value.
-	 *
-	 * Numeric values (int or numeric string) are cast to int; null passes through. Any
-	 * other type is dropped to null and logged as an error, forwarded for visibility.
-	 * The malformed value itself is never logged — only the field name and its type.
-	 *
-	 * @param array<string, mixed> $data  Raw instrument fields.
-	 * @param string               $field Field name to read and sanitize.
-	 * @return ?int
-	 */
-	private static function sanitize_int_field( array $data, string $field ): ?int {
-		$value = $data[ $field ] ?? null;
-
-		if ( null === $value ) {
-			return null;
-		}
-
-		if ( is_numeric( $value ) ) {
-			return (int) $value;
-		}
-
-		FraudProtectionController::log(
-			'error',
-			sprintf( 'Dropped payment instrument field "%s" with non-numeric type %s.', $field, gettype( $value ) ),
-			array(),
-			true
-		);
-		return null;
 	}
 
 	/**
@@ -307,25 +237,9 @@ class PaymentInstrumentData {
 		$this->wallet             = $wallet;
 		$this->bank_code          = $bank_code;
 		$this->bin                = $bin;
-		$this->cvc_check          = self::sanitize_check( $cvc_check );
-		$this->avs_address_check  = self::sanitize_check( $avs_address_check );
-		$this->avs_postcode_check = self::sanitize_check( $avs_postcode_check );
-	}
-
-	/**
-	 * Sanitize a verification check result.
-	 *
-	 * Returns null for unrecognized values to avoid blocking on unknown results.
-	 *
-	 * @param ?string $value The check result to sanitize.
-	 * @return ?string A valid check constant, or null.
-	 */
-	private static function sanitize_check( ?string $value ): ?string {
-		if ( null === $value || in_array( $value, self::VALID_CHECK_RESULTS, true ) ) {
-			return $value;
-		}
-
-		return null;
+		$this->cvc_check          = $cvc_check;
+		$this->avs_address_check  = $avs_address_check;
+		$this->avs_postcode_check = $avs_postcode_check;
 	}
 
 	/**

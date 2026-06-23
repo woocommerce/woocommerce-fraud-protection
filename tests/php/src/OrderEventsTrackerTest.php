@@ -86,14 +86,12 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 
 		$context = $this->make_context(
 			array(
-				'type'        => 'dispute',
-				'result'      => 'lost',
-				'reason'      => 'fraud',
-				'gateway'     => 'woocommerce_payments',
-				'correlation' => array(
-					'order_id'   => 555,
-					'dispute_id' => 'dp_1',
-				),
+				'type'                   => 'dispute',
+				'result'                 => 'lost',
+				'reason'                 => 'fraud',
+				'gateway'                => 'woocommerce_payments',
+				'correlation_order_id'   => 555,
+				'correlation_dispute_id' => 'dp_1',
 			)
 		);
 
@@ -135,7 +133,7 @@ class OrderEventsTrackerTest extends WC_Unit_Test_Case {
 		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, $this->make_context() );
 
 		$this->assertSame( 'stripe', $captured['context']['gateway'], 'gateway should be backfilled from the order' );
-		$this->assertSame( $order->get_id(), $captured['context']['correlation']['order_id'], 'order_id should be backfilled from the order' );
+		$this->assertSame( $order->get_id(), $captured['context']['correlation_order_id'], 'order_id should be backfilled from the order' );
 	}
 
 	/**

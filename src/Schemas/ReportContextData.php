@@ -26,6 +26,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class ReportContextData {
 
+	use SanitizesScalarFields;
+
 	/**
 	 * Version for this context schema. Bump when the shape changes.
 	 */
@@ -277,307 +279,6 @@ class ReportContextData {
 	private ?PaymentInstrumentData $instrument;
 
 	/**
-	 * Build a context from the JSON-shaped array.
-	 *
-	 * Sanitizes enums and resolves `reason`. Returns null — and logs — only when `type`
-	 * or `result` cannot be mapped. `reason` is optional everywhere (sent when mapped,
-	 * omitted otherwise); a non-empty value that fails to map is logged. `instrument`
-	 * and `liability_shift` are optional context.
-	 *
-	 * @param array<string, mixed> $data Context fields in the API shape.
-	 * @return ?self The context, or null when it cannot be reported.
-	 */
-	public static function from_array( array $data ): ?self {
-		$type = isset( $data['type'] ) && is_string( $data['type'] ) ? $data['type'] : '';
-		if ( ! in_array( $type, self::VALID_TYPES, true ) ) {
-			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Unmappable report context type "%s", skipping report.', $type )
-			);
-			return null;
-		}
-
-		$result = isset( $data['result'] ) && is_string( $data['result'] ) ? $data['result'] : '';
-		if ( ! in_array( $result, self::RESULTS_BY_TYPE[ $type ], true ) ) {
-			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Unmappable report context result "%s" for type "%s", skipping report.', $result, $type )
-			);
-			return null;
-		}
-
-		$raw_reason = isset( $data['reason'] ) && is_string( $data['reason'] ) ? $data['reason'] : null;
-		$reason     = self::resolve_reason( $type, $raw_reason );
-
-		// A non-empty reason the adapter could not normalize is a mapping gap. Send the
-		// report without it (type and result carry the signal), but log so it surfaces.
-		if ( self::TYPE_REFUND !== $type && null !== $raw_reason && '' !== $raw_reason && null === $reason ) {
-			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Unmapped report reason "%s" for type "%s"; reporting without it.', $raw_reason, $type )
-			);
-		}
-
-		list( $amount_minor_units, $amount_currency ) = self::sanitize_amount( $data['amount'] ?? null );
-
-		$correlation = is_array( $data['correlation'] ?? null ) ? $data['correlation'] : array();
-
-		return new self(
-			$type,
-			$result,
-			$reason,
-			self::sanitize_liability_shift( $data['liability_shift'] ?? null ),
-			$amount_minor_units,
-			$amount_currency,
-			self::normalize_occurred_at( isset( $data['occurred_at'] ) && is_string( $data['occurred_at'] ) ? $data['occurred_at'] : null ),
-			isset( $data['gateway'] ) && is_string( $data['gateway'] ) ? sanitize_text_field( $data['gateway'] ) : '',
-			isset( $correlation['order_id'] ) && is_numeric( $correlation['order_id'] ) && (int) $correlation['order_id'] > 0 ? (int) $correlation['order_id'] : null,
-			self::sanitize_correlation_id( $correlation['transaction_id'] ?? null ),
-			self::sanitize_correlation_id( $correlation['payment_attempt_id'] ?? null ),
-			self::sanitize_correlation_id( $correlation['dispute_id'] ?? null ),
-			self::sanitize_correlation_id( $correlation['refund_id'] ?? null ),
-			self::sanitize_correlation_id( $correlation['network_transaction_id'] ?? null ),
-			self::sanitize_instrument( $data['instrument'] ?? null )
-		);
-	}
-
-	/**
-	 * Return a copy with order-derived fields filled in where missing.
-	 *
-	 * Only fills an empty gateway and a missing correlation order ID, so caller-supplied
-	 * values always win. Mirrors PaymentMethodData::with_transaction_mode().
-	 *
-	 * @param int    $order_id Woo order ID.
-	 * @param string $gateway  Woo gateway ID (payment method).
-	 * @return self
-	 */
-	public function with_order_defaults( int $order_id, string $gateway ): self {
-		$clone = clone $this;
-
-		if ( '' === $clone->gateway ) {
-			$clone->gateway = sanitize_text_field( $gateway );
-		}
-
-		if ( null === $clone->correlation_order_id && $order_id > 0 ) {
-			$clone->correlation_order_id = $order_id;
-		}
-
-		return $clone;
-	}
-
-	/**
-	 * Serialize to the API `context` shape.
-	 *
-	 * The required fields (`schema_version`, `type`, `result`, `occurred_at`, `gateway`)
-	 * are always present — `gateway` may be an empty string until enriched from the order.
-	 * The optional fields (`reason`, `liability_shift`, `amount`, `correlation`,
-	 * `instrument`) are omitted when null or empty, since the report transport does not
-	 * strip empties. `amount`, `correlation`, and `instrument` nest their fields.
-	 *
-	 * @return array<string, mixed>
-	 */
-	public function to_array(): array {
-		$context = array(
-			'schema_version' => self::SCHEMA_VERSION,
-			'type'           => $this->type,
-			'result'         => $this->result,
-		);
-
-		if ( null !== $this->reason ) {
-			$context['reason'] = $this->reason;
-		}
-
-		if ( null !== $this->liability_shift ) {
-			$context['liability_shift'] = $this->liability_shift;
-		}
-
-		if ( null !== $this->amount_minor_units && null !== $this->amount_currency ) {
-			$context['amount'] = array(
-				'minor_units' => $this->amount_minor_units,
-				'currency'    => $this->amount_currency,
-			);
-		}
-
-		$context['occurred_at'] = $this->occurred_at;
-		$context['gateway']     = $this->gateway;
-
-		$correlation = $this->correlation_to_array();
-		if ( array() !== $correlation ) {
-			$context['correlation'] = $correlation;
-		}
-
-		if ( null !== $this->instrument ) {
-			$context['instrument'] = $this->instrument->to_array();
-		}
-
-		return $context;
-	}
-
-	/**
-	 * Resolve the normalized reason for the event.
-	 *
-	 * Refunds carry no reason. Payments and disputes map the caller-supplied value against
-	 * the allowed set and return null when it does not map; there is no catch-all fallback,
-	 * and an unmapped value is omitted rather than skipping the report.
-	 *
-	 * @param string  $type       Event phase.
-	 * @param ?string $raw_reason Caller-supplied reason value.
-	 * @return ?string Normalized reason, or null when unmapped or not applicable.
-	 */
-	private static function resolve_reason( string $type, ?string $raw_reason ): ?string {
-		if ( self::TYPE_REFUND === $type ) {
-			return null;
-		}
-
-		$allowed = self::TYPE_DISPUTE === $type ? self::DISPUTE_REASONS : self::PAYMENT_REASONS;
-
-		return null !== $raw_reason && in_array( $raw_reason, $allowed, true ) ? $raw_reason : null;
-	}
-
-	/**
-	 * Sanitize the amount object into a [minor_units, currency] pair.
-	 *
-	 * Both must resolve for an amount to be reported; otherwise both are null.
-	 *
-	 * @param mixed $raw Raw amount value.
-	 * @return array{0: ?int, 1: ?string}
-	 */
-	private static function sanitize_amount( $raw ): array {
-		if ( ! is_array( $raw ) ) {
-			return array( null, null );
-		}
-
-		// minor_units must be a non-negative whole number; reject negatives and fractions
-		// rather than silently truncating them.
-		$minor_units = null;
-		if ( isset( $raw['minor_units'] ) && is_numeric( $raw['minor_units'] ) ) {
-			$as_float = (float) $raw['minor_units'];
-			if ( $as_float >= 0 && floor( $as_float ) === $as_float ) {
-				$minor_units = (int) $raw['minor_units'];
-			}
-		}
-
-		$currency = null;
-		if ( isset( $raw['currency'] ) && is_string( $raw['currency'] ) ) {
-			$candidate = strtoupper( trim( $raw['currency'] ) );
-			$currency  = (bool) preg_match( '/^[A-Z]{3}$/', $candidate ) ? $candidate : null;
-		}
-
-		if ( null === $minor_units || null === $currency ) {
-			return array( null, null );
-		}
-
-		return array( $minor_units, $currency );
-	}
-
-	/**
-	 * Normalize an event time to UTC ISO 8601, falling back to now.
-	 *
-	 * @param ?string $raw Caller-supplied time string.
-	 * @return string UTC ISO 8601 timestamp.
-	 */
-	private static function normalize_occurred_at( ?string $raw ): string {
-		// Only trust ISO-8601-style input; reject relative ("now") and "@unix" forms.
-		$candidate = null === $raw ? '' : trim( $raw );
-		if ( (bool) preg_match( '/^\d{4}-\d{2}-\d{2}([T ].+)?$/', $candidate ) ) {
-			try {
-				$parsed = new \DateTimeImmutable( $candidate );
-				return $parsed->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d\TH:i:s\Z' );
-			} catch ( \Exception $e ) {
-				// Fall through to now.
-				unset( $e );
-			}
-		}
-
-		return gmdate( 'Y-m-d\TH:i:s\Z' );
-	}
-
-	/**
-	 * Sanitize a string correlation ID.
-	 *
-	 * @param mixed $raw Raw ID value.
-	 * @return ?string Trimmed ID, or null when empty/unusable.
-	 */
-	private static function sanitize_correlation_id( $raw ): ?string {
-		if ( ! is_string( $raw ) && ! is_int( $raw ) ) {
-			return null;
-		}
-
-		$value = sanitize_text_field( (string) $raw );
-		return '' === $value ? null : $value;
-	}
-
-	/**
-	 * Sanitize the 3DS/SCA liability-shift value.
-	 *
-	 * @param mixed $raw Raw liability-shift value.
-	 * @return ?string A valid liability-shift constant, or null.
-	 */
-	private static function sanitize_liability_shift( $raw ): ?string {
-		if ( ! is_string( $raw ) ) {
-			return null;
-		}
-
-		$value = sanitize_text_field( $raw );
-		return in_array( $value, self::VALID_LIABILITY_SHIFTS, true ) ? $value : null;
-	}
-
-	/**
-	 * Build the optional payment instrument, reusing the verify-side shape.
-	 *
-	 * Returns null when no usable field is present, so an empty block is never sent.
-	 *
-	 * @param mixed $raw Raw instrument value.
-	 * @return ?PaymentInstrumentData
-	 */
-	private static function sanitize_instrument( $raw ): ?PaymentInstrumentData {
-		if ( ! is_array( $raw ) || array() === $raw ) {
-			return null;
-		}
-
-		$instrument = PaymentInstrumentData::from_array( $raw );
-
-		$has_value = array() !== array_filter(
-			$instrument->to_array(),
-			static function ( $value ) {
-				return null !== $value;
-			}
-		);
-
-		return $has_value ? $instrument : null;
-	}
-
-	/**
-	 * Build the non-null correlation map for the wire.
-	 *
-	 * @return array<string, int|string>
-	 */
-	private function correlation_to_array(): array {
-		$correlation = array();
-
-		if ( null !== $this->correlation_order_id ) {
-			$correlation['order_id'] = $this->correlation_order_id;
-		}
-		if ( null !== $this->correlation_transaction_id ) {
-			$correlation['transaction_id'] = $this->correlation_transaction_id;
-		}
-		if ( null !== $this->correlation_payment_attempt_id ) {
-			$correlation['payment_attempt_id'] = $this->correlation_payment_attempt_id;
-		}
-		if ( null !== $this->correlation_dispute_id ) {
-			$correlation['dispute_id'] = $this->correlation_dispute_id;
-		}
-		if ( null !== $this->correlation_refund_id ) {
-			$correlation['refund_id'] = $this->correlation_refund_id;
-		}
-		if ( null !== $this->correlation_network_transaction_id ) {
-			$correlation['network_transaction_id'] = $this->correlation_network_transaction_id;
-		}
-
-		return $correlation;
-	}
-
-	/**
 	 * Constructor.
 	 *
 	 * @param string                 $type                               Event phase.
@@ -628,5 +329,225 @@ class ReportContextData {
 		$this->correlation_refund_id              = $correlation_refund_id;
 		$this->correlation_network_transaction_id = $correlation_network_transaction_id;
 		$this->instrument                         = $instrument;
+	}
+
+	/**
+	 * Build a context from the JSON-shaped array.
+	 *
+	 * Sanitizes enums and resolves `reason`. Returns null — and logs — only when `type`
+	 * or `result` cannot be mapped. `reason` is optional everywhere (sent when mapped,
+	 * omitted otherwise); a non-empty value that fails to map is logged. `instrument`
+	 * and `liability_shift` are optional context.
+	 *
+	 * @param array<string, mixed> $data Context fields in the API shape.
+	 * @return ?self The context, or null when it cannot be reported.
+	 */
+	public static function from_array( array $data ): ?self {
+		$type = isset( $data['type'] ) && is_string( $data['type'] ) ? $data['type'] : '';
+		if ( ! in_array( $type, self::VALID_TYPES, true ) ) {
+			FraudProtectionController::log(
+				'warning',
+				sprintf( 'Unmappable report context type "%s", skipping report.', $type )
+			);
+			return null;
+		}
+
+		$result = isset( $data['result'] ) && is_string( $data['result'] ) ? $data['result'] : '';
+		if ( ! in_array( $result, self::RESULTS_BY_TYPE[ $type ], true ) ) {
+			FraudProtectionController::log(
+				'warning',
+				sprintf( 'Unmappable report context result "%s" for type "%s", skipping report.', $result, $type )
+			);
+			return null;
+		}
+
+		return new self(
+			$type,
+			$result,
+			self::resolve_reason( $data, $type ),
+			self::sanitize_enum( $data, 'liability_shift', self::VALID_LIABILITY_SHIFTS ),
+			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
+			self::sanitize_currency( $data, 'amount_currency' ),
+			self::normalize_occurred_at( $data, 'occurred_at' ),
+			self::sanitize_string_field( $data, 'gateway' ) ?? '',
+			self::sanitize_positive_int( $data, 'correlation_order_id' ),
+			self::sanitize_correlation_id( $data, 'correlation_transaction_id' ),
+			self::sanitize_correlation_id( $data, 'correlation_payment_attempt_id' ),
+			self::sanitize_correlation_id( $data, 'correlation_dispute_id' ),
+			self::sanitize_correlation_id( $data, 'correlation_refund_id' ),
+			self::sanitize_correlation_id( $data, 'correlation_network_transaction_id' ),
+			self::sanitize_instrument( $data, 'instrument' )
+		);
+	}
+
+	/**
+	 * Return a copy with order-derived fields filled in where missing.
+	 *
+	 * Only fills an empty gateway and a missing correlation order ID, so caller-supplied
+	 * values always win. Mirrors PaymentMethodData::with_transaction_mode().
+	 *
+	 * @param int    $order_id Woo order ID.
+	 * @param string $gateway  Woo gateway ID (payment method).
+	 * @return self
+	 */
+	public function with_order_defaults( int $order_id, string $gateway ): self {
+		$clone = clone $this;
+
+		if ( '' === $clone->gateway ) {
+			$clone->gateway = sanitize_text_field( $gateway );
+		}
+
+		if ( null === $clone->correlation_order_id && $order_id > 0 ) {
+			$clone->correlation_order_id = $order_id;
+		}
+
+		return $clone;
+	}
+
+	/**
+	 * Serialize to the API `context` shape.
+	 *
+	 * Emits a fixed, flat field set, with null for any value that did not resolve — the same
+	 * convention as the verify-side DTOs (e.g. `PaymentInstrumentData`), so Blackbox parses
+	 * one stable shape. The property names are the wire keys, so the body derives from the
+	 * object's own properties; only `schema_version` (a constant) and `instrument` (nested)
+	 * are special-cased.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function to_array(): array {
+		$context               = array( 'schema_version' => self::SCHEMA_VERSION ) + get_object_vars( $this );
+		$context['instrument'] = null !== $this->instrument ? $this->instrument->to_array() : null;
+
+		return $context;
+	}
+
+	/**
+	 * Resolve the normalized reason for the event.
+	 *
+	 * Refunds carry no reason. Payments and disputes map the caller-supplied value against
+	 * the allowed set and return null when it does not map; there is no catch-all fallback,
+	 * and an unmapped value is omitted rather than skipping the report.
+	 *
+	 * @param array<string, mixed> $data Raw fields.
+	 * @param string               $type Event phase.
+	 * @return ?string Normalized reason, or null when unmapped or not applicable.
+	 */
+	private static function resolve_reason( array $data, string $type ): ?string {
+		if ( self::TYPE_REFUND === $type ) {
+			return null;
+		}
+
+		$allowed = self::TYPE_DISPUTE === $type ? self::DISPUTE_REASONS : self::PAYMENT_REASONS;
+
+		return self::sanitize_enum( $data, 'reason', $allowed );
+	}
+
+	/**
+	 * Sanitize a currency field into an ISO-4217 (three-letter) code.
+	 *
+	 * @param array<string, mixed> $data  Raw fields.
+	 * @param string               $field Field name to read.
+	 * @return ?string
+	 */
+	private static function sanitize_currency( array $data, string $field ): ?string {
+		$raw = $data[ $field ] ?? null;
+		if ( null === $raw ) {
+			return null;
+		}
+
+		if ( is_string( $raw ) ) {
+			$candidate = strtoupper( trim( $raw ) );
+			if ( (bool) preg_match( '/^[A-Z]{3}$/', $candidate ) ) {
+				return $candidate;
+			}
+		}
+
+		self::log_dropped_field( $field, 'not a valid ISO-4217 currency' );
+		return null;
+	}
+
+	/**
+	 * Normalize a time field to UTC ISO 8601, falling back to now.
+	 *
+	 * @param array<string, mixed> $data  Raw fields.
+	 * @param string               $field Field name to read.
+	 * @return string UTC ISO 8601 timestamp.
+	 */
+	private static function normalize_occurred_at( array $data, string $field ): string {
+		$raw = $data[ $field ] ?? null;
+		// Only trust ISO-8601-style input; reject relative ("now") and "@unix" forms.
+		$candidate = is_string( $raw ) ? trim( $raw ) : '';
+		if ( (bool) preg_match( '/^\d{4}-\d{2}-\d{2}([T ].+)?$/', $candidate ) ) {
+			try {
+				$parsed = new \DateTimeImmutable( $candidate );
+				return $parsed->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d\TH:i:s\Z' );
+			} catch ( \Exception $e ) {
+				// Fall through to now.
+				unset( $e );
+			}
+		}
+
+		// A provided value that could not be normalized falls back to now; log so it surfaces.
+		if ( null !== $raw ) {
+			FraudProtectionController::log(
+				'warning',
+				sprintf( 'Report context field "%s" was not a valid UTC ISO 8601 time; using the current time.', $field ),
+				array(),
+				true
+			);
+		}
+
+		return gmdate( 'Y-m-d\TH:i:s\Z' );
+	}
+
+	/**
+	 * Sanitize a string correlation ID from a top-level field.
+	 *
+	 * @param array<string, mixed> $data  Raw fields.
+	 * @param string               $field Field name to read.
+	 * @return ?string Trimmed ID, or null when empty/unusable.
+	 */
+	private static function sanitize_correlation_id( array $data, string $field ): ?string {
+		$raw = $data[ $field ] ?? null;
+		if ( null === $raw ) {
+			return null;
+		}
+
+		// An empty ID is "no ID", not an error, so it stays silent; a non-string/int is malformed.
+		if ( is_string( $raw ) || is_int( $raw ) ) {
+			$value = sanitize_text_field( (string) $raw );
+			return '' === $value ? null : $value;
+		}
+
+		self::log_dropped_field( $field, 'unsupported type ' . gettype( $raw ) );
+		return null;
+	}
+
+	/**
+	 * Build the optional payment instrument from a field.
+	 *
+	 * Returns null when no usable field is present, so an empty block is never sent.
+	 *
+	 * @param array<string, mixed> $data  Raw fields.
+	 * @param string               $field Field name to read.
+	 * @return ?PaymentInstrumentData
+	 */
+	private static function sanitize_instrument( array $data, string $field ): ?PaymentInstrumentData {
+		$raw = $data[ $field ] ?? null;
+		if ( ! is_array( $raw ) || array() === $raw ) {
+			return null;
+		}
+
+		$instrument = PaymentInstrumentData::from_array( $raw );
+
+		$has_value = array() !== array_filter(
+			$instrument->to_array(),
+			static function ( $value ) {
+				return null !== $value;
+			}
+		);
+
+		return $has_value ? $instrument : null;
 	}
 }
