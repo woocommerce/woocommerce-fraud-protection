@@ -159,7 +159,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 	}
 
 	/**
@@ -178,7 +178,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
+		$this->assertSame( ApiClient::DECISION_BLOCK, $result->get_decision() );
 	}
 
 	/**
@@ -191,7 +191,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
@@ -208,7 +208,8 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '', $result->get_session_id() );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
 
@@ -228,7 +229,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
 
@@ -248,7 +249,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
@@ -268,7 +269,8 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '', $result->get_session_id() );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
 
@@ -288,7 +290,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 
@@ -371,6 +373,59 @@ class ApiClientTest extends WC_Unit_Test_Case {
 		// No top-level no-session fields when session_id is present.
 		$this->assertArrayNotHasKey( 'visitor_ip', $captured_body );
 		$this->assertArrayNotHasKey( 'full_headers', $captured_body );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| Session ID capture tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox verify() captures the Blackbox-generated session ID on the no-session path
+	 */
+	public function test_verify_captures_generated_session_id_for_no_session(): void {
+		add_filter(
+			'pre_http_request',
+			fn() => array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode(
+					array(
+						'message' => 'OK',
+						'data'    => array(
+							'session_id' => '82vHd2iPY4JvJZQE-A6jHg',
+							'risk_score' => 0.4033,
+							'decision'   => 'allow',
+						),
+					)
+				),
+			)
+		);
+
+		$result = $this->sut->verify( '', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '82vHd2iPY4JvJZQE-A6jHg', $result->get_session_id() );
+		$this->assertSame( 0.4033, $result->get_risk_score() );
+	}
+
+	/**
+	 * @testdox verify() returns an empty session ID when the response omits one
+	 */
+	public function test_verify_returns_empty_session_id_when_absent(): void {
+		add_filter(
+			'pre_http_request',
+			fn() => array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
+			)
+		);
+
+		$result = $this->sut->verify( '', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '', $result->get_session_id() );
+		$this->assertNull( $result->get_risk_score() );
 	}
 
 	/*
