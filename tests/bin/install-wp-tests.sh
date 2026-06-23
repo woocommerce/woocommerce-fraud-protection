@@ -250,8 +250,8 @@ overlay_wc_test_framework() {
 	local wc_version
 	wc_version=$(wp plugin get woocommerce --field=version 2>/dev/null || echo "")
 	if [ -z "$wc_version" ]; then
-		echo "Could not determine installed WooCommerce version; skipping test-framework overlay."
-		return
+		echo "Could not determine installed WooCommerce version; cannot overlay test framework." >&2
+		exit 1
 	fi
 
 	local src_dir="$TMPDIR/woocommerce-src"
