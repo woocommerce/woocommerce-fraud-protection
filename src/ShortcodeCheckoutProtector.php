@@ -71,7 +71,8 @@ class ShortcodeCheckoutProtector {
 	 * @return void
 	 */
 	public function register(): void {
-		add_action( 'woocommerce_after_checkout_validation', array( $this, 'verify_and_block' ), 10, 2 );
+		// Run as late as possible so verify_and_block()'s guard sees other validators' errors.
+		add_action( 'woocommerce_after_checkout_validation', array( $this, 'verify_and_block' ), PHP_INT_MAX, 2 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_shortcode_checkout_script' ) );
 	}
 
@@ -92,6 +93,11 @@ class ShortcodeCheckoutProtector {
 	 * @return void
 	 */
 	public function verify_and_block( array $posted_data, \WP_Error $errors ): void {
+		// Other validation already failed — the order won't be created, so skip verify.
+		if ( $this->checkout_has_blocking_error( $errors ) ) {
+			return;
+		}
+
 		$request_data = $this->build_request_data( $posted_data );
 
 		$decision = $this->session_verifier->verify_session(
@@ -107,6 +113,37 @@ class ShortcodeCheckoutProtector {
 				$this->blocked_session_notice->get_message_plaintext( 'purchase' )
 			);
 		}
+	}
+
+	/**
+	 * Whether the checkout already has an error that will stop order creation.
+	 *
+	 * Core creates the order only when wc_notice_count( 'error' ) is zero, after
+	 * converting each $errors message to a notice. Two error sources exist when
+	 * this hook runs:
+	 *
+	 * - Error notices already added via wc_add_notice() — e.g. by a
+	 *   woocommerce_checkout_process validator. These are counted directly.
+	 * - The $errors object from field validation, not yet flushed to notices.
+	 *   Core flushes these via wc_add_notice(), which runs each message through the
+	 *   woocommerce_add_error filter and then drops empty ones, so a message that is
+	 *   empty (or filtered to empty) does not block — only a surviving message does.
+	 *
+	 * @param \WP_Error $errors The checkout validation errors.
+	 * @return bool True if the checkout will be blocked from creating an order.
+	 */
+	private function checkout_has_blocking_error( \WP_Error $errors ): bool {
+		if ( wc_notice_count( 'error' ) > 0 ) {
+			return true;
+		}
+
+		foreach ( $errors->get_error_messages() as $message ) {
+			if ( ! empty( apply_filters( 'woocommerce_add_error', $message ) ) ) { // phpcs:ignore WooCommerce.Commenting.CommentHooks -- Re-applying core's existing filter to mirror wc_add_notice()'s empty-message check, not defining a hook.
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
