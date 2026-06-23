@@ -78,26 +78,6 @@ class ApiClient {
 	);
 
 	/**
-	 * Report status: good outcome.
-	 */
-	public const REPORT_STATUS_GOOD = 'good';
-
-	/**
-	 * Report status: bad outcome.
-	 */
-	public const REPORT_STATUS_BAD = 'bad';
-
-	/**
-	 * Valid report status values.
-	 *
-	 * @var array<string>
-	 */
-	public const VALID_REPORT_STATUSES = array(
-		self::REPORT_STATUS_GOOD,
-		self::REPORT_STATUS_BAD,
-	);
-
-	/**
 	 * Report source: chargeback event.
 	 */
 	public const REPORT_SOURCE_CHARGEBACK = 'chargeback';

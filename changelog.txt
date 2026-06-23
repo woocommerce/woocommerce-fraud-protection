@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+yyyy-mm-dd - version x.y.z
+* Added - `wc_fraud_protection_report()` to send normalized payment-outcome context (payment, dispute, and refund events) to Blackbox for fraud protection.
+
 2026-05-17 - version 0.1.3
 * Updated - Update init logic to match the latest changes in Blackbox SDK.
 * Updated - Reduce Blackbox request timeouts to 3 seconds (browser SDK and server-side verify/report calls) to bound worst-case checkout latency.
