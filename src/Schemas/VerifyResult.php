@@ -5,7 +5,7 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\FraudProtection;
+namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 defined( 'ABSPATH' ) || exit;
 

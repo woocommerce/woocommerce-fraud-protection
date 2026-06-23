@@ -5,16 +5,15 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal;
+namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\ApiClient;
-use Automattic\WooCommerce\FraudProtection\VerifyResult;
 use WC_Unit_Test_Case;
 
 /**
  * Tests for the VerifyResult value object.
  *
- * @covers \Automattic\WooCommerce\FraudProtection\VerifyResult
+ * @covers \Automattic\WooCommerce\FraudProtection\Schemas\VerifyResult
  */
 class VerifyResultTest extends WC_Unit_Test_Case {
 

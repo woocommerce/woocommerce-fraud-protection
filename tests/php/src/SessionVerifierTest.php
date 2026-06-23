@@ -14,7 +14,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\FraudProtection\VerifyResult;
+use Automattic\WooCommerce\FraudProtection\Schemas\VerifyResult;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use WC_Unit_Test_Case;
 
