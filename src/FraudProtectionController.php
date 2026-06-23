@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\Logging\LogContextSanitizer;
+use Automattic\WooCommerce\Proxies\LegacyProxy;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -258,7 +259,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * Routes selected entries to the host platform's aggregated error log
 	 * capture so they surface in centralised logging without requiring
 	 * opt-in via the WooCommerce `remote_logging` feature. Independent of
-	 * the local WooCommerce log; runs even when WooCommerce isn't loaded.
+	 * the local WooCommerce log.
 	 *
 	 * Line shape (consumed by the host's PHP-errors parser):
 	 *
@@ -300,7 +301,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 			$line_code
 		);
 
-		error_log( $line ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log,QITStandard.PHP.DebugCode.DebugFunctionFound
+		wc_get_container()->get( LegacyProxy::class )->call_function( 'error_log', $line );
 	}
 
 	/**

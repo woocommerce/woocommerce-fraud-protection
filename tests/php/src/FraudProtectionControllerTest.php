@@ -4,6 +4,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Tests\Internal;
 
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 use Automattic\WooCommerce\FraudProtection\SessionClearanceManager;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
@@ -11,7 +12,7 @@ use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 /**
  * Tests for the FraudProtectionController class.
  */
-class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
+class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 	use LoggerSpyTrait;
 
@@ -240,29 +241,21 @@ class FraudProtectionControllerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Capture lines written via PHP error_log() during $callback.
+	 * Capture lines forwarded to error_log() (via the LegacyProxy) during $callback.
 	 *
-	 * @param callable $callback Code that may call error_log().
+	 * The base test case registers an error_log spy on the mockable proxy, so the
+	 * real error_log() is never called; the forwarded lines are captured in memory.
 	 *
-	 * @return string Captured output.
+	 * @param callable $callback Code that may forward to error_log().
+	 *
+	 * @return string Captured output (forwarded lines joined by newlines).
 	 */
 	private function capture_error_log( callable $callback ): string {
-		$captured      = '';
-		$tmp_file      = tempnam( sys_get_temp_dir(), 'wfp-elog-' );
-		$previous_dest = ini_get( 'error_log' );
-		ini_set( 'error_log', $tmp_file );
+		$this->forwarded_platform_logs = array();
 
-		try {
-			$callback();
-			$captured = is_string( $tmp_file ) && file_exists( $tmp_file ) ? (string) file_get_contents( $tmp_file ) : '';
-		} finally {
-			ini_set( 'error_log', false === $previous_dest ? '' : $previous_dest );
-			if ( is_string( $tmp_file ) && file_exists( $tmp_file ) ) {
-				unlink( $tmp_file );
-			}
-		}
+		$callback();
 
-		return $captured;
+		return implode( "\n", $this->get_forwarded_platform_logs() );
 	}
 
 	/**
