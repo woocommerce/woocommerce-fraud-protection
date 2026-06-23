@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -162,29 +164,102 @@ class PaymentInstrumentData {
 	/**
 	 * Create from an associative array.
 	 *
-	 * Keys correspond to property names. Missing keys default to null.
-	 * Unrecognized keys are silently ignored.
+	 * Keys correspond to property names. Missing keys default to null, and unrecognized
+	 * keys are ignored. Each value is sanitized defensively so a malformed one never
+	 * reaches the strict constructor: a wrongly-typed value is coerced where it can be
+	 * (a scalar to string) or dropped to null, and either case is logged so a
+	 * misbehaving integration surfaces instead of failing silently.
 	 *
 	 * @param array $data Instrument fields.
 	 * @return self
 	 */
 	public static function from_array( array $data = array() ): self {
 		return new self(
-			$data['brand'] ?? null,
-			$data['funding'] ?? null,
-			$data['last4'] ?? null,
-			$data['fingerprint'] ?? null,
-			$data['country'] ?? null,
-			isset( $data['exp_month'] ) ? (int) $data['exp_month'] : null,
-			isset( $data['exp_year'] ) ? (int) $data['exp_year'] : null,
-			$data['billing_postcode'] ?? null,
-			$data['wallet'] ?? null,
-			$data['bank_code'] ?? null,
-			$data['bin'] ?? null,
-			$data['cvc_check'] ?? null,
-			$data['avs_address_check'] ?? null,
-			$data['avs_postcode_check'] ?? null
+			self::sanitize_string_field( $data, 'brand' ),
+			self::sanitize_string_field( $data, 'funding' ),
+			self::sanitize_string_field( $data, 'last4' ),
+			self::sanitize_string_field( $data, 'fingerprint' ),
+			self::sanitize_string_field( $data, 'country' ),
+			self::sanitize_int_field( $data, 'exp_month' ),
+			self::sanitize_int_field( $data, 'exp_year' ),
+			self::sanitize_string_field( $data, 'billing_postcode' ),
+			self::sanitize_string_field( $data, 'wallet' ),
+			self::sanitize_string_field( $data, 'bank_code' ),
+			self::sanitize_string_field( $data, 'bin' ),
+			self::sanitize_string_field( $data, 'cvc_check' ),
+			self::sanitize_string_field( $data, 'avs_address_check' ),
+			self::sanitize_string_field( $data, 'avs_postcode_check' )
 		);
+	}
+
+	/**
+	 * Sanitize a string instrument field, coercing or dropping a wrongly-typed value.
+	 *
+	 * Strings and null pass through. A scalar number is coerced to string and logged as
+	 * a warning, since the value survives. Any other type is dropped to null and logged
+	 * as an error, since the value is lost. Both are forwarded so a rogue integration is
+	 * visible centrally. The malformed value itself is never logged — only the field
+	 * name and its type — so no payment data or PII is emitted.
+	 *
+	 * @param array<string, mixed> $data  Raw instrument fields.
+	 * @param string               $field Field name to read and sanitize.
+	 * @return ?string
+	 */
+	private static function sanitize_string_field( array $data, string $field ): ?string {
+		$value = $data[ $field ] ?? null;
+
+		if ( null === $value || is_string( $value ) ) {
+			return $value;
+		}
+
+		if ( is_int( $value ) || is_float( $value ) ) {
+			FraudProtectionController::log(
+				'warning',
+				sprintf( 'Coerced payment instrument field "%s" from %s to string.', $field, gettype( $value ) ),
+				array(),
+				true
+			);
+			return (string) $value;
+		}
+
+		FraudProtectionController::log(
+			'error',
+			sprintf( 'Dropped payment instrument field "%s" with unsupported type %s.', $field, gettype( $value ) ),
+			array(),
+			true
+		);
+		return null;
+	}
+
+	/**
+	 * Sanitize an integer instrument field, dropping a non-numeric value.
+	 *
+	 * Numeric values (int or numeric string) are cast to int; null passes through. Any
+	 * other type is dropped to null and logged as an error, forwarded for visibility.
+	 * The malformed value itself is never logged — only the field name and its type.
+	 *
+	 * @param array<string, mixed> $data  Raw instrument fields.
+	 * @param string               $field Field name to read and sanitize.
+	 * @return ?int
+	 */
+	private static function sanitize_int_field( array $data, string $field ): ?int {
+		$value = $data[ $field ] ?? null;
+
+		if ( null === $value ) {
+			return null;
+		}
+
+		if ( is_numeric( $value ) ) {
+			return (int) $value;
+		}
+
+		FraudProtectionController::log(
+			'error',
+			sprintf( 'Dropped payment instrument field "%s" with non-numeric type %s.', $field, gettype( $value ) ),
+			array(),
+			true
+		);
+		return null;
 	}
 
 	/**

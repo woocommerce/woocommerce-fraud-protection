@@ -379,6 +379,29 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox A malformed instrument field never throws out of from_array(); valid siblings survive.
+	 */
+	public function test_malformed_instrument_field_does_not_throw(): void {
+		$context = ReportContextData::from_array(
+			array(
+				'type'       => 'payment',
+				'result'     => 'declined',
+				'reason'     => 'incorrect_cvc',
+				'instrument' => array(
+					'fingerprint' => array( 'unexpected' ),
+					'bin'         => '424242',
+				),
+			)
+		);
+
+		$this->assertInstanceOf( ReportContextData::class, $context );
+		$wire = $context->to_array();
+		$this->assertArrayHasKey( 'instrument', $wire );
+		$this->assertNull( $wire['instrument']['fingerprint'], 'the malformed fingerprint is dropped, not thrown on' );
+		$this->assertSame( '424242', $wire['instrument']['bin'], 'the valid bin survives' );
+	}
+
+	/**
 	 * @testdox to_array() omits empty optionals and always emits required fields.
 	 */
 	public function test_to_array_omits_empty_optionals(): void {
