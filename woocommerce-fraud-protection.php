@@ -4,6 +4,8 @@
  * Description: A plugin to protect WooCommerce from fraud.
  * Version: 0.1.3
  * Author: Automattic
+ * Requires Plugins: woocommerce
+ * WC requires at least: 8.5.0
  *
  * @package WooCommerce\FraudProtection
  */
