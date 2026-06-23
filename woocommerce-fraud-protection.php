@@ -148,7 +148,7 @@ add_action(
  * @param string    $notes  Free-form notes describing the event.
  */
 function wc_fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
-	if ( ! function_exists( 'WC' ) ) {
+	if ( ! function_exists( 'WC' ) || ! function_exists( 'wc_get_container' ) ) {
 		return;
 	}
 

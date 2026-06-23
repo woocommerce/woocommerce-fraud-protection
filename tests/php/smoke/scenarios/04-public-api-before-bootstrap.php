@@ -1,13 +1,16 @@
 <?php
 /**
- * Smoke scenario: wc_fraud_protection_report() called before woocommerce_loaded.
+ * Smoke scenario: wc_fraud_protection_report() called before WooCommerce's
+ * dependency injection container is available.
  *
- * Gateway plugins may invoke the public API early in the request lifecycle.
- * The function must defensively load the autoloader (or bail silently) instead
- * of fatalling on the unloaded FraudProtectionController class reference.
+ * Gateway plugins may invoke the public API early in the request lifecycle,
+ * before WooCommerce has finished loading. The function resolves its
+ * collaborators through wc_get_container(), which WooCommerce only defines once
+ * loaded, so it must bail silently instead of fatalling on the missing function.
  *
- * Strategy: include the plugin file but never fire woocommerce_loaded. Stub
- * a minimal WC() function and a dummy WC_Order class so the call type-checks.
+ * Strategy: include the plugin file but never fire woocommerce_loaded. Stub a
+ * minimal WC() function and a dummy WC_Order class so the call type-checks, but
+ * deliberately leave wc_get_container() undefined to mimic the pre-bootstrap state.
  *
  * @package WooCommerce\FraudProtection\Tests\Smoke
  */
@@ -33,15 +36,15 @@ wfp_smoke_assert(
 	'Pre-condition: FraudProtectionController must NOT be loaded yet.'
 );
 
-// Call the public API before bootstrap. Pre-fix this would fatal on the
-// `FraudProtectionController::feature_is_enabled()` reference.
+// Call the public API before bootstrap. With wc_get_container() undefined the
+// function must bail silently; reaching the assertion below proves it did not fatal.
 wc_fraud_protection_report( new WC_Order(), 'test-source', 'good', 'smoke-test' );
 
-// After the call, the autoloader has been defensively loaded by the function,
-// so the class is now available.
+// The container is unavailable, so the function short-circuits at its guard
+// before touching any namespaced class: no defensive autoload happens.
 wfp_smoke_assert(
-	class_exists( 'Automattic\WooCommerce\FraudProtection\FraudProtectionController' ),
-	'Defensive autoload should have made FraudProtectionController available.'
+	! class_exists( 'Automattic\WooCommerce\FraudProtection\FraudProtectionController', false ),
+	'Function should bail before loading any namespaced class when the container is unavailable.'
 );
 
 echo "OK\n";
