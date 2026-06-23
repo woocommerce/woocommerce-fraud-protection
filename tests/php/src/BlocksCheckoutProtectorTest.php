@@ -12,14 +12,14 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\BlocksCheckoutProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the BlocksCheckoutProtector class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\BlocksCheckoutProtector
  */
-class BlocksCheckoutProtectorTest extends WC_Unit_Test_Case {
+class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Test double that exposes the trait's private methods for testing.
@@ -41,7 +41,7 @@ class ClassicFormDataExtractionTraitTestDouble {
  *
  * @covers \Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait
  */
-class ClassicFormDataExtractionTraitTest extends WC_Unit_Test_Case {
+class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

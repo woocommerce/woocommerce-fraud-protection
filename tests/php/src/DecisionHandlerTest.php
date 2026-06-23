@@ -11,12 +11,12 @@ use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\DecisionHandler;
 use Automattic\WooCommerce\FraudProtection\SessionClearanceManager;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the DecisionHandler class.
  */
-class DecisionHandlerTest extends WC_Unit_Test_Case {
+class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 	use LoggerSpyTrait;
 

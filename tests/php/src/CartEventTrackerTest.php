@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal;
 
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\CartEventTracker;
 use Automattic\WooCommerce\FraudProtection\SessionDataCollector;
 
@@ -15,7 +16,7 @@ use Automattic\WooCommerce\FraudProtection\SessionDataCollector;
  *
  * @covers \Automattic\WooCommerce\FraudProtection\CartEventTracker
  */
-class CartEventTrackerTest extends \WC_Unit_Test_Case {
+class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The system under test.

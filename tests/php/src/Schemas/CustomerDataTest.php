@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Schemas\Address;
 use Automattic\WooCommerce\FraudProtection\Schemas\CustomerData;
 
@@ -15,7 +16,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\CustomerData;
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\CustomerData
  */
-class CustomerDataTest extends \WC_Unit_Test_Case {
+class CustomerDataTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Runs before each test.

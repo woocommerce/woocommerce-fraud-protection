@@ -11,14 +11,14 @@ use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\OrderEventsTracker;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the OrderEventsTracker class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\OrderEventsTracker
  */
-class OrderEventsTrackerTest extends WC_Unit_Test_Case {
+class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 
 	use LoggerSpyTrait;
 

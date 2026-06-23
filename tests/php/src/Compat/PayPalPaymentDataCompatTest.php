@@ -9,7 +9,7 @@ namespace Automattic\WooCommerce\FraudProtection\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Compat\PayPalPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub PayPal Payments PPCP and ConnectionState if not loaded.
 if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
@@ -88,7 +88,7 @@ if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\PayPalPaymentDataCompat
  */
-class PayPalPaymentDataCompatTest extends WC_Unit_Test_Case {
+class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

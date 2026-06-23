@@ -12,14 +12,14 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\PayForOrderProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the PayForOrderProtector class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\PayForOrderProtector
  */
-class PayForOrderProtectorTest extends WC_Unit_Test_Case {
+class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

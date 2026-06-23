@@ -10,14 +10,14 @@ namespace Automattic\WooCommerce\Tests\Internal;
 use Automattic\WooCommerce\FraudProtection\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the PaymentDataResolver class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\PaymentDataResolver
  */
-class PaymentDataResolverTest extends WC_Unit_Test_Case {
+class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

@@ -12,14 +12,14 @@ use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the AddPaymentMethodProtector class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\AddPaymentMethodProtector
  */
-class AddPaymentMethodProtectorTest extends WC_Unit_Test_Case {
+class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.
