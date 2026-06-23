@@ -12,6 +12,12 @@
 
 declare( strict_types = 1 );
 
+use Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat;
+use Automattic\WooCommerce\FraudProtection\Compat\PayPalPaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Compat\SubscriptionsChangePaymentCompat;
+use Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 
@@ -43,94 +49,15 @@ add_action(
 		}
 		require_once $autoload;
 
-		// Core dependencies.
-		$session_manager = new \Automattic\WooCommerce\FraudProtection\SessionClearanceManager();
+		$container = wc_get_container();
 
-		$api_client = new \Automattic\WooCommerce\FraudProtection\ApiClient();
-
-		$decision_handler = new \Automattic\WooCommerce\FraudProtection\DecisionHandler();
-		$decision_handler->init( $session_manager );
-
-		$session_data_collector = new \Automattic\WooCommerce\FraudProtection\SessionDataCollector();
-		$session_data_collector->init( $session_manager );
-
-		// Event trackers.
-		$cart_event_tracker = new \Automattic\WooCommerce\FraudProtection\CartEventTracker();
-		$cart_event_tracker->init( $session_data_collector );
-
-		$checkout_event_tracker = new \Automattic\WooCommerce\FraudProtection\CheckoutEventTracker();
-		$checkout_event_tracker->init( $session_data_collector );
-
-		$payment_method_event_tracker = new \Automattic\WooCommerce\FraudProtection\PaymentMethodEventTracker();
-		$payment_method_event_tracker->init( $session_data_collector );
-
-		// Notice and script handlers.
-		$blocked_notice = new \Automattic\WooCommerce\FraudProtection\BlockedSessionNotice();
-		$blocked_notice->init( $session_manager );
-
-		$blackbox_handler = new \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler();
-		$blackbox_handler->init( $session_manager );
-
-		// Session blocking handler.
-		$session_blocking_handler = new \Automattic\WooCommerce\FraudProtection\SessionBlockingHandler();
-		$session_blocking_handler->init( $session_manager, $blocked_notice );
-
-		$payment_data_resolver = new \Automattic\WooCommerce\FraudProtection\PaymentDataResolver();
-
-		$session_verifier = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
-		$session_verifier->init( $session_data_collector, $api_client, $decision_handler, $payment_data_resolver );
-
-		$order_events_tracker = new \Automattic\WooCommerce\FraudProtection\OrderEventsTracker();
-		$order_events_tracker->init( $api_client );
-
-		$stripe_compat = new \Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat();
-		$stripe_compat->register();
-
-		$square_compat = new \Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat();
-		$square_compat->register();
-
-		$paypal_payment_data_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalPaymentDataCompat();
-		$paypal_payment_data_compat->register();
-
-		$woopayments_compat = new \Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat();
-		$woopayments_compat->register();
-
-		$paypal_compat = new \Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat();
-		$paypal_compat->init( $session_verifier, $blocked_notice );
-		$paypal_compat->register();
-
-		$subscriptions_change_payment_compat = new \Automattic\WooCommerce\FraudProtection\Compat\SubscriptionsChangePaymentCompat();
-		$subscriptions_change_payment_compat->init( $session_verifier, $blocked_notice );
-		$subscriptions_change_payment_compat->register();
-
-		$blocks_checkout_protector = new \Automattic\WooCommerce\FraudProtection\BlocksCheckoutProtector();
-		$blocks_checkout_protector->init( $session_verifier, $blocked_notice );
-
-		$shortcode_checkout_protector = new \Automattic\WooCommerce\FraudProtection\ShortcodeCheckoutProtector();
-		$shortcode_checkout_protector->init( $session_verifier, $blocked_notice );
-
-		$add_payment_method_protector = new \Automattic\WooCommerce\FraudProtection\AddPaymentMethodProtector();
-		$add_payment_method_protector->init( $session_verifier, $blocked_notice );
-
-		$pay_for_order_protector = new \Automattic\WooCommerce\FraudProtection\PayForOrderProtector();
-		$pay_for_order_protector->init( $session_verifier, $blocked_notice );
-
-		// Main controller.
-		$controller = new \Automattic\WooCommerce\FraudProtection\FraudProtectionController();
-		$controller->init(
-			$blocked_notice,
-			$blackbox_handler,
-			$cart_event_tracker,
-			$checkout_event_tracker,
-			$payment_method_event_tracker,
-			$session_blocking_handler,
-			$session_verifier,
-			$blocks_checkout_protector,
-			$shortcode_checkout_protector,
-			$add_payment_method_protector,
-			$pay_for_order_protector
-		);
-		$controller->register();
+		$container->get( FraudProtectionController::class )->register();
+		$container->get( StripePaymentDataCompat::class )->register();
+		$container->get( SquarePaymentDataCompat::class )->register();
+		$container->get( PayPalPaymentDataCompat::class )->register();
+		$container->get( WooPaymentsPaymentDataCompat::class )->register();
+		$container->get( PayPalCompat::class )->register();
+		$container->get( SubscriptionsChangePaymentCompat::class )->register();
 	}
 );
 
