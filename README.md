@@ -1,1 +1,55 @@
-# woocommerce-fraud-protection
+## Requirements
+
+- PHP 7.4+
+- Node.js 20
+- Composer
+- MySQL (for the PHP test suite)
+
+## Installing dependencies
+
+```bash
+composer install
+npm install
+```
+
+## Build
+
+```bash
+npm run build           # development build of the JS/CSS assets
+npm run build:release   # production build plus a distributable plugin zip
+```
+
+The assets in `assets/` are served as-is, so a build step is not required for everyday development.
+
+## Tests
+
+Run the whole suite (smoke, PHP, and JavaScript):
+
+```bash
+npm run test
+```
+
+### JavaScript tests (Jest)
+
+```bash
+npm run test:js
+```
+
+### PHP tests (PHPUnit)
+
+PHP tests run against WooCommerce core's test framework, so they need a WordPress test environment (WordPress, the test library, and WooCommerce) and a MySQL database.
+
+Set up the environment once. This creates the database and downloads WordPress, the test library, and WooCommerce:
+
+```bash
+tests/bin/install-wp-tests.sh <db-name> <db-user> <db-pass> [db-host] [wp-version] [wc-version]
+```
+
+Then run the tests:
+
+```bash
+npm run test:php                          # all PHP tests
+npm run test:php -- --filter <ClassName>  # a single test class
+```
+
+The test bootstrap locates WooCommerce automatically. To run against an existing WooCommerce checkout instead, set the `WC_DIR` environment variable to its plugin directory.
