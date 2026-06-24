@@ -31,7 +31,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 				'reason'                     => 'fraud',
 				'liability_shift'            => 'shifted',
 				'amount_minor_units'         => 9900,
-				'amount_currency'            => 'usd',
+				'amount_currency'            => 'USD',
 				'occurred_at'                => '2026-06-03T12:00:00Z',
 				'gateway'                    => 'woocommerce_payments',
 				'correlation_order_id'       => 12345,
@@ -445,7 +445,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox amount fields are sent independently; an invalid one is null, never coupled.
+	 * @testdox amount_minor_units is strictly validated; amount_currency is forwarded as-is, independently.
 	 */
 	public function test_amount_fields_are_independent(): void {
 		// minor_units without a currency is still sent.
@@ -459,8 +459,8 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 		$this->assertSame( 500, $units_only['amount_minor_units'] );
 		$this->assertNull( $units_only['amount_currency'] );
 
-		// An invalid currency is null but does not drop minor_units.
-		$bad_currency = $this->to_wire(
+		// A non-canonical currency is forwarded as-is (sanitized, not dropped) so it stays visible server-side.
+		$non_canonical = $this->to_wire(
 			array(
 				'type'               => 'payment',
 				'result'             => 'captured',
@@ -468,11 +468,11 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 				'amount_currency'    => 'dollars',
 			)
 		);
-		$this->assertSame( 500, $bad_currency['amount_minor_units'] );
-		$this->assertNull( $bad_currency['amount_currency'] );
+		$this->assertSame( 500, $non_canonical['amount_minor_units'] );
+		$this->assertSame( 'dollars', $non_canonical['amount_currency'] );
 
-		// Both valid.
-		$both = $this->to_wire(
+		// A currency string is sent verbatim; the plugin does not uppercase or canonicalize.
+		$lowercase = $this->to_wire(
 			array(
 				'type'               => 'payment',
 				'result'             => 'captured',
@@ -480,10 +480,10 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 				'amount_currency'    => 'eur',
 			)
 		);
-		$this->assertSame( 500, $both['amount_minor_units'] );
-		$this->assertSame( 'EUR', $both['amount_currency'] );
+		$this->assertSame( 500, $lowercase['amount_minor_units'] );
+		$this->assertSame( 'eur', $lowercase['amount_currency'] );
 
-		// A negative or fractional minor_units is dropped to null; the valid currency stays.
+		// A negative or fractional minor_units is dropped to null; the currency stays.
 		foreach ( array( 'negative' => -500, 'fractional' => 99.99 ) as $case => $bad_minor ) {
 			$rejected = $this->to_wire(
 				array(
@@ -494,7 +494,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 				)
 			);
 			$this->assertNull( $rejected['amount_minor_units'], "a {$case} minor_units is dropped" );
-			$this->assertSame( 'USD', $rejected['amount_currency'] );
+			$this->assertSame( 'usd', $rejected['amount_currency'] );
 		}
 	}
 
@@ -533,7 +533,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 		$this->assertNull( $wire['correlation_transaction_id'] );
 
 		// Every drop is logged so a malformed integration is identifiable.
-		$this->assertLogged( 'warning', 'Dropped ReportContextData field "amount_currency" (not a valid ISO-4217 currency).' );
+		$this->assertLogged( 'error', 'Dropped ReportContextData field "amount_currency" with unsupported type array.' );
 		$this->assertLogged( 'error', 'Dropped ReportContextData field "correlation_transaction_id" with unsupported type array.' );
 	}
 

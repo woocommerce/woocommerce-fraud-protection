@@ -151,31 +151,6 @@ trait SanitizesScalarFields {
 	}
 
 	/**
-	 * Read a currency field, normalizing it to an ISO-4217 (three-letter, uppercase) code.
-	 * A provided value that is not a valid code is dropped to null and logged.
-	 *
-	 * @param array<string, mixed> $data  Raw fields.
-	 * @param string               $field Field name to read.
-	 * @return ?string
-	 */
-	private static function sanitize_currency_code( array $data, string $field ): ?string {
-		$raw = $data[ $field ] ?? null;
-		if ( null === $raw ) {
-			return null;
-		}
-
-		if ( is_string( $raw ) ) {
-			$candidate = strtoupper( trim( $raw ) );
-			if ( (bool) preg_match( '/^[A-Z]{3}$/', $candidate ) ) {
-				return $candidate;
-			}
-		}
-
-		self::log_dropped_field( $field, 'not a valid ISO-4217 currency' );
-		return null;
-	}
-
-	/**
 	 * Log that a provided field value was dropped (field name and reason only, never the value).
 	 * Callers should only log a value that was actually provided; an absent field stays silent.
 	 *

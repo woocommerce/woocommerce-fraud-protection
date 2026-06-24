@@ -299,7 +299,7 @@ class ReportContextData {
 			self::resolve_reason( $data, $type ),
 			self::sanitize_enum( $data, 'liability_shift', self::VALID_LIABILITY_SHIFTS ),
 			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
-			self::sanitize_currency_code( $data, 'amount_currency' ),
+			self::sanitize_string_field( $data, 'amount_currency' ),
 			self::normalize_occurred_at( $data, 'occurred_at' ),
 			self::sanitize_string_field( $data, 'gateway' ) ?? '',
 			self::sanitize_positive_int( $data, 'correlation_order_id' ),
