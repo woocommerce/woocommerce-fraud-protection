@@ -191,7 +191,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 		);
 
 		$this->assertNull( $context );
-		$this->assertLogged( 'warning', 'Unmappable report context type "chargeback"' );
+		$this->assertLogged( 'error', 'Skipping report: context type is missing or unmappable.' );
 	}
 
 	/**
@@ -206,7 +206,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 		);
 
 		$this->assertNull( $context );
-		$this->assertLogged( 'warning', 'Unmappable report context result "lost" for type "payment"' );
+		$this->assertLogged( 'error', 'Skipping report: context result is missing or unmappable for the given type.' );
 	}
 
 	/**
@@ -402,6 +402,23 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox A non-array instrument field is dropped to null and logged.
+	 */
+	public function test_non_array_instrument_field_is_dropped_and_logged(): void {
+		$context = ReportContextData::from_array(
+			array(
+				'type'       => 'payment',
+				'result'     => 'captured',
+				'instrument' => 'not-an-array',
+			)
+		);
+
+		$this->assertInstanceOf( ReportContextData::class, $context );
+		$this->assertNull( $context->to_array()['instrument'] );
+		$this->assertLogged( 'warning', 'Dropped ReportContextData field "instrument" (expected an array).' );
+	}
+
+	/**
 	 * @testdox to_array() emits a fixed shape, with null for every optional that did not resolve.
 	 */
 	public function test_to_array_emits_fixed_shape_with_nulls(): void {
@@ -517,7 +534,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 
 		// Every drop is logged so a malformed integration is identifiable.
 		$this->assertLogged( 'warning', 'Dropped ReportContextData field "amount_currency" (not a valid ISO-4217 currency).' );
-		$this->assertLogged( 'warning', 'Dropped ReportContextData field "correlation_transaction_id" (unsupported type array).' );
+		$this->assertLogged( 'error', 'Dropped ReportContextData field "correlation_transaction_id" with unsupported type array.' );
 	}
 
 	/**

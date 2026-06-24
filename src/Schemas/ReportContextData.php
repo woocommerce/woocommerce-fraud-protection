@@ -65,32 +65,9 @@ class ReportContextData {
 	 * @var array<string, array<int, string>>
 	 */
 	private const RESULTS_BY_TYPE = array(
-		self::TYPE_PAYMENT => array(
-			'captured',
-			'authorized',
-			'pending',
-			'declined',
-			'blocked',
-			'review_pending',
-			'review_approved',
-			'review_rejected',
-			'review_expired',
-			'voided',
-			'canceled',
-		),
-		self::TYPE_DISPUTE => array(
-			'inquiry',
-			'open',
-			'won',
-			'lost',
-			'accepted',
-			'withdrawn',
-			'prevented',
-		),
-		self::TYPE_REFUND  => array(
-			'refunded',
-			'partially_refunded',
-		),
+		self::TYPE_PAYMENT => ReportResult::PAYMENT_RESULTS,
+		self::TYPE_DISPUTE => ReportResult::DISPUTE_RESULTS,
+		self::TYPE_REFUND  => ReportResult::REFUND_RESULTS,
 	);
 
 	/**
@@ -117,58 +94,6 @@ class ReportContextData {
 		self::LIABILITY_SHIFTED,
 		self::LIABILITY_ATTEMPTED,
 		self::LIABILITY_NOT_SHIFTED,
-	);
-
-	/**
-	 * Normalized dispute reasons.
-	 *
-	 * @var array<int, string>
-	 */
-	private const DISPUTE_REASONS = array(
-		'fraud',
-		'unrecognized',
-		'subscription_canceled',
-		'canceled_or_returned',
-		'product_not_received',
-		'product_not_as_described',
-		'credit_not_processed',
-		'duplicate',
-		'bank',
-		'other',
-	);
-
-	/**
-	 * Normalized payment refusal reasons (for declined and blocked payments).
-	 *
-	 * @var array<int, string>
-	 */
-	private const PAYMENT_REASONS = array(
-		'lost_or_stolen',
-		'suspected_fraud',
-		'restricted_card',
-		'security_violation',
-		'incorrect_cvc',
-		'incorrect_avs',
-		'incorrect_number',
-		'incorrect_expiry',
-		'do_not_honor',
-		'generic_decline',
-		'compliance',
-		'card_not_supported',
-		'unsupported_currency',
-		'expired_card',
-		'invalid_account',
-		'not_permitted',
-		'insufficient_funds',
-		'limit_exceeded',
-		'velocity_exceeded',
-		'authentication_required',
-		'issuer_unavailable',
-		'processing_error',
-		'test_mode',
-		'duplicate',
-		'request_error',
-		'operational',
 	);
 
 	/**
@@ -343,20 +268,27 @@ class ReportContextData {
 	 * @return ?self The context, or null when it cannot be reported.
 	 */
 	public static function from_array( array $data ): ?self {
-		$type = isset( $data['type'] ) && is_string( $data['type'] ) ? $data['type'] : '';
-		if ( ! in_array( $type, self::VALID_TYPES, true ) ) {
+		// type and result are skip-gates: an unmappable one drops the whole report, which is an
+		// error worth forwarding (sanitize_enum already logs the bad field, but stays silent
+		// when the field is simply absent).
+		$type = self::sanitize_enum( $data, 'type', self::VALID_TYPES );
+		if ( null === $type ) {
 			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Unmappable report context type "%s", skipping report.', $type )
+				'error',
+				'Skipping report: context type is missing or unmappable.',
+				array(),
+				true
 			);
 			return null;
 		}
 
-		$result = isset( $data['result'] ) && is_string( $data['result'] ) ? $data['result'] : '';
-		if ( ! in_array( $result, self::RESULTS_BY_TYPE[ $type ], true ) ) {
+		$result = self::sanitize_enum( $data, 'result', self::RESULTS_BY_TYPE[ $type ] );
+		if ( null === $result ) {
 			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Unmappable report context result "%s" for type "%s", skipping report.', $result, $type )
+				'error',
+				'Skipping report: context result is missing or unmappable for the given type.',
+				array(),
+				true
 			);
 			return null;
 		}
@@ -367,15 +299,15 @@ class ReportContextData {
 			self::resolve_reason( $data, $type ),
 			self::sanitize_enum( $data, 'liability_shift', self::VALID_LIABILITY_SHIFTS ),
 			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
-			self::sanitize_currency( $data, 'amount_currency' ),
+			self::sanitize_currency_code( $data, 'amount_currency' ),
 			self::normalize_occurred_at( $data, 'occurred_at' ),
 			self::sanitize_string_field( $data, 'gateway' ) ?? '',
 			self::sanitize_positive_int( $data, 'correlation_order_id' ),
-			self::sanitize_correlation_id( $data, 'correlation_transaction_id' ),
-			self::sanitize_correlation_id( $data, 'correlation_payment_attempt_id' ),
-			self::sanitize_correlation_id( $data, 'correlation_dispute_id' ),
-			self::sanitize_correlation_id( $data, 'correlation_refund_id' ),
-			self::sanitize_correlation_id( $data, 'correlation_network_transaction_id' ),
+			self::sanitize_string_field( $data, 'correlation_transaction_id' ),
+			self::sanitize_string_field( $data, 'correlation_payment_attempt_id' ),
+			self::sanitize_string_field( $data, 'correlation_dispute_id' ),
+			self::sanitize_string_field( $data, 'correlation_refund_id' ),
+			self::sanitize_string_field( $data, 'correlation_network_transaction_id' ),
 			self::sanitize_instrument( $data, 'instrument' )
 		);
 	}
@@ -384,7 +316,7 @@ class ReportContextData {
 	 * Return a copy with order-derived fields filled in where missing.
 	 *
 	 * Only fills an empty gateway and a missing correlation order ID, so caller-supplied
-	 * values always win. Mirrors PaymentMethodData::with_transaction_mode().
+	 * values always win.
 	 *
 	 * @param int    $order_id Woo order ID.
 	 * @param string $gateway  Woo gateway ID (payment method).
@@ -405,13 +337,11 @@ class ReportContextData {
 	}
 
 	/**
-	 * Serialize to the API `context` shape.
+	 * Serialize to the API `context` shape: a fixed, flat field set with null for any value
+	 * that did not resolve — the verify-side convention, so Blackbox parses one stable shape.
 	 *
-	 * Emits a fixed, flat field set, with null for any value that did not resolve — the same
-	 * convention as the verify-side DTOs (e.g. `PaymentInstrumentData`), so Blackbox parses
-	 * one stable shape. The property names are the wire keys, so the body derives from the
-	 * object's own properties; only `schema_version` (a constant) and `instrument` (nested)
-	 * are special-cased.
+	 * The property names are the wire keys, so the body derives from the object's own
+	 * properties; only `schema_version` (a constant) and `instrument` (nested) are special-cased.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -438,33 +368,9 @@ class ReportContextData {
 			return null;
 		}
 
-		$allowed = self::TYPE_DISPUTE === $type ? self::DISPUTE_REASONS : self::PAYMENT_REASONS;
+		$allowed = self::TYPE_DISPUTE === $type ? ReportReason::DISPUTE_REASONS : ReportReason::PAYMENT_REFUSAL_REASONS;
 
 		return self::sanitize_enum( $data, 'reason', $allowed );
-	}
-
-	/**
-	 * Sanitize a currency field into an ISO-4217 (three-letter) code.
-	 *
-	 * @param array<string, mixed> $data  Raw fields.
-	 * @param string               $field Field name to read.
-	 * @return ?string
-	 */
-	private static function sanitize_currency( array $data, string $field ): ?string {
-		$raw = $data[ $field ] ?? null;
-		if ( null === $raw ) {
-			return null;
-		}
-
-		if ( is_string( $raw ) ) {
-			$candidate = strtoupper( trim( $raw ) );
-			if ( (bool) preg_match( '/^[A-Z]{3}$/', $candidate ) ) {
-				return $candidate;
-			}
-		}
-
-		self::log_dropped_field( $field, 'not a valid ISO-4217 currency' );
-		return null;
 	}
 
 	/**
@@ -502,32 +408,10 @@ class ReportContextData {
 	}
 
 	/**
-	 * Sanitize a string correlation ID from a top-level field.
+	 * Build the optional payment instrument from a field, or null when none is usable.
 	 *
-	 * @param array<string, mixed> $data  Raw fields.
-	 * @param string               $field Field name to read.
-	 * @return ?string Trimmed ID, or null when empty/unusable.
-	 */
-	private static function sanitize_correlation_id( array $data, string $field ): ?string {
-		$raw = $data[ $field ] ?? null;
-		if ( null === $raw ) {
-			return null;
-		}
-
-		// An empty ID is "no ID", not an error, so it stays silent; a non-string/int is malformed.
-		if ( is_string( $raw ) || is_int( $raw ) ) {
-			$value = sanitize_text_field( (string) $raw );
-			return '' === $value ? null : $value;
-		}
-
-		self::log_dropped_field( $field, 'unsupported type ' . gettype( $raw ) );
-		return null;
-	}
-
-	/**
-	 * Build the optional payment instrument from a field.
-	 *
-	 * Returns null when no usable field is present, so an empty block is never sent.
+	 * An all-null instrument (only unrecognized keys, or an empty array) collapses to null, so
+	 * we send `instrument: null` rather than a block of nulls.
 	 *
 	 * @param array<string, mixed> $data  Raw fields.
 	 * @param string               $field Field name to read.
@@ -535,19 +419,22 @@ class ReportContextData {
 	 */
 	private static function sanitize_instrument( array $data, string $field ): ?PaymentInstrumentData {
 		$raw = $data[ $field ] ?? null;
-		if ( ! is_array( $raw ) || array() === $raw ) {
+		if ( null === $raw ) {
+			return null;
+		}
+
+		if ( ! is_array( $raw ) ) {
+			self::log_dropped_field( $field, 'expected an array' );
 			return null;
 		}
 
 		$instrument = PaymentInstrumentData::from_array( $raw );
-
-		$has_value = array() !== array_filter(
-			$instrument->to_array(),
-			static function ( $value ) {
-				return null !== $value;
+		foreach ( $instrument->to_array() as $value ) {
+			if ( null !== $value ) {
+				return $instrument;
 			}
-		);
+		}
 
-		return $has_value ? $instrument : null;
+		return null;
 	}
 }

@@ -12,28 +12,21 @@ use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Reads and sanitizes scalar fields from an untrusted input array before they reach a
+ * Reads scalar fields from an untrusted array and sanitizes them before they reach a
  * strict-typed constructor, so a wrongly-typed value can never throw a TypeError.
  *
- * - `sanitize_string_field()` / `sanitize_int_field()` coerce a recoverable value or drop it
- *   to null, logging either case (with the field name and type only, never the value) so a
- *   misbehaving integration surfaces instead of failing silently.
- * - `sanitize_enum()` validates a value against a fixed allowed set, failing open to null.
- *
- * Log messages identify the source by its class name, so no per-consumer configuration is
- * needed.
+ * Coercions and drops are logged (field name and type only, never the value) so a
+ * misbehaving integration surfaces instead of failing silently. The log source is the
+ * consuming class name.
  *
  * @internal
  */
 trait SanitizesScalarFields {
 
 	/**
-	 * Read a string field, coercing a scalar number or dropping any other wrong type.
-	 *
-	 * Strings and null pass through. A scalar number is coerced to string and logged as a
-	 * warning (the value survives); any other type is dropped to null and logged as an
-	 * error (the value is lost). Both are forwarded so a rogue integration is visible. The
-	 * value itself is never logged — only the field name and its type — so no PII is emitted.
+	 * Read a string field. A string passes through sanitized, with an empty result treated as
+	 * absent (null); a scalar number is coerced and logged; any other type is dropped to null
+	 * and logged. The value itself is never logged.
 	 *
 	 * @param array<string, mixed> $data  Raw fields.
 	 * @param string               $field Field name to read and sanitize.
@@ -47,7 +40,8 @@ trait SanitizesScalarFields {
 		}
 
 		if ( is_string( $value ) ) {
-			return sanitize_text_field( $value );
+			$clean = sanitize_text_field( $value );
+			return '' === $clean ? null : $clean;
 		}
 
 		if ( is_int( $value ) || is_float( $value ) ) {
@@ -70,12 +64,9 @@ trait SanitizesScalarFields {
 	}
 
 	/**
-	 * Read an integer field, dropping a non-integer value.
-	 *
-	 * Whole numbers (int, integer-valued float, or numeric string) are cast to int; null
-	 * passes through. A fractional or non-numeric value is dropped to null and logged as an
-	 * error rather than silently truncated, and forwarded for visibility. The value itself
-	 * is never logged — only the field name and its type.
+	 * Read an integer field. A whole number (int, integer-valued float, or numeric string) is
+	 * cast to int; a fractional or non-numeric value is dropped to null and logged rather than
+	 * silently truncated. The value itself is never logged.
 	 *
 	 * @param array<string, mixed> $data  Raw fields.
 	 * @param string               $field Field name to read and sanitize.
@@ -136,12 +127,8 @@ trait SanitizesScalarFields {
 	}
 
 	/**
-	 * Read an enum field, returning it only when it is a string in the allowed set.
-	 *
-	 * An absent (null) value is silent. A provided value outside the allowed set is dropped
-	 * to null and logged as a warning, forwarded for visibility — so an unmapped gateway
-	 * value surfaces instead of disappearing. The value itself is never logged, only the
-	 * field name.
+	 * Read an enum field, returning it only when it is a string in the allowed set. A provided
+	 * value outside the set is dropped to null and logged; an absent value is silent.
 	 *
 	 * @param array<string, mixed> $data    Raw fields.
 	 * @param string               $field   Field name to read and validate.
@@ -172,11 +159,33 @@ trait SanitizesScalarFields {
 	}
 
 	/**
-	 * Log that a provided field value was dropped, forwarded for visibility.
+	 * Read a currency field, normalizing it to an ISO-4217 (three-letter, uppercase) code.
+	 * A provided value that is not a valid code is dropped to null and logged.
 	 *
-	 * The value itself is never logged — only the field name and a short reason — so no
-	 * payment data or PII is emitted. Callers should only log a value that was actually
-	 * provided; an absent (null) field is normal and stays silent.
+	 * @param array<string, mixed> $data  Raw fields.
+	 * @param string               $field Field name to read.
+	 * @return ?string
+	 */
+	private static function sanitize_currency_code( array $data, string $field ): ?string {
+		$raw = $data[ $field ] ?? null;
+		if ( null === $raw ) {
+			return null;
+		}
+
+		if ( is_string( $raw ) ) {
+			$candidate = strtoupper( trim( $raw ) );
+			if ( (bool) preg_match( '/^[A-Z]{3}$/', $candidate ) ) {
+				return $candidate;
+			}
+		}
+
+		self::log_dropped_field( $field, 'not a valid ISO-4217 currency' );
+		return null;
+	}
+
+	/**
+	 * Log that a provided field value was dropped (field name and reason only, never the value).
+	 * Callers should only log a value that was actually provided; an absent field stays silent.
 	 *
 	 * @param string $field  Field name.
 	 * @param string $reason Short reason the value was dropped.
