@@ -47,18 +47,14 @@ trait SanitizesScalarFields {
 		if ( is_int( $value ) || is_float( $value ) ) {
 			FraudProtectionController::log(
 				'warning',
-				sprintf( 'Coerced %s field "%s" from %s to string.', self::sanitized_dto_label(), $field, gettype( $value ) ),
-				array(),
-				true
+				sprintf( 'Coerced %s field "%s" from %s to string.', self::sanitized_dto_label(), $field, gettype( $value ) )
 			);
 			return (string) $value;
 		}
 
 		FraudProtectionController::log(
 			'error',
-			sprintf( 'Dropped %s field "%s" with unsupported type %s.', self::sanitized_dto_label(), $field, gettype( $value ) ),
-			array(),
-			true
+			sprintf( 'Dropped %s field "%s" with unsupported type %s.', self::sanitized_dto_label(), $field, gettype( $value ) )
 		);
 		return null;
 	}
@@ -85,9 +81,7 @@ trait SanitizesScalarFields {
 
 		FraudProtectionController::log(
 			'error',
-			sprintf( 'Dropped %s field "%s" with a non-integer value (%s).', self::sanitized_dto_label(), $field, gettype( $value ) ),
-			array(),
-			true
+			sprintf( 'Dropped %s field "%s" with a non-integer value (%s).', self::sanitized_dto_label(), $field, gettype( $value ) )
 		);
 		return null;
 	}
@@ -151,9 +145,7 @@ trait SanitizesScalarFields {
 
 		FraudProtectionController::log(
 			'warning',
-			sprintf( 'Dropped %s field "%s" with an unrecognized value.', self::sanitized_dto_label(), $field ),
-			array(),
-			true
+			sprintf( 'Dropped %s field "%s" with an unrecognized value.', self::sanitized_dto_label(), $field )
 		);
 		return null;
 	}
@@ -194,9 +186,7 @@ trait SanitizesScalarFields {
 	private static function log_dropped_field( string $field, string $reason ): void {
 		FraudProtectionController::log(
 			'warning',
-			sprintf( 'Dropped %s field "%s" (%s).', self::sanitized_dto_label(), $field, $reason ),
-			array(),
-			true
+			sprintf( 'Dropped %s field "%s" (%s).', self::sanitized_dto_label(), $field, $reason )
 		);
 	}
 

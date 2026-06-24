@@ -398,9 +398,7 @@ class ReportContextData {
 		if ( null !== $raw ) {
 			FraudProtectionController::log(
 				'warning',
-				sprintf( 'Report context field "%s" was not a valid UTC ISO 8601 time; using the current time.', $field ),
-				array(),
-				true
+				sprintf( 'Report context field "%s" was not a valid UTC ISO 8601 time; using the current time.', $field )
 			);
 		}
 
