@@ -158,6 +158,11 @@ class ApiClient {
 	 * @return bool True if report was sent successfully, false otherwise.
 	 */
 	public function report( string $session_id, array $payload ): bool {
+		// Prune null/empty context values before sending, mirroring verify().
+		if ( isset( $payload['context'] ) && is_array( $payload['context'] ) ) {
+			$payload['context'] = $this->filter_empty_values( $payload['context'] );
+		}
+
 		FraudProtectionController::log(
 			'info',
 			'Reporting event to Blackbox API',
