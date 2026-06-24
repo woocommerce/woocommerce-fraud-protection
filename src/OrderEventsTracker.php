@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -40,35 +42,29 @@ class OrderEventsTracker {
 	}
 
 	/**
-	 * Report events to the Blackbox API.
+	 * Report a normalized payment-outcome event to the Blackbox API.
 	 *
-	 * Called by the global `wc_fraud_protection_report()` function.
+	 * Called by the global `wc_fraud_protection_report()` function. The plugin sends only
+	 * the normalized `context`, enriched with order-derived gateway and order ID.
+	 *
 	 * Must be called after the session ID has been persisted to order meta
 	 * (i.e. after `woocommerce_store_api_checkout_order_processed`).
 	 *
 	 * @internal
-	 * @param \WC_Order $order  The order to report on.
-	 * @param string    $source The source of the event. Use ApiClient::REPORT_SOURCE_* constants.
-	 * @param string    $status The status of the event. Use ApiClient::REPORT_STATUS_GOOD or ApiClient::REPORT_STATUS_BAD.
-	 * @param string    $notes  The notes of the event.
+	 * @param \WC_Order         $order   The order to report on.
+	 * @param string            $source  The source of the event. Use ApiClient::REPORT_SOURCE_* constants; an unknown value defaults to REPORT_SOURCE_API.
+	 * @param ReportContextData $context The normalized event context.
+	 * @param string            $notes   Free-form notes. Must not contain raw gateway or customer data.
 	 */
-	public function fraud_protection_report( \WC_Order $order, string $source, string $status, string $notes ): void {
+	public function fraud_protection_report( \WC_Order $order, string $source, ReportContextData $context, string $notes = '' ): void {
 		$session_id = '';
 		try {
 			if ( ! in_array( $source, ApiClient::VALID_REPORT_SOURCES, true ) ) {
 				FraudProtectionController::log(
 					'warning',
-					sprintf( 'Invalid report source "%s", skipping report.', $source )
+					sprintf( 'Unknown report source "%s", defaulting to "%s".', $source, ApiClient::REPORT_SOURCE_API )
 				);
-				return;
-			}
-
-			if ( ! in_array( $status, ApiClient::VALID_REPORT_STATUSES, true ) ) {
-				FraudProtectionController::log(
-					'warning',
-					sprintf( 'Invalid report status "%s", skipping report.', $status )
-				);
-				return;
+				$source = ApiClient::REPORT_SOURCE_API;
 			}
 
 			$session_id = $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY );
@@ -80,12 +76,14 @@ class OrderEventsTracker {
 				return;
 			}
 
+			$context = $context->with_order_defaults( $order->get_id(), $order->get_payment_method() );
+
 			$this->api_client->report(
 				$session_id,
 				array(
-					'label'  => $status,
-					'source' => $source,
-					'notes'  => sanitize_text_field( $notes ),
+					'source'  => $source,
+					'notes'   => sanitize_text_field( $notes ),
+					'context' => $context->to_array(),
 				)
 			);
 		} catch ( \Throwable $e ) {

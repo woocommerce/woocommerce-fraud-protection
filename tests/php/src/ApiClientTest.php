@@ -467,6 +467,62 @@ class ApiClientTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * Test report strips null/empty context values, mirroring verify().
+	 *
+	 * @testdox report() strips null and empty-string values from context, preserving zero and top-level fields
+	 */
+	public function test_report_filters_empty_values_in_context(): void {
+		$captured_body = null;
+
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args ) use ( &$captured_body ) {
+				unset( $preempt );
+				$captured_body = json_decode( $args['body'], true );
+				return array(
+					'response' => array( 'code' => 200 ),
+					'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
+				);
+			},
+			10,
+			2
+		);
+
+		$this->sut->report(
+			'test-session-id',
+			array(
+				'source'  => 'chargeback',
+				'notes'   => '',
+				'context' => array(
+					'type'               => 'dispute',
+					'result'             => 'lost',
+					'amount_minor_units' => 0,
+					'reason'             => null,
+					'amount_currency'    => null,
+					'instrument'         => array(
+						'bin'   => '424242',
+						'last4' => null,
+					),
+				),
+			)
+		);
+
+		$context = $captured_body['context'];
+
+		// Null/empty context values are stripped; a real zero amount survives.
+		$this->assertSame( 'dispute', $context['type'] );
+		$this->assertSame( 0, $context['amount_minor_units'] );
+		$this->assertArrayNotHasKey( 'reason', $context );
+		$this->assertArrayNotHasKey( 'amount_currency', $context );
+		$this->assertSame( '424242', $context['instrument']['bin'] );
+		$this->assertArrayNotHasKey( 'last4', $context['instrument'] );
+
+		// Top-level report fields are not filtered.
+		$this->assertSame( 'chargeback', $captured_body['source'] );
+		$this->assertSame( '', $captured_body['notes'] );
+	}
+
+	/**
 	 * Test report returns true on success.
 	 *
 	 * @testdox report() returns true on success

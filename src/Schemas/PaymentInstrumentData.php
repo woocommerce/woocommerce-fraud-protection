@@ -20,6 +20,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class PaymentInstrumentData {
 
+	use SanitizesScalarFields;
+
 	/**
 	 * Verification check passed — the value matches what the issuer has on file.
 	 */
@@ -162,28 +164,31 @@ class PaymentInstrumentData {
 	/**
 	 * Create from an associative array.
 	 *
-	 * Keys correspond to property names. Missing keys default to null.
-	 * Unrecognized keys are silently ignored.
+	 * Keys correspond to property names. Missing keys default to null, and unrecognized
+	 * keys are ignored. Each value is sanitized defensively so a malformed one never
+	 * reaches the strict constructor: a wrongly-typed value is coerced where it can be
+	 * (a scalar to string) or dropped to null, and either case is logged so a
+	 * misbehaving integration surfaces instead of failing silently.
 	 *
 	 * @param array $data Instrument fields.
 	 * @return self
 	 */
 	public static function from_array( array $data = array() ): self {
 		return new self(
-			$data['brand'] ?? null,
-			$data['funding'] ?? null,
-			$data['last4'] ?? null,
-			$data['fingerprint'] ?? null,
-			$data['country'] ?? null,
-			isset( $data['exp_month'] ) ? (int) $data['exp_month'] : null,
-			isset( $data['exp_year'] ) ? (int) $data['exp_year'] : null,
-			$data['billing_postcode'] ?? null,
-			$data['wallet'] ?? null,
-			$data['bank_code'] ?? null,
-			$data['bin'] ?? null,
-			$data['cvc_check'] ?? null,
-			$data['avs_address_check'] ?? null,
-			$data['avs_postcode_check'] ?? null
+			self::sanitize_string_field( $data, 'brand' ),
+			self::sanitize_string_field( $data, 'funding' ),
+			self::sanitize_string_field( $data, 'last4' ),
+			self::sanitize_string_field( $data, 'fingerprint' ),
+			self::sanitize_string_field( $data, 'country' ),
+			self::sanitize_int_field( $data, 'exp_month' ),
+			self::sanitize_int_field( $data, 'exp_year' ),
+			self::sanitize_string_field( $data, 'billing_postcode' ),
+			self::sanitize_string_field( $data, 'wallet' ),
+			self::sanitize_string_field( $data, 'bank_code' ),
+			self::sanitize_string_field( $data, 'bin' ),
+			self::sanitize_enum( $data, 'cvc_check', self::VALID_CHECK_RESULTS ),
+			self::sanitize_enum( $data, 'avs_address_check', self::VALID_CHECK_RESULTS ),
+			self::sanitize_enum( $data, 'avs_postcode_check', self::VALID_CHECK_RESULTS )
 		);
 	}
 
@@ -232,25 +237,9 @@ class PaymentInstrumentData {
 		$this->wallet             = $wallet;
 		$this->bank_code          = $bank_code;
 		$this->bin                = $bin;
-		$this->cvc_check          = self::sanitize_check( $cvc_check );
-		$this->avs_address_check  = self::sanitize_check( $avs_address_check );
-		$this->avs_postcode_check = self::sanitize_check( $avs_postcode_check );
-	}
-
-	/**
-	 * Sanitize a verification check result.
-	 *
-	 * Returns null for unrecognized values to avoid blocking on unknown results.
-	 *
-	 * @param ?string $value The check result to sanitize.
-	 * @return ?string A valid check constant, or null.
-	 */
-	private static function sanitize_check( ?string $value ): ?string {
-		if ( null === $value || in_array( $value, self::VALID_CHECK_RESULTS, true ) ) {
-			return $value;
-		}
-
-		return null;
+		$this->cvc_check          = $cvc_check;
+		$this->avs_address_check  = $avs_address_check;
+		$this->avs_postcode_check = $avs_postcode_check;
 	}
 
 	/**
