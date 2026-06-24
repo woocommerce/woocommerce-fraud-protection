@@ -288,6 +288,39 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox A non-refusal payment result carries no reason even when one is supplied.
+	 * @dataProvider non_refusal_payment_result_data
+	 *
+	 * @param string $result A payment result that is not a refusal.
+	 */
+	public function test_non_refusal_payment_has_no_reason( string $result ): void {
+		$context = ReportContextData::from_array(
+			array(
+				'type'   => 'payment',
+				'result' => $result,
+				'reason' => 'incorrect_cvc',
+			)
+		);
+
+		$this->assertInstanceOf( ReportContextData::class, $context );
+		$this->assertNull( $context->to_array()['reason'], 'refusal reasons only accompany a declined or blocked payment' );
+	}
+
+	/**
+	 * Payment results that are not refusals, so they never carry a refusal reason.
+	 *
+	 * @return array<string, array{0: string}>
+	 */
+	public function non_refusal_payment_result_data(): array {
+		return array(
+			'captured'        => array( 'captured' ),
+			'authorized'      => array( 'authorized' ),
+			'voided'          => array( 'voided' ),
+			'review_rejected' => array( 'review_rejected' ),
+		);
+	}
+
+	/**
 	 * @testdox liability_shift round-trips for valid values and is omitted otherwise.
 	 */
 	public function test_liability_shift_round_trips_and_rejects_invalid(): void {

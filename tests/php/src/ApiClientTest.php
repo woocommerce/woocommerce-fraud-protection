@@ -519,7 +519,7 @@ class ApiClientTest extends WC_Unit_Test_Case {
 
 		// Top-level report fields are not filtered.
 		$this->assertSame( 'chargeback', $captured_body['source'] );
-		$this->assertArrayHasKey( 'notes', $captured_body );
+		$this->assertSame( '', $captured_body['notes'] );
 	}
 
 	/**

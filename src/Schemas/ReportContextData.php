@@ -297,7 +297,7 @@ class ReportContextData {
 		return new self(
 			$type,
 			$result,
-			self::resolve_reason( $data, $type ),
+			self::resolve_reason( $data, $type, $result ),
 			self::sanitize_enum( $data, 'liability_shift', self::VALID_LIABILITY_SHIFTS ),
 			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
 			self::sanitize_string_field( $data, 'amount_currency' ),
@@ -358,22 +358,32 @@ class ReportContextData {
 	/**
 	 * Resolve the normalized reason for the event.
 	 *
-	 * Refunds carry no reason. Payments and disputes map the caller-supplied value against
-	 * the allowed set and return null when it does not map; there is no catch-all fallback,
-	 * and an unmapped value is omitted rather than skipping the report.
+	 * Refunds carry no reason. A payment reason is a decline/refusal code, so it is resolved only
+	 * for a declined or blocked result — a captured, voided, or review-resolved payment carries no
+	 * reason. Disputes map their reason for any result. The caller-supplied value is matched against
+	 * the allowed set and dropped to null when it does not map; there is no catch-all fallback, and
+	 * an unmapped value is omitted rather than skipping the report.
 	 *
-	 * @param array<string, mixed> $data Raw fields.
-	 * @param string               $type Event phase.
+	 * @param array<string, mixed> $data   Raw fields.
+	 * @param string               $type   Event phase.
+	 * @param string               $result Outcome within the phase; gates payment reasons to refusals.
 	 * @return ?string Normalized reason, or null when unmapped or not applicable.
 	 */
-	private static function resolve_reason( array $data, string $type ): ?string {
+	private static function resolve_reason( array $data, string $type, string $result ): ?string {
 		if ( self::TYPE_REFUND === $type ) {
 			return null;
 		}
 
-		$allowed = self::TYPE_DISPUTE === $type ? ReportReason::DISPUTE_REASONS : ReportReason::PAYMENT_REFUSAL_REASONS;
+		if ( self::TYPE_PAYMENT === $type ) {
+			$refusals = array( ReportResult::PAYMENT_DECLINED, ReportResult::PAYMENT_BLOCKED );
+			if ( ! in_array( $result, $refusals, true ) ) {
+				return null;
+			}
 
-		return self::sanitize_enum( $data, 'reason', $allowed );
+			return self::sanitize_enum( $data, 'reason', ReportReason::PAYMENT_REFUSAL_REASONS );
+		}
+
+		return self::sanitize_enum( $data, 'reason', ReportReason::DISPUTE_REASONS );
 	}
 
 	/**
