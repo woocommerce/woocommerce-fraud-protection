@@ -151,6 +151,34 @@ trait SanitizesScalarFields {
 	}
 
 	/**
+	 * Read a date field as an immutable DateTime, falling back to the current time.
+	 *
+	 * A DateTimeInterface is captured as a DateTimeImmutable so a later mutation of a caller's
+	 * \DateTime cannot change the holder; the consumer formats it at serialization. Anything else
+	 * falls back to now; a provided non-DateTime value is logged so a misbehaving integration surfaces.
+	 *
+	 * @param array<string, mixed> $data  Raw fields.
+	 * @param string               $field Field name to read.
+	 * @return \DateTimeImmutable
+	 */
+	private static function sanitize_date( array $data, string $field ): \DateTimeImmutable {
+		$raw = $data[ $field ] ?? null;
+
+		if ( $raw instanceof \DateTimeInterface ) {
+			return $raw instanceof \DateTimeImmutable ? $raw : new \DateTimeImmutable( '@' . $raw->getTimestamp() );
+		}
+
+		if ( null !== $raw ) {
+			FraudProtectionController::log(
+				'warning',
+				sprintf( '%s field "%s" was not a DateTime; using the current time.', self::sanitized_dto_label(), $field )
+			);
+		}
+
+		return new \DateTimeImmutable();
+	}
+
+	/**
 	 * Log that a provided field value was dropped (field name and reason only, never the value).
 	 * Callers should only log a value that was actually provided; an absent field stays silent.
 	 *

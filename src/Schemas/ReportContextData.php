@@ -139,11 +139,11 @@ class ReportContextData {
 	private ?string $amount_currency;
 
 	/**
-	 * Best known event time in UTC ISO 8601. Always set.
+	 * Best known event time. Rendered to UTC ISO 8601 at serialization. Always set.
 	 *
-	 * @var string
+	 * @var \DateTimeImmutable
 	 */
-	private string $occurred_at;
+	private \DateTimeImmutable $occurred_at;
 
 	/**
 	 * WooCommerce gateway ID. May be empty until enriched from the order.
@@ -212,7 +212,7 @@ class ReportContextData {
 	 * @param ?string                $liability_shift                    3DS/SCA liability outcome.
 	 * @param ?int                   $amount_minor_units                 Amount in minor units.
 	 * @param ?string                $amount_currency                    ISO-4217 currency.
-	 * @param string                 $occurred_at                        UTC ISO 8601 event time.
+	 * @param \DateTimeImmutable     $occurred_at                        Best known event time.
 	 * @param string                 $gateway                            Woo gateway ID.
 	 * @param ?int                   $correlation_order_id               Woo order ID.
 	 * @param ?string                $correlation_transaction_id         Provider transaction ID.
@@ -229,7 +229,7 @@ class ReportContextData {
 		?string $liability_shift,
 		?int $amount_minor_units,
 		?string $amount_currency,
-		string $occurred_at,
+		\DateTimeImmutable $occurred_at,
 		string $gateway,
 		?int $correlation_order_id,
 		?string $correlation_transaction_id,
@@ -257,14 +257,15 @@ class ReportContextData {
 	}
 
 	/**
-	 * Build a context from the JSON-shaped array.
+	 * Build a context from an array of report field values.
 	 *
-	 * Sanitizes enums and resolves `reason`. Returns null — and logs — only when `type`
-	 * or `result` cannot be mapped. `reason` is optional everywhere (sent when mapped,
-	 * omitted otherwise); a non-empty value that fails to map is logged. `instrument`
-	 * and `liability_shift` are optional context.
+	 * Most fields are scalars; `occurred_at` is a `DateTimeInterface` and `instrument` a nested
+	 * array. Sanitizes enums and resolves `reason`. Returns null — and logs — only when `type`
+	 * or `result` cannot be mapped. `reason` is optional everywhere (sent when mapped, omitted
+	 * otherwise); a non-empty value that fails to map is logged. `instrument` and `liability_shift`
+	 * are optional context.
 	 *
-	 * @param array<string, mixed> $data Context fields in the API shape.
+	 * @param array<string, mixed> $data Report field values keyed by field name.
 	 * @return ?self The context, or null when it cannot be reported.
 	 */
 	public static function from_array( array $data ): ?self {
@@ -300,7 +301,7 @@ class ReportContextData {
 			self::sanitize_enum( $data, 'liability_shift', self::VALID_LIABILITY_SHIFTS ),
 			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
 			self::sanitize_string_field( $data, 'amount_currency' ),
-			self::normalize_occurred_at( $data, 'occurred_at' ),
+			self::sanitize_date( $data, 'occurred_at' ),
 			self::sanitize_string_field( $data, 'gateway' ) ?? '',
 			self::sanitize_positive_int( $data, 'correlation_order_id' ),
 			self::sanitize_string_field( $data, 'correlation_transaction_id' ),
@@ -340,14 +341,16 @@ class ReportContextData {
 	 * Serialize to the API `context` shape: a fixed, flat field set with null for any value
 	 * that did not resolve — the verify-side convention, so Blackbox parses one stable shape.
 	 *
-	 * The property names are the wire keys, so the body derives from the object's own
-	 * properties; only `schema_version` (a constant) and `instrument` (nested) are special-cased.
+	 * The property names are the wire keys, so the body derives from the object's own properties;
+	 * `schema_version` (a constant), `occurred_at` (a DateTime rendered to UTC ISO 8601) and
+	 * `instrument` (nested) are special-cased.
 	 *
 	 * @return array<string, mixed>
 	 */
 	public function to_array(): array {
-		$context               = array( 'schema_version' => self::SCHEMA_VERSION ) + get_object_vars( $this );
-		$context['instrument'] = null !== $this->instrument ? $this->instrument->to_array() : null;
+		$context                = array( 'schema_version' => self::SCHEMA_VERSION ) + get_object_vars( $this );
+		$context['occurred_at'] = gmdate( \DateTimeInterface::RFC3339, $this->occurred_at->getTimestamp() );
+		$context['instrument']  = null !== $this->instrument ? $this->instrument->to_array() : null;
 
 		return $context;
 	}
@@ -371,38 +374,6 @@ class ReportContextData {
 		$allowed = self::TYPE_DISPUTE === $type ? ReportReason::DISPUTE_REASONS : ReportReason::PAYMENT_REFUSAL_REASONS;
 
 		return self::sanitize_enum( $data, 'reason', $allowed );
-	}
-
-	/**
-	 * Normalize a time field to UTC ISO 8601, falling back to now.
-	 *
-	 * @param array<string, mixed> $data  Raw fields.
-	 * @param string               $field Field name to read.
-	 * @return string UTC ISO 8601 timestamp.
-	 */
-	private static function normalize_occurred_at( array $data, string $field ): string {
-		$raw = $data[ $field ] ?? null;
-		// Only trust ISO-8601-style input; reject relative ("now") and "@unix" forms.
-		$candidate = is_string( $raw ) ? trim( $raw ) : '';
-		if ( (bool) preg_match( '/^\d{4}-\d{2}-\d{2}([T ].+)?$/', $candidate ) ) {
-			try {
-				$parsed = new \DateTimeImmutable( $candidate );
-				return $parsed->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d\TH:i:s\Z' );
-			} catch ( \Exception $e ) {
-				// Fall through to now.
-				unset( $e );
-			}
-		}
-
-		// A provided value that could not be normalized falls back to now; log so it surfaces.
-		if ( null !== $raw ) {
-			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Report context field "%s" was not a valid UTC ISO 8601 time; using the current time.', $field )
-			);
-		}
-
-		return gmdate( 'Y-m-d\TH:i:s\Z' );
 	}
 
 	/**

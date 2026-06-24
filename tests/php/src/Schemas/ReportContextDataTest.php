@@ -32,7 +32,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 				'liability_shift'            => 'shifted',
 				'amount_minor_units'         => 9900,
 				'amount_currency'            => 'USD',
-				'occurred_at'                => '2026-06-03T12:00:00Z',
+				'occurred_at'                => new \DateTimeImmutable( '2026-06-03T12:00:00Z' ),
 				'gateway'                    => 'woocommerce_payments',
 				'correlation_order_id'       => 12345,
 				'correlation_transaction_id' => 'ch_3N',
@@ -50,7 +50,7 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 				'liability_shift'                    => 'shifted',
 				'amount_minor_units'                 => 9900,
 				'amount_currency'                    => 'USD',
-				'occurred_at'                        => '2026-06-03T12:00:00Z',
+				'occurred_at'                        => '2026-06-03T12:00:00+00:00',
 				'gateway'                            => 'woocommerce_payments',
 				'correlation_order_id'               => 12345,
 				'correlation_transaction_id'         => 'ch_3N',
@@ -538,19 +538,34 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox occurred_at is normalized to UTC; a missing value falls back to now.
+	 * @testdox occurred_at takes a DateTime rendered to UTC at to_array; a non-DateTime falls back to now.
 	 */
-	public function test_occurred_at_normalized_and_falls_back(): void {
+	public function test_occurred_at_takes_datetime_and_falls_back(): void {
+		// A DateTime in a non-UTC zone renders as the equivalent UTC instant.
 		$with_offset = ReportContextData::from_array(
 			array(
 				'type'        => 'payment',
 				'result'      => 'captured',
-				'occurred_at' => '2026-06-03T12:00:00+02:00',
+				'occurred_at' => new \DateTimeImmutable( '2026-06-03T12:00:00+02:00' ),
 			)
 		);
 		$this->assertInstanceOf( ReportContextData::class, $with_offset );
-		$this->assertSame( '2026-06-03T10:00:00Z', $with_offset->to_array()['occurred_at'] );
+		$this->assertSame( '2026-06-03T10:00:00+00:00', $with_offset->to_array()['occurred_at'] );
 
+		// A mutable DateTime is accepted and snapshotted: mutating the source afterward must not change the DTO.
+		$source  = new \DateTime( '2026-06-03T12:00:00Z' );
+		$mutable = ReportContextData::from_array(
+			array(
+				'type'        => 'payment',
+				'result'      => 'captured',
+				'occurred_at' => $source,
+			)
+		);
+		$this->assertInstanceOf( ReportContextData::class, $mutable );
+		$source->modify( '+10 days' );
+		$this->assertSame( '2026-06-03T12:00:00+00:00', $mutable->to_array()['occurred_at'] );
+
+		// A missing value falls back to now (UTC ISO 8601), silently.
 		$without = ReportContextData::from_array(
 			array(
 				'type'   => 'payment',
@@ -559,40 +574,25 @@ class ReportContextDataTest extends WC_Unit_Test_Case {
 		);
 		$this->assertInstanceOf( ReportContextData::class, $without );
 		$this->assertMatchesRegularExpression(
-			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/',
+			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/',
 			$without->to_array()['occurred_at'],
 			'A missing occurred_at should fall back to a UTC ISO 8601 timestamp'
 		);
 
-		$non_iso = ReportContextData::from_array(
+		// A non-DateTime value (e.g. a string) is not trusted: it falls back to now and is logged.
+		$non_datetime = ReportContextData::from_array(
 			array(
 				'type'        => 'payment',
 				'result'      => 'captured',
-				'occurred_at' => '@1700000000',
+				'occurred_at' => '2026-06-03T12:00:00Z',
 			)
 		);
-		$this->assertInstanceOf( ReportContextData::class, $non_iso );
-		$this->assertStringStartsNotWith(
-			'2023-',
-			$non_iso->to_array()['occurred_at'],
-			'A non-ISO "@unix" string should fall back to now, not parse to its 2023 value'
-		);
-
-		// Date-shaped but unparseable: matches the regex, then DateTimeImmutable throws,
-		// exercising the catch / fall-back-to-now branch.
-		$unparseable = ReportContextData::from_array(
-			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'occurred_at' => '2026-13-45T99:99:99',
-			)
-		);
-		$this->assertInstanceOf( ReportContextData::class, $unparseable );
+		$this->assertInstanceOf( ReportContextData::class, $non_datetime );
 		$this->assertMatchesRegularExpression(
-			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/',
-			$unparseable->to_array()['occurred_at'],
-			'A date-shaped but unparseable string should fall back to a UTC timestamp via the catch branch'
+			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/',
+			$non_datetime->to_array()['occurred_at']
 		);
+		$this->assertLogged( 'warning', 'ReportContextData field "occurred_at" was not a DateTime; using the current time.' );
 	}
 
 	/**
