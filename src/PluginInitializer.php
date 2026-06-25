@@ -28,6 +28,19 @@ defined( 'ABSPATH' ) || exit;
 class PluginInitializer {
 
 	/**
+	 * Minimum WooCommerce version this plugin supports.
+	 *
+	 * Mirrors the `WC requires at least` header in the plugin main file. As an
+	 * MU-plugin this bypasses WordPress's plugin-dependency enforcement, so the
+	 * requirement is also enforced at runtime in {@see on_woocommerce_loaded()}.
+	 * 
+	 * Before WooCommerce 9.5 the built-in DI container required explicit class
+	 * registration, and thus the class resolutions in on_woocommerce_loaded
+	 * would fail.
+	 */
+	private const MINIMUM_WC_VERSION = '9.5.0';
+
+	/**
 	 * Bootstrap the plugin at load time (before WooCommerce loads).
 	 * Must be executed from the plugin main file.
 	 *
@@ -58,6 +71,12 @@ class PluginInitializer {
 	 * @return void
 	 */
 	public static function on_woocommerce_loaded(): void {
+		if ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, self::MINIMUM_WC_VERSION, '<' ) ) {
+			$found_version = defined( 'WC_VERSION' ) ? WC_VERSION : 'unknown';
+			error_log( 'WooCommerce Fraud Protection: requires WooCommerce ' . self::MINIMUM_WC_VERSION . ' or later (found ' . $found_version . '); initialization skipped.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
+			return;
+		}
+
 		// PSR-4 autoloader: classes are loaded lazily on first use.
 		$autoload = WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
 		if ( ! is_readable( $autoload ) ) {
