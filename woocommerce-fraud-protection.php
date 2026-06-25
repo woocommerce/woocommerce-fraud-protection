@@ -12,14 +12,9 @@
 
 declare( strict_types = 1 );
 
-use Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat;
-use Automattic\WooCommerce\FraudProtection\Compat\PayPalPaymentDataCompat;
-use Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat;
-use Automattic\WooCommerce\FraudProtection\Compat\StripePaymentDataCompat;
-use Automattic\WooCommerce\FraudProtection\Compat\SubscriptionsChangePaymentCompat;
-use Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionController;
 use Automattic\WooCommerce\FraudProtection\OrderEventsTracker;
+use Automattic\WooCommerce\FraudProtection\PluginInitializer;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 
 defined( 'ABSPATH' ) || exit;
@@ -29,38 +24,8 @@ if ( defined( 'WC_FRAUD_PROTECTION_DISABLED' ) && WC_FRAUD_PROTECTION_DISABLED )
 	return;
 }
 
-define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.3' );
-define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', __DIR__ );
-define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-
-// Force-disable WC Core's built-in fraud protection feature to prevent
-// session and script conflicts with this plugin's implementation.
-add_filter( 'woocommerce_feature_fraud_protection_enabled', '__return_false', 999 );
-
-// Bootstrap after WooCommerce loads (MU-plugins load before regular plugins).
-add_action(
-	'woocommerce_loaded',
-	function () {
-		// PSR-4 autoloader: classes are loaded lazily on first use.
-		$autoload = WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
-		if ( ! is_readable( $autoload ) ) {
-			// vendor/ missing (broken build / partial deploy). Bail before touching any namespaced class.
-			error_log( 'WooCommerce Fraud Protection: autoloader is not readable at ' . $autoload ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
-			return;
-		}
-		require_once $autoload;
-
-		$container = wc_get_container();
-
-		$container->get( FraudProtectionController::class )->register();
-		$container->get( StripePaymentDataCompat::class )->register();
-		$container->get( SquarePaymentDataCompat::class )->register();
-		$container->get( PayPalPaymentDataCompat::class )->register();
-		$container->get( WooPaymentsPaymentDataCompat::class )->register();
-		$container->get( PayPalCompat::class )->register();
-		$container->get( SubscriptionsChangePaymentCompat::class )->register();
-	}
-);
+require_once __DIR__ . '/src/PluginInitializer.php';
+PluginInitializer::run( __FILE__ );
 
 /**
  * Report a normalized payment-outcome event to the Blackbox API.
