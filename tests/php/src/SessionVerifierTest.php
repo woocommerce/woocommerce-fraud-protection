@@ -16,14 +16,14 @@ use Automattic\WooCommerce\FraudProtection\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\VerifyResult;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the SessionVerifier class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\SessionVerifier
  */
-class SessionVerifierTest extends WC_Unit_Test_Case {
+class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 	use LoggerSpyTrait;
 

@@ -12,14 +12,14 @@ use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the PayPalCompat class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\PayPalCompat
  */
-class PayPalCompatTest extends WC_Unit_Test_Case {
+class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

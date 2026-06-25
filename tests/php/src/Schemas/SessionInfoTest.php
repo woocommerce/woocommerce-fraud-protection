@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Schemas\SessionInfo;
 
 /**
@@ -14,7 +15,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\SessionInfo;
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\SessionInfo
  */
-class SessionInfoTest extends \WC_Unit_Test_Case {
+class SessionInfoTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Test session ID.

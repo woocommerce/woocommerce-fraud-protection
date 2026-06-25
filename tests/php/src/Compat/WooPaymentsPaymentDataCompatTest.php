@@ -10,7 +10,7 @@ namespace Automattic\WooCommerce\FraudProtection\Compat;
 use Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub WooPayments classes if not loaded. Tests inject API mocks via \WC_Payments::set_api_client().
 if ( ! class_exists( '\WC_Payments', false ) ) {
@@ -92,7 +92,7 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\WooPaymentsPaymentDataCompat
  */
-class WooPaymentsPaymentDataCompatTest extends WC_Unit_Test_Case {
+class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

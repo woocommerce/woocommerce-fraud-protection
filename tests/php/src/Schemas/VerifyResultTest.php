@@ -8,14 +8,14 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\ApiClient;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the VerifyResult value object.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\VerifyResult
  */
-class VerifyResultTest extends WC_Unit_Test_Case {
+class VerifyResultTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox create() exposes the decision and session ID via getters

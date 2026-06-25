@@ -4,12 +4,13 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Tests\src\Logging;
 
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Logging\LogContextSanitizer;
 
 /**
  * Tests for {@see LogContextSanitizer}.
  */
-class LogContextSanitizerTest extends \WC_Unit_Test_Case {
+class LogContextSanitizerTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Empty context should return an empty string.

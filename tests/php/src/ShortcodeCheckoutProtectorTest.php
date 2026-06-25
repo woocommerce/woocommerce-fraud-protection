@@ -12,14 +12,14 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\ShortcodeCheckoutProtector;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the ShortcodeCheckoutProtector class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\ShortcodeCheckoutProtector
  */
-class ShortcodeCheckoutProtectorTest extends WC_Unit_Test_Case {
+class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Schemas\CartItem;
 
 /**
@@ -14,7 +15,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\CartItem;
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\CartItem
  */
-class CartItemTest extends \WC_Unit_Test_Case {
+class CartItemTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Runs before each test.

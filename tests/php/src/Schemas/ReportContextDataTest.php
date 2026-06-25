@@ -8,15 +8,15 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
-use WC_Unit_Test_Case;
 
 /**
  * Tests for the ReportContextData class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData
  */
-class ReportContextDataTest extends WC_Unit_Test_Case {
+class ReportContextDataTest extends FraudProtectionUnitTestCase {
 
 	use LoggerSpyTrait;
 

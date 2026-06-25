@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Schemas\OrderData;
 
 /**
@@ -14,7 +15,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\OrderData;
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\OrderData
  */
-class OrderDataTest extends \WC_Unit_Test_Case {
+class OrderDataTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Runs before each test.

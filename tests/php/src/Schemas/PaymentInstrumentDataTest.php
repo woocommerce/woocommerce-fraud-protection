@@ -8,15 +8,15 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
-use WC_Unit_Test_Case;
 
 /**
  * Tests for the PaymentInstrumentData class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData
  */
-class PaymentInstrumentDataTest extends WC_Unit_Test_Case {
+class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 
 	use LoggerSpyTrait;
 

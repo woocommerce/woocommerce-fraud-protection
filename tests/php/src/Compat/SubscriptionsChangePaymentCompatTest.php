@@ -11,14 +11,14 @@ use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionNotice;
 use Automattic\WooCommerce\FraudProtection\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the SubscriptionsChangePaymentCompat class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\SubscriptionsChangePaymentCompat
  */
-class SubscriptionsChangePaymentCompatTest extends WC_Unit_Test_Case {
+class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

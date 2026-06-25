@@ -233,9 +233,40 @@ install_dummy_gateway() {
 	fi
 }
 
+overlay_wc_test_framework() {
+	# The WooCommerce plugin distributed on wordpress.org (and its git tag
+	# archives) excludes the test framework: WooCommerce marks tests/ as
+	# export-ignore in .gitattributes. Our PHPUnit bootstrap requires that
+	# framework, so pull just the tests/ tree from the matching source tag with a
+	# shallow, sparse, blobless clone (git clone ignores export-ignore) and
+	# overlay it onto the installed plugin.
+	local wc_plugin_dir="$WP_CORE_DIR/wp-content/plugins/woocommerce"
+
+	if [ -f "$wc_plugin_dir/tests/legacy/framework/class-wc-unit-test-case.php" ]; then
+		# Already a source checkout that ships tests/; nothing to overlay.
+		return
+	fi
+
+	local wc_version
+	wc_version=$(wp plugin get woocommerce --field=version 2>/dev/null || echo "")
+	if [ -z "$wc_version" ]; then
+		echo "Could not determine installed WooCommerce version; cannot overlay test framework." >&2
+		exit 1
+	fi
+
+	local src_dir="$TMPDIR/woocommerce-src"
+	echo "Overlaying WooCommerce $wc_version test framework from source..."
+	rm -rf "$src_dir"
+	git clone --quiet --depth 1 --branch "$wc_version" --filter=blob:none --sparse \
+		https://github.com/woocommerce/woocommerce.git "$src_dir"
+	git -C "$src_dir" sparse-checkout set plugins/woocommerce/tests
+	cp -r "$src_dir/plugins/woocommerce/tests" "$wc_plugin_dir/"
+}
+
 install_wp
 install_db
 configure_wp
 install_test_suite
 install_woocommerce
+overlay_wc_test_framework
 install_dummy_gateway

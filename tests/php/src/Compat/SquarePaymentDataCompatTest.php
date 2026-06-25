@@ -10,7 +10,7 @@ namespace Automattic\WooCommerce\FraudProtection\Compat;
 use Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub wc_square() in the global namespace if not loaded.
 require_once __DIR__ . '/../../stubs/wc-square.php';
@@ -20,7 +20,7 @@ require_once __DIR__ . '/../../stubs/wc-square.php';
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Compat\SquarePaymentDataCompat
  */
-class SquarePaymentDataCompatTest extends WC_Unit_Test_Case {
+class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.

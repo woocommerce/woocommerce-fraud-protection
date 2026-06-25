@@ -23,10 +23,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Minimum supported versions
+          # Minimum supported versions. WC 10.6.0 is the floor: its test
+          # framework is the first to ship LoggerSpyTrait, which the suite uses.
           - php: '7.4'
             wp: '6.8'
-            wc: '10.4.0'
+            wc: '10.6.0'
           # Latest PHP with latest WP/WC
           - php: '8.5'
             wp: 'latest'
@@ -34,7 +35,7 @@ jobs:
           # WooCommerce L-1 (previous stable)
           - php: '8.5'
             wp: 'latest'
-            wc: '10.4.0'
+            wc: '10.6.0'
 
     services:
       mysql:

@@ -4,6 +4,8 @@
  * Description: A plugin to protect WooCommerce from fraud.
  * Version: 0.1.3
  * Author: Automattic
+ * Requires Plugins: woocommerce
+ * WC requires at least: 8.5.0
  *
  * @package WooCommerce\FraudProtection
  */
@@ -149,7 +151,7 @@ add_action(
  * @param string             $notes   Free-form notes. Must not contain raw gateway or customer data.
  */
 function wc_fraud_protection_report( \WC_Order $order, string $source, ?ReportContextData $context, string $notes = '' ): void {
-	if ( ! function_exists( 'WC' ) ) {
+	if ( ! function_exists( 'WC' ) || ! function_exists( 'wc_get_container' ) ) {
 		return;
 	}
 

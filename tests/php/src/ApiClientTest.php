@@ -9,7 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal;
 
 use Automattic\WooCommerce\FraudProtection\ApiClient;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use WP_Error;
 
 /**
@@ -19,7 +19,7 @@ use WP_Error;
  * - verify(): Verify a session and get a fraud decision (allow/block)
  * - report(): Report fraud events for feedback
  */
-class ApiClientTest extends WC_Unit_Test_Case {
+class ApiClientTest extends FraudProtectionUnitTestCase {
 
 	use LoggerSpyTrait;
 

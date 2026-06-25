@@ -9,14 +9,14 @@ namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
-use WC_Unit_Test_Case;
+use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the PaymentMethodData class.
  *
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData
  */
-class PaymentMethodDataTest extends WC_Unit_Test_Case {
+class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox Constructor sets all properties; to_array() returns correct values.
