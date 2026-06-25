@@ -19,8 +19,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * Fail-open: verify_session() never throws. All internal errors (payment
  * data resolution, API call, decision handler) result in an ALLOW decision.
- *
- * @internal
  */
 class SessionVerifier {
 
