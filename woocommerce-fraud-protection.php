@@ -5,7 +5,7 @@
  * Version: 0.1.3
  * Author: Automattic
  * Requires Plugins: woocommerce
- * WC requires at least: 8.5.0
+ * WC requires at least: 9.5.0
  *
  * @package WooCommerce\FraudProtection
  */
