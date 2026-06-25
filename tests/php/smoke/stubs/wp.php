@@ -39,9 +39,16 @@ if ( ! function_exists( 'add_filter' ) ) {
 
 if ( ! function_exists( 'do_action' ) ) {
 	function do_action( $hook, ...$args ) {
+		$GLOBALS['wfp_smoke_did_action'][ $hook ] = ( $GLOBALS['wfp_smoke_did_action'][ $hook ] ?? 0 ) + 1;
 		foreach ( $GLOBALS['wfp_smoke_hooks'][ $hook ] ?? array() as $callback ) {
 			$callback( ...$args );
 		}
+	}
+}
+
+if ( ! function_exists( 'did_action' ) ) {
+	function did_action( $hook ) {
+		return $GLOBALS['wfp_smoke_did_action'][ $hook ] ?? 0;
 	}
 }
 
