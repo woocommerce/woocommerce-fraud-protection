@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\Jetpack\Connection\Client as Jetpack_Connection_Client;
+use Automattic\WooCommerce\FraudProtection\Schemas\VerifyResult;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -77,26 +78,6 @@ class ApiClient {
 	);
 
 	/**
-	 * Report status: good outcome.
-	 */
-	public const REPORT_STATUS_GOOD = 'good';
-
-	/**
-	 * Report status: bad outcome.
-	 */
-	public const REPORT_STATUS_BAD = 'bad';
-
-	/**
-	 * Valid report status values.
-	 *
-	 * @var array<string>
-	 */
-	public const VALID_REPORT_STATUSES = array(
-		self::REPORT_STATUS_GOOD,
-		self::REPORT_STATUS_BAD,
-	);
-
-	/**
 	 * Report source: chargeback event.
 	 */
 	public const REPORT_SOURCE_CHARGEBACK = 'chargeback';
@@ -130,9 +111,9 @@ class ApiClient {
 	 *
 	 * @param string               $session_id Session ID to verify.
 	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
-	 * @return string Decision: "allow" or "block".
+	 * @return VerifyResult The decision, the Blackbox session ID (generated server-side on the no-session path), and the risk score.
 	 */
-	public function verify( string $session_id, array $context ): string {
+	public function verify( string $session_id, array $context ): VerifyResult {
 		$payload = array( 'context' => $this->filter_empty_values( $context ) );
 
 		// No-session case: send visitor_ip and full_headers at top level.
@@ -177,6 +158,11 @@ class ApiClient {
 	 * @return bool True if report was sent successfully, false otherwise.
 	 */
 	public function report( string $session_id, array $payload ): bool {
+		// Prune null/empty context values before sending, mirroring verify().
+		if ( isset( $payload['context'] ) && is_array( $payload['context'] ) ) {
+			$payload['context'] = $this->filter_empty_values( $payload['context'] );
+		}
+
 		FraudProtectionController::log(
 			'info',
 			'Reporting event to Blackbox API',
@@ -223,9 +209,9 @@ class ApiClient {
 	 * @param array<string, mixed>|\WP_Error $response   API response or WP_Error.
 	 * @param array<string, mixed>           $event_data Event data for logging.
 	 * @param string                         $session_id Session ID associated with the request, included in log context for cross-system tracing.
-	 * @return string Decision: "allow" or "block".
+	 * @return VerifyResult The decision plus any Blackbox session ID returned in the response.
 	 */
-	private function process_decision_response( $response, array $event_data, string $session_id ): string {
+	private function process_decision_response( $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
 			$error_data = $response->get_error_data() ?? array();
 			$error_data = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
@@ -246,7 +232,7 @@ class ApiClient {
 				),
 				true
 			);
-			return self::DECISION_ALLOW;
+			return VerifyResult::create( self::DECISION_ALLOW, '' );
 		}
 
 		$decision = $this->extract_decision( $response );
@@ -264,7 +250,7 @@ class ApiClient {
 				),
 				true
 			);
-			return self::DECISION_ALLOW;
+			return VerifyResult::create( self::DECISION_ALLOW, '' );
 		}
 
 		if ( ! in_array( $decision, self::VALID_DECISIONS, true ) ) {
@@ -284,7 +270,7 @@ class ApiClient {
 				),
 				true
 			);
-			return self::DECISION_ALLOW;
+			return VerifyResult::create( self::DECISION_ALLOW, '' );
 		}
 
 		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
@@ -299,7 +285,11 @@ class ApiClient {
 			array( 'response' => $response )
 		);
 
-		return $decision;
+		return VerifyResult::create(
+			$decision,
+			$this->extract_session_id( $response ),
+			$this->extract_risk_score( $response )
+		);
 	}
 
 	/**
@@ -407,6 +397,42 @@ class ApiClient {
 
 		if ( is_array( $data ) && isset( $data['decision'] ) && is_string( $data['decision'] ) ) {
 			return \strtolower( $data['decision'] );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Extract the Blackbox session ID from the verify response.
+	 *
+	 * Response format: { "data": { "session_id": "...", ... } }
+	 *
+	 * @param array<string, mixed> $response Parsed JSON response.
+	 * @return string The session ID, or empty string if not present.
+	 */
+	private function extract_session_id( array $response ): string {
+		$data = $response['data'] ?? null;
+
+		if ( is_array( $data ) && isset( $data['session_id'] ) && is_string( $data['session_id'] ) ) {
+			return $data['session_id'];
+		}
+
+		return '';
+	}
+
+	/**
+	 * Extract the Blackbox risk score from the verify response.
+	 *
+	 * Response format: { "data": { "risk_score": 0.40, ... } }
+	 *
+	 * @param array<string, mixed> $response Parsed JSON response.
+	 * @return ?float The risk score, or null if absent or non-numeric.
+	 */
+	private function extract_risk_score( array $response ): ?float {
+		$data = $response['data'] ?? null;
+
+		if ( is_array( $data ) && isset( $data['risk_score'] ) && is_numeric( $data['risk_score'] ) ) {
+			return (float) $data['risk_score'];
 		}
 
 		return null;

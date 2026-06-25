@@ -159,7 +159,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 	}
 
 	/**
@@ -178,7 +178,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
+		$this->assertSame( ApiClient::DECISION_BLOCK, $result->get_decision() );
 	}
 
 	/**
@@ -191,7 +191,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
@@ -208,7 +208,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '', $result->get_session_id() );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
 
@@ -228,7 +229,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
 
@@ -248,7 +249,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
@@ -268,7 +269,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '', $result->get_session_id() );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
 
@@ -288,7 +290,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 
@@ -375,6 +377,59 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 	/*
 	|--------------------------------------------------------------------------
+	| Session ID capture tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox verify() captures the Blackbox-generated session ID on the no-session path
+	 */
+	public function test_verify_captures_generated_session_id_for_no_session(): void {
+		add_filter(
+			'pre_http_request',
+			fn() => array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode(
+					array(
+						'message' => 'OK',
+						'data'    => array(
+							'session_id' => '82vHd2iPY4JvJZQE-A6jHg',
+							'risk_score' => 0.4033,
+							'decision'   => 'allow',
+						),
+					)
+				),
+			)
+		);
+
+		$result = $this->sut->verify( '', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '82vHd2iPY4JvJZQE-A6jHg', $result->get_session_id() );
+		$this->assertSame( 0.4033, $result->get_risk_score() );
+	}
+
+	/**
+	 * @testdox verify() returns an empty session ID when the response omits one
+	 */
+	public function test_verify_returns_empty_session_id_when_absent(): void {
+		add_filter(
+			'pre_http_request',
+			fn() => array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
+			)
+		);
+
+		$result = $this->sut->verify( '', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( '', $result->get_session_id() );
+		$this->assertNull( $result->get_risk_score() );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
 	| report() Tests
 	|--------------------------------------------------------------------------
 	*/
@@ -409,6 +464,62 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
 		$this->assertArrayNotHasKey( 'context', $captured_body );
 		$this->assertSame( 'payment_success', $captured_body['event_type'] );
+	}
+
+	/**
+	 * Test report strips null/empty context values, mirroring verify().
+	 *
+	 * @testdox report() strips null and empty-string values from context, preserving zero and top-level fields
+	 */
+	public function test_report_filters_empty_values_in_context(): void {
+		$captured_body = null;
+
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args ) use ( &$captured_body ) {
+				unset( $preempt );
+				$captured_body = json_decode( $args['body'], true );
+				return array(
+					'response' => array( 'code' => 200 ),
+					'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
+				);
+			},
+			10,
+			2
+		);
+
+		$this->sut->report(
+			'test-session-id',
+			array(
+				'source'  => 'chargeback',
+				'notes'   => '',
+				'context' => array(
+					'type'               => 'dispute',
+					'result'             => 'lost',
+					'amount_minor_units' => 0,
+					'reason'             => null,
+					'amount_currency'    => null,
+					'instrument'         => array(
+						'bin'   => '424242',
+						'last4' => null,
+					),
+				),
+			)
+		);
+
+		$context = $captured_body['context'];
+
+		// Null/empty context values are stripped; a real zero amount survives.
+		$this->assertSame( 'dispute', $context['type'] );
+		$this->assertSame( 0, $context['amount_minor_units'] );
+		$this->assertArrayNotHasKey( 'reason', $context );
+		$this->assertArrayNotHasKey( 'amount_currency', $context );
+		$this->assertSame( '424242', $context['instrument']['bin'] );
+		$this->assertArrayNotHasKey( 'last4', $context['instrument'] );
+
+		// Top-level report fields are not filtered.
+		$this->assertSame( 'chargeback', $captured_body['source'] );
+		$this->assertSame( '', $captured_body['notes'] );
 	}
 
 	/**

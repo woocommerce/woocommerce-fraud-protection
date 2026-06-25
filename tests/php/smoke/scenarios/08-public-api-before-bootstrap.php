@@ -38,7 +38,9 @@ wfp_smoke_assert(
 
 // Call the public API before bootstrap. With wc_get_container() undefined the
 // function must bail silently; reaching the assertion below proves it did not fatal.
-wc_fraud_protection_report( new WC_Order(), 'test-source', 'good', 'smoke-test' );
+// A null context is passed because the namespaced ReportContextData class is not
+// loadable pre-bootstrap; the guard bails before the context is ever inspected.
+wc_fraud_protection_report( new WC_Order(), 'test-source', null, 'smoke-test' );
 
 // The container is unavailable, so the function short-circuits at its guard
 // before touching any namespaced class: no defensive autoload happens.
