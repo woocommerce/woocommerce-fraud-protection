@@ -52,7 +52,7 @@ class FraudProtectionReporter {
 	 *
 	 * @return void
 	 */
-	public function run( \WC_Order $order, string $source, ?ReportContextData $context, string $notes = '' ): void {
+	public function report( \WC_Order $order, string $source, ?ReportContextData $context, string $notes = '' ): void {
 		if ( ! FraudProtectionController::feature_is_enabled() ) {
 			return;
 		}
