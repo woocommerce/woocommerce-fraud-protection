@@ -76,7 +76,7 @@ Bump the version, build the plugin zip, ship a release PR, and create a GitHub R
 
 9. **Open a release PR** (do NOT push the bump commit directly to `trunk`):
    - Create branch `release/<version>` from `trunk`.
-   - Commit the bump with title `Fraud Protection: Bump version to <version>` (stage only `woocommerce-fraud-protection.php`, `package.json`, `changelog.txt` - never `sdd/`).
+   - Commit the bump with title `Fraud Protection: Bump version to <version>` (stage only `woocommerce-fraud-protection.php`, `src/PluginInitializer.php`, `package.json`, `changelog.txt` - never `sdd/`).
    - `git push -u origin release/<version>`.
    - Open PR with `gh pr create --base trunk --head release/<version>` including the changelog bullets in the body and a short test plan.
    - Hand the PR URL to the user and wait for them to merge it (CI must be green first).
