@@ -25,8 +25,8 @@ global $post, $wp;
 $post = null;
 $wp   = (object) array( 'query_vars' => array() );
 
-$session_manager = new \Automattic\WooCommerce\FraudProtection\SessionClearanceManager();
-$handler         = new \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler();
+$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager();
+$handler         = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler();
 $handler->init( $session_manager );
 
 // Pre-fix this fatals on \WC_Blocks_Utils::has_block_in_page().

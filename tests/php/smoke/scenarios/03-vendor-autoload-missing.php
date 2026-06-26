@@ -26,9 +26,9 @@ define( 'WC_VERSION', '9.5.0' );
 
 $tmp = sys_get_temp_dir() . '/wfp-smoke-no-vendor-' . uniqid();
 mkdir( $tmp );
-mkdir( $tmp . '/src' );
+mkdir( $tmp . '/src/Internal/FraudProtectionPlugin', 0777, true );
 copy( dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection.php', $tmp . '/woocommerce-fraud-protection.php' );
-copy( dirname( __DIR__, 4 ) . '/src/PluginInitializer.php', $tmp . '/src/PluginInitializer.php' );
+copy( dirname( __DIR__, 4 ) . '/src/Internal/FraudProtectionPlugin/PluginInitializer.php', $tmp . '/src/Internal/FraudProtectionPlugin/PluginInitializer.php' );
 
 $error_log_path = wfp_smoke_capture_errors();
 
@@ -45,7 +45,7 @@ wfp_smoke_assert(
 do_action( 'woocommerce_loaded' );
 
 wfp_smoke_assert(
-	! class_exists( 'Automattic\WooCommerce\FraudProtection\FraudProtectionController', false ),
+	! class_exists( 'Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController', false ),
 	'Bootstrap must bail without loading any component class when autoload is missing.'
 );
 
