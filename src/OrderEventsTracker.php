@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
  * Tracks order lifecycle events and reports them to the Blackbox API.
  *
  * 3rd-party plugins report events by resolving `FraudProtectionReporter` from
- * `wc_get_container()` and calling its `run()` method, which delegates to this class.
+ * `wc_get_container()` and calling its `report()` method, which delegates to this class.
  *
  * Fire-and-forget: failures are logged but never affect the order flow.
  *
@@ -44,7 +44,7 @@ class OrderEventsTracker {
 	/**
 	 * Report a normalized payment-outcome event to the Blackbox API.
 	 *
-	 * Called by `FraudProtectionReporter::run()`. The plugin sends only the
+	 * Called by `FraudProtectionReporter::report()`. The plugin sends only the
 	 * normalized `context`, enriched with order-derived gateway and order ID.
 	 *
 	 * Must be called after the session ID has been persisted to order meta

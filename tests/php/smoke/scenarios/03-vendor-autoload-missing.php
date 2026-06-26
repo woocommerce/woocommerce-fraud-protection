@@ -19,6 +19,11 @@ declare( strict_types = 1 );
 
 require_once __DIR__ . '/../stubs/wp.php';
 
+// Model the realistic broken deploy: WooCommerce is loaded at a supported
+// version (so the minimum-version guard passes), but `composer install` never
+// ran, so vendor/ is absent. Without this, the version guard would bail first.
+define( 'WC_VERSION', '9.5.0' );
+
 $tmp = sys_get_temp_dir() . '/wfp-smoke-no-vendor-' . uniqid();
 mkdir( $tmp );
 mkdir( $tmp . '/src' );

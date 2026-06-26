@@ -33,7 +33,7 @@ class PluginInitializer {
 	 * Mirrors the `WC requires at least` header in the plugin main file. As an
 	 * MU-plugin this bypasses WordPress's plugin-dependency enforcement, so the
 	 * requirement is also enforced at runtime in {@see on_woocommerce_loaded()}.
-	 * 
+	 *
 	 * Before WooCommerce 9.5 the built-in DI container required explicit class
 	 * registration, and thus the class resolutions in on_woocommerce_loaded
 	 * would fail.
