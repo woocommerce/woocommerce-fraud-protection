@@ -53,3 +53,7 @@ npm run test:php -- --filter <ClassName>  # a single test class
 ```
 
 The test bootstrap locates WooCommerce automatically. To run against an existing WooCommerce checkout instead, set the `WC_DIR` environment variable to its plugin directory. That checkout must have its own dependencies installed: run `composer install` in the WooCommerce plugin directory, otherwise WooCommerce fails to load. (The `install-wp-tests.sh` setup above does not need this; it uses the prebuilt plugin from wordpress.org.)
+
+## Public API
+
+The public code API for this plugin consists of the `FraudProtectionReporter` class and the `SessionVerifier` class. Everything else is for internal usage within the plugin and not intended to be used by 3rd-party plugins.

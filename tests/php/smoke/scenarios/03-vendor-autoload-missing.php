@@ -5,9 +5,12 @@
  * If the Composer autoloader is missing on a broken deploy, the bootstrap
  * closure must bail cleanly instead of fatalling on a require_once miss.
  *
- * Strategy: copy the main plugin file to a temp dir without a vendor/
- * subdirectory, include from there so __DIR__ resolves to the temp dir,
- * then fire the woocommerce_loaded action.
+ * Strategy: copy the main plugin file (and the manually-required
+ * PluginInitializer, which the main file pulls in before the autoloader
+ * exists) to a temp dir without a vendor/ subdirectory, include from there so
+ * __DIR__ resolves to the temp dir, then fire the woocommerce_loaded action.
+ * This models the realistic broken deploy: `composer install` never ran, so
+ * vendor/ is absent but src/ is present.
  *
  * @package WooCommerce\FraudProtection\Tests\Smoke
  */
@@ -16,9 +19,16 @@ declare( strict_types = 1 );
 
 require_once __DIR__ . '/../stubs/wp.php';
 
+// Model the realistic broken deploy: WooCommerce is loaded at a supported
+// version (so the minimum-version guard passes), but `composer install` never
+// ran, so vendor/ is absent. Without this, the version guard would bail first.
+define( 'WC_VERSION', '9.5.0' );
+
 $tmp = sys_get_temp_dir() . '/wfp-smoke-no-vendor-' . uniqid();
 mkdir( $tmp );
+mkdir( $tmp . '/src' );
 copy( dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection.php', $tmp . '/woocommerce-fraud-protection.php' );
+copy( dirname( __DIR__, 4 ) . '/src/PluginInitializer.php', $tmp . '/src/PluginInitializer.php' );
 
 $error_log_path = wfp_smoke_capture_errors();
 
@@ -36,7 +46,7 @@ do_action( 'woocommerce_loaded' );
 
 wfp_smoke_assert(
 	! class_exists( 'Automattic\WooCommerce\FraudProtection\FraudProtectionController', false ),
-	'Bootstrap must bail without loading any namespaced class when autoload is missing.'
+	'Bootstrap must bail without loading any component class when autoload is missing.'
 );
 
 $logs = file_get_contents( $error_log_path );

@@ -2,8 +2,12 @@
 /**
  * PHPStan stub for plugin constants.
  *
- * These are defined via define() in woocommerce-fraud-protection.php with dynamic
- * values that PHPStan cannot resolve statically.
+ * These are defined via define() inside PluginInitializer::run(). Because the
+ * define() calls live in a method body (not at the top level of a scanned
+ * file) and carry runtime-dynamic values, PHPStan cannot discover them on its
+ * own, so they are declared here with placeholder string values.
  */
 
+define( 'WC_FRAUD_PROTECTION_VERSION', '' );
+define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', '' );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', '' );

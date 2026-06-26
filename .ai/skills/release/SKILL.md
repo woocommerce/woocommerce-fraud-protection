@@ -29,7 +29,7 @@ Bump the version, build the plugin zip, ship a release PR, and create a GitHub R
 
 3. **Bump version in three locations** (all must match the target version):
    - `woocommerce-fraud-protection.php` plugin header (`Version:`)
-   - `woocommerce-fraud-protection.php` constant (`WC_FRAUD_PROTECTION_VERSION`)
+   - `src/PluginInitializer.php` constant (`WC_FRAUD_PROTECTION_VERSION`, defined in `run()`)
    - `package.json` (`version`)
 
 4. **Apply changelog framing rules** to every candidate bullet. This is a public release; bullets must be appropriate for a public audience. Consult with the user before continuing.
@@ -63,9 +63,10 @@ Bump the version, build the plugin zip, ship a release PR, and create a GitHub R
      - `assets/js/*.js`
      - `src/**/*.php`
      - `vendor/autoload.php` and `vendor/composer/*` (PSR-4 autoloader; required at runtime - bootstrap requires it)
-   - Confirm the plugin file inside the zip has the new version:
+   - Confirm the plugin file and initializer inside the zip have the new version:
      ```
-     unzip -p woocommerce-fraud-protection.zip woocommerce-fraud-protection/woocommerce-fraud-protection.php | grep -E "Version:|WC_FRAUD_PROTECTION_VERSION"
+     unzip -p woocommerce-fraud-protection.zip woocommerce-fraud-protection/woocommerce-fraud-protection.php | grep "Version:"
+     unzip -p woocommerce-fraud-protection.zip woocommerce-fraud-protection/src/PluginInitializer.php | grep "WC_FRAUD_PROTECTION_VERSION"
      ```
    - Confirm the changelog inside the zip has the new entry at the top:
      ```
@@ -75,7 +76,7 @@ Bump the version, build the plugin zip, ship a release PR, and create a GitHub R
 
 9. **Open a release PR** (do NOT push the bump commit directly to `trunk`):
    - Create branch `release/<version>` from `trunk`.
-   - Commit the bump with title `Fraud Protection: Bump version to <version>` (stage only `woocommerce-fraud-protection.php`, `package.json`, `changelog.txt` - never `sdd/`).
+   - Commit the bump with title `Fraud Protection: Bump version to <version>` (stage only `woocommerce-fraud-protection.php`, `src/PluginInitializer.php`, `package.json`, `changelog.txt` - never `sdd/`).
    - `git push -u origin release/<version>`.
    - Open PR with `gh pr create --base trunk --head release/<version>` including the changelog bullets in the body and a short test plan.
    - Hand the PR URL to the user and wait for them to merge it (CI must be green first).

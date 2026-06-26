@@ -21,7 +21,7 @@ defined( 'ABSPATH' ) || exit;
  * `reason` and the optional blocks are best-effort.
  *
  * Unlike the other schema DTOs, this is public surface: it is the context type accepted
- * by `wc_fraud_protection_report()`, so integrations construct it via `from_array()`. It
+ * by `FraudProtectionReporter::report()`, so integrations construct it via `from_array()`. It
  * is therefore not marked `@internal`.
  */
 class ReportContextData {
