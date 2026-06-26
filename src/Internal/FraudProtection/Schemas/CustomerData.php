@@ -14,8 +14,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * Customer name is available via billing_address.first_name / last_name
  * and is not duplicated here.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CustomerData {
 

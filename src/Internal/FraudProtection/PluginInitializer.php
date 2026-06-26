@@ -22,8 +22,6 @@ defined( 'ABSPATH' ) || exit;
  * Defines the runtime constants, forces off WooCommerce Core's built-in fraud
  * protection, and once WooCommerce has loaded, wires every component through
  * WooCommerce's dependency injection container.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class PluginInitializer {
 
@@ -43,8 +41,6 @@ class PluginInitializer {
 	/**
 	 * Bootstrap the plugin at load time (before WooCommerce loads).
 	 * Must be executed from the plugin main file.
-	 *
-	 * @internal
 	 *
 	 * @param string $plugin_file Absolute path to the plugin's main file (pass `__FILE__`).
 	 *

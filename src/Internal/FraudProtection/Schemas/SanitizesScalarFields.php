@@ -18,8 +18,6 @@ defined( 'ABSPATH' ) || exit;
  * Coercions and drops are logged (field name and type only, never the value) so a
  * misbehaving integration surfaces instead of failing silently. The log source is the
  * consuming class name.
- *
- * @internal
  */
 trait SanitizesScalarFields {
 

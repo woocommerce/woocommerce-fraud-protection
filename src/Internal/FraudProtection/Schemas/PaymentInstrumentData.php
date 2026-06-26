@@ -15,8 +15,6 @@ defined( 'ABSPATH' ) || exit;
  * Contains normalized information about the payment instrument (card, bank
  * account, etc.) resolved from gateway-specific payment data. Fields are
  * nullable — only those applicable to the instrument type are populated.
- *
- * @internal
  */
 class PaymentInstrumentData {
 

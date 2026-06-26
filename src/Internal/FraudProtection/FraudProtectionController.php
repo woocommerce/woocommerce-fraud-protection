@@ -18,8 +18,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * This class orchestrates all fraud protection components and ensures
  * zero-impact when the feature flag is disabled.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class FraudProtectionController /* implements RegisterHooksInterface */ {
 

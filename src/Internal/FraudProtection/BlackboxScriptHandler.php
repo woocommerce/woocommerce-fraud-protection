@@ -15,8 +15,6 @@ defined( 'ABSPATH' ) || exit;
  * Enqueues the external Blackbox JS SDK and a small initialization script
  * on checkout, pay-for-order, and add-payment-method pages. The init script
  * calls Blackbox.configure() with the site's API key and Jetpack blog ID.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class BlackboxScriptHandler {
 
@@ -84,6 +82,8 @@ class BlackboxScriptHandler {
 	 * pay-for-order, and add-payment-method pages.
 	 * Extensions can use the `woocommerce_fraud_protection_enqueue_blackbox_scripts`
 	 * filter to load scripts on additional pages (e.g., product pages for express payments).
+	 *
+	 * @internal
 	 *
 	 * @return void
 	 */

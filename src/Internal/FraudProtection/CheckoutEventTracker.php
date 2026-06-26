@@ -15,8 +15,6 @@ defined( 'ABSPATH' ) || exit;
  * This class provides methods to track both WooCommerce Blocks (Store API) and traditional
  * shortcode checkout events for fraud protection. Event-specific data is passed to the
  * SessionDataCollector which handles session data storage internally.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CheckoutEventTracker {
 	/**
@@ -40,7 +38,6 @@ class CheckoutEventTracker {
 	/**
 	 * Register checkout event tracking hooks.
 	 *
-	 * @internal
 	 * @return void
 	 */
 	public function register(): void {
@@ -263,8 +260,6 @@ class CheckoutEventTracker {
 	 *
 	 * Called when an order is successfully placed, with or without payment.
 	 * Works for both shortcode and Store API checkout flows.
-	 *
-	 * @internal
 	 *
 	 * @param int       $order_id The order ID.
 	 * @param \WC_Order $order    The order object.

@@ -19,8 +19,6 @@ defined( 'ABSPATH' ) || exit;
  * `wc_get_container()` and calling its `report()` method, which delegates to this class.
  *
  * Fire-and-forget: failures are logged but never affect the order flow.
- *
- * @internal
  */
 class OrderEventsTracker {
 
@@ -51,7 +49,6 @@ class OrderEventsTracker {
 	 * Must be called after the session ID has been persisted to order meta
 	 * (i.e. after `woocommerce_store_api_checkout_order_processed`).
 	 *
-	 * @internal
 	 * @param \WC_Order         $order   The order to report on.
 	 * @param string            $source  The source of the event. Use ApiClient::REPORT_SOURCE_* constants; an unknown value defaults to REPORT_SOURCE_API.
 	 * @param ReportContextData $context The normalized event context.

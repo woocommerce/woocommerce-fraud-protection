@@ -25,8 +25,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * Implements a fail-open pattern: falls back to the baseline (with just the
  * gateway ID) if resolution fails for any reason.
- *
- * @internal
  */
 class PaymentDataResolver {
 

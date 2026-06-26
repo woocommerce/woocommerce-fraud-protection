@@ -13,8 +13,6 @@ defined( 'ABSPATH' ) || exit;
  * Shared request data extraction for protectors and compat layers that read from $_POST.
  *
  * BlocksCheckoutProtector reads from WP_REST_Request and does not use this trait.
- *
- * @internal
  */
 trait ClassicFormDataExtractionTrait {
 

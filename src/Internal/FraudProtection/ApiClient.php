@@ -22,8 +22,6 @@ defined( 'ABSPATH' ) || exit;
  * This class implements a fail-open pattern: if the endpoint is unreachable,
  * times out, or returns an error, it returns an "allow" decision to ensure
  * legitimate transactions are never blocked due to service issues.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class ApiClient {
 

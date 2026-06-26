@@ -18,8 +18,6 @@ defined( 'ABSPATH' ) || exit;
  * PayPal does not expose structured card/instrument data, so this compat
  * only resolves the test/live transaction mode based on the gateway's
  * ConnectionState API.
- *
- * @internal
  */
 class PayPalPaymentDataCompat {
 
@@ -45,6 +43,8 @@ class PayPalPaymentDataCompat {
 
 	/**
 	 * Resolve PayPal payment data.
+	 *
+	 * @internal
 	 *
 	 * @param PaymentMethodData $resolved Previously resolved data.
 	 * @return PaymentMethodData Resolved data, or pass-through.

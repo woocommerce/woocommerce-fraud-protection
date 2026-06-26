@@ -18,8 +18,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * Extracts card details directly from the checkout payment field keys sent by the
  * Square gateway (no API call needed).
- *
- * @internal
  */
 class SquarePaymentDataCompat {
 
@@ -38,6 +36,8 @@ class SquarePaymentDataCompat {
 
 	/**
 	 * Resolve Square payment data.
+	 *
+	 * @internal
 	 *
 	 * @param PaymentMethodData $resolved               Previously resolved data.
 	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.

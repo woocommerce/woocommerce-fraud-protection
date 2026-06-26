@@ -18,8 +18,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * Handles multiple Stripe gateway IDs (stripe, stripe_sepa, stripe_ideal, etc.)
  * and uses the Stripe API to retrieve payment method details.
- *
- * @internal
  */
 class StripePaymentDataCompat {
 
@@ -45,6 +43,8 @@ class StripePaymentDataCompat {
 
 	/**
 	 * Resolve Stripe payment data.
+	 *
+	 * @internal
 	 *
 	 * @param PaymentMethodData $resolved               Previously resolved data.
 	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.

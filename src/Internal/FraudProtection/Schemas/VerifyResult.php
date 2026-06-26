@@ -11,8 +11,6 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Immutable result of a Blackbox `verify` call: decision, session ID, and risk score.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class VerifyResult {
 

@@ -15,8 +15,6 @@ defined( 'ABSPATH' ) || exit;
  * This class provides methods to track cart events (add, update, remove, restore)
  * for fraud protection. Event-specific data is passed
  * to the SessionDataCollector which handles session data storage internally.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CartEventTracker {
 
@@ -41,7 +39,6 @@ class CartEventTracker {
 	/**
 	 * Register all cart event tracking hooks.
 	 *
-	 * @internal
 	 * @return void
 	 */
 	public function register(): void {

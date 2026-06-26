@@ -21,8 +21,6 @@ defined( 'ABSPATH' ) || exit;
  *    to verify the session with Blackbox and block on BLOCK decisions.
  *
  * Fail-open: Delegated to SessionVerifier — all internal errors result in ALLOW.
- *
- * @internal
  */
 class ShortcodeCheckoutProtector {
 
@@ -67,8 +65,6 @@ class ShortcodeCheckoutProtector {
 	 * Register hooks for shortcode checkout fraud protection.
 	 *
 	 * Called from FraudProtectionController::on_init() when fraud protection is enabled.
-	 *
-	 * @internal
 	 *
 	 * @return void
 	 */

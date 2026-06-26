@@ -11,8 +11,6 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Immutable record object representing a single cart item.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class CartItem {
 

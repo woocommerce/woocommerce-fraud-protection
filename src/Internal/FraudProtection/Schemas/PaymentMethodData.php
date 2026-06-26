@@ -17,8 +17,6 @@ defined( 'ABSPATH' ) || exit;
  * Contains structured, normalized payment instrument data resolved from
  * gateway-specific raw payment data. Used in the fraud protection verify
  * payload for better risk assessment.
- *
- * @internal
  */
 class PaymentMethodData {
 

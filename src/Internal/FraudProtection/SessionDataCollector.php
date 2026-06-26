@@ -22,8 +22,6 @@ defined( 'ABSPATH' ) || exit;
  * required by the WPCOM fraud protection service. All data collection is designed to
  * degrade gracefully when fields are unavailable, ensuring checkout never fails due to
  * missing fraud protection data.
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class SessionDataCollector {
 

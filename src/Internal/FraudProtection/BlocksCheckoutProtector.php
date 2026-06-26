@@ -24,8 +24,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * All hooks fire within the same HTTP request, so request data is stored
  * as a class property (no WC session or DB storage needed).
- *
- * @internal
  */
 class BlocksCheckoutProtector {
 
@@ -86,8 +84,6 @@ class BlocksCheckoutProtector {
 	 * Register hooks for blocks checkout fraud protection.
 	 *
 	 * Called from FraudProtectionController::on_init() when fraud protection is enabled.
-	 *
-	 * @internal
 	 *
 	 * @return void
 	 */

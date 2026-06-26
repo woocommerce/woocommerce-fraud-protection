@@ -15,8 +15,6 @@ defined( 'ABSPATH' ) || exit;
  * This class is responsible for:
  * - Applying extension override filters for whitelisting
  * - Coordinating with SessionClearanceManager to apply decisions
- *
- * @internal This class is part of the internal API and is subject to change without notice.
  */
 class DecisionHandler {
 

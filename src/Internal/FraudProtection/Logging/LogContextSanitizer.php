@@ -41,8 +41,6 @@ defined( 'ABSPATH' ) || exit;
  * mind: only constant or low-cardinality categorical values, version
  * identifiers, internal correlation IDs, or structured exception fields
  * belong on the allowlist. Free-form user-supplied data does not.
- *
- * @internal
  */
 final class LogContextSanitizer {
 

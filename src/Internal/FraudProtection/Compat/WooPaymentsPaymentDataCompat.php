@@ -21,8 +21,6 @@ defined( 'ABSPATH' ) || exit;
  * payment details (card data, bank data, payment type) via the
  * WooPayments API. When WooPay is enabled, only transaction mode is
  * resolved because pm_ IDs are platform-scoped and unresolvable.
- *
- * @internal
  */
 class WooPaymentsPaymentDataCompat {
 
@@ -60,6 +58,8 @@ class WooPaymentsPaymentDataCompat {
 
 	/**
 	 * Resolve WooPayments payment data.
+	 *
+	 * @internal
 	 *
 	 * @param PaymentMethodData $resolved               Previously resolved data.
 	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.

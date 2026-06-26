@@ -24,8 +24,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * The JS fetch interceptor resets Blackbox after the CreateOrder fetch returns,
  * so subsequent payment attempts (retry, different method) get a fresh session.
- *
- * @internal
  */
 class PayPalCompat {
 
@@ -76,8 +74,6 @@ class PayPalCompat {
 
 	/**
 	 * Register hooks for PayPal express fraud protection.
-	 *
-	 * @internal
 	 *
 	 * @return void
 	 */
