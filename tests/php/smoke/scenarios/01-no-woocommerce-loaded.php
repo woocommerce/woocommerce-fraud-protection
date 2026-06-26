@@ -21,7 +21,7 @@ wfp_smoke_assert(
 );
 
 wfp_smoke_assert(
-	! class_exists( 'Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController', false ),
+	! class_exists( 'Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController', false ),
 	'FraudProtectionController must NOT be loaded before woocommerce_loaded fires.'
 );
 

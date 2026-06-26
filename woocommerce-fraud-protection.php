@@ -12,7 +12,7 @@
 
 declare( strict_types = 1 );
 
-use Automattic\WooCommerce\Internal\FraudProtection\PluginInitializer;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,5 +21,5 @@ if ( defined( 'WC_FRAUD_PROTECTION_DISABLED' ) && WC_FRAUD_PROTECTION_DISABLED )
 	return;
 }
 
-require_once __DIR__ . '/src/Internal/FraudProtection/PluginInitializer.php';
+require_once __DIR__ . '/src/Internal/FraudProtectionPlugin/PluginInitializer.php';
 PluginInitializer::run( __FILE__ );

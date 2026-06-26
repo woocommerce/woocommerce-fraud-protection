@@ -8,8 +8,8 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
-use Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtection\OrderEventsTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker;
 
 defined( 'ABSPATH' ) || exit;
 

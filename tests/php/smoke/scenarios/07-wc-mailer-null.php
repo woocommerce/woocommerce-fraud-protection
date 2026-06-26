@@ -32,9 +32,9 @@ if ( ! function_exists( 'WC' ) ) {
 	}
 }
 
-$session_manager = new \Automattic\WooCommerce\Internal\FraudProtection\SessionClearanceManager();
+$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager();
 
-$notice = new \Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice();
+$notice = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice();
 $notice->init( $session_manager );
 
 // Pre-fix this fatals on WC()->mailer()->get_from_address().

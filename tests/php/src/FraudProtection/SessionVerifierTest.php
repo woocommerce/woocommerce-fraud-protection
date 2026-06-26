@@ -7,14 +7,14 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\FraudProtection;
 
-use Automattic\WooCommerce\Internal\FraudProtection\ApiClient;
-use Automattic\WooCommerce\Internal\FraudProtection\DecisionHandler;
-use Automattic\WooCommerce\Internal\FraudProtection\PaymentDataResolver;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentInstrumentData;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\PaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtection\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtection\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 

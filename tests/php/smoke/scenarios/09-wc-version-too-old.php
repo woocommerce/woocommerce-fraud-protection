@@ -32,7 +32,7 @@ wfp_smoke_assert(
 do_action( 'woocommerce_loaded' );
 
 wfp_smoke_assert(
-	! class_exists( 'Automattic\WooCommerce\Internal\FraudProtection\FraudProtectionController', false ),
+	! class_exists( 'Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController', false ),
 	'Bootstrap must bail without loading any component class when WooCommerce is below the minimum version.'
 );
 

@@ -63,15 +63,17 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **Strict types**: All PHP files MUST declare `declare(strict_types=1)`.
 
-**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. To add a new component: (1) create the class in `src/Internal/FraudProtection/` (the default location for internal classes), (2) instantiate and call `init()` in the bootstrap closure, (3) add a typed property to `FraudProtectionController` + parameter to its `init()`, (4) call `$this->component->register()` in `on_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
+**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. To add a new component: (1) create the class in `src/Internal/FraudProtectionPlugin/` (the default location for internal classes), (2) instantiate and call `init()` in the bootstrap closure, (3) add a typed property to `FraudProtectionController` + parameter to its `init()`, (4) call `$this->component->register()` in `on_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
 
 **No short ternary**: The `?:` operator is disallowed by PHPCS (`Universal.Operators.DisallowShortTernary`). Always use full ternary `$x ? $x : $default`.
 
 **Autoloading**: PSR-4 autoloader via Composer (`vendor/autoload.php`), loaded inside the `woocommerce_loaded` callback. Classes are resolved lazily on first use — no manual `require_once` needed when adding new classes. Global public API functions (e.g. `wc_fraud_protection_report()`) are defined outside the callback but must guard against WooCommerce not being loaded (e.g. `function_exists( 'WC' )`) since the autoloader is only available after `woocommerce_loaded`.
 
-**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (`ReportContextData`, `ReportReason`, `ReportResult`). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtection\` (`src/Internal/FraudProtection/`) and carries an `@internal` class annotation.
+**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (`ReportContextData`, `ReportReason`, `ReportResult`). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` (`src/Internal/FraudProtectionPlugin/`) and carries an `@internal` class annotation.
 
-**Where to put a new class**: Put it in `src/FraudProtection/` (public) *only* when it is clearly intended to be part of the plugin's public code API — i.e. something third parties (e.g. payment gateways) are meant to call or construct directly. When that is not clearly the case, or whenever in doubt, put it in `src/Internal/FraudProtection/` instead. Internal is the default; moving a class from internal to public later is a safe, non-breaking change, whereas the reverse breaks consumers, so bias toward internal.
+> **Why `Internal\FraudProtectionPlugin` and not `Internal\FraudProtection`?** WooCommerce core itself shipped a built-in fraud-protection feature under `Automattic\WooCommerce\Internal\FraudProtection\` (added in WC 10.6.0, removed in 10.6.1); this plugin is its standalone successor. Reusing that exact namespace makes our classes collide with core's identically-named ones on WC versions that still ship them. The `Plugin` suffix is a deliberate, temporary disambiguation — **when this code is merged back into core, rename `Internal\FraudProtectionPlugin` → `Internal\FraudProtection`** (a single find/replace). The public `Automattic\WooCommerce\FraudProtection\` namespace does not collide and stays as-is.
+
+**Where to put a new class**: Put it in `src/FraudProtection/` (public) *only* when it is clearly intended to be part of the plugin's public code API — i.e. something third parties (e.g. payment gateways) are meant to call or construct directly. When that is not clearly the case, or whenever in doubt, put it in `src/Internal/FraudProtectionPlugin/` instead. Internal is the default; moving a class from internal to public later is a safe, non-breaking change, whereas the reverse breaks consumers, so bias toward internal.
 
 **i18n**: All user-facing text must be translatable. Text domain: `woocommerce-fraud-protection`. Log messages stay in English.
 
@@ -79,9 +81,9 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <message>[ <sanitized-json>] in <plugin-main-file> on line <code>`. The `PHP Warning:` prefix and the trailing `in <file> on line <N>` marker are required for the host's PHP-errors parser to map the entry to a structured record (`severity:"Warning"`, plus `file`/`kind`/`name`/`line`). App-level severity is encoded into the trailing `line` field per `FraudProtectionController::LEVEL_LINE_CODES` (warning -10, error -20, critical -30, alert -40, emergency -50), so `line:[-50 TO -10]` isolates our intentional emissions. The `<plugin-main-file>` path is a fixed plugin path - it does not point at the real call site - and is only there to keep `kind`/`name` stable for filtering.
 
-**Schema objects**: DTOs in `src/Internal/FraudProtection/Schemas/` (public report DTOs live in `src/FraudProtection/Schemas/`) use private constructors with static factory methods (`from_wc_customer_billing()`, `from_cart()`, `empty()`). Do NOT use `new` directly — factory methods also handle sanitization.
+**Schema objects**: DTOs in `src/Internal/FraudProtectionPlugin/Schemas/` (public report DTOs live in `src/FraudProtection/Schemas/`) use private constructors with static factory methods (`from_wc_customer_billing()`, `from_cart()`, `empty()`). Do NOT use `new` directly — factory methods also handle sanitization.
 
-**Compat layers**: Gateway compat classes in `src/Internal/FraudProtection/Compat/` follow a pass-through pattern: receive `$resolved` as first parameter, return it unchanged if the gateway doesn't match, only override on successful resolution. This allows chaining.
+**Compat layers**: Gateway compat classes in `src/Internal/FraudProtectionPlugin/Compat/` follow a pass-through pattern: receive `$resolved` as first parameter, return it unchanged if the gateway doesn't match, only override on successful resolution. This allows chaining.
 
 **Filter hooks**: Be judicious — once released, they must be maintained. Always validate filtered output and fall back to the original value on invalid data.
 
@@ -91,9 +93,9 @@ Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <m
 src/                                    PHP source; PSR-4 root Automattic\WooCommerce\ -> src/
 src/FraudProtection/                    Public API (FraudProtectionReporter, SessionVerifier)
 src/FraudProtection/Schemas/            Public DTOs (ReportContextData, ReportReason, ReportResult)
-src/Internal/FraudProtection/           Internal implementation (controller, trackers, protectors, ...)
-src/Internal/FraudProtection/Schemas/   Internal DTOs (Address, CartItem, OrderData, etc.)
-src/Internal/FraudProtection/Compat/    Payment gateway compatibility layers (Stripe, Square)
+src/Internal/FraudProtectionPlugin/           Internal implementation (controller, trackers, protectors, ...)
+src/Internal/FraudProtectionPlugin/Schemas/   Internal DTOs (Address, CartItem, OrderData, etc.)
+src/Internal/FraudProtectionPlugin/Compat/    Payment gateway compatibility layers (Stripe, Square)
 tests/php/                              PHPUnit tests (extend WC_Unit_Test_Case), mirrors src/ layout
 tests/js/                               Jest tests
 assets/js/                              JavaScript assets (checkout integration, blackbox init)
