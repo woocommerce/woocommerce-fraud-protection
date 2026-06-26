@@ -56,4 +56,6 @@ The test bootstrap locates WooCommerce automatically. To run against an existing
 
 ## Public API
 
-The public code API for this plugin consists of the `FraudProtectionReporter` class and the `SessionVerifier` class. Everything else is for internal usage within the plugin and not intended to be used by 3rd-party plugins.
+The public code API for this plugin consists of the classes inside the `src/FraudProtection/` directory (`Automattic\WooCommerce\FraudProtection` as the root namespace).
+
+All the code in the `src/Internal/` directory (`Automattic\WooCommerce\Internal` as the root namespace) is for **exclusive internal usage** of the plugin and **MUST NOT** be used by other plugins (or otherwise from outside of this plugin): backwards compatibility for this code across plugin versions is not guaranteed.
