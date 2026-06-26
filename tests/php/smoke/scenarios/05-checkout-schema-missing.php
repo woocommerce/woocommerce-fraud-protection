@@ -37,9 +37,9 @@ wfp_smoke_assert(
 // register() runs register_store_api_extension() unconditionally, which is the
 // path under test.
 $session_verifier       = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
-$blocked_session_notice = new \Automattic\WooCommerce\FraudProtection\BlockedSessionNotice();
+$blocked_session_notice = new \Automattic\WooCommerce\Internal\FraudProtection\BlockedSessionNotice();
 
-$protector = new \Automattic\WooCommerce\FraudProtection\BlocksCheckoutProtector();
+$protector = new \Automattic\WooCommerce\Internal\FraudProtection\BlocksCheckoutProtector();
 $protector->init( $session_verifier, $blocked_session_notice );
 $protector->register();
 
