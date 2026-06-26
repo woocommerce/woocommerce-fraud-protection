@@ -69,11 +69,13 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **Autoloading**: PSR-4 autoloader via Composer (`vendor/autoload.php`), loaded inside the `woocommerce_loaded` callback. Classes are resolved lazily on first use — no manual `require_once` needed when adding new classes. Global public API functions (e.g. `wc_fraud_protection_report()`) are defined outside the callback but must guard against WooCommerce not being loaded (e.g. `function_exists( 'WC' )`) since the autoloader is only available after `woocommerce_loaded`.
 
-**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (`ReportContextData`, `ReportReason`, `ReportResult`). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` (`src/Internal/FraudProtectionPlugin/`) and carries an `@internal` class annotation.
+**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (`ReportContextData`, `ReportReason`, `ReportResult`). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` (`src/Internal/FraudProtectionPlugin/`); the `Internal\` location alone marks a class as internal — internal classes do **not** carry a class-level `@internal` tag (see the `@internal` convention below).
 
 > **Why `Internal\FraudProtectionPlugin` and not `Internal\FraudProtection`?** WooCommerce core itself shipped a built-in fraud-protection feature under `Automattic\WooCommerce\Internal\FraudProtection\` (added in WC 10.6.0, removed in 10.6.1); this plugin is its standalone successor. Reusing that exact namespace makes our classes collide with core's identically-named ones on WC versions that still ship them. The `Plugin` suffix is a deliberate, temporary disambiguation — **when this code is merged back into core, rename `Internal\FraudProtectionPlugin` → `Internal\FraudProtection`** (a single find/replace). The public `Automattic\WooCommerce\FraudProtection\` namespace does not collide and stays as-is.
 
 **Where to put a new class**: Put it in `src/FraudProtection/` (public) *only* when it is clearly intended to be part of the plugin's public code API — i.e. something third parties (e.g. payment gateways) are meant to call or construct directly. When that is not clearly the case, or whenever in doubt, put it in `src/Internal/FraudProtectionPlugin/` instead. Internal is the default; moving a class from internal to public later is a safe, non-breaking change, whereas the reverse breaks consumers, so bias toward internal.
+
+**`@internal` annotations**: A class's `Internal\` namespace location is what marks it internal, so internal classes carry **no** class-level `@internal` tag (it would be redundant). Reserve `@internal` for `public` members that are public *only* for framework reasons and must not be called directly: WordPress hook callbacks (registered via `add_action`/`add_filter`/`add_shortcode`) and the `init()` DI method (the latter is also required by the `WooCommerce.Functions.InternalInjectionMethod` sniff). This applies in both namespaces — public classes under `src/FraudProtection/` likewise mark only their hook callbacks and `init()`, not the class itself.
 
 **i18n**: All user-facing text must be translatable. Text domain: `woocommerce-fraud-protection`. Log messages stay in English.
 
@@ -162,7 +164,7 @@ Keep the changes description concise but include the **why** and **how** behind 
 - [ ] Hook registration: First-party components via `FraudProtectionController::on_init()`; compat layers self-register with `feature_is_enabled()` guard
 - [ ] Filter validation: All filter outputs validated before use
 - [ ] Log messages: Using `FraudProtectionController::log()`, include filter/hook names
-- [ ] Annotations: `@internal` on new classes
+- [ ] Annotations: `@internal` on hook-callback methods and `init()` only — not on internal classes (the `Internal\` namespace marks those)
 - [ ] Tests: Integration-style where possible, hooks/options cleaned up in `tearDown()`
 - [ ] Linting passes for PHP and JS: `npm run lint`
 - [ ] PHP static analysis passes: `npm run phpstan`
