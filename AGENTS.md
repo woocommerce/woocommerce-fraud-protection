@@ -41,7 +41,13 @@ Prefer integration-style tests that exercise actual WooCommerce flows:
 - **REST API**: `rest_get_server()->dispatch()`
 - **Actions/output**: `do_action()` with `ob_start()`/`ob_get_clean()`
 
-Test cleanup in `tearDown()`: call `remove_all_actions()` / `remove_all_filters()` for any hooks added during the test. Call `delete_option()` for any WooCommerce options set. Use `LoggerSpyTrait` for asserting log messages with `assertLogged()`.
+**Isolate external dependencies and environment with mocks, not the filter pipeline.** When a test needs to control a collaborator or an external boundary (an HTTP/API call, a payment gateway, a third-party class), prefer a mock over hooking WordPress/WooCommerce filters. Two interchangeable forms:
+- **PHPUnit mock / partial mock** — stub a class's seam directly, e.g. `getMockBuilder( ApiClient::class )->onlyMethods( array( 'jetpack_remote_request' ) )` to fake the Blackbox transport instead of hooking `pre_http_request`.
+- **Dedicated test-double class + DI container replacement** — define a double under `tests/php/Support/` (e.g. `FraudProtectionControllerForTests`, `OrderEventsTrackerForTests`) and install it with `wc_get_container()->replace( SomeClass::class, $double )` so the system under test receives it via injection.
+
+This keeps tests independent of WP/WC plumbing (and of whether Jetpack is loaded), makes the replaced seam explicit, and leaves the surrounding logic (response parsing, decision handling) under test. Reserve filter hooks for tests that specifically assert a hook's or filter's own contract. When the production code lacks a seam, add one (a `protected` method to override, or a constructor/`init` collaborator) rather than reaching for a filter — see the `woocommerce_fraud_protection_api_request_callback` transport seam in `ApiClient`.
+
+Test cleanup in `tearDown()`: call `remove_all_actions()` / `remove_all_filters()` for any hooks added during the test. Call `delete_option()` for any WooCommerce options set. Assert log messages with `assertLogged()` against the in-memory controller spy that `FraudProtectionUnitTestCase` installs by default.
 
 If browser automation tools (e.g. Playwright MCP) are available, use them to verify changes on a test store. Ask the user for the store URL.
 
@@ -112,7 +118,7 @@ stubs/                                  PHPStan stubs for external dependencies
 
 The plugin bootstraps on the `woocommerce_loaded` action (not `plugins_loaded` — this is an MU-plugin) in `woocommerce-fraud-protection.php`. All classes are instantiated and wired there via `init()` calls. The main controller is `FraudProtectionController`, which orchestrates all components via its `register()` method.
 
-**Protector pattern**: `*Protector` classes (e.g. `BlocksCheckoutProtector`, `ShortcodeCheckoutProtector`) share the same shape — they take `SessionVerifier`, `BlockedSessionNotice`, and `PaymentDataResolver` via `init()`, hook a verification filter/action + a JS enqueue action in `register()`, and call `verify_and_block()` with fail-open try-catch blocks. Each defines a unique `SOURCE` constant (e.g. `'blocks_checkout'`) and has a companion JS file in `assets/js/` that gates form submission to acquire a session ID. New integrations should follow this pattern.
+**Protector pattern**: `*Protector` classes (e.g. `BlocksCheckoutProtector`, `ShortcodeCheckoutProtector`) share the same shape — they take `SessionVerifier` and `BlockedSessionNotice` via `init()`, hook a verification filter/action + a JS enqueue action in `register()`, and call `verify_and_block()` with fail-open try-catch blocks. Each defines a unique `SOURCE` constant (e.g. `'blocks_checkout'`) and has a companion JS file in `assets/js/` that gates form submission to acquire a session ID. New integrations should follow this pattern.
 
 **Blocks integration (JS)**: Gates checkout via `onCheckoutValidation` → `getSessionId()` raced against a 5s timeout (fail-open) → `setExtensionData`. Resets Blackbox via `onCheckoutFail` (success navigates away; no reset needed).
 
