@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -18,8 +17,6 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
  * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler
  */
 class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * The System Under Test.

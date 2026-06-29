@@ -8,7 +8,6 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use WP_Error;
 
@@ -20,8 +19,6 @@ use WP_Error;
  * - report(): Report fraud events for feedback
  */
 class ApiClientTest extends FraudProtectionUnitTestCase {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * The System Under Test.

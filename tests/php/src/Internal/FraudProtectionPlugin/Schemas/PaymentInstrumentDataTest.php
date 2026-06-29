@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Schemas;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 
 /**
  * Tests for the PaymentInstrumentData class.
@@ -17,8 +16,6 @@ use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
  * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData
  */
 class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * @testdox from_array() sets all properties; to_array() returns correct values.

@@ -11,7 +11,6 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -20,8 +19,6 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
  * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker
  */
 class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * The System Under Test.

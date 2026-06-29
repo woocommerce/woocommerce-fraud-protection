@@ -15,7 +15,6 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodD
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -24,8 +23,6 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
  * @covers \Automattic\WooCommerce\FraudProtection\SessionVerifier
  */
 class SessionVerifierTest extends FraudProtectionUnitTestCase {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * The System Under Test.
