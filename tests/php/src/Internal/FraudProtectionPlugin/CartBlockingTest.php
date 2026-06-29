@@ -9,15 +9,15 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionBlockingHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 /**
  * Tests for cart blocking when session is blocked by fraud protection.
  *
  * Tests SessionBlockingHandler hook-based blocking and WC_Cart integration.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionBlockingHandler
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler
  */
 class CartBlockingTest extends FraudProtectionUnitTestCase {
 

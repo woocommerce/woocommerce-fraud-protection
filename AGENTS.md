@@ -63,7 +63,7 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **Strict types**: All PHP files MUST declare `declare(strict_types=1)`.
 
-**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. To add a new component: (1) create the class in `src/Internal/FraudProtectionPlugin/` (the default location for internal classes), (2) instantiate and call `init()` in the bootstrap closure, (3) add a typed property to `FraudProtectionController` + parameter to its `init()`, (4) call `$this->component->register()` in `on_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
+**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. To add a new component: (1) create the class in `src/Internal/FraudProtectionPlugin/` (the default location for internal classes; put protectors, trackers, and session classes in the `Protectors/`, `Trackers/`, and `Sessions/` subnamespaces respectively), (2) instantiate and call `init()` in the bootstrap closure, (3) add a typed property to `FraudProtectionController` + parameter to its `init()`, (4) call `$this->component->register()` in `on_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
 
 **No short ternary**: The `?:` operator is disallowed by PHPCS (`Universal.Operators.DisallowShortTernary`). Always use full ternary `$x ? $x : $default`.
 
@@ -97,7 +97,10 @@ Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <m
 src/                                    PHP source; PSR-4 root Automattic\WooCommerce\ -> src/
 src/FraudProtection/                    Public API (FraudProtectionReporter, SessionVerifier)
 src/FraudProtection/Schemas/            Public DTOs (ReportContextData, ReportReason, ReportResult)
-src/Internal/FraudProtectionPlugin/           Internal implementation (controller, trackers, protectors, ...)
+src/Internal/FraudProtectionPlugin/           Internal implementation (controller, API client, decision/payment handling, ...)
+src/Internal/FraudProtectionPlugin/Protectors/  Checkout/payment flow guards (Blocks, Shortcode, AddPaymentMethod, PayForOrder)
+src/Internal/FraudProtectionPlugin/Trackers/    Event/report trackers (Cart, Checkout, PaymentMethod, OrderEvents)
+src/Internal/FraudProtectionPlugin/Sessions/    Session lifecycle/state (ClearanceManager, DataCollector, BlockingHandler)
 src/Internal/FraudProtectionPlugin/Schemas/   Internal DTOs (Address, CartItem, OrderData, etc.)
 src/Internal/FraudProtectionPlugin/Compat/    Payment gateway compatibility layers (Stripe, Square)
 tests/php/                              PHPUnit tests (extend WC_Unit_Test_Case), mirrors src/ layout

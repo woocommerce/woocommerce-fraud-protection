@@ -12,7 +12,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\OrderEventsTrackerForTests;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 
 /**
  * Tests for the FraudProtectionReporter class.

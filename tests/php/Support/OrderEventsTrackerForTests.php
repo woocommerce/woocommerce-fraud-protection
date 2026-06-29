@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Tests\Support;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 
 /**
  * Test double for {@see OrderEventsTracker} that records report calls in memory.

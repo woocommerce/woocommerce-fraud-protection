@@ -9,7 +9,7 @@ namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 
 defined( 'ABSPATH' ) || exit;
 

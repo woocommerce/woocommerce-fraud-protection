@@ -5,10 +5,10 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -16,7 +16,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 /**
  * Tests for the OrderEventsTracker class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\OrderEventsTracker
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker
  */
 class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 

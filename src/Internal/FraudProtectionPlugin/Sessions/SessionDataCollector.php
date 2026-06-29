@@ -5,8 +5,9 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Address;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\CustomerData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\OrderData;

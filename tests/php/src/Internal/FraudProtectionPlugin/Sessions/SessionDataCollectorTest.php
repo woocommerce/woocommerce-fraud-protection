@@ -5,16 +5,16 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 /**
  * Tests for SessionDataCollector.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionDataCollector
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector
  */
 class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
