@@ -168,7 +168,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$controller->register();
 
 		// Check if the init action is registered for our callback.
-		$priority = has_action( 'init', array( $controller, 'on_init' ) );
+		$priority = has_action( 'init', array( $controller, 'handle_init' ) );
 
 		// The priority should be 10 (default).
 		$this->assertSame( 10, $priority, 'Init action should be registered with default priority 10' );

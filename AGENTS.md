@@ -63,7 +63,7 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **Strict types**: All PHP files MUST declare `declare(strict_types=1)`.
 
-**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. Every component — first-party and compat layers alike — is wired into `FraudProtectionController` and registered from it; the bootstrap (`PluginInitializer`) only resolves the controller itself. To add a new component: (1) create the class in `src/Internal/FraudProtectionPlugin/` (the default location for internal classes), (2) add a typed property to `FraudProtectionController` + a parameter to its `init()` (the container auto-resolves and injects it), (3) call `$this->component->register()` in `on_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. The single `feature_is_enabled()` check lives in `on_init()` before any component is registered, so components must not repeat it. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
+**Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. Every component — first-party and compat layers alike — is wired into `FraudProtectionController` and registered from it; the bootstrap (`PluginInitializer`) only resolves the controller itself. To add a new component: (1) create the class in `src/Internal/FraudProtectionPlugin/` (the default location for internal classes), (2) add a typed property to `FraudProtectionController` + a parameter to its `init()` (the container auto-resolves and injects it), (3) call `$this->component->register()` in `handle_init()`. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. The single `feature_is_enabled()` check lives in `handle_init()` before any component is registered, so components must not repeat it. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
 
 **No short ternary**: The `?:` operator is disallowed by PHPCS (`Universal.Operators.DisallowShortTernary`). Always use full ternary `$x ? $x : $default`.
 
@@ -163,7 +163,7 @@ Keep the changes description concise but include the **why** and **how** behind 
 - [ ] Error messages: Generic, don't reveal fraud detection
 - [ ] Open source safe: No aggregation logic, risk scores, or rule details exposed
 - [ ] Hooks-based integration: All WC integration through hooks, no direct WC Core modifications
-- [ ] Hook registration: All components — first-party and compat layers — are wired into `FraudProtectionController::init()` and registered from `FraudProtectionController::on_init()`, which performs the single `feature_is_enabled()` check (no per-component guard)
+- [ ] Hook registration: All components — first-party and compat layers — are wired into `FraudProtectionController::init()` and registered from `FraudProtectionController::handle_init()`, which performs the single `feature_is_enabled()` check (no per-component guard)
 - [ ] Filter validation: All filter outputs validated before use
 - [ ] Log messages: Using `FraudProtectionController::log()`, include filter/hook names
 - [ ] Annotations: `@internal` on hook-callback methods and `init()` only — not on internal classes (the `Internal\` namespace marks those)

@@ -66,7 +66,7 @@ class BlackboxScriptHandler {
 	/**
 	 * Register hooks for Blackbox script loading.
 	 *
-	 * Called from FraudProtectionController::on_init() which already checks
+	 * Called from FraudProtectionController::handle_init() which already checks
 	 * if the feature is enabled.
 	 *
 	 * @return void

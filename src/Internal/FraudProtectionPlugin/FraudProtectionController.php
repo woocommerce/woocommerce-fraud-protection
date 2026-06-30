@@ -151,7 +151,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * Register hooks.
 	 */
 	public function register(): void {
-		add_action( 'init', array( $this, 'on_init' ) );
+		add_action( 'init', array( $this, 'handle_init' ) );
 	}
 
 	/**
@@ -220,7 +220,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @internal
 	 */
-	public function on_init(): void {
+	public function handle_init(): void {
 		// Bail if the feature is not enabled.
 		if ( ! self::feature_is_enabled() ) {
 			return;

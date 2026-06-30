@@ -64,7 +64,7 @@ class PayForOrderProtector {
 	/**
 	 * Register hooks for pay-for-order fraud protection.
 	 *
-	 * Called from FraudProtectionController::on_init() when fraud protection is enabled.
+	 * Called from FraudProtectionController::handle_init() when fraud protection is enabled.
 	 *
 	 * @return void
 	 */

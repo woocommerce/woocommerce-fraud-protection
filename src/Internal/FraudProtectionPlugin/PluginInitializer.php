@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
  * Defines the runtime constants, forces off WooCommerce Core's built-in fraud
  * protection, and once WooCommerce has loaded, resolves the controller from
  * WooCommerce's dependency injection container. The controller in turn wires
- * and registers every plugin component (see {@see FraudProtectionController::on_init()}).
+ * and registers every plugin component (see {@see FraudProtectionController::handle_init()}).
  */
 class PluginInitializer {
 
@@ -24,10 +24,10 @@ class PluginInitializer {
 	 *
 	 * Mirrors the `WC requires at least` header in the plugin main file. As an
 	 * MU-plugin this bypasses WordPress's plugin-dependency enforcement, so the
-	 * requirement is also enforced at runtime in {@see on_woocommerce_loaded()}.
+	 * requirement is also enforced at runtime in {@see handle_woocommerce_loaded()}.
 	 *
 	 * Before WooCommerce 9.5 the built-in DI container required explicit class
-	 * registration, and thus the class resolutions in on_woocommerce_loaded
+	 * registration, and thus the class resolutions in handle_woocommerce_loaded
 	 * would fail.
 	 */
 	private const MINIMUM_WC_VERSION = '9.5.0';
@@ -50,7 +50,7 @@ class PluginInitializer {
 		add_filter( 'woocommerce_feature_fraud_protection_enabled', '__return_false', 999 );
 
 		// Bootstrap after WooCommerce loads (MU-plugins load before regular plugins).
-		add_action( 'woocommerce_loaded', array( self::class, 'on_woocommerce_loaded' ) );
+		add_action( 'woocommerce_loaded', array( self::class, 'handle_woocommerce_loaded' ) );
 	}
 
 	/**
@@ -60,7 +60,7 @@ class PluginInitializer {
 	 *
 	 * @return void
 	 */
-	public static function on_woocommerce_loaded(): void {
+	public static function handle_woocommerce_loaded(): void {
 		if ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, self::MINIMUM_WC_VERSION, '<' ) ) {
 			$found_version = defined( 'WC_VERSION' ) ? WC_VERSION : 'unknown';
 			error_log( 'WooCommerce Fraud Protection: requires WooCommerce ' . self::MINIMUM_WC_VERSION . ' or later (found ' . $found_version . '); initialization skipped.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
