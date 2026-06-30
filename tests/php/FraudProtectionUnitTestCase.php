@@ -82,25 +82,20 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Replace the controller behind the static logging facade with an in-memory spy.
+	 * Point the static logging facade at an in-memory spy controller.
 	 *
-	 * Registers the spy as a replacement in the WooCommerce testing container and
-	 * registers it as the facade target, so every `FraudProtectionController::log()`
-	 * call made during the test (by the system under test or anything else) is
-	 * captured by the spy and can be asserted via {@see assertLogged()}
-	 * without touching the real WooCommerce logger or the PHP error log. The
-	 * canonical controller is restored automatically in {@see tearDown()}.
+	 * Makes the spy the target of the static `FraudProtectionController::log()`
+	 * facade, so every log call made during the test (by the system under test or
+	 * anything else) is captured by the spy and can be asserted via
+	 * {@see assertLogged()} without touching the real WooCommerce logger or the PHP
+	 * error log. The canonical controller is restored automatically in
+	 * {@see tearDown()}.
 	 *
 	 * @return FraudProtectionControllerForTests The installed test double.
 	 */
 	protected function spy_on_controller_logging(): FraudProtectionControllerForTests {
 		$this->logging_spy = new FraudProtectionControllerForTests();
-
-		$container = wc_get_container();
-		$container->replace( FraudProtectionController::class, $this->logging_spy );
-		// register() repoints the static facade ($instance) at whatever the
-		// container returns, which is now the spy.
-		$container->get( FraudProtectionController::class )->register();
+		FraudProtectionControllerForTests::set_facade_target( $this->logging_spy );
 
 		return $this->logging_spy;
 	}
@@ -115,11 +110,9 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 			return;
 		}
 
-		$container = wc_get_container();
-		$container->reset_replacement( FraudProtectionController::class );
-		// The canonical controller is still cached (we never reset resolutions),
-		// so this re-registers it as the facade target.
-		$container->get( FraudProtectionController::class )->register();
+		// The container singleton was wired as the facade target by its init();
+		// point the facade back at it.
+		FraudProtectionControllerForTests::set_facade_target( wc_get_container()->get( FraudProtectionController::class ) );
 
 		$this->logging_spy = null;
 	}

@@ -41,9 +41,13 @@ if ( ! function_exists( 'wc_get_logger' ) ) {
 // Load the plugin's namespaced classes via the Composer autoloader.
 require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
 
-// register() wires the instance into the static FraudProtectionController::log()
-// facade; in production this runs at boot, so do the same here before logging.
-( new Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController() )->register();
+// init() wires a controller into the static FraudProtectionController::log() facade
+// when the DI container creates it; in production that happens at boot. There is no
+// container here, so point the facade at a real controller directly (the same way
+// the unit tests do).
+Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests::set_facade_target(
+	new Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController()
+);
 
 // Deliberately not init()'d: a null context must be skipped before report() ever
 // reaches the tracker, so no collaborator is required.

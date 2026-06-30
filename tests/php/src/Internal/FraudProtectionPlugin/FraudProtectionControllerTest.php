@@ -211,26 +211,20 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox register() wires the static log() facade to the registered instance.
+	 * @testdox the static log() facade delegates to the active controller instance.
 	 */
-	public function test_register_routes_log_facade_to_registered_instance(): void {
-		// A controller whose write_log() is mocked proves the static log() facade
-		// delegates to the instance registered in register(), forwarding every argument.
-		$controller = $this->getMockBuilder( FraudProtectionController::class )
-			->onlyMethods( array( 'write_log' ) )
-			->getMock();
-		$controller->expects( $this->once() )
-			->method( 'write_log' )
-			->with(
-				$this->equalTo( 'warning' ),
-				$this->equalTo( 'Routed message' ),
-				$this->equalTo( array( 'foo' => 'bar' ) ),
-				$this->equalTo( true )
-			);
-
-		$controller->register();
+	public function test_static_log_facade_delegates_to_active_instance(): void {
+		// Installing the spy as the active instance proves the static log() facade
+		// delegates to it, forwarding every argument to write_log().
+		$spy = $this->spy_on_controller_logging();
 
 		FraudProtectionController::log( 'warning', 'Routed message', array( 'foo' => 'bar' ), true );
+
+		$this->assertCount( 1, $spy->entries, 'The active instance should receive exactly one write_log() call.' );
+		$this->assertSame( 'warning', $spy->entries[0]['level'] );
+		$this->assertSame( 'Routed message', $spy->entries[0]['message'] );
+		$this->assertSame( array( 'foo' => 'bar' ), $spy->entries[0]['context'] );
+		$this->assertTrue( $spy->entries[0]['forwarded'] );
 	}
 
 	/**
@@ -311,11 +305,9 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		delete_option( 'woocommerce_feature_fraud_protection_enabled' );
 		delete_option( 'jetpack_activation_source' );
 
-		// Restore the canonical controller as the static facade target so a
-		// controller registered by a test (e.g. a mock) does not leak into
-		// later tests. Re-register before clearing init hooks so the action it
-		// adds is removed too.
-		wc_get_container()->get( FraudProtectionController::class )->register();
+		// Any controller spy installed by a test is restored by the base
+		// tearDown (parent::tearDown above), so the canonical controller is the
+		// facade target again here.
 
 		// Remove any init hooks registered by the controller.
 		remove_all_actions( 'init' );

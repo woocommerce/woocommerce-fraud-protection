@@ -33,17 +33,19 @@ class FraudProtectionControllerForTests extends FraudProtectionController {
 	public array $entries = array();
 
 	/**
-	 * Become the static facade target without hooking into WordPress.
+	 * Point the static FraudProtectionController::log() facade at a controller.
 	 *
-	 * The parent's register() also adds an `init` action that runs on_init(),
-	 * which would access this double's never-injected dependencies. A logging
-	 * spy only needs to be the target the static facade delegates to, so it
-	 * sets the shared instance and stops there.
+	 * The facade target is a `protected static` property the parent assigns in
+	 * init() when the container creates the controller. A replacement (this
+	 * double) or a cached instance skips init(), so tests set the target through
+	 * this subclass — no reflection and no container reset required. Pass the spy
+	 * to install it, or the canonical controller to restore it.
 	 *
+	 * @param FraudProtectionController $controller The instance to make the facade target.
 	 * @return void
 	 */
-	public function register(): void {
-		self::$instance = $this;
+	public static function set_facade_target( FraudProtectionController $controller ): void {
+		self::$instance = $controller;
 	}
 
 	/**

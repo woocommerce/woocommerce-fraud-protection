@@ -28,15 +28,16 @@ defined( 'ABSPATH' ) || exit;
  * This class orchestrates all fraud protection components and ensures
  * zero-impact when the feature flag is disabled.
  *
- * A call to {@see register()} is required before the class can be used.
+ * Resolving an instance from the DI container (which calls {@see init()}) wires
+ * the static {@see log()} facade; the class must be resolved before that facade
+ * is used. {@see register()} then hooks the instance into WordPress.
  */
 class FraudProtectionController /* implements RegisterHooksInterface */ {
 
 	/**
-	 * The registered controller instance that the static facade methods
-	 * ({@see log()}, {@see feature_is_enabled()}) delegate to.
-	 * Set in {@see register()}, so a call to that method is required
-	 * before the class can be used.
+	 * The controller instance that the static {@see log()} facade delegates to.
+	 * Set in {@see init()}, so simply resolving the controller from the DI
+	 * container is enough to wire the facade.
 	 *
 	 * @var FraudProtectionController
 	 */
@@ -123,8 +124,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * Register hooks.
 	 */
 	public function register(): void {
-		self::$instance = $this;
-
 		add_action( 'init', array( $this, 'on_init' ) );
 	}
 
@@ -158,6 +157,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		AddPaymentMethodProtector $add_payment_method_protector,
 		PayForOrderProtector $pay_for_order_protector
 	): void {
+		self::$instance = $this;
+
 		$this->blocked_session_notice       = $blocked_session_notice;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
 		$this->cart_event_tracker           = $cart_event_tracker;
