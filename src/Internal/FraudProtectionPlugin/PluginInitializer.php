@@ -7,21 +7,15 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
-
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Bootstraps the plugin.
  *
  * Defines the runtime constants, forces off WooCommerce Core's built-in fraud
- * protection, and once WooCommerce has loaded, wires every component through
- * WooCommerce's dependency injection container.
+ * protection, and once WooCommerce has loaded, resolves the controller from
+ * WooCommerce's dependency injection container. The controller in turn wires
+ * and registers every plugin component (see {@see FraudProtectionController::on_init()}).
  */
 class PluginInitializer {
 
@@ -82,14 +76,6 @@ class PluginInitializer {
 		}
 		require_once $autoload;
 
-		$container = wc_get_container();
-
-		$container->get( FraudProtectionController::class )->register();
-		$container->get( StripePaymentDataCompat::class )->register();
-		$container->get( SquarePaymentDataCompat::class )->register();
-		$container->get( PayPalPaymentDataCompat::class )->register();
-		$container->get( WooPaymentsPaymentDataCompat::class )->register();
-		$container->get( PayPalCompat::class )->register();
-		$container->get( SubscriptionsChangePaymentCompat::class )->register();
+		wc_get_container()->get( FraudProtectionController::class )->register();
 	}
 }

@@ -8,6 +8,12 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\LogContextSanitizer;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 
@@ -100,6 +106,48 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionBlockingHandler $session_blocking_handler;
 
 	/**
+	 * Stripe payment data compatibility layer instance.
+	 *
+	 * @var StripePaymentDataCompat
+	 */
+	private StripePaymentDataCompat $stripe_payment_data_compat;
+
+	/**
+	 * Square payment data compatibility layer instance.
+	 *
+	 * @var SquarePaymentDataCompat
+	 */
+	private SquarePaymentDataCompat $square_payment_data_compat;
+
+	/**
+	 * PayPal payment data compatibility layer instance.
+	 *
+	 * @var PayPalPaymentDataCompat
+	 */
+	private PayPalPaymentDataCompat $paypal_payment_data_compat;
+
+	/**
+	 * WooPayments payment data compatibility layer instance.
+	 *
+	 * @var WooPaymentsPaymentDataCompat
+	 */
+	private WooPaymentsPaymentDataCompat $woopayments_payment_data_compat;
+
+	/**
+	 * PayPal express checkout compatibility layer instance.
+	 *
+	 * @var PayPalCompat
+	 */
+	private PayPalCompat $paypal_compat;
+
+	/**
+	 * Subscriptions change-payment-method compatibility layer instance.
+	 *
+	 * @var SubscriptionsChangePaymentCompat
+	 */
+	private SubscriptionsChangePaymentCompat $subscriptions_change_payment_compat;
+
+	/**
 	 * Register hooks.
 	 */
 	public function register(): void {
@@ -111,17 +159,23 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @internal
 	 *
-	 * @param BlockedSessionNotice       $blocked_session_notice       The instance of BlockedSessionNotice to use.
-	 * @param BlackboxScriptHandler      $blackbox_script_handler      The instance of BlackboxScriptHandler to use.
-	 * @param CartEventTracker           $cart_event_tracker           The instance of CartEventTracker to use.
-	 * @param CheckoutEventTracker       $checkout_event_tracker       The instance of CheckoutEventTracker to use.
-	 * @param PaymentMethodEventTracker  $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
-	 * @param SessionBlockingHandler     $session_blocking_handler     The instance of SessionBlockingHandler to use.
-	 * @param SessionVerifier            $session_verifier             The instance of SessionVerifier to use.
-	 * @param BlocksCheckoutProtector    $blocks_checkout_protector    The instance of BlocksCheckoutProtector to use.
-	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
-	 * @param AddPaymentMethodProtector  $add_payment_method_protector The instance of AddPaymentMethodProtector to use.
-	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
+	 * @param BlockedSessionNotice             $blocked_session_notice              The instance of BlockedSessionNotice to use.
+	 * @param BlackboxScriptHandler            $blackbox_script_handler             The instance of BlackboxScriptHandler to use.
+	 * @param CartEventTracker                 $cart_event_tracker                  The instance of CartEventTracker to use.
+	 * @param CheckoutEventTracker             $checkout_event_tracker              The instance of CheckoutEventTracker to use.
+	 * @param PaymentMethodEventTracker        $payment_method_event_tracker        The instance of PaymentMethodEventTracker to use.
+	 * @param SessionBlockingHandler           $session_blocking_handler            The instance of SessionBlockingHandler to use.
+	 * @param SessionVerifier                  $session_verifier                    The instance of SessionVerifier to use.
+	 * @param BlocksCheckoutProtector          $blocks_checkout_protector           The instance of BlocksCheckoutProtector to use.
+	 * @param ShortcodeCheckoutProtector       $shortcode_checkout_protector        The instance of ShortcodeCheckoutProtector to use.
+	 * @param AddPaymentMethodProtector        $add_payment_method_protector        The instance of AddPaymentMethodProtector to use.
+	 * @param PayForOrderProtector             $pay_for_order_protector             The instance of PayForOrderProtector to use.
+	 * @param StripePaymentDataCompat          $stripe_payment_data_compat          The instance of StripePaymentDataCompat to use.
+	 * @param SquarePaymentDataCompat          $square_payment_data_compat          The instance of SquarePaymentDataCompat to use.
+	 * @param PayPalPaymentDataCompat          $paypal_payment_data_compat          The instance of PayPalPaymentDataCompat to use.
+	 * @param WooPaymentsPaymentDataCompat     $woopayments_payment_data_compat     The instance of WooPaymentsPaymentDataCompat to use.
+	 * @param PayPalCompat                     $paypal_compat                       The instance of PayPalCompat to use.
+	 * @param SubscriptionsChangePaymentCompat $subscriptions_change_payment_compat The instance of SubscriptionsChangePaymentCompat to use.
 	 */
 	final public function init(
 		BlockedSessionNotice $blocked_session_notice,
@@ -134,19 +188,31 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		BlocksCheckoutProtector $blocks_checkout_protector,
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
 		AddPaymentMethodProtector $add_payment_method_protector,
-		PayForOrderProtector $pay_for_order_protector
+		PayForOrderProtector $pay_for_order_protector,
+		StripePaymentDataCompat $stripe_payment_data_compat,
+		SquarePaymentDataCompat $square_payment_data_compat,
+		PayPalPaymentDataCompat $paypal_payment_data_compat,
+		WooPaymentsPaymentDataCompat $woopayments_payment_data_compat,
+		PayPalCompat $paypal_compat,
+		SubscriptionsChangePaymentCompat $subscriptions_change_payment_compat
 	): void {
-		$this->blocked_session_notice       = $blocked_session_notice;
-		$this->blackbox_script_handler      = $blackbox_script_handler;
-		$this->cart_event_tracker           = $cart_event_tracker;
-		$this->checkout_event_tracker       = $checkout_event_tracker;
-		$this->payment_method_event_tracker = $payment_method_event_tracker;
-		$this->session_blocking_handler     = $session_blocking_handler;
-		$this->session_verifier             = $session_verifier;
-		$this->blocks_checkout_protector    = $blocks_checkout_protector;
-		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
-		$this->add_payment_method_protector = $add_payment_method_protector;
-		$this->pay_for_order_protector      = $pay_for_order_protector;
+		$this->blocked_session_notice              = $blocked_session_notice;
+		$this->blackbox_script_handler             = $blackbox_script_handler;
+		$this->cart_event_tracker                  = $cart_event_tracker;
+		$this->checkout_event_tracker              = $checkout_event_tracker;
+		$this->payment_method_event_tracker        = $payment_method_event_tracker;
+		$this->session_blocking_handler            = $session_blocking_handler;
+		$this->session_verifier                    = $session_verifier;
+		$this->blocks_checkout_protector           = $blocks_checkout_protector;
+		$this->shortcode_checkout_protector        = $shortcode_checkout_protector;
+		$this->add_payment_method_protector        = $add_payment_method_protector;
+		$this->pay_for_order_protector             = $pay_for_order_protector;
+		$this->stripe_payment_data_compat          = $stripe_payment_data_compat;
+		$this->square_payment_data_compat          = $square_payment_data_compat;
+		$this->paypal_payment_data_compat          = $paypal_payment_data_compat;
+		$this->woopayments_payment_data_compat     = $woopayments_payment_data_compat;
+		$this->paypal_compat                       = $paypal_compat;
+		$this->subscriptions_change_payment_compat = $subscriptions_change_payment_compat;
 	}
 
 	/**
@@ -171,6 +237,14 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->cart_event_tracker->register();
 		$this->checkout_event_tracker->register();
 		$this->payment_method_event_tracker->register();
+
+		// Payment gateway compatibility layers.
+		$this->stripe_payment_data_compat->register();
+		$this->square_payment_data_compat->register();
+		$this->paypal_payment_data_compat->register();
+		$this->woopayments_payment_data_compat->register();
+		$this->paypal_compat->register();
+		$this->subscriptions_change_payment_compat->register();
 	}
 
 	/**

@@ -7,7 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
 
 defined( 'ABSPATH' ) || exit;
@@ -34,10 +33,6 @@ class PayPalPaymentDataCompat {
 	 * @return void
 	 */
 	public function register(): void {
-		if ( ! FraudProtectionController::feature_is_enabled() ) {
-			return;
-		}
-
 		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10 );
 	}
 

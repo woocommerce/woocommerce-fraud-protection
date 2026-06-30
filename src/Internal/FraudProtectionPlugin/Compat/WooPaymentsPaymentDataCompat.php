@@ -49,10 +49,6 @@ class WooPaymentsPaymentDataCompat {
 	 * @return void
 	 */
 	public function register(): void {
-		if ( ! FraudProtectionController::feature_is_enabled() ) {
-			return;
-		}
-
 		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 2 );
 	}
 

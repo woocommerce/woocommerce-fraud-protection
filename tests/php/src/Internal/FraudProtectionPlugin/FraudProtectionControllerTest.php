@@ -136,6 +136,31 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Test that the payment gateway compatibility layers are wired through the
+	 * controller and have their hooks registered during the bootstrap (rather
+	 * than being registered directly by the plugin initializer).
+	 */
+	public function test_compat_layer_hooks_are_registered(): void {
+		// Payment-data resolvers (Stripe, Square, PayPal, WooPayments) all hook this filter.
+		$this->assertNotFalse(
+			has_filter( 'woocommerce_fraud_protection_resolved_payment_data' ),
+			'Payment data compat filter should be registered via the controller'
+		);
+
+		// PayPal express checkout compat action.
+		$this->assertNotFalse(
+			has_action( 'woocommerce_paypal_payments_create_order_request_started' ),
+			'PayPal compat action should be registered via the controller'
+		);
+
+		// Subscriptions change-payment-method compat action.
+		$this->assertNotFalse(
+			has_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode' ),
+			'Subscriptions change-payment compat action should be registered via the controller'
+		);
+	}
+
+	/**
 	 * Test that register method registers init action.
 	 */
 	public function test_register_registers_init_action(): void {
