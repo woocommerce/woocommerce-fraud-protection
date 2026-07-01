@@ -28,7 +28,10 @@ wfp_smoke_assert(
 	'Plugin should register woocommerce_loaded regardless of the WooCommerce version.'
 );
 
-// Fire the bootstrap. The minimum-version guard must short-circuit it.
+// Fire the bootstrap twice. The minimum-version guard must short-circuit it
+// both times, but the notice is throttled so it must be logged only once - this
+// is what prevents the per-request log flood on an affected site.
+do_action( 'woocommerce_loaded' );
 do_action( 'woocommerce_loaded' );
 
 wfp_smoke_assert(
@@ -38,8 +41,8 @@ wfp_smoke_assert(
 
 $logs = file_get_contents( $error_log_path );
 wfp_smoke_assert(
-	is_string( $logs ) && false !== strpos( $logs, 'requires WooCommerce' ),
-	'Bootstrap must log an error_log message when WooCommerce is below the minimum version. Got: ' . var_export( $logs, true )
+	is_string( $logs ) && 1 === substr_count( $logs, 'requires WooCommerce' ),
+	'Bootstrap must log the minimum-version notice exactly once even across repeated requests (throttled). Got: ' . var_export( $logs, true )
 );
 
 echo "OK\n";

@@ -61,21 +61,47 @@ class PluginInitializer {
 	 * @return void
 	 */
 	public static function handle_woocommerce_loaded(): void {
+		$autoload = WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
+
+		$bail_reason = null;
 		if ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, self::MINIMUM_WC_VERSION, '<' ) ) {
 			$found_version = defined( 'WC_VERSION' ) ? WC_VERSION : 'unknown';
-			error_log( 'WooCommerce Fraud Protection: requires WooCommerce ' . self::MINIMUM_WC_VERSION . ' or later (found ' . $found_version . '); initialization skipped.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
+			$bail_reason   = 'requires WooCommerce ' . self::MINIMUM_WC_VERSION . ' or later (found ' . $found_version . '); initialization skipped.';
+		} elseif ( ! is_readable( $autoload ) ) {
+			// vendor/ missing (broken build / partial deploy). Bail before touching any namespaced class.
+			$bail_reason = 'autoloader is not readable at ' . $autoload;
+		}
+
+		if ( ! is_null( $bail_reason ) ) {
+			if ( self::should_emit_bail_notice( $bail_reason ) ) {
+				error_log( 'WooCommerce Fraud Protection: ' . $bail_reason ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
+			}
 			return;
 		}
 
 		// PSR-4 autoloader: classes are loaded lazily on first use.
-		$autoload = WC_FRAUD_PROTECTION_PLUGIN_DIR . '/vendor/autoload.php';
-		if ( ! is_readable( $autoload ) ) {
-			// vendor/ missing (broken build / partial deploy). Bail before touching any namespaced class.
-			error_log( 'WooCommerce Fraud Protection: autoloader is not readable at ' . $autoload ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging before the plugin's own logger is available.
-			return;
-		}
 		require_once $autoload;
 
 		wc_get_container()->get( FraudProtectionController::class )->register();
+	}
+
+	/**
+	 * Decide whether a bail-out notice should be written to the PHP error log,
+	 * throttling to at most once per day per distinct reason.
+	 *
+	 * @param string $reason Bail-out reason, used both as the throttle key and the logged message.
+	 *
+	 * @return bool True if the caller should emit the notice now, false if throttled.
+	 */
+	private static function should_emit_bail_notice( string $reason ): bool {
+		$transient_key = 'wcfp_init_bail_notice_' . md5( $reason );
+
+		if ( false !== get_transient( $transient_key ) ) {
+			return false;
+		}
+
+		set_transient( $transient_key, $reason, DAY_IN_SECONDS );
+
+		return true;
 	}
 }
