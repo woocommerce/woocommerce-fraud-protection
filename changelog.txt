@@ -1,5 +1,12 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-07-01 - version 0.1.4
+* Added - Reporting interface for payment outcomes (payments, disputes, refunds).
+* Fixed - Skip fraud verification on classic checkout submissions that already failed WooCommerce validation, avoiding unnecessary processing.
+* Fixed - Throttle repeated plugin startup warnings (e.g. on unsupported WooCommerce versions) to once per day instead of once per request.
+* Updated - Persist the fraud session identifier on guest orders placed without a browser session so outcomes track consistently.
+* Updated - Substantial internal refactoring across the plugin, including a new dependency-injection architecture and WooCommerce-core-aligned namespaces, for long-term maintainability.
+
 2026-05-17 - version 0.1.3
 * Updated - Update init logic to match the latest changes in Blackbox SDK.
 * Updated - Reduce Blackbox request timeouts to 3 seconds (browser SDK and server-side verify/report calls) to bound worst-case checkout latency.
