@@ -68,7 +68,7 @@ class AddPaymentMethodProtector {
 	/**
 	 * Register hooks for add-payment-method fraud protection.
 	 *
-	 * Called from FraudProtectionController::on_init() when fraud protection is enabled.
+	 * Called from FraudProtectionController::handle_init() when fraud protection is enabled.
 	 *
 	 * @return void
 	 */

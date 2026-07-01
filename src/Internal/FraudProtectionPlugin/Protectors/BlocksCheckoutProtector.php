@@ -86,12 +86,12 @@ class BlocksCheckoutProtector {
 	/**
 	 * Register hooks for blocks checkout fraud protection.
 	 *
-	 * Called from FraudProtectionController::on_init() when fraud protection is enabled.
+	 * Called from FraudProtectionController::handle_init() when fraud protection is enabled.
 	 *
 	 * @return void
 	 */
 	public function register(): void {
-		// Called from on_init() which fires on `init`. By this point
+		// Called from handle_init() which fires on `init`. By this point
 		// woocommerce_blocks_loaded has already fired (during plugins_loaded),
 		// so we register the extension data directly.
 		$this->register_store_api_extension();

@@ -8,6 +8,12 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\LogContextSanitizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
@@ -121,10 +127,32 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionBlockingHandler $session_blocking_handler;
 
 	/**
-	 * Register hooks.
+	 * Register hooks. To be run at `woocommerce_loaded`.
 	 */
 	public function register(): void {
-		add_action( 'init', array( $this, 'on_init' ) );
+		if ( ! self::feature_is_enabled() ) {
+			return;
+		}
+
+		$this->register_compat_layers();
+
+		add_action( 'init', array( $this, 'handle_init' ) );
+	}
+
+	/**
+	 * Register the payment gateway compatibility layers.
+	 *
+	 * @return void
+	 */
+	private function register_compat_layers(): void {
+		$container = wc_get_container();
+
+		$container->get( StripePaymentDataCompat::class )->register();
+		$container->get( SquarePaymentDataCompat::class )->register();
+		$container->get( PayPalPaymentDataCompat::class )->register();
+		$container->get( WooPaymentsPaymentDataCompat::class )->register();
+		$container->get( PayPalCompat::class )->register();
+		$container->get( SubscriptionsChangePaymentCompat::class )->register();
 	}
 
 	/**
@@ -173,16 +201,11 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	}
 
 	/**
-	 * Hook into WordPress on init.
+	 * Register the first-party components on the WordPress `init` hook.
 	 *
 	 * @internal
 	 */
-	public function on_init(): void {
-		// Bail if the feature is not enabled.
-		if ( ! self::feature_is_enabled() ) {
-			return;
-		}
-
+	public function handle_init(): void {
 		$this->blocked_session_notice->register();
 		$this->blackbox_script_handler->register();
 		$this->session_verifier->register();
