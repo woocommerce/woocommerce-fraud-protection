@@ -77,7 +77,7 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **No standalone functions**: Expose all functionality through PSR-4 classes (public API under `Automattic\WooCommerce\FraudProtection\`; everything else internal — see **Namespace** below), never through global/procedural functions. The sole exception is the pre-autoloader bootstrap (`woocommerce-fraud-protection.php` and `woocommerce-fraud-protection-loader.php`): those files run before the autoloader exists, so they cannot use classes (e.g. the loader's `plugins_url` filter callback).
 
-**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (the `ReportContextData` DTO plus the `EventPhase`, `ReportResult`, `DisputeReason`, `PaymentRefusalReason`, and `LiabilityShift` enums). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` (`src/Internal/FraudProtectionPlugin/`); the `Internal\` location alone marks a class as internal — internal classes do **not** carry a class-level `@internal` tag (see the `@internal` convention below).
+**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (the `ReportContextData` DTO plus the `EventPhase`, `ReportResult`, `DisputeReason`, `PaymentRefusalReason`, `LiabilityShift`, `ReportSource`, and `FraudDecision` enums). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` (`src/Internal/FraudProtectionPlugin/`); the `Internal\` location alone marks a class as internal — internal classes do **not** carry a class-level `@internal` tag (see the `@internal` convention below).
 
 > **Why `Internal\FraudProtectionPlugin` and not `Internal\FraudProtection`?** WooCommerce core itself shipped a built-in fraud-protection feature under `Automattic\WooCommerce\Internal\FraudProtection\` (added in WC 10.6.0, removed in 10.6.1); this plugin is its standalone successor. Reusing that exact namespace makes our classes collide with core's identically-named ones on WC versions that still ship them. The `Plugin` suffix is a deliberate, temporary disambiguation — **when this code is merged back into core, rename `Internal\FraudProtectionPlugin` → `Internal\FraudProtection`** (a single find/replace). The public `Automattic\WooCommerce\FraudProtection\` namespace does not collide and stays as-is.
 
@@ -102,12 +102,12 @@ Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <m
 ```
 src/                                    PHP source; PSR-4 root Automattic\WooCommerce\ -> src/
 src/FraudProtection/                    Public API (FraudProtectionReporter, SessionVerifier)
-src/FraudProtection/Schemas/            Public DTO (ReportContextData) + vocabulary enums (EventPhase, ReportResult, DisputeReason, PaymentRefusalReason, LiabilityShift)
+src/FraudProtection/Schemas/            Public DTO (ReportContextData) + vocabulary enums (EventPhase, ReportResult, DisputeReason, PaymentRefusalReason, LiabilityShift, ReportSource, FraudDecision)
 src/Internal/FraudProtectionPlugin/           Internal implementation (controller, API client, decision/payment handling, ...)
 src/Internal/FraudProtectionPlugin/Protectors/  Checkout/payment flow guards (Blocks, Shortcode, AddPaymentMethod, PayForOrder)
 src/Internal/FraudProtectionPlugin/Trackers/    Event/report trackers (Cart, Checkout, PaymentMethod, OrderEvents)
 src/Internal/FraudProtectionPlugin/Sessions/    Session lifecycle/state (ClearanceManager, DataCollector, BlockingHandler)
-src/Internal/FraudProtectionPlugin/Schemas/   Internal DTOs (Address, CartItem, OrderData, ...) + CheckResult enum
+src/Internal/FraudProtectionPlugin/Schemas/   Internal DTOs (Address, CartItem, OrderData, ...) + enums (CheckResult, ClearanceStatus, PaymentMode)
 src/Internal/FraudProtectionPlugin/Compat/    Payment gateway compatibility layers (Stripe, Square)
 tests/php/                              PHPUnit tests (extend WC_Unit_Test_Case), mirrors src/ layout
 tests/js/                               Jest tests

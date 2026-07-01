@@ -7,7 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
@@ -124,7 +124,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-123', 'pay_for_order', 42, $this->isType( 'array' ) )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block( $order );
 
@@ -144,7 +144,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		$this->sut->verify_and_block( $order );
 
@@ -172,7 +172,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		$this->sut->verify_and_block( $order );
 	}
@@ -195,7 +195,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 				99,
 				$this->isType( 'array' )
 			)
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block( $order );
 	}
@@ -211,7 +211,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		// Pre-add the same notice.
 		$message = $this->blocked_session_notice->get_message_html( 'purchase' );

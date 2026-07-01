@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -17,12 +19,12 @@ class VerifyResult {
 	/**
 	 * Private constructor — use the create() factory.
 	 *
-	 * @param string $decision   The fraud decision (ApiClient::DECISION_ALLOW or ApiClient::DECISION_BLOCK).
-	 * @param string $session_id The Blackbox session ID, or empty string if none.
-	 * @param ?float $risk_score The Blackbox risk score, or null if none.
+	 * @param FraudDecision $decision   The fraud decision.
+	 * @param string        $session_id The Blackbox session ID, or empty string if none.
+	 * @param ?float        $risk_score The Blackbox risk score, or null if none.
 	 */
 	private function __construct(
-		private readonly string $decision,
+		private readonly FraudDecision $decision,
 		private readonly string $session_id,
 		private readonly ?float $risk_score = null
 	) {}
@@ -33,21 +35,21 @@ class VerifyResult {
 	 * The decision is expected to be pre-validated by ApiClient. The session ID
 	 * originates from the API response, so it is sanitized here.
 	 *
-	 * @param string $decision   The fraud decision.
-	 * @param string $session_id The Blackbox session ID from the response (raw).
-	 * @param ?float $risk_score The Blackbox risk score from the response, or null if absent.
+	 * @param FraudDecision $decision   The fraud decision.
+	 * @param string        $session_id The Blackbox session ID from the response (raw).
+	 * @param ?float        $risk_score The Blackbox risk score from the response, or null if absent.
 	 * @return self
 	 */
-	public static function create( string $decision, string $session_id, ?float $risk_score = null ): self {
+	public static function create( FraudDecision $decision, string $session_id, ?float $risk_score = null ): self {
 		return new self( $decision, \sanitize_text_field( $session_id ), $risk_score );
 	}
 
 	/**
 	 * Get the fraud decision.
 	 *
-	 * @return string
+	 * @return FraudDecision
 	 */
-	public function get_decision(): string {
+	public function get_decision(): FraudDecision {
 		return $this->decision;
 	}
 

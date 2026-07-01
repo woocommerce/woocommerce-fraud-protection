@@ -7,7 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -161,7 +161,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-123', 'shortcode_checkout', 0, $this->isType( 'array' ) )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$errors = new \WP_Error();
 		$this->sut->verify_and_block( $posted_data, $errors );
@@ -183,7 +183,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		$errors = new \WP_Error();
 		$this->sut->verify_and_block( $posted_data, $errors );
@@ -249,7 +249,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		// A message-less WP_Error entry does not block order creation in core
 		// (wc_add_notice drops empty messages), so verification must still run.
@@ -279,7 +279,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		// Core runs each error message through woocommerce_add_error before deciding
 		// whether to store an error notice. A filter that blanks the message means the
@@ -303,7 +303,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->register();
 

@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\FraudProtection;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
@@ -141,17 +142,17 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify' )
 			->with( $session_id, $expected_payload )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( ApiClient::DECISION_ALLOW, $expected_payload )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->with( FraudDecision::Allow, $expected_payload )
+			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( $session_id, 'blocks_checkout', $order_id, $request_data );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 	}
 
 	/**
@@ -165,15 +166,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		// API returns BLOCK, but a filter overrides to ALLOW.
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_BLOCK, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Block, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( 'session-123', 'blocks_checkout', 99 );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 	}
 
 	/*
@@ -217,11 +218,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 					return $payload['payment'] === $resolved->to_array();
 				} )
 			)
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_session( 'test-session', 'blocks_checkout', 0, $request_data );
 	}
@@ -247,17 +248,17 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 					return null === $payload['payment'];
 				} )
 			)
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$request_data = array( 'payment_method' => 'stripe', 'payment_data' => array() );
 
 		$result = $this->sut->verify_session( 'test-session', 'checkout', 0, $request_data );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged(
 			'warning',
 			'Payment data resolution failed',
@@ -292,7 +293,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify_session( 'test-session', 'checkout' );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged(
 			'error',
 			'Session verification failed, allowing',
@@ -315,7 +316,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_BLOCK, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Block, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -323,7 +324,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify_session( 'test-session', 'checkout' );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged(
 			'error',
 			'Session verification failed, allowing',
@@ -580,11 +581,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 	}
 
 	/**
@@ -599,11 +600,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, $returned_session_id ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, $returned_session_id ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 	}
 
 	/*
@@ -624,7 +625,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
 	}
 
@@ -641,15 +642,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 	}
 
 	/**
@@ -670,15 +671,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 	}
 
 	/**
@@ -699,15 +700,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( ApiClient::DECISION_ALLOW, '' ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw' );
 	}
 

@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\Jetpack\Connection\Client as Jetpack_Connection_Client;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 
 defined( 'ABSPATH' ) || exit;
@@ -49,57 +50,6 @@ class ApiClient {
 	 * Blackbox API report endpoint path.
 	 */
 	private const REPORT_ENDPOINT = '/report';
-
-	/**
-	 * Decision type: allow session.
-	 */
-	public const DECISION_ALLOW = 'allow';
-
-	/**
-	 * Decision type: block session.
-	 */
-	public const DECISION_BLOCK = 'block';
-
-	/**
-	 * Decision type: challenge session.
-	 */
-	public const DECISION_CHALLENGE = 'challenge';
-
-	/**
-	 * Valid decision values that can be returned by the API.
-	 *
-	 * @var array<string>
-	 */
-	public const VALID_DECISIONS = array(
-		self::DECISION_ALLOW,
-		self::DECISION_BLOCK,
-	);
-
-	/**
-	 * Report source: chargeback event.
-	 */
-	public const REPORT_SOURCE_CHARGEBACK = 'chargeback';
-
-	/**
-	 * Report source: manual review outcome.
-	 */
-	public const REPORT_SOURCE_MANUAL_REVIEW = 'manual_review';
-
-	/**
-	 * Report source: API-driven event.
-	 */
-	public const REPORT_SOURCE_API = 'api';
-
-	/**
-	 * Valid report source values.
-	 *
-	 * @var array<string>
-	 */
-	public const VALID_REPORT_SOURCES = array(
-		self::REPORT_SOURCE_CHARGEBACK,
-		self::REPORT_SOURCE_MANUAL_REVIEW,
-		self::REPORT_SOURCE_API,
-	);
 
 	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
@@ -230,12 +180,12 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( self::DECISION_ALLOW, '' );
+			return VerifyResult::create( FraudDecision::Allow, '' );
 		}
 
-		$decision = $this->extract_decision( $response );
+		$raw = $this->extract_decision( $response );
 
-		if ( null === $decision ) {
+		if ( is_null( $raw ) ) {
 			FraudProtectionController::log(
 				'error',
 				'Could not extract decision from response. Failing open with "allow" decision.',
@@ -248,27 +198,29 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( self::DECISION_ALLOW, '' );
+			return VerifyResult::create( FraudDecision::Allow, '' );
 		}
 
-		if ( ! in_array( $decision, self::VALID_DECISIONS, true ) ) {
+		$decision = FraudDecision::tryFrom( $raw );
+
+		if ( is_null( $decision ) || ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'error',
 				sprintf(
 					'Invalid decision value "%s". Failing open with "allow" decision.',
-					$decision
+					$raw
 				),
 				array(
 					'event_source'      => 'api_verify',
 					'session_id'        => $session_id,
 					'api_endpoint'      => self::VERIFY_ENDPOINT,
 					'http_status'       => (int) wp_remote_retrieve_response_code( $response ),
-					'decision_received' => $decision,
+					'decision_received' => $raw,
 					'response'          => $response,
 				),
 				true
 			);
-			return VerifyResult::create( self::DECISION_ALLOW, '' );
+			return VerifyResult::create( FraudDecision::Allow, '' );
 		}
 
 		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
@@ -277,7 +229,7 @@ class ApiClient {
 			'info',
 			sprintf(
 				'Fraud decision received: %s | Source: %s',
-				$decision,
+				$decision->value,
 				$source
 			),
 			array( 'response' => $response )

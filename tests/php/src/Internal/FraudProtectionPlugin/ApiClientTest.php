@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use WP_Error;
 
@@ -184,7 +185,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 	}
 
 	/**
@@ -197,7 +198,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_BLOCK, $result->get_decision() );
+		$this->assertSame( FraudDecision::Block, $result->get_decision() );
 	}
 
 	/**
@@ -213,7 +214,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
@@ -227,7 +228,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertSame( '', $result->get_session_id() );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
@@ -247,7 +248,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
 
@@ -266,7 +267,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
@@ -285,7 +286,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertSame( '', $result->get_session_id() );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
@@ -300,7 +301,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 
@@ -401,7 +402,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( '', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertSame( '82vHd2iPY4JvJZQE-A6jHg', $result->get_session_id() );
 		$this->assertSame( 0.4033, $result->get_risk_score() );
 	}
@@ -414,7 +415,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( '', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
 		$this->assertSame( '', $result->get_session_id() );
 		$this->assertNull( $result->get_risk_score() );
 	}

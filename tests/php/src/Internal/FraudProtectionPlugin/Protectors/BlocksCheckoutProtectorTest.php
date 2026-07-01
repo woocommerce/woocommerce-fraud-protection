@@ -7,7 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -87,7 +87,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-123', 'blocks_checkout', 123, $request_data )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		// Should not throw.
 		$this->sut->verify_and_block( $order );
@@ -110,7 +110,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-456', 'blocks_checkout', 456, $request_data )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		$order = $this->create_mock_order( 456 );
 
@@ -131,7 +131,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( '', 'blocks_checkout', 101, array() )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		// Should not throw.
 		$this->sut->verify_and_block( $order );

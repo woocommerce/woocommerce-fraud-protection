@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -123,7 +123,7 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-123', 'add_payment_method', 0, $this->isType( 'array' ) )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_and_block( true );
 
@@ -140,7 +140,7 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		$result = $this->sut->verify_and_block( true );
 
@@ -166,7 +166,7 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		$this->sut->verify_and_block( true );
 	}

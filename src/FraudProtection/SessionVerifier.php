@@ -11,6 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -137,9 +138,9 @@ class SessionVerifier {
 	 * @param string $source       Identifies the caller (e.g. 'blocks_checkout').
 	 * @param int    $order_id     The WooCommerce order ID (0 for pre-order flows).
 	 * @param array  $request_data Request data containing payment_method and payment_data.
-	 * @return string The final decision: 'allow' or 'block'.
+	 * @return FraudDecision The final decision: Allow or Block.
 	 */
-	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): string {
+	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
 		try {
 			/**
 			 * Filters whether to skip session verification.
@@ -164,7 +165,7 @@ class SessionVerifier {
 					'info',
 					sprintf( 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source )
 				);
-				return ApiClient::DECISION_ALLOW;
+				return FraudDecision::Allow;
 			}
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
@@ -253,7 +254,7 @@ class SessionVerifier {
 				),
 				true
 			);
-			return ApiClient::DECISION_ALLOW;
+			return FraudDecision::Allow;
 		}
 
 		return $decision;

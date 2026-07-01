@@ -7,7 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -65,9 +65,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'allow_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_ALLOW, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 	}
 
 	/**
@@ -87,7 +87,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'allow_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_ALLOW, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 
 		$this->assertLogged( 'info', 'Preserving blocked session status' );
 	}
@@ -104,29 +104,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'block_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_BLOCK, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
-		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
-	}
-
-	/**
-	 * Test invalid decision defaults to allow.
-	 *
-	 * @testdox Should default to allow for invalid decision and log warning.
-	 */
-	public function test_invalid_decision_defaults_to_allow(): void {
-		$this->session_manager
-			->method( 'is_session_blocked' )
-			->willReturn( false );
-
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'allow_session' );
-
-		$result = $this->sut->apply_decision( 'invalid_decision', array( 'session_id' => 'test' ) );
-
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
-		$this->assertLogged( 'warning', 'Invalid decision "invalid_decision" received' );
+		$this->assertSame( FraudDecision::Block, $result );
 	}
 
 	/**
@@ -138,7 +118,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
-				return ApiClient::DECISION_ALLOW;
+				return FraudDecision::Allow->value;
 			}
 		);
 
@@ -150,9 +130,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'allow_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_BLOCK, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_decision`' );
 	}
 
@@ -167,7 +147,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
-				return ApiClient::DECISION_BLOCK;
+				return FraudDecision::Block->value;
 			}
 		);
 
@@ -175,9 +155,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'block_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_ALLOW, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 
-		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
+		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_decision`' );
 	}
 
@@ -200,9 +180,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'block_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_BLOCK, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
-		$this->assertSame( ApiClient::DECISION_BLOCK, $result );
+		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertLogged( 'warning', 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "totally_invalid"' );
 	}
 
@@ -228,9 +208,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'block_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_BLOCK, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
 	}
 
@@ -241,7 +221,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
-				return ApiClient::DECISION_BLOCK;
+				return FraudDecision::Block->value;
 			}
 		);
 
@@ -257,9 +237,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'block_session' );
 
-		$result = $this->sut->apply_decision( ApiClient::DECISION_ALLOW, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result );
+		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
 	}
 }

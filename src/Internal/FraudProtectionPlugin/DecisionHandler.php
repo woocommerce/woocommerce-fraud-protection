@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 defined( 'ABSPATH' ) || exit;
@@ -51,32 +52,16 @@ class DecisionHandler {
 	 * 2. Validate the filtered decision (third-party filters may return invalid values)
 	 * 3. Update session status via SessionClearanceManager
 	 *
-	 * @param string               $decision     The decision from the API (allow, block).
+	 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
 	 * @param array<string, mixed> $session_data The session data that was sent to the API.
-	 * @return string The final applied decision after any filter overrides.
+	 * @return FraudDecision The final applied decision after any filter overrides.
 	 */
-	public function apply_decision( string $decision, array $session_data ): string {
+	public function apply_decision( FraudDecision $decision, array $session_data ): FraudDecision {
 		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
 		$log_context = array(
 			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
-
-		// Validate input decision and fail open if invalid.
-		if ( ! $this->is_valid_decision( $decision ) ) {
-			FraudProtectionController::log(
-				'warning',
-				sprintf( 'Invalid decision "%s" received. Defaulting to "allow".', $decision ),
-				array_merge(
-					$log_context,
-					array(
-						'decision_received' => $decision,
-					)
-				),
-				true
-			);
-			$decision = ApiClient::DECISION_ALLOW;
-		}
 
 		$original_decision = $decision;
 
@@ -89,46 +74,55 @@ class DecisionHandler {
 		 * - Whitelist specific conditions (e.g., certain IP ranges, logged-in users)
 		 * - Integrate with external fraud detection services
 		 *
-		 * Note: This filter can only change the decision to ApiClient::VALID_DECISIONS.
-		 * Any other value will be rejected and the original decision will be used.
+		 * The decision is passed and expected back as a string ('allow' or 'block').
+		 * Any other value is rejected and the original decision is used.
 		 *
 		 * @since 0.1.0
 		 *
-		 * @param string               $decision     The decision from the API (allow, block).
+		 * @param string               $decision     The decision from the API ('allow' or 'block').
 		 * @param array<string, mixed> $session_data The session data that was analyzed.
 		 */
-		$decision = apply_filters( 'woocommerce_fraud_protection_decision', $decision, $session_data );
+		/**
+		 * A third-party filter callback may return any type; it is validated below.
+		 *
+		 * @var mixed $filtered
+		 */
+		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision->value, $session_data );
+
+		$filtered_value    = is_string( $filtered ) ? $filtered : gettype( $filtered );
+		$filtered_decision = is_string( $filtered ) ? FraudDecision::tryFrom( $filtered ) : null;
 
 		// Validate filtered decision (third-party filters may return invalid values).
-		if ( ! $this->is_valid_decision( $decision ) ) {
+		if ( is_null( $filtered_decision ) || ! in_array( $filtered_decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'warning',
-				sprintf( 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "%s". Using original decision "%s".', $decision, $original_decision ),
+				sprintf( 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "%s". Using original decision "%s".', $filtered_value, $original_decision->value ),
 				array_merge(
 					$log_context,
 					array(
 						'filter'            => 'woocommerce_fraud_protection_decision',
-						'decision_received' => is_string( $decision ) ? $decision : gettype( $decision ),
-						'argument_type'     => gettype( $decision ),
-						'original_decision' => $original_decision,
-						'filtered_decision' => $decision,
+						'decision_received' => $filtered_value,
+						'argument_type'     => gettype( $filtered ),
+						'original_decision' => $original_decision->value,
+						'filtered_decision' => $filtered_value,
 					)
 				),
 				true
 			);
-			$decision = $original_decision;
+			$filtered_decision = $original_decision;
 		}
+		$decision = $filtered_decision;
 
 		// Log if decision was overridden.
 		if ( $decision !== $original_decision ) {
 			FraudProtectionController::log(
 				'info',
-				sprintf( 'Decision overridden by filter `woocommerce_fraud_protection_decision`: "%s" -> "%s"', $original_decision, $decision ),
+				sprintf( 'Decision overridden by filter `woocommerce_fraud_protection_decision`: "%s" -> "%s"', $original_decision->value, $decision->value ),
 				array_merge(
 					$log_context,
 					array(
-						'original_decision' => $original_decision,
-						'final_decision'    => $decision,
+						'original_decision' => $original_decision->value,
+						'final_decision'    => $decision->value,
 					)
 				)
 			);
@@ -152,32 +146,19 @@ class DecisionHandler {
 		 */
 		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true );
 
-		if ( $learning_mode && ApiClient::DECISION_BLOCK === $decision ) {
+		if ( $learning_mode && FraudDecision::Block === $decision ) {
 			FraudProtectionController::log(
 				'info',
-				sprintf( 'Learning mode: suppressing "%s" decision, allowing session.', $decision ),
+				sprintf( 'Learning mode: suppressing "%s" decision, allowing session.', $decision->value ),
 				$log_context
 			);
-			$decision = ApiClient::DECISION_ALLOW;
+			$decision = FraudDecision::Allow;
 		}
 
 		// Apply the decision to the session.
 		$this->update_session_status( $decision );
 
 		return $decision;
-	}
-
-	/**
-	 * Check if a decision value is valid.
-	 *
-	 * @param mixed $decision The decision to validate.
-	 * @return bool True if valid, false otherwise.
-	 */
-	private function is_valid_decision( $decision ): bool {
-		if ( ! is_string( $decision ) ) {
-			return false;
-		}
-		return in_array( $decision, ApiClient::VALID_DECISIONS, true );
 	}
 
 	/**
@@ -188,13 +169,13 @@ class DecisionHandler {
 	 * causes subsequent fraud checks to return "allow" (due to lower cart value),
 	 * which would incorrectly unblock the session.
 	 *
-	 * @param string $decision The validated decision to apply.
+	 * @param FraudDecision $decision The decision to apply.
 	 * @return void
 	 */
-	private function update_session_status( string $decision ): void {
+	private function update_session_status( FraudDecision $decision ): void {
 		// Don't overwrite a blocked session with an allow decision.
 		// Once blocked, a session should stay blocked until explicitly reset.
-		if ( ApiClient::DECISION_ALLOW === $decision && $this->session_manager->is_session_blocked() ) {
+		if ( FraudDecision::Allow === $decision && $this->session_manager->is_session_blocked() ) {
 			FraudProtectionController::log(
 				'info',
 				'Preserving blocked session status. Allow decision not applied to already-blocked session.'
@@ -203,11 +184,11 @@ class DecisionHandler {
 		}
 
 		switch ( $decision ) {
-			case ApiClient::DECISION_ALLOW:
+			case FraudDecision::Allow:
 				$this->session_manager->allow_session();
 				break;
 
-			case ApiClient::DECISION_BLOCK:
+			case FraudDecision::Block:
 				$this->session_manager->block_session();
 				break;
 		}

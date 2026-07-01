@@ -8,7 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
@@ -150,7 +150,7 @@ class BlocksCheckoutProtector {
 			$this->request_data
 		);
 
-		if ( ApiClient::DECISION_BLOCK === $decision ) {
+		if ( FraudDecision::Block === $decision ) {
 			throw new RouteException(
 				'woocommerce_rest_checkout_error',
 				esc_html( $this->blocked_session_notice->get_message_plaintext( 'purchase' ) ),
