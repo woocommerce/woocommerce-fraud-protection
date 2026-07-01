@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub WC_Stripe_API if the real class isn't loaded.
@@ -251,7 +252,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'avs_address_check'  => null,
 					'avs_postcode_check' => null,
 				),
-				'transaction_mode'        => PaymentMethodData::MODE_LIVE,
+				'transaction_mode'        => PaymentMode::Live->value,
 			),
 			$result->to_array()
 		);
@@ -366,7 +367,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $result->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -381,7 +382,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_LIVE, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Live->value, $result->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -396,7 +397,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotSame( $resolved, $result );
 		$array = $result->to_array();
-		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'card', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
 	}
@@ -417,7 +418,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotSame( $resolved, $result );
 		$array = $result->to_array();
-		$this->assertSame( PaymentMethodData::MODE_LIVE, $array['transaction_mode'] );
+		$this->assertSame( PaymentMode::Live->value, $array['transaction_mode'] );
 		$this->assertSame( 'card', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
 	}
@@ -440,7 +441,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$array = $result->to_array();
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
-		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 	}
 
 	/**

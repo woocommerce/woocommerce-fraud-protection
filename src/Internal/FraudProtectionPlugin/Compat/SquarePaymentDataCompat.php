@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -85,17 +86,17 @@ class SquarePaymentDataCompat {
 	 * Uses the Square gateway's own settings handler when available, which is
 	 * the same method Square uses internally to select the API environment.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
+	 * @return PaymentMode The transaction mode (Unknown if the gateway is unavailable).
 	 */
-	private function resolve_transaction_mode(): string {
+	private function resolve_transaction_mode(): PaymentMode {
 		if ( ! function_exists( 'wc_square' ) ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 
 		try {
-			return wc_square()->get_settings_handler()->is_sandbox() ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_LIVE;
+			return wc_square()->get_settings_handler()->is_sandbox() ? PaymentMode::Test : PaymentMode::Live;
 		} catch ( \Throwable $e ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 	}
 }

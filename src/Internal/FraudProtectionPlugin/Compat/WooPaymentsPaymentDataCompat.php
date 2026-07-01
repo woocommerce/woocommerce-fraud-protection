@@ -11,6 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionControl
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\CheckResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -205,23 +206,23 @@ class WooPaymentsPaymentDataCompat {
 	 * WooPayments uses to select API keys and store mode in order metadata.
 	 * This also covers dev mode, onboarding test mode, and filter overrides.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
+	 * @return PaymentMode The transaction mode (Unknown if the gateway is unavailable).
 	 */
-	private function resolve_transaction_mode(): string {
+	private function resolve_transaction_mode(): PaymentMode {
 		if ( ! class_exists( '\WC_Payments' ) ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 
 		try {
 			$mode = \WC_Payments::mode();
 
 			if ( null === $mode ) {
-				return PaymentMethodData::MODE_UNKNOWN;
+				return PaymentMode::Unknown;
 			}
 
-			return $mode->is_live() ? PaymentMethodData::MODE_LIVE : PaymentMethodData::MODE_TEST;
+			return $mode->is_live() ? PaymentMode::Live : PaymentMode::Test;
 		} catch ( \Throwable $e ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 	}
 

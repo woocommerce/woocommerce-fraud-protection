@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -108,17 +109,17 @@ class StripePaymentDataCompat {
 	 * Uses the Stripe gateway's own mode API when available, which is the same
 	 * method Stripe uses internally to select API keys during payment processing.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
+	 * @return PaymentMode The transaction mode (Unknown if the gateway is unavailable).
 	 */
-	private function resolve_transaction_mode(): string {
+	private function resolve_transaction_mode(): PaymentMode {
 		if ( ! class_exists( '\WC_Stripe_Mode' ) ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 
 		try {
-			return \WC_Stripe_Mode::is_live() ? PaymentMethodData::MODE_LIVE : PaymentMethodData::MODE_TEST;
+			return \WC_Stripe_Mode::is_live() ? PaymentMode::Live : PaymentMode::Test;
 		} catch ( \Throwable $e ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 	}
 

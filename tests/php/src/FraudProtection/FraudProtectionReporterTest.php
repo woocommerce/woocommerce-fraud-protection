@@ -10,7 +10,7 @@ namespace Automattic\WooCommerce\Tests\FraudProtection;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionReporter;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 
 /**
@@ -62,12 +62,12 @@ class FraudProtectionReporterTest extends FraudProtectionUnitTestCase {
 			->method( 'fraud_protection_report' )
 			->with(
 				$this->identicalTo( $order ),
-				$this->identicalTo( ApiClient::REPORT_SOURCE_CHARGEBACK ),
+				$this->identicalTo( ReportSource::Chargeback ),
 				$this->identicalTo( $context ),
 				$this->identicalTo( 'some notes' )
 			);
 
-		$this->sut->report( $order, ApiClient::REPORT_SOURCE_CHARGEBACK, $context, 'some notes' );
+		$this->sut->report( $order, ReportSource::Chargeback, $context, 'some notes' );
 	}
 
 	/**
@@ -79,7 +79,7 @@ class FraudProtectionReporterTest extends FraudProtectionUnitTestCase {
 		$this->tracker->expects( $this->never() )
 			->method( 'fraud_protection_report' );
 
-		$this->sut->report( $order, ApiClient::REPORT_SOURCE_CHARGEBACK, null );
+		$this->sut->report( $order, ReportSource::Chargeback, null );
 
 		$this->assertLogged( 'warning', 'Fraud protection report received no reportable context; skipping.' );
 	}

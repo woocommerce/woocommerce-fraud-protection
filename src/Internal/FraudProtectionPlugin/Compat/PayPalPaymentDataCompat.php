@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -57,27 +58,27 @@ class PayPalPaymentDataCompat {
 	 *
 	 * Uses the PayPal Payments ConnectionState API when available, which is the
 	 * same method PayPal uses internally to select API endpoints (sandbox vs
-	 * production). Falls back to MODE_UNKNOWN when the gateway is unavailable
+	 * production). Falls back to PaymentMode::Unknown when the gateway is unavailable
 	 * or the merchant is not connected.
 	 *
-	 * @return string MODE_TEST, MODE_LIVE, or MODE_UNKNOWN if the gateway is unavailable.
+	 * @return PaymentMode The transaction mode (Unknown if the gateway is unavailable).
 	 */
-	private function resolve_transaction_mode(): string {
+	private function resolve_transaction_mode(): PaymentMode {
 		if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP' ) ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 
 		try {
 			$connection_state = \WooCommerce\PayPalCommerce\PPCP::container()->get( 'settings.connection-state' );
 
 			if ( $connection_state->is_production() ) {
-				return PaymentMethodData::MODE_LIVE;
+				return PaymentMode::Live;
 			}
 
 			// Not production: either sandbox (test) or not connected (unknown).
-			return $connection_state->is_sandbox() ? PaymentMethodData::MODE_TEST : PaymentMethodData::MODE_UNKNOWN;
+			return $connection_state->is_sandbox() ? PaymentMode::Test : PaymentMode::Unknown;
 		} catch ( \Throwable $e ) {
-			return PaymentMethodData::MODE_UNKNOWN;
+			return PaymentMode::Unknown;
 		}
 	}
 

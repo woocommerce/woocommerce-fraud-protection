@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\ClearanceStatus;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -32,24 +33,9 @@ class SessionClearanceManager {
 	public const CUSTOMER_IDENTITY_ID_KEY = '_fraud_protection_customer_identity_id';
 
 	/**
-	 * Session status: pending clearance.
-	 */
-	public const STATUS_PENDING = 'pending';
-
-	/**
-	 * Session status: allowed.
-	 */
-	public const STATUS_ALLOWED = 'allowed';
-
-	/**
-	 * Session status: blocked.
-	 */
-	public const STATUS_BLOCKED = 'blocked';
-
-	/**
 	 * Default session status.
 	 */
-	public const DEFAULT_STATUS = self::STATUS_ALLOWED;
+	private const DEFAULT_STATUS = ClearanceStatus::Allowed;
 
 	/**
 	 * Check if the current session is allowed.
@@ -57,8 +43,7 @@ class SessionClearanceManager {
 	 * @return bool True if session is allowed, false otherwise.
 	 */
 	public function is_session_allowed(): bool {
-		$status = $this->get_session_status();
-		return self::STATUS_ALLOWED === $status;
+		return ClearanceStatus::Allowed === $this->get_session_status();
 	}
 
 	/**
@@ -67,8 +52,7 @@ class SessionClearanceManager {
 	 * @return bool True if session is blocked, false otherwise.
 	 */
 	public function is_session_blocked(): bool {
-		$status = $this->get_session_status();
-		return self::STATUS_BLOCKED === $status;
+		return ClearanceStatus::Blocked === $this->get_session_status();
 	}
 
 	/**
@@ -77,7 +61,7 @@ class SessionClearanceManager {
 	 * @return void
 	 */
 	public function allow_session(): void {
-		$this->set_session_status( self::STATUS_ALLOWED );
+		$this->set_session_status( ClearanceStatus::Allowed );
 		$this->log_session_update_event( 'allowed' );
 	}
 
@@ -87,7 +71,7 @@ class SessionClearanceManager {
 	 * @return void
 	 */
 	public function challenge_session(): void {
-		$this->set_session_status( self::STATUS_PENDING );
+		$this->set_session_status( ClearanceStatus::Pending );
 		$this->log_session_update_event( 'challenged' );
 	}
 
@@ -101,7 +85,7 @@ class SessionClearanceManager {
 	 * @return void
 	 */
 	public function block_session(): void {
-		$this->set_session_status( self::STATUS_BLOCKED );
+		$this->set_session_status( ClearanceStatus::Blocked );
 		$this->log_session_update_event( 'blocked' );
 		$this->empty_cart();
 	}
@@ -109,35 +93,31 @@ class SessionClearanceManager {
 	/**
 	 * Get the current session clearance status.
 	 *
-	 * @return string One of: pending, allowed, blocked.
+	 * @return ClearanceStatus
 	 */
-	public function get_session_status(): string {
+	public function get_session_status(): ClearanceStatus {
 		if ( ! $this->is_session_available() ) {
 			return self::DEFAULT_STATUS;
 		}
 
-		$status = WC()->session->get( self::SESSION_KEY, self::DEFAULT_STATUS );
+		$raw    = WC()->session->get( self::SESSION_KEY, self::DEFAULT_STATUS->value );
+		$status = is_string( $raw ) ? ClearanceStatus::tryFrom( $raw ) : null;
 
-		// Validate status value - return default for invalid values.
-		if ( ! in_array( $status, array( self::STATUS_PENDING, self::STATUS_ALLOWED, self::STATUS_BLOCKED ), true ) ) {
-			return self::DEFAULT_STATUS;
-		}
-
-		return $status;
+		return is_null( $status ) ? self::DEFAULT_STATUS : $status;
 	}
 
 	/**
 	 * Set the session clearance status.
 	 *
-	 * @param string $status One of: pending, allowed, blocked.
+	 * @param ClearanceStatus $status The clearance status to store.
 	 * @return void
 	 */
-	private function set_session_status( string $status ): void {
+	private function set_session_status( ClearanceStatus $status ): void {
 		if ( ! $this->is_session_available() ) {
 			return;
 		}
 
-		WC()->session->set( self::SESSION_KEY, $status );
+		WC()->session->set( self::SESSION_KEY, $status->value );
 	}
 
 	/**

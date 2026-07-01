@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub PayPal Payments PPCP and ConnectionState if not loaded.
@@ -135,7 +136,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			new PaymentMethodData( 'ppcp-gateway' )
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $result->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -148,7 +149,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			new PaymentMethodData( 'ppcp-gateway' )
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_LIVE, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Live->value, $result->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -160,7 +161,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			new PaymentMethodData( 'ppcp-gateway' )
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Unknown->value, $result->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -173,7 +174,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			new PaymentMethodData( 'ppcp-card-button-gateway' )
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $result->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -188,7 +189,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotSame( $resolved, $result );
 		$array = $result->to_array();
-		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'paypal', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
 	}
