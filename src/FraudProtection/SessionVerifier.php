@@ -222,7 +222,7 @@ class SessionVerifier {
 			$payload = $this->data_collector->get_collected_data( $order_id );
 
 			$payload['source']  = $source;
-			$payload['payment'] = $payment_data ? $payment_data->to_array() : null;
+			$payload['payment'] = $payment_data?->to_array();
 
 			$result   = $this->api_client->verify( $session_id, $payload );
 			$decision = $this->decision_handler->apply_decision( $result->get_decision(), $payload );

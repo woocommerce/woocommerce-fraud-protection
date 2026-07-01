@@ -300,6 +300,6 @@ class WooPaymentsPaymentDataCompat {
 	 */
 	private function is_woopayments_gateway( string $payment_method ): bool {
 		return self::GATEWAY_ID === $payment_method
-			|| 0 === strpos( $payment_method, self::GATEWAY_ID . '_' );
+			|| str_starts_with( $payment_method, self::GATEWAY_ID . '_' );
 	}
 }

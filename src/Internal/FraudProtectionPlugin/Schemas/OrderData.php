@@ -26,7 +26,7 @@ class OrderData {
 	 *
 	 * @var int|string
 	 */
-	private $customer_id;
+	private int|string $customer_id;
 
 	/**
 	 * Order total.
@@ -108,7 +108,7 @@ class OrderData {
 	 */
 	private function __construct(
 		int $order_id = 0,
-		$customer_id = 'guest',
+		int|string $customer_id = 'guest',
 		float $total = 0,
 		float $items_total = 0,
 		float $shipping_total = 0,

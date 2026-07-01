@@ -88,6 +88,6 @@ class PayPalPaymentDataCompat {
 	 * @return bool
 	 */
 	private function is_paypal_gateway( string $payment_method ): bool {
-		return 0 === strpos( $payment_method, self::GATEWAY_PREFIX );
+		return str_starts_with( $payment_method, self::GATEWAY_PREFIX );
 	}
 }

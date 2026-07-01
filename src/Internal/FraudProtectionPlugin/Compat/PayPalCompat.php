@@ -304,7 +304,7 @@ class PayPalCompat {
 	 * @return bool
 	 */
 	private function is_paypal_gateway( string $gateway_id ): bool {
-		return 0 === strpos( $gateway_id, self::PAYPAL_GATEWAY_PREFIX );
+		return str_starts_with( $gateway_id, self::PAYPAL_GATEWAY_PREFIX );
 	}
 
 	/**

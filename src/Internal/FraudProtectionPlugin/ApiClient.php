@@ -517,10 +517,17 @@ class ApiClient {
 	 *
 	 * @return int|false Blog ID or false if not available.
 	 */
-	private function get_blog_id() {
+	private function get_blog_id(): int|false {
 		if ( ! class_exists( \Jetpack_Options::class ) ) {
 			return false;
 		}
-		return \Jetpack_Options::get_option( 'id' );
+
+		$blog_id = \Jetpack_Options::get_option( 'id' );
+
+		if ( ! is_numeric( $blog_id ) || (int) $blog_id <= 0 ) {
+			return false;
+		}
+
+		return (int) $blog_id;
 	}
 }

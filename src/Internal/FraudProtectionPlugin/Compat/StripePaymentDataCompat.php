@@ -132,6 +132,6 @@ class StripePaymentDataCompat {
 	 */
 	private function is_stripe_gateway( string $payment_method ): bool {
 		return self::GATEWAY_PREFIX === $payment_method
-			|| 0 === strpos( $payment_method, self::GATEWAY_PREFIX . '_' );
+			|| str_starts_with( $payment_method, self::GATEWAY_PREFIX . '_' );
 	}
 }
