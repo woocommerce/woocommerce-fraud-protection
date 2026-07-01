@@ -185,7 +185,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
 	}
 
 	/**
@@ -198,7 +198,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Block, $result->get_decision() );
+		$this->assertSame( FraudDecision::Block, $result->decision );
 	}
 
 	/**
@@ -214,7 +214,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
@@ -228,8 +228,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
-		$this->assertSame( '', $result->get_session_id() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
 
@@ -248,7 +248,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
 
@@ -267,7 +267,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
@@ -286,8 +286,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
-		$this->assertSame( '', $result->get_session_id() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
 
@@ -301,7 +301,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 
@@ -402,9 +402,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( '', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
-		$this->assertSame( '82vHd2iPY4JvJZQE-A6jHg', $result->get_session_id() );
-		$this->assertSame( 0.4033, $result->get_risk_score() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '82vHd2iPY4JvJZQE-A6jHg', $result->session_id );
+		$this->assertSame( 0.4033, $result->risk_score );
 	}
 
 	/**
@@ -415,9 +415,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$result = $sut->verify( '', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->get_decision() );
-		$this->assertSame( '', $result->get_session_id() );
-		$this->assertNull( $result->get_risk_score() );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
+		$this->assertNull( $result->risk_score );
 	}
 
 	/*

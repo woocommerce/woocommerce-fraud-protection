@@ -24,9 +24,9 @@ class VerifyResult {
 	 * @param ?float        $risk_score The Blackbox risk score, or null if none.
 	 */
 	private function __construct(
-		private readonly FraudDecision $decision,
-		private readonly string $session_id,
-		private readonly ?float $risk_score = null
+		public readonly FraudDecision $decision,
+		public readonly string $session_id,
+		public readonly ?float $risk_score = null
 	) {}
 
 	/**
@@ -42,32 +42,5 @@ class VerifyResult {
 	 */
 	public static function create( FraudDecision $decision, string $session_id, ?float $risk_score = null ): self {
 		return new self( $decision, \sanitize_text_field( $session_id ), $risk_score );
-	}
-
-	/**
-	 * Get the fraud decision.
-	 *
-	 * @return FraudDecision
-	 */
-	public function get_decision(): FraudDecision {
-		return $this->decision;
-	}
-
-	/**
-	 * Get the Blackbox session ID, or empty string if none was returned.
-	 *
-	 * @return string
-	 */
-	public function get_session_id(): string {
-		return $this->session_id;
-	}
-
-	/**
-	 * Get the Blackbox risk score, or null if none was returned.
-	 *
-	 * @return ?float
-	 */
-	public function get_risk_score(): ?float {
-		return $this->risk_score;
 	}
 }
