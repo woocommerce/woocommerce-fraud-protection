@@ -50,7 +50,6 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		remove_all_filters( 'woocommerce_fraud_protection_api_request_callback' );
 		delete_option( 'jetpack_options' );
 		delete_option( 'jetpack_private_options' );
 		parent::tearDown();
@@ -418,84 +417,6 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertSame( '', $result->get_session_id() );
 		$this->assertNull( $result->get_risk_score() );
-	}
-
-	/*
-	|--------------------------------------------------------------------------
-	| Request-callback filter tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox the woocommerce_fraud_protection_api_request_callback filter replaces the transport
-	 */
-	public function test_api_request_callback_filter_replaces_transport(): void {
-		$called = false;
-
-		add_filter(
-			'woocommerce_fraud_protection_api_request_callback',
-			function () use ( &$called ) {
-				return function ( array $request_args, string $body ) use ( &$called ) {
-					$called = true;
-					return array(
-						'response' => array( 'code' => 200 ),
-						'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'block' ) ) ),
-					);
-				};
-			}
-		);
-
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
-
-		$this->assertTrue( $called, 'The filtered request callback should be invoked.' );
-		$this->assertSame( ApiClient::DECISION_BLOCK, $result->get_decision() );
-	}
-
-	/**
-	 * @testdox a non-callable request-callback filter value falls back to the default transport
-	 */
-	public function test_api_request_callback_non_callable_falls_back_to_default(): void {
-		// Stub the default transport so the fallback has something to call.
-		$sut = $this->api_client_returning( $this->decision_response( 'allow' ) );
-
-		add_filter( 'woocommerce_fraud_protection_api_request_callback', fn() => 'not-a-callable' );
-
-		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
-
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
-		$this->assertLogged( 'warning', 'returned a non-callable value' );
-	}
-
-	/**
-	 * @testdox a throwing request callback fails open with an allow decision
-	 */
-	public function test_api_request_callback_throwing_fails_open(): void {
-		add_filter(
-			'woocommerce_fraud_protection_api_request_callback',
-			fn() => function () {
-				throw new \RuntimeException( 'transport boom' );
-			}
-		);
-
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
-
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
-		$this->assertLogged( 'error', 'Blackbox API request callback threw an exception' );
-	}
-
-	/**
-	 * @testdox a request callback returning an unexpected type fails open with an allow decision
-	 */
-	public function test_api_request_callback_unexpected_return_fails_open(): void {
-		add_filter(
-			'woocommerce_fraud_protection_api_request_callback',
-			fn() => fn() => 'unexpected string'
-		);
-
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
-
-		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
-		$this->assertLogged( 'warning', 'returned an unexpected type' );
 	}
 
 	/*

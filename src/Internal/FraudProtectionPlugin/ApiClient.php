@@ -293,10 +293,10 @@ class ApiClient {
 	/**
 	 * Make a request to the Blackbox API and parse the JSON response.
 	 *
-	 * Builds the request and hands it to {@see send_api_request()}, which performs
-	 * the actual transport (Jetpack Connection by default). The parsed response
-	 * `data` array is returned on success; any transport, status, or parsing
-	 * failure becomes a WP_Error so the caller can fail open.
+	 * Builds the request and hands it to {@see jetpack_remote_request()}, which
+	 * performs the actual transport. The parsed response `data` array is returned
+	 * on success; any transport, status, or parsing failure becomes a WP_Error so
+	 * the caller can fail open.
 	 *
 	 * @param string               $method     HTTP method (GET, POST, etc.).
 	 * @param string               $path       Endpoint path (relative to Blackbox API base URL).
@@ -330,7 +330,7 @@ class ApiClient {
 			'auth_location' => 'header',
 		);
 
-		$response = $this->send_api_request( $request_args, $body );
+		$response = $this->jetpack_remote_request( $request_args, $body );
 
 		if ( is_wp_error( $response ) ) {
 			return $response;
@@ -361,98 +361,12 @@ class ApiClient {
 	}
 
 	/**
-	 * Perform a Blackbox API request through the (filterable) transport callback.
-	 *
-	 * Resolves the request callback via the
-	 * `woocommerce_fraud_protection_api_request_callback` filter (default:
-	 * {@see jetpack_remote_request()}) and invokes it. The callback is validated
-	 * and the method fails open — returns a WP_Error — if the callback is not
-	 * callable, throws, or returns an unexpected type.
-	 *
-	 * @param array<string, mixed> $request_args Request arguments (url, method, timeout, headers, auth_location).
-	 * @param string               $body         JSON-encoded request body.
-	 * @return array<string, mixed>|\WP_Error WordPress HTTP response array, or WP_Error on failure.
-	 */
-	private function send_api_request( array $request_args, string $body ) {
-		$default_callback = array( $this, 'jetpack_remote_request' );
-
-		/**
-		 * Filters the callback used to perform a Blackbox API request.
-		 *
-		 * The callback receives the request arguments and the JSON-encoded body
-		 * and must return a WordPress HTTP response array (as produced by the
-		 * `wp_remote_*` functions) or a `WP_Error`. Use it to route the request
-		 * through a different transport, or to replace it entirely, e.g. in an
-		 * environment without Jetpack Connection.
-		 *
-		 * The default callback performs a signed Jetpack Connection request and
-		 * gates it on Jetpack availability; a replacement is responsible for its
-		 * own environment checks. An invalid or throwing callback is ignored and
-		 * the request fails open.
-		 *
-		 * @since 0.1.4
-		 *
-		 * @param callable             $callback     Request callback: function( array $request_args, string $body ): ( array|WP_Error ).
-		 * @param array<string, mixed> $request_args Request arguments (url, method, timeout, headers, auth_location).
-		 * @param string               $body         JSON-encoded request body.
-		 */
-		$callback = apply_filters( 'woocommerce_fraud_protection_api_request_callback', $default_callback, $request_args, $body );
-
-		if ( ! is_callable( $callback ) ) {
-			FraudProtectionController::log(
-				'warning',
-				'Filter `woocommerce_fraud_protection_api_request_callback` returned a non-callable value; using the default transport.',
-				array(
-					'filter'        => 'woocommerce_fraud_protection_api_request_callback',
-					'argument_type' => gettype( $callback ),
-				),
-				true
-			);
-			$callback = $default_callback;
-		}
-
-		try {
-			$response = $callback( $request_args, $body );
-		} catch ( \Throwable $e ) {
-			FraudProtectionController::log(
-				'error',
-				'Blackbox API request callback threw an exception.',
-				array(
-					'filter'            => 'woocommerce_fraud_protection_api_request_callback',
-					'exception_class'   => get_class( $e ),
-					'exception_message' => $e->getMessage(),
-					'exception_file'    => $e->getFile(),
-					'exception_line'    => $e->getLine(),
-				),
-				true
-			);
-			return new \WP_Error( 'api_request_callback_error', 'Blackbox API request callback failed' );
-		}
-
-		if ( ! is_array( $response ) && ! is_wp_error( $response ) ) {
-			FraudProtectionController::log(
-				'warning',
-				'Blackbox API request callback returned an unexpected type.',
-				array(
-					'filter'        => 'woocommerce_fraud_protection_api_request_callback',
-					'argument_type' => gettype( $response ),
-				),
-				true
-			);
-			return new \WP_Error( 'api_request_invalid_response', 'Blackbox API request callback returned an unexpected type' );
-		}
-
-		return $response;
-	}
-
-	/**
-	 * Default Blackbox API transport: a signed request via Jetpack Connection.
+	 * The Blackbox API transport: a signed request via Jetpack Connection.
 	 *
 	 * Authenticates with the blog token scoped to the Jetpack blog ID. Returns a
 	 * WP_Error (so the caller can fail open) when Jetpack Connection is
-	 * unavailable or the site is not Jetpack-connected. Overridable in tests by
-	 * mocking this method; replaceable at runtime via the
-	 * `woocommerce_fraud_protection_api_request_callback` filter.
+	 * unavailable or the site is not Jetpack-connected. Isolated in its own
+	 * `protected` method so tests can override it (see {@see ApiClientTest}).
 	 *
 	 * @param array<string, mixed> $request_args Request arguments (url, method, timeout, headers, auth_location).
 	 * @param string               $body         JSON-encoded request body.
