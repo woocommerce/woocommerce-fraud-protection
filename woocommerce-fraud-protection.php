@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WooCommerce Fraud Protection
  * Description: A plugin to protect WooCommerce from fraud.
- * Version: 0.1.3
+ * Version: 0.1.4
  * Author: Automattic
  * Requires Plugins: woocommerce
  * WC requires at least: 9.5.0
