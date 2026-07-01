@@ -36,164 +36,44 @@ class ReportContextData {
 	public const SCHEMA_VERSION = 1;
 
 	/**
-	 * Event phase, as the backing string of an `EventPhase` case.
-	 *
-	 * @var string
-	 */
-	private string $type;
-
-	/**
-	 * Outcome within the phase (validated against ReportResult::for_phase()).
-	 *
-	 * @var string
-	 */
-	private string $result;
-
-	/**
-	 * Normalized cause, or null when unmapped or not applicable.
-	 *
-	 * @var ?string
-	 */
-	private ?string $reason;
-
-	/**
-	 * 3DS/SCA liability outcome, or null when undeterminable.
-	 *
-	 * @var ?string
-	 */
-	private ?string $liability_shift;
-
-	/**
-	 * Amount in minor units, or null when no amount is known.
-	 *
-	 * @var ?int
-	 */
-	private ?int $amount_minor_units;
-
-	/**
-	 * ISO-4217 currency code, or null when no amount is known.
-	 *
-	 * @var ?string
-	 */
-	private ?string $amount_currency;
-
-	/**
-	 * Best known event time. Rendered to UTC ISO 8601 at serialization. Always set.
-	 *
-	 * @var \DateTimeImmutable
-	 */
-	private \DateTimeImmutable $occurred_at;
-
-	/**
-	 * WooCommerce gateway ID. May be empty until enriched from the order.
-	 *
-	 * @var string
-	 */
-	private string $gateway;
-
-	/**
-	 * Correlation: Woo order ID, or null.
-	 *
-	 * @var ?int
-	 */
-	private ?int $correlation_order_id;
-
-	/**
-	 * Correlation: provider transaction/charge ID, or null.
-	 *
-	 * @var ?string
-	 */
-	private ?string $correlation_transaction_id;
-
-	/**
-	 * Correlation: provider payment-attempt/order ID, or null.
-	 *
-	 * @var ?string
-	 */
-	private ?string $correlation_payment_attempt_id;
-
-	/**
-	 * Correlation: provider dispute ID, or null.
-	 *
-	 * @var ?string
-	 */
-	private ?string $correlation_dispute_id;
-
-	/**
-	 * Correlation: provider refund ID, or null.
-	 *
-	 * @var ?string
-	 */
-	private ?string $correlation_refund_id;
-
-	/**
-	 * Correlation: card-network transaction reference, or null.
-	 *
-	 * @var ?string
-	 */
-	private ?string $correlation_network_transaction_id;
-
-	/**
-	 * Normalized payment instrument, or null when none is known.
-	 *
-	 * Reuses the verify-side shape so Blackbox parses one instrument schema.
-	 *
-	 * @var ?PaymentInstrumentData
-	 */
-	private ?PaymentInstrumentData $instrument;
-
-	/**
 	 * Constructor.
 	 *
-	 * @param string                 $type                               Event phase.
-	 * @param string                 $result                             Outcome within the phase.
-	 * @param ?string                $reason                             Normalized reason.
-	 * @param ?string                $liability_shift                    3DS/SCA liability outcome.
-	 * @param ?int                   $amount_minor_units                 Amount in minor units.
-	 * @param ?string                $amount_currency                    ISO-4217 currency.
-	 * @param \DateTimeImmutable     $occurred_at                        Best known event time.
-	 * @param string                 $gateway                            Woo gateway ID.
-	 * @param ?int                   $correlation_order_id               Woo order ID.
-	 * @param ?string                $correlation_transaction_id         Provider transaction ID.
-	 * @param ?string                $correlation_payment_attempt_id     Provider payment-attempt ID.
-	 * @param ?string                $correlation_dispute_id             Provider dispute ID.
-	 * @param ?string                $correlation_refund_id              Provider refund ID.
-	 * @param ?string                $correlation_network_transaction_id Card-network transaction reference.
-	 * @param ?PaymentInstrumentData $instrument                         Normalized payment instrument.
+	 * `gateway` and `correlation_order_id` are intentionally not readonly: with_order_defaults()
+	 * backfills them on a clone. Every other field is readonly.
+	 *
+	 * @param string                 $type                               Event phase, as the backing string of an `EventPhase` case.
+	 * @param string                 $result                             Outcome within the phase (validated against ReportResult::for_phase()).
+	 * @param ?string                $reason                             Normalized cause, or null when unmapped or not applicable.
+	 * @param ?string                $liability_shift                    3DS/SCA liability outcome, or null when undeterminable.
+	 * @param ?int                   $amount_minor_units                 Amount in minor units, or null when no amount is known.
+	 * @param ?string                $amount_currency                    ISO-4217 currency code, or null when no amount is known.
+	 * @param \DateTimeImmutable     $occurred_at                        Best known event time. Rendered to UTC ISO 8601 at serialization. Always set.
+	 * @param string                 $gateway                            WooCommerce gateway ID. May be empty until enriched from the order.
+	 * @param ?int                   $correlation_order_id               Correlation: Woo order ID, or null.
+	 * @param ?string                $correlation_transaction_id         Correlation: provider transaction/charge ID, or null.
+	 * @param ?string                $correlation_payment_attempt_id     Correlation: provider payment-attempt/order ID, or null.
+	 * @param ?string                $correlation_dispute_id             Correlation: provider dispute ID, or null.
+	 * @param ?string                $correlation_refund_id              Correlation: provider refund ID, or null.
+	 * @param ?string                $correlation_network_transaction_id Correlation: card-network transaction reference, or null.
+	 * @param ?PaymentInstrumentData $instrument                         Normalized payment instrument (reuses the verify-side shape), or null when none is known.
 	 */
 	private function __construct(
-		string $type,
-		string $result,
-		?string $reason,
-		?string $liability_shift,
-		?int $amount_minor_units,
-		?string $amount_currency,
-		\DateTimeImmutable $occurred_at,
-		string $gateway,
-		?int $correlation_order_id,
-		?string $correlation_transaction_id,
-		?string $correlation_payment_attempt_id,
-		?string $correlation_dispute_id,
-		?string $correlation_refund_id,
-		?string $correlation_network_transaction_id,
-		?PaymentInstrumentData $instrument
-	) {
-		$this->type                               = $type;
-		$this->result                             = $result;
-		$this->reason                             = $reason;
-		$this->liability_shift                    = $liability_shift;
-		$this->amount_minor_units                 = $amount_minor_units;
-		$this->amount_currency                    = $amount_currency;
-		$this->occurred_at                        = $occurred_at;
-		$this->gateway                            = $gateway;
-		$this->correlation_order_id               = $correlation_order_id;
-		$this->correlation_transaction_id         = $correlation_transaction_id;
-		$this->correlation_payment_attempt_id     = $correlation_payment_attempt_id;
-		$this->correlation_dispute_id             = $correlation_dispute_id;
-		$this->correlation_refund_id              = $correlation_refund_id;
-		$this->correlation_network_transaction_id = $correlation_network_transaction_id;
-		$this->instrument                         = $instrument;
-	}
+		private readonly string $type,
+		private readonly string $result,
+		private readonly ?string $reason,
+		private readonly ?string $liability_shift,
+		private readonly ?int $amount_minor_units,
+		private readonly ?string $amount_currency,
+		private readonly \DateTimeImmutable $occurred_at,
+		private string $gateway,
+		private ?int $correlation_order_id,
+		private readonly ?string $correlation_transaction_id,
+		private readonly ?string $correlation_payment_attempt_id,
+		private readonly ?string $correlation_dispute_id,
+		private readonly ?string $correlation_refund_id,
+		private readonly ?string $correlation_network_transaction_id,
+		private readonly ?PaymentInstrumentData $instrument
+	) {}
 
 	/**
 	 * Build a context from an array of report field values.
