@@ -5,19 +5,19 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ShortcodeCheckoutProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the ShortcodeCheckoutProtector class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\ShortcodeCheckoutProtector
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector
  */
 class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 

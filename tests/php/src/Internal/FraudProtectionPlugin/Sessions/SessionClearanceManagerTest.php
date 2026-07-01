@@ -5,15 +5,15 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 /**
  * Tests for SessionClearanceManager.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager
  */
 class SessionClearanceManagerTest extends FraudProtectionUnitTestCase {
 

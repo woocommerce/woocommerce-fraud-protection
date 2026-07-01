@@ -29,8 +29,8 @@ if ( ! function_exists( 'WC' ) ) {
 	}
 }
 
-$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager();
-$collector       = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionDataCollector();
+$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager();
+$collector       = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector();
 $collector->init( $session_manager );
 
 // 1. WC() returns null.

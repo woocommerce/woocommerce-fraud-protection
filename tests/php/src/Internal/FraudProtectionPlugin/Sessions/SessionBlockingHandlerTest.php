@@ -5,17 +5,17 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionBlockingHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 /**
  * Tests for the SessionBlockingHandler class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionBlockingHandler
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler
  */
 class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 

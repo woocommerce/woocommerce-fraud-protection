@@ -5,16 +5,16 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CheckoutEventTracker;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 /**
  * Tests for CheckoutEventTracker.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\CheckoutEventTracker
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker
  */
 class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 

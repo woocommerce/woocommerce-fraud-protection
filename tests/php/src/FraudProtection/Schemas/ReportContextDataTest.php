@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Tests\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 
 /**
  * Tests for the ReportContextData class.
@@ -17,8 +16,6 @@ use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
  * @covers \Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData
  */
 class ReportContextDataTest extends FraudProtectionUnitTestCase {
-
-	use LoggerSpyTrait;
 
 	/**
 	 * @testdox from_array() builds a full context with normalized facts, all fields flat.

@@ -5,10 +5,12 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
 

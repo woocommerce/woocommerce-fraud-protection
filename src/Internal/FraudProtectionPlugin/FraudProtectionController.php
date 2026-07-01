@@ -15,6 +15,15 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDa
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\LogContextSanitizer;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CartEventTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\PaymentMethodEventTracker;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 
 defined( 'ABSPATH' ) || exit;
@@ -24,9 +33,21 @@ defined( 'ABSPATH' ) || exit;
  *
  * This class orchestrates all fraud protection components and ensures
  * zero-impact when the feature flag is disabled.
+ *
+ * Resolving an instance from the DI container (which calls {@see init()}) wires
+ * the static {@see log()} facade; the class must be resolved before that facade
+ * is used. {@see register()} then hooks the instance into WordPress.
  */
 class FraudProtectionController /* implements RegisterHooksInterface */ {
 
+	/**
+	 * The controller instance that the static {@see log()} facade delegates to.
+	 * Set in {@see init()}, so simply resolving the controller from the DI
+	 * container is enough to wire the facade.
+	 *
+	 * @var FraudProtectionController
+	 */
+	protected static FraudProtectionController $instance;
 
 	/**
 	 * Blocked session notice instance.
@@ -164,6 +185,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		AddPaymentMethodProtector $add_payment_method_protector,
 		PayForOrderProtector $pay_for_order_protector
 	): void {
+		self::$instance = $this;
+
 		$this->blocked_session_notice       = $blocked_session_notice;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
 		$this->cart_event_tracker           = $cart_event_tracker;
@@ -198,6 +221,9 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 
 	/**
 	 * Check if fraud protection feature is enabled.
+	 *
+	 * Static facade kept for backwards compatibility; delegates to the
+	 * registered instance's {@see is_feature_enabled()}.
 	 *
 	 * @return bool
 	 */
@@ -238,6 +264,24 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	/**
 	 * Log helper method for consistent logging across all fraud protection components.
 	 *
+	 * Static facade kept for backwards compatibility; delegates to the
+	 * registered instance's {@see write_log()}, where the full behaviour is
+	 * documented.
+	 *
+	 * @param string               $level                   Log level (emergency, alert, critical, error, warning, notice, info, debug).
+	 * @param string               $message                 Log message.
+	 * @param array<string, mixed> $context                 Optional context data.
+	 * @param bool                 $forward_to_platform_log Whether to also forward a sanitized copy to the PHP error log. Defaults to false.
+	 *
+	 * @return void
+	 */
+	public static function log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
+		self::$instance->write_log( $level, $message, $context, $forward_to_platform_log );
+	}
+
+	/**
+	 * Log helper method for consistent logging across all fraud protection components.
+	 *
 	 * Always writes to the local WooCommerce log with source
 	 * `woo-fraud-protection` so entries are easy to filter under
 	 * WooCommerce -> Status -> Logs.
@@ -259,7 +303,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @return void
 	 */
-	public static function log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
+	public function write_log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
 		$message = self::prefix_message_with_identity( $message );
 
 		if ( function_exists( 'wc_get_logger' ) ) {

@@ -230,9 +230,6 @@ class WC_Fraud_Protection_Unit_Tests_Bootstrap {
 		require_once $helpers . '/class-wc-helper-shipping-zones.php';
 		require_once $helpers . '/class-wc-helper-payment-token.php';
 		require_once $helpers . '/class-wc-helper-settings.php';
-
-		// Traits.
-		require_once self::$wc_tests_root . '/php/helpers/LoggerSpyTrait.php';
 	}
 
 	/**

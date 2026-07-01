@@ -5,9 +5,12 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 use Automattic\WooCommerce\StoreApi\Schemas\V1\CheckoutSchema;
 

@@ -1,32 +1,32 @@
 <?php
 /**
- * PayForOrderProtectorTest class file.
+ * AddPaymentMethodProtectorTest class file.
  */
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PayForOrderProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
- * Tests for the PayForOrderProtector class.
+ * Tests for the AddPaymentMethodProtector class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\PayForOrderProtector
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector
  */
-class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
+class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * The System Under Test.
 	 *
-	 * @var PayForOrderProtector
+	 * @var AddPaymentMethodProtector
 	 */
-	private PayForOrderProtector $sut;
+	private AddPaymentMethodProtector $sut;
 
 	/**
 	 * Mock session verifier.
@@ -55,7 +55,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 			->method( 'get_message_html' )
 			->willReturn( 'We are unable to process this request online. Please <a href="mailto:test@example.com">contact support (test@example.com)</a> for assistance.' );
 
-		$this->sut = new PayForOrderProtector();
+		$this->sut = new AddPaymentMethodProtector();
 		$this->sut->init(
 			$this->session_verifier,
 			$this->blocked_session_notice
@@ -68,17 +68,19 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		wc_clear_notices();
+		remove_all_filters( 'woocommerce_add_payment_method_form_is_valid' );
+		remove_all_actions( 'wp_enqueue_scripts' );
 
 		parent::tearDown();
 	}
 
 	/**
-	 * @testdox PayForOrderProtector uses ClassicFormDataExtractionTrait.
+	 * @testdox AddPaymentMethodProtector uses ClassicFormDataExtractionTrait.
 	 */
 	public function test_uses_classic_form_data_extraction_trait(): void {
 		$this->assertContains(
 			ClassicFormDataExtractionTrait::class,
-			class_uses( PayForOrderProtector::class )
+			class_uses( AddPaymentMethodProtector::class )
 		);
 	}
 
@@ -89,17 +91,17 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox register() hooks woocommerce_before_pay_action and wp_enqueue_scripts.
+	 * @testdox register() hooks woocommerce_add_payment_method_form_is_valid and wp_enqueue_scripts.
 	 */
 	public function test_register_hooks(): void {
 		$this->sut->register();
 
 		$this->assertNotFalse(
-			has_action( 'woocommerce_before_pay_action', array( $this->sut, 'verify_and_block' ) ),
-			'woocommerce_before_pay_action action should be registered'
+			has_filter( 'woocommerce_add_payment_method_form_is_valid', array( $this->sut, 'verify_and_block' ) ),
+			'woocommerce_add_payment_method_form_is_valid filter should be registered'
 		);
 		$this->assertNotFalse(
-			has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_pay_for_order_script' ) ),
+			has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_add_payment_method_script' ) ),
 			'wp_enqueue_scripts hook should be registered'
 		);
 	}
@@ -111,43 +113,38 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox verify_and_block() passes session_id, order_id, and request_data to SessionVerifier — no notice on ALLOW.
+	 * @testdox verify_and_block() passes session_id and request_data to SessionVerifier, returns true on ALLOW.
 	 */
-	public function test_verify_allows_on_allow_decision(): void {
+	public function test_verify_returns_true_on_allow_decision(): void {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-123';
 		$_POST['payment_method']                 = 'stripe';
-
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 42 );
 
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-123', 'pay_for_order', 42, $this->isType( 'array' ) )
+			->with( 'test-session-123', 'add_payment_method', 0, $this->isType( 'array' ) )
 			->willReturn( ApiClient::DECISION_ALLOW );
 
-		$this->sut->verify_and_block( $order );
+		$result = $this->sut->verify_and_block( true );
 
-		$this->assertFalse( wc_has_notice( $this->blocked_session_notice->get_message_html( 'purchase' ), 'error' ) );
+		$this->assertTrue( $result );
 	}
 
 	/**
-	 * @testdox verify_and_block() adds notice on BLOCK decision.
+	 * @testdox verify_and_block() returns false and adds notice on BLOCK decision.
 	 */
-	public function test_verify_adds_notice_on_block_decision(): void {
+	public function test_verify_returns_false_and_adds_notice_on_block_decision(): void {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-456';
 		$_POST['payment_method']                 = 'woocommerce_payments';
-
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 10 );
 
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->willReturn( ApiClient::DECISION_BLOCK );
 
-		$this->sut->verify_and_block( $order );
+		$result = $this->sut->verify_and_block( true );
 
+		$this->assertFalse( $result );
 		$this->assertTrue(
 			wc_has_notice(
 				'We are unable to process this request online. Please <a href="mailto:test@example.com">contact support (test@example.com)</a> for assistance.',
@@ -157,69 +154,34 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_and_block() uses purchase context for blocked message.
+	 * @testdox verify_and_block() uses generic context for blocked message.
 	 */
-	public function test_verify_uses_purchase_context_for_blocked_message(): void {
+	public function test_verify_uses_generic_context_for_blocked_message(): void {
 		$_POST['payment_method'] = 'stripe';
-
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 1 );
 
 		$this->blocked_session_notice
 			->expects( $this->once() )
 			->method( 'get_message_html' )
-			->with( 'purchase' );
+			->with( 'generic' );
 
 		$this->session_verifier
 			->method( 'verify_session' )
 			->willReturn( ApiClient::DECISION_BLOCK );
 
-		$this->sut->verify_and_block( $order );
+		$this->sut->verify_and_block( true );
 	}
 
 	/**
-	 * @testdox verify_and_block() passes the order ID to SessionVerifier.
+	 * @testdox verify_and_block() respects prior validation failure and skips verification.
 	 */
-	public function test_verify_passes_order_id_to_session_verifier(): void {
-		$_POST['payment_method'] = 'stripe';
-
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 99 );
-
+	public function test_verify_respects_prior_validation_failure(): void {
 		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->with(
-				$this->isType( 'string' ),
-				'pay_for_order',
-				99,
-				$this->isType( 'array' )
-			)
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->expects( $this->never() )
+			->method( 'verify_session' );
 
-		$this->sut->verify_and_block( $order );
+		$result = $this->sut->verify_and_block( false );
+
+		$this->assertFalse( $result );
 	}
 
-	/**
-	 * @testdox verify_and_block() deduplicates blocked notice.
-	 */
-	public function test_verify_deduplicates_blocked_notice(): void {
-		$_POST['payment_method'] = 'stripe';
-
-		$order = $this->createMock( \WC_Order::class );
-		$order->method( 'get_id' )->willReturn( 1 );
-
-		$this->session_verifier
-			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
-
-		// Pre-add the same notice.
-		$message = $this->blocked_session_notice->get_message_html( 'purchase' );
-		wc_add_notice( $message, 'error' );
-
-		$this->sut->verify_and_block( $order );
-
-		// Should still be just 1 notice, not 2.
-		$this->assertSame( 1, wc_notice_count( 'error' ) );
-	}
 }

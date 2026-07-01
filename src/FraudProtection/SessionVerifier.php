@@ -11,7 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
 

@@ -291,10 +291,12 @@ class ApiClient {
 	}
 
 	/**
-	 * Make an HTTP request to the Blackbox API via Jetpack Connection.
+	 * Make a request to the Blackbox API and parse the JSON response.
 	 *
-	 * Uses Jetpack's signed request mechanism which authenticates with the
-	 * blog token scoped to the blog_id.
+	 * Builds the request and hands it to {@see jetpack_remote_request()}, which
+	 * performs the actual transport. The parsed response `data` array is returned
+	 * on success; any transport, status, or parsing failure becomes a WP_Error so
+	 * the caller can fail open.
 	 *
 	 * @param string               $method     HTTP method (GET, POST, etc.).
 	 * @param string               $path       Endpoint path (relative to Blackbox API base URL).
@@ -303,20 +305,6 @@ class ApiClient {
 	 * @return array<string, mixed>|\WP_Error Parsed JSON response or WP_Error on failure.
 	 */
 	private function make_request( string $method, string $path, string $session_id, array $payload ) {
-		if ( ! class_exists( Jetpack_Connection_Client::class ) ) {
-			return new \WP_Error(
-				'jetpack_not_available',
-				'Jetpack Connection is not available'
-			);
-		}
-
-		if ( ! $this->get_blog_id() ) {
-			return new \WP_Error(
-				'blog_id_not_found',
-				'Jetpack blog ID not found'
-			);
-		}
-
 		$body = \wp_json_encode(
 			array_merge(
 				$payload,
@@ -334,30 +322,20 @@ class ApiClient {
 			);
 		}
 
-		$url = self::BLACKBOX_API_BASE_URL . $path . '/' . $session_id;
-
-		// Use Jetpack Connection Client to make a signed request.
-		// This authenticates with the blog token automatically.
-		$response = Jetpack_Connection_Client::remote_request(
-			array(
-				'url'           => $url,
-				'method'        => $method,
-				'timeout'       => self::DEFAULT_TIMEOUT,
-				'headers'       => array( 'Content-Type' => 'application/json' ),
-				'auth_location' => 'header',
-			),
-			$body
+		$request_args = array(
+			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . $session_id,
+			'method'        => $method,
+			'timeout'       => self::DEFAULT_TIMEOUT,
+			'headers'       => array( 'Content-Type' => 'application/json' ),
+			'auth_location' => 'header',
 		);
+
+		$response = $this->jetpack_remote_request( $request_args, $body );
 
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
 
-		/**
-		 * Type assertion for PHPStan - Jetpack returns array on success.
-		 *
-		 * @var array $response
-		 */
 		$response_code = wp_remote_retrieve_response_code( $response );
 		$response_body = wp_remote_retrieve_body( $response );
 
@@ -380,6 +358,38 @@ class ApiClient {
 		}
 
 		return $data;
+	}
+
+	/**
+	 * The Blackbox API transport: a signed request via Jetpack Connection.
+	 *
+	 * Authenticates with the blog token scoped to the Jetpack blog ID. Returns a
+	 * WP_Error (so the caller can fail open) when Jetpack Connection is
+	 * unavailable or the site is not Jetpack-connected. Isolated in its own
+	 * `protected` method so tests can override it (see {@see ApiClientTest}).
+	 *
+	 * @param array<string, mixed> $request_args Request arguments (url, method, timeout, headers, auth_location).
+	 * @param string               $body         JSON-encoded request body.
+	 * @return array<string, mixed>|\WP_Error WordPress HTTP response array, or WP_Error on failure.
+	 */
+	protected function jetpack_remote_request( array $request_args, string $body ) {
+		if ( ! class_exists( Jetpack_Connection_Client::class ) ) {
+			return new \WP_Error(
+				'jetpack_not_available',
+				'Jetpack Connection is not available'
+			);
+		}
+
+		if ( ! $this->get_blog_id() ) {
+			return new \WP_Error(
+				'blog_id_not_found',
+				'Jetpack blog ID not found'
+			);
+		}
+
+		// Use Jetpack Connection Client to make a signed request.
+		// This authenticates with the blog token automatically.
+		return Jetpack_Connection_Client::remote_request( $request_args, $body );
 	}
 
 	/**

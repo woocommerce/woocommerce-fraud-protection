@@ -5,9 +5,13 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
 
