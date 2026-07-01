@@ -6,7 +6,7 @@ For detailed architecture documentation (API patterns, blocking strategy, sessio
 
 ## Tech Stack
 
-PHP 7.4+ (no PHP 8.0+ features), WordPress, WooCommerce, Vanilla JS, Composer, npm/wp-scripts, Node 20.
+PHP 8.1+ (no PHP 8.2+ features), WordPress, WooCommerce, Vanilla JS, Composer, npm/wp-scripts, Node 20.
 
 ## Development Environment
 
@@ -144,7 +144,7 @@ This code is open source. Never expose aggregation/correlation logic, risk scori
 
 ## Common Pitfalls
 
-- **No PHP 8.0+ features**: No enums, named arguments, typed class constants, `match`, fibers, readonly properties, intersection types, or `str_contains()`/`str_starts_with()`.
+- **No PHP 8.2+ features**: The minimum runtime is PHP 8.1, so 8.0/8.1 features are fine (enums, `match`, `readonly` properties, named arguments, fibers, intersection types, `never` return type, first-class callable syntax, `str_contains()`/`str_starts_with()`). Do NOT use anything introduced after 8.1 — e.g. `readonly` classes / DNF types (8.2), typed class constants / `json_validate()` / `#[\Override]` (8.3), property hooks / asymmetric visibility (8.4). The main plugin file (`woocommerce-fraud-protection.php`) is the sole exception: it must stay PHP 7.x-parseable so its unsupported-PHP kill switch can bail before any 8.1 syntax is loaded.
 - **PaymentMethodData gateway param**: The `$gateway` string is the REQUIRED first constructor argument.
 - **Sticky blocked state**: Once a session is blocked via `DecisionHandler`, it stays blocked even if a subsequent verify returns "allow". This is intentional — don't "fix" it.
 - **Separate try-catch blocks are intentional**: In `SessionVerifier::verify_session()`, payment resolution and session verification have independent try-catch blocks so one failing doesn't prevent the other from running. Do not merge them.

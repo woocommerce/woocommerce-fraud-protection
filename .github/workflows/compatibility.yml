@@ -25,7 +25,7 @@ jobs:
         include:
           # Test with WC 10.6.0 because that version included the fraud protection
           # engine directly in core, and we need to ensure that there are no conflicts.
-          - php: '7.4'
+          - php: '8.1'
             wp: '6.8'
             wc: '10.6.0'
           # Latest PHP with latest WP/WC

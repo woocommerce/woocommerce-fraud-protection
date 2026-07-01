@@ -1,6 +1,6 @@
 ## Requirements
 
-- PHP 7.4+
+- PHP 8.1+
 - Node.js 20
 - Composer
 - MySQL (for the PHP test suite)

@@ -5,7 +5,7 @@ includes:
 parameters:
 	tmpDir: tmp
 	level: 8
-	phpVersion: 70400
+	phpVersion: 80100
 	paths:
 		- woocommerce-fraud-protection.php
 		- src/
