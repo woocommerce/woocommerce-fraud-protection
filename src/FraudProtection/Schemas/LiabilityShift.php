@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * 3DS/SCA liability outcome, the `liability_shift` vocabulary of a report context.
- * 
+ *
  * Callers reference these when building a context via `ReportContextData::from_array()`.
  * Optional context; omitted when undeterminable.
  */

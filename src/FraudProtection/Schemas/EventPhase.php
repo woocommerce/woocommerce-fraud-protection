@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Event phase, the `type` vocabulary of a report context.
- * 
+ *
  * Callers reference these when building a context via `ReportContextData::from_array()`.
  */
 enum EventPhase: string {
