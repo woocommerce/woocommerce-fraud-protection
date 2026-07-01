@@ -25,7 +25,7 @@ global $post, $wp;
 $post = null;
 $wp   = (object) array( 'query_vars' => array() );
 
-$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager();
+$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager();
 $handler         = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler();
 $handler->init( $session_manager );
 

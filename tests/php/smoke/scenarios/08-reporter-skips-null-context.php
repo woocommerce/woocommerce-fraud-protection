@@ -8,11 +8,12 @@
  * its tracker collaborator or fatalling — even without a fully booted
  * WooCommerce.
  *
- * Strategy: load the plugin's classes via the Composer autoloader, then call
- * report() with a null context on a reporter that was deliberately never given a
- * tracker via init(). The skip must happen before the (uninitialized) tracker
- * is accessed, so reaching the assertion proves there was no fatal; the
- * captured warning confirms the skip branch actually ran.
+ * Strategy: load the plugin's classes via the Composer autoloader and register a
+ * FraudProtectionController so its static log() facade is wired (this is what
+ * boot does in production), then call report() with a null context on a reporter
+ * that was deliberately never given a tracker via init(). The skip must happen
+ * before the (uninitialized) tracker is accessed, so reaching the assertion proves
+ * there was no fatal; the captured warning confirms the skip branch actually ran.
  *
  * @package WooCommerce\FraudProtection\Tests\Smoke
  */
@@ -39,6 +40,14 @@ if ( ! function_exists( 'wc_get_logger' ) ) {
 
 // Load the plugin's namespaced classes via the Composer autoloader.
 require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
+
+// init() wires a controller into the static FraudProtectionController::log() facade
+// when the DI container creates it; in production that happens at boot. There is no
+// container here, so point the facade at a real controller directly (the same way
+// the unit tests do).
+Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests::set_facade_target(
+	new Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController()
+);
 
 // Deliberately not init()'d: a null context must be skipped before report() ever
 // reaches the tracker, so no collaborator is required.

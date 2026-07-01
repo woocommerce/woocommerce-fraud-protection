@@ -39,7 +39,7 @@ wfp_smoke_assert(
 $session_verifier       = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
 $blocked_session_notice = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice();
 
-$protector = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlocksCheckoutProtector();
+$protector = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector();
 $protector->init( $session_verifier, $blocked_session_notice );
 $protector->register();
 

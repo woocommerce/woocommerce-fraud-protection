@@ -6,15 +6,22 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\SessionClearanceManager;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 /**
  * Tests for the FraudProtectionController class.
  */
 class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
-	use LoggerSpyTrait;
+	/**
+	 * These tests exercise the controller's real logging implementation, so the
+	 * static facade must resolve to a real controller rather than the in-memory spy.
+	 *
+	 * @return bool
+	 */
+	protected function uses_logging_spy(): bool {
+		return false;
+	}
 
 	/**
 	 * Set up test fixtures.
@@ -105,6 +112,31 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox write_log() instance method writes to the woo-fraud-protection log source.
+	 */
+	public function test_write_log_instance_method_writes_to_woo_fraud_protection_source(): void {
+		$logger = $this->getMockBuilder( \WC_Logger_Interface::class )
+			->getMock();
+
+		$logger->expects( $this->once() )
+			->method( 'log' )
+			->with(
+				$this->equalTo( 'info' ),
+				$this->equalTo( 'Instance message' ),
+				$this->equalTo( array( 'source' => 'woo-fraud-protection' ) )
+			);
+
+		add_filter(
+			'woocommerce_logging_class',
+			function () use ( $logger ) {
+				return $logger;
+			}
+		);
+
+		$this->create_controller()->write_log( 'info', 'Instance message' );
+	}
+
+	/**
 	 * Test that event tracking hooks are registered (always enabled as standalone plugin).
 	 */
 	public function test_event_tracking_hooks_are_registered(): void {
@@ -179,6 +211,23 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox the static log() facade delegates to the active controller instance.
+	 */
+	public function test_static_log_facade_delegates_to_active_instance(): void {
+		// Installing the spy as the active instance proves the static log() facade
+		// delegates to it, forwarding every argument to write_log().
+		$spy = $this->spy_on_controller_logging();
+
+		FraudProtectionController::log( 'warning', 'Routed message', array( 'foo' => 'bar' ), true );
+
+		$this->assertCount( 1, $spy->entries, 'The active instance should receive exactly one write_log() call.' );
+		$this->assertSame( 'warning', $spy->entries[0]['level'] );
+		$this->assertSame( 'Routed message', $spy->entries[0]['message'] );
+		$this->assertSame( array( 'foo' => 'bar' ), $spy->entries[0]['context'] );
+		$this->assertTrue( $spy->entries[0]['forwarded'] );
+	}
+
+	/**
 	 * @testdox WC Core fraud protection feature is force-disabled to prevent conflicts.
 	 */
 	public function test_wc_core_fraud_protection_feature_is_disabled(): void {
@@ -192,32 +241,57 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	 * Test that log message is prefixed with identity ID when available in session.
 	 */
 	public function test_log_prepends_identity_id_when_available(): void {
+		$messages = $this->capture_logged_messages();
+
 		WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, 'test-identity-123' );
 
 		FraudProtectionController::log( 'info', 'Test message' );
 
-		$this->assertLogged( 'info', 'Identity: test-identity-123 | Test message' );
+		$this->assertContains( 'Identity: test-identity-123 | Test message', $messages );
 	}
 
 	/**
 	 * Test that log message has no prefix when identity ID is not in session.
 	 */
 	public function test_log_has_no_prefix_when_identity_id_not_in_session(): void {
+		$messages = $this->capture_logged_messages();
+
 		// Ensure no identity ID is set.
 		WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
 
 		FraudProtectionController::log( 'info', 'Test message' );
 
-		$this->assertLogged( 'info', 'Test message' );
+		$this->assertContains( 'Test message', $messages );
+		$this->assertStringStartsNotWith( 'Identity:', $messages[0] );
+	}
 
-		// Verify the message does NOT start with the identity prefix.
-		$logs = array_values(
-			array_filter(
-				$this->captured_logs,
-				fn( $log ) => 'info' === $log['level']
-			)
+	/**
+	 * Install a real WC logger mock that records every logged message.
+	 *
+	 * Used to assert on the final message {@see FraudProtectionController::write_log()}
+	 * produces (e.g. the identity prefix), which only exists once the real logging
+	 * path runs - so these tests use the real logger rather than the controller spy.
+	 *
+	 * @return \ArrayObject<int, string> Populated with logged messages, in order, as they are recorded.
+	 */
+	private function capture_logged_messages(): \ArrayObject {
+		$messages = new \ArrayObject();
+
+		$logger = $this->getMockBuilder( \WC_Logger_Interface::class )->getMock();
+		$logger->method( 'log' )->willReturnCallback(
+			static function ( $level, $message ) use ( $messages ) {
+				$messages[] = $message;
+			}
 		);
-		$this->assertStringStartsNotWith( 'Identity:', $logs[0]['message'] );
+
+		add_filter(
+			'woocommerce_logging_class',
+			static function () use ( $logger ) {
+				return $logger;
+			}
+		);
+
+		return $messages;
 	}
 
 	/**
@@ -230,6 +304,10 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		remove_all_filters( 'woocommerce_logging_class' );
 		delete_option( 'woocommerce_feature_fraud_protection_enabled' );
 		delete_option( 'jetpack_activation_source' );
+
+		// Any controller spy installed by a test is restored by the base
+		// tearDown (parent::tearDown above), so the canonical controller is the
+		// facade target again here.
 
 		// Remove any init hooks registered by the controller.
 		remove_all_actions( 'init' );

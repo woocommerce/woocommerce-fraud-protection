@@ -5,11 +5,11 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
+namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlocksCheckoutProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -17,7 +17,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 /**
  * Tests for the BlocksCheckoutProtector class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlocksCheckoutProtector
+ * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector
  */
 class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 

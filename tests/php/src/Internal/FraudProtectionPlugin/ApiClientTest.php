@@ -8,7 +8,6 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
-use Automattic\WooCommerce\RestApi\UnitTests\LoggerSpyTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use WP_Error;
 
@@ -18,13 +17,18 @@ use WP_Error;
  * Tests the Blackbox API client which provides:
  * - verify(): Verify a session and get a fraud decision (allow/block)
  * - report(): Report fraud events for feedback
+ *
+ * API calls are exercised by stubbing the transport seam ({@see ApiClient::jetpack_remote_request()})
+ * rather than the WordPress HTTP pipeline, so the tests do not depend on Jetpack Connection.
  */
 class ApiClientTest extends FraudProtectionUnitTestCase {
 
-	use LoggerSpyTrait;
-
 	/**
 	 * The System Under Test.
+	 *
+	 * Used directly only by tests that exercise the real default transport
+	 * (Jetpack guards / the request-callback filter). Tests that simulate an API
+	 * response build a transport-stubbed client via {@see api_client_returning()}.
 	 *
 	 * @var ApiClient
 	 */
@@ -46,10 +50,50 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		remove_all_filters( 'pre_http_request' );
 		delete_option( 'jetpack_options' );
 		delete_option( 'jetpack_private_options' );
 		parent::tearDown();
+	}
+
+	/**
+	 * Build an ApiClient whose Blackbox transport is stubbed to return $response.
+	 *
+	 * Overrides jetpack_remote_request() so no real request leaves the process.
+	 * When given, $capture receives the request args and JSON body the client
+	 * built, so request construction can still be asserted.
+	 *
+	 * @param array<string, mixed>|WP_Error $response The stubbed transport response.
+	 * @param ?callable                     $capture  Optional callback( array $request_args, string $body ).
+	 * @return ApiClient
+	 */
+	private function api_client_returning( $response, ?callable $capture = null ): ApiClient {
+		$sut = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request' ) )
+			->getMock();
+
+		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+			function ( array $request_args, string $body ) use ( $response, $capture ) {
+				if ( null !== $capture ) {
+					$capture( $request_args, $body );
+				}
+				return $response;
+			}
+		);
+
+		return $sut;
+	}
+
+	/**
+	 * A canned successful transport response carrying the given decision.
+	 *
+	 * @param string $decision The decision to return in the response body.
+	 * @return array<string, mixed>
+	 */
+	private function decision_response( string $decision ): array {
+		return array(
+			'response' => array( 'code' => 200 ),
+			'body'     => wp_json_encode( array( 'data' => array( 'decision' => $decision ) ) ),
+		);
 	}
 
 	/*
@@ -67,22 +111,15 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$captured_url  = null;
 		$captured_body = null;
 
-		add_filter(
-			'pre_http_request',
-			function ( $preempt, $args, $url ) use ( &$captured_url, &$captured_body ) {
-				unset( $preempt );
-				$captured_body = json_decode( $args['body'], true );
-				$captured_url  = $url;
-				return array(
-					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
-				);
-			},
-			10,
-			3
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body ) {
+				$captured_url  = $request_args['url'];
+				$captured_body = json_decode( $body, true );
+			}
 		);
 
-		$this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
@@ -95,21 +132,15 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function test_verify_filters_empty_values_only_in_context(): void {
 		$captured_body = null;
 
-		add_filter(
-			'pre_http_request',
-			function ( $_preempt, $args ) use ( &$captured_body ) {
-				$captured_body = json_decode( $args['body'], true );
-				return array(
-					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
-				);
-			},
-			10,
-			2
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
 		);
 
 		// Use empty session_id to trigger no-session top-level fields.
-		$this->sut->verify(
+		$sut->verify(
 			'',
 			array(
 				'keep_string'  => 'hello',
@@ -149,15 +180,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() returns allow decision from API
 	 */
 	public function test_verify_returns_allow_decision(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
-				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
-			)
-		);
+		$sut = $this->api_client_returning( $this->decision_response( 'allow' ) );
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 	}
@@ -168,21 +193,18 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() returns block decision from API
 	 */
 	public function test_verify_returns_block_decision(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
-				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'block' ) ) ),
-			)
-		);
+		$sut = $this->api_client_returning( $this->decision_response( 'block' ) );
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_BLOCK, $result->get_decision() );
 	}
 
 	/**
 	 * Test verify fails open when blog_id not found.
+	 *
+	 * Exercises the real default transport (jetpack_remote_request) so the
+	 * Jetpack blog-ID guard is covered.
 	 *
 	 * @testdox verify() fails open with allow when blog_id not found
 	 */
@@ -201,12 +223,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() fails open with allow when HTTP request fails
 	 */
 	public function test_verify_fails_open_on_http_error(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => new WP_Error( 'http_error', 'Connection timeout' )
-		);
+		$sut = $this->api_client_returning( new WP_Error( 'http_error', 'Connection timeout' ) );
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertSame( '', $result->get_session_id() );
@@ -219,15 +238,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() fails open with allow when API returns 5xx error
 	 */
 	public function test_verify_fails_open_on_server_error(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
+		$sut = $this->api_client_returning(
+			array(
 				'response' => array( 'code' => 500 ),
 				'body'     => 'Internal Server Error',
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'status code 500' );
@@ -239,15 +257,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() fails open with allow when API returns invalid JSON
 	 */
 	public function test_verify_fails_open_on_invalid_json(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
+		$sut = $this->api_client_returning(
+			array(
 				'response' => array( 'code' => 200 ),
 				'body'     => 'not valid json',
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
@@ -259,15 +276,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() fails open with allow when response missing data field
 	 */
 	public function test_verify_fails_open_when_missing_data(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
+		$sut = $this->api_client_returning(
+			array(
 				'response' => array( 'code' => 200 ),
 				'body'     => wp_json_encode( array( 'risk_score' => 50 ) ),
 			)
 		);
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertSame( '', $result->get_session_id() );
@@ -280,15 +296,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() fails open with allow when decision value is invalid
 	 */
 	public function test_verify_fails_open_on_invalid_decision(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
-				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'unknown_value' ) ) ),
-			)
-		);
+		$sut = $this->api_client_returning( $this->decision_response( 'unknown_value' ) );
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertLogged( 'error', 'Invalid decision value' );
@@ -306,20 +316,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function test_verify_adds_visitor_ip_and_full_headers_for_no_session(): void {
 		$captured_body = null;
 
-		add_filter(
-			'pre_http_request',
-			function ( $_preempt, $args ) use ( &$captured_body ) {
-				$captured_body = json_decode( $args['body'], true );
-				return array(
-					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
-				);
-			},
-			10,
-			2
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
 		);
 
-		$this->sut->verify(
+		$sut->verify(
 			'',
 			array(
 				'session' => array(
@@ -346,20 +350,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function test_verify_keeps_normal_payload_with_session(): void {
 		$captured_body = null;
 
-		add_filter(
-			'pre_http_request',
-			function ( $_preempt, $args ) use ( &$captured_body ) {
-				$captured_body = json_decode( $args['body'], true );
-				return array(
-					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
-				);
-			},
-			10,
-			2
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
 		);
 
-		$this->sut->verify(
+		$sut->verify(
 			'has-session',
 			array(
 				'session' => array(
@@ -385,9 +383,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() captures the Blackbox-generated session ID on the no-session path
 	 */
 	public function test_verify_captures_generated_session_id_for_no_session(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
+		$sut = $this->api_client_returning(
+			array(
 				'response' => array( 'code' => 200 ),
 				'body'     => wp_json_encode(
 					array(
@@ -402,7 +399,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->verify( '', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( '', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertSame( '82vHd2iPY4JvJZQE-A6jHg', $result->get_session_id() );
@@ -413,15 +410,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() returns an empty session ID when the response omits one
 	 */
 	public function test_verify_returns_empty_session_id_when_absent(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
-				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'data' => array( 'decision' => 'allow' ) ) ),
-			)
-		);
+		$sut = $this->api_client_returning( $this->decision_response( 'allow' ) );
 
-		$result = $this->sut->verify( '', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( '', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( ApiClient::DECISION_ALLOW, $result->get_decision() );
 		$this->assertSame( '', $result->get_session_id() );
@@ -443,22 +434,18 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$captured_url  = null;
 		$captured_body = null;
 
-		add_filter(
-			'pre_http_request',
-			function ( $preempt, $args, $url ) use ( &$captured_url, &$captured_body ) {
-				unset( $preempt );
-				$captured_url  = $url;
-				$captured_body = json_decode( $args['body'], true );
-				return array(
-					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
-				);
-			},
-			10,
-			3
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
+			),
+			function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body ) {
+				$captured_url  = $request_args['url'];
+				$captured_body = json_decode( $body, true );
+			}
 		);
 
-		$this->sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
+		$sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/report/test-session-id', $captured_url );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
@@ -474,21 +461,17 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function test_report_filters_empty_values_in_context(): void {
 		$captured_body = null;
 
-		add_filter(
-			'pre_http_request',
-			function ( $preempt, $args ) use ( &$captured_body ) {
-				unset( $preempt );
-				$captured_body = json_decode( $args['body'], true );
-				return array(
-					'response' => array( 'code' => 200 ),
-					'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
-				);
-			},
-			10,
-			2
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
+			),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
 		);
 
-		$this->sut->report(
+		$sut->report(
 			'test-session-id',
 			array(
 				'source'  => 'chargeback',
@@ -528,15 +511,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox report() returns true on success
 	 */
 	public function test_report_returns_true_on_success(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
+		$sut = $this->api_client_returning(
+			array(
 				'response' => array( 'code' => 200 ),
 				'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
 			)
 		);
 
-		$result = $this->sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
+		$result = $sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
 
 		$this->assertTrue( $result );
 		$this->assertLogged( 'info', 'Event reported successfully' );
@@ -548,12 +530,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox report() returns false when HTTP request fails
 	 */
 	public function test_report_returns_false_on_http_error(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => new WP_Error( 'http_error', 'Connection timeout' )
-		);
+		$sut = $this->api_client_returning( new WP_Error( 'http_error', 'Connection timeout' ) );
 
-		$result = $this->sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
+		$result = $sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
 
 		$this->assertFalse( $result );
 		$this->assertLogged( 'error', 'Failed to report event' );
@@ -565,15 +544,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox report() returns false when API returns error status
 	 */
 	public function test_report_returns_false_on_server_error(): void {
-		add_filter(
-			'pre_http_request',
-			fn() => array(
+		$sut = $this->api_client_returning(
+			array(
 				'response' => array( 'code' => 500 ),
 				'body'     => 'Internal Server Error',
 			)
 		);
 
-		$result = $this->sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
+		$result = $sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
 
 		$this->assertFalse( $result );
 		$this->assertLogged( 'error', 'status code 500' );
