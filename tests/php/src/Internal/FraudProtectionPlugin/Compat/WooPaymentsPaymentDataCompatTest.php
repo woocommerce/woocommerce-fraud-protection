@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\CheckResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -246,9 +247,9 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'wallet'           => null,
 					'bank_code'        => null,
 					'bin'                => '424242',
-					'cvc_check'          => PaymentInstrumentData::CHECK_PASS,
-					'avs_address_check'  => PaymentInstrumentData::CHECK_FAIL,
-					'avs_postcode_check' => PaymentInstrumentData::CHECK_UNCHECKED,
+					'cvc_check'          => CheckResult::Pass->value,
+					'avs_address_check'  => CheckResult::Fail->value,
+					'avs_postcode_check' => CheckResult::Unchecked->value,
 				),
 				'transaction_mode'        => PaymentMethodData::MODE_TEST,
 			),
@@ -733,9 +734,9 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$instrument = $result->to_array()['instrument'];
-		$this->assertSame( PaymentInstrumentData::CHECK_PASS, $instrument['cvc_check'] );
-		$this->assertSame( PaymentInstrumentData::CHECK_FAIL, $instrument['avs_address_check'] );
-		$this->assertSame( PaymentInstrumentData::CHECK_UNAVAILABLE, $instrument['avs_postcode_check'] );
+		$this->assertSame( CheckResult::Pass->value, $instrument['cvc_check'] );
+		$this->assertSame( CheckResult::Fail->value, $instrument['avs_address_check'] );
+		$this->assertSame( CheckResult::Unavailable->value, $instrument['avs_postcode_check'] );
 	}
 
 	/**

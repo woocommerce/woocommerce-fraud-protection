@@ -13,8 +13,8 @@ defined( 'ABSPATH' ) || exit;
  * Normalized payment-outcome results, the `result` vocabulary of a report context.
  *
  * Public surface: callers reference these when building a context via
- * `ReportContextData::from_array()`. Case names carry the event type they belong to, and the
- * per-type sets below define which results are valid for which `type`.
+ * `ReportContextData::from_array()`. Case names carry the event phase they belong to; `for_phase()`
+ * returns the results valid for a given phase.
  */
 enum ReportResult: string {
 
@@ -45,46 +45,39 @@ enum ReportResult: string {
 	case PartiallyRefunded = 'partially_refunded';
 
 	/**
-	 * Results valid for a payment event.
+	 * The result cases valid for a given event phase.
 	 *
-	 * @var array<int, self>
+	 * @param EventPhase $phase Event phase.
+	 * @return array<int, self>
 	 */
-	public const PAYMENT_RESULTS = array(
-		self::PaymentCaptured,
-		self::PaymentAuthorized,
-		self::PaymentPending,
-		self::PaymentDeclined,
-		self::PaymentBlocked,
-		self::PaymentReviewPending,
-		self::PaymentReviewApproved,
-		self::PaymentReviewRejected,
-		self::PaymentReviewExpired,
-		self::PaymentVoided,
-		self::PaymentCanceled,
-	);
-
-	/**
-	 * Results valid for a dispute event.
-	 *
-	 * @var array<int, self>
-	 */
-	public const DISPUTE_RESULTS = array(
-		self::DisputeInquiry,
-		self::DisputeOpen,
-		self::DisputeWon,
-		self::DisputeLost,
-		self::DisputeAccepted,
-		self::DisputeWithdrawn,
-		self::DisputePrevented,
-	);
-
-	/**
-	 * Results valid for a refund event.
-	 *
-	 * @var array<int, self>
-	 */
-	public const REFUND_RESULTS = array(
-		self::Refunded,
-		self::PartiallyRefunded,
-	);
+	public static function for_phase( EventPhase $phase ): array {
+		return match ( $phase ) {
+			EventPhase::Payment => array(
+				self::PaymentCaptured,
+				self::PaymentAuthorized,
+				self::PaymentPending,
+				self::PaymentDeclined,
+				self::PaymentBlocked,
+				self::PaymentReviewPending,
+				self::PaymentReviewApproved,
+				self::PaymentReviewRejected,
+				self::PaymentReviewExpired,
+				self::PaymentVoided,
+				self::PaymentCanceled,
+			),
+			EventPhase::Dispute => array(
+				self::DisputeInquiry,
+				self::DisputeOpen,
+				self::DisputeWon,
+				self::DisputeLost,
+				self::DisputeAccepted,
+				self::DisputeWithdrawn,
+				self::DisputePrevented,
+			),
+			EventPhase::Refund => array(
+				self::Refunded,
+				self::PartiallyRefunded,
+			),
+		};
+	}
 }

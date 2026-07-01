@@ -119,25 +119,30 @@ trait SanitizesScalarFields {
 	}
 
 	/**
-	 * Read an enum field, returning it only when it is a string in the allowed set. A provided
-	 * value outside the set is dropped to null and logged; an absent value is silent.
+	 * Read an enum field, returning the matching case when the raw value is a string whose value
+	 * is one of the allowed cases. A provided value outside the set is dropped to null and logged;
+	 * an absent value is silent. Callers pass the cases directly (e.g. `SomeEnum::cases()`, or a
+	 * subset) and read `->value` on the result to obtain the normalized string.
 	 *
+	 * @template T of \BackedEnum
 	 * @param array<string, mixed> $data    Raw fields.
 	 * @param string               $field   Field name to read and validate.
-	 * @param array<int, string>   $allowed Allowed normalized values.
-	 * @return ?string
+	 * @param array<int, T>        $allowed Allowed enum cases.
+	 * @return ?T The matching case, or null when absent or unrecognized.
 	 */
-	private static function sanitize_enum( array $data, string $field, array $allowed ): ?string {
+	private static function sanitize_enum( array $data, string $field, array $allowed ): ?\BackedEnum {
 		$value = $data[ $field ] ?? null;
 
-		if ( null === $value ) {
+		if ( is_null( $value ) ) {
 			return null;
 		}
 
 		if ( is_string( $value ) ) {
 			$value = sanitize_text_field( $value );
-			if ( in_array( $value, $allowed, true ) ) {
-				return $value;
+			foreach ( $allowed as $case ) {
+				if ( $case->value === $value ) {
+					return $case;
+				}
 			}
 		}
 

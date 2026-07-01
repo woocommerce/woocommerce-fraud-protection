@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\CheckResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
 
@@ -32,15 +33,15 @@ class WooPaymentsPaymentDataCompat {
 	private const GATEWAY_ID = 'woocommerce_payments';
 
 	/**
-	 * Map Stripe verification check values to normalized constants.
+	 * Map Stripe verification check values to normalized CheckResult cases.
 	 *
-	 * @var array<string, string>
+	 * @var array<string, CheckResult>
 	 */
 	private const CHECK_MAP = array(
-		'pass'        => PaymentInstrumentData::CHECK_PASS,
-		'fail'        => PaymentInstrumentData::CHECK_FAIL,
-		'unavailable' => PaymentInstrumentData::CHECK_UNAVAILABLE,
-		'unchecked'   => PaymentInstrumentData::CHECK_UNCHECKED,
+		'pass'        => CheckResult::Pass,
+		'fail'        => CheckResult::Fail,
+		'unavailable' => CheckResult::Unavailable,
+		'unchecked'   => CheckResult::Unchecked,
 	);
 
 	/**
@@ -171,9 +172,9 @@ class WooPaymentsPaymentDataCompat {
 		// 'iin' (BIN) is undocumented but present in Stripe PaymentMethod responses.
 		$bin                = $type_data['iin'] ?? null;
 		$checks             = is_array( $type_data['checks'] ?? null ) ? $type_data['checks'] : array();
-		$cvc_check          = self::CHECK_MAP[ $checks['cvc_check'] ?? '' ] ?? null;
-		$avs_address_check  = self::CHECK_MAP[ $checks['address_line1_check'] ?? '' ] ?? null;
-		$avs_postcode_check = self::CHECK_MAP[ $checks['address_postal_code_check'] ?? '' ] ?? null;
+		$cvc_check          = ( self::CHECK_MAP[ $checks['cvc_check'] ?? '' ] ?? null )?->value;
+		$avs_address_check  = ( self::CHECK_MAP[ $checks['address_line1_check'] ?? '' ] ?? null )?->value;
+		$avs_postcode_check = ( self::CHECK_MAP[ $checks['address_postal_code_check'] ?? '' ] ?? null )?->value;
 
 		$instrument = PaymentInstrumentData::from_array(
 			array(

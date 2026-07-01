@@ -21,38 +21,6 @@ class PaymentInstrumentData {
 	use SanitizesScalarFields;
 
 	/**
-	 * Verification check passed — the value matches what the issuer has on file.
-	 */
-	public const CHECK_PASS = 'pass';
-
-	/**
-	 * Verification check failed — the value does not match.
-	 */
-	public const CHECK_FAIL = 'fail';
-
-	/**
-	 * Verification check unavailable — the issuer does not support this check.
-	 */
-	public const CHECK_UNAVAILABLE = 'unavailable';
-
-	/**
-	 * Verification check not performed — the check was not run for this transaction.
-	 */
-	public const CHECK_UNCHECKED = 'unchecked';
-
-	/**
-	 * Valid verification check result values.
-	 *
-	 * @var array<int, string>
-	 */
-	public const VALID_CHECK_RESULTS = array(
-		self::CHECK_PASS,
-		self::CHECK_FAIL,
-		self::CHECK_UNAVAILABLE,
-		self::CHECK_UNCHECKED,
-	);
-
-	/**
 	 * Card brand (e.g. 'visa', 'mastercard', 'amex').
 	 *
 	 * @var ?string
@@ -184,9 +152,9 @@ class PaymentInstrumentData {
 			self::sanitize_string_field( $data, 'wallet' ),
 			self::sanitize_string_field( $data, 'bank_code' ),
 			self::sanitize_string_field( $data, 'bin' ),
-			self::sanitize_enum( $data, 'cvc_check', self::VALID_CHECK_RESULTS ),
-			self::sanitize_enum( $data, 'avs_address_check', self::VALID_CHECK_RESULTS ),
-			self::sanitize_enum( $data, 'avs_postcode_check', self::VALID_CHECK_RESULTS )
+			self::sanitize_enum( $data, 'cvc_check', CheckResult::cases() )?->value,
+			self::sanitize_enum( $data, 'avs_address_check', CheckResult::cases() )?->value,
+			self::sanitize_enum( $data, 'avs_postcode_check', CheckResult::cases() )?->value
 		);
 	}
 

@@ -36,77 +36,14 @@ class ReportContextData {
 	public const SCHEMA_VERSION = 1;
 
 	/**
-	 * Event phase: a charge attempt and its lifecycle.
-	 */
-	public const TYPE_PAYMENT = 'payment';
-
-	/**
-	 * Event phase: a chargeback, inquiry, or dispute resolution.
-	 */
-	public const TYPE_DISPUTE = 'dispute';
-
-	/**
-	 * Event phase: a merchant refund or return.
-	 */
-	public const TYPE_REFUND = 'refund';
-
-	/**
-	 * Valid event phases.
-	 *
-	 * @var array<int, string>
-	 */
-	public const VALID_TYPES = array(
-		self::TYPE_PAYMENT,
-		self::TYPE_DISPUTE,
-		self::TYPE_REFUND,
-	);
-
-	/**
-	 * Allowed `result` cases per `type`.
-	 *
-	 * @var array<string, array<int, ReportResult>>
-	 */
-	private const RESULTS_BY_TYPE = array(
-		self::TYPE_PAYMENT => ReportResult::PAYMENT_RESULTS,
-		self::TYPE_DISPUTE => ReportResult::DISPUTE_RESULTS,
-		self::TYPE_REFUND  => ReportResult::REFUND_RESULTS,
-	);
-
-	/**
-	 * Liability shift: authenticated, liability moved to the issuer.
-	 */
-	public const LIABILITY_SHIFTED = 'shifted';
-
-	/**
-	 * Liability shift: 3DS attempted, issuer did not fully authenticate.
-	 */
-	public const LIABILITY_ATTEMPTED = 'attempted';
-
-	/**
-	 * Liability shift: no 3DS, or authentication failed.
-	 */
-	public const LIABILITY_NOT_SHIFTED = 'not_shifted';
-
-	/**
-	 * Valid liability-shift values.
-	 *
-	 * @var array<int, string>
-	 */
-	public const VALID_LIABILITY_SHIFTS = array(
-		self::LIABILITY_SHIFTED,
-		self::LIABILITY_ATTEMPTED,
-		self::LIABILITY_NOT_SHIFTED,
-	);
-
-	/**
-	 * Event phase: TYPE_PAYMENT, TYPE_DISPUTE, or TYPE_REFUND.
+	 * Event phase, as the backing string of an `EventPhase` case.
 	 *
 	 * @var string
 	 */
 	private string $type;
 
 	/**
-	 * Outcome within the phase (validated against RESULTS_BY_TYPE).
+	 * Outcome within the phase (validated against ReportResult::for_phase()).
 	 *
 	 * @var string
 	 */
@@ -274,8 +211,8 @@ class ReportContextData {
 		// type and result are skip-gates: an unmappable one drops the whole report, which is an
 		// error worth forwarding (sanitize_enum already logs the bad field, but stays silent
 		// when the field is simply absent).
-		$type = self::sanitize_enum( $data, 'type', self::VALID_TYPES );
-		if ( null === $type ) {
+		$phase = self::sanitize_enum( $data, 'type', EventPhase::cases() );
+		if ( is_null( $phase ) ) {
 			FraudProtectionController::log(
 				'error',
 				'Skipping report: context type is missing or unmappable.',
@@ -285,8 +222,8 @@ class ReportContextData {
 			return null;
 		}
 
-		$result = self::sanitize_enum( $data, 'result', self::enum_values( self::RESULTS_BY_TYPE[ $type ] ) );
-		if ( null === $result ) {
+		$result = self::sanitize_enum( $data, 'result', ReportResult::for_phase( $phase ) );
+		if ( is_null( $result ) ) {
 			FraudProtectionController::log(
 				'error',
 				'Skipping report: context result is missing or unmappable for the given type.',
@@ -297,10 +234,10 @@ class ReportContextData {
 		}
 
 		return new self(
-			$type,
-			$result,
-			self::resolve_reason( $data, $type, $result ),
-			self::sanitize_enum( $data, 'liability_shift', self::VALID_LIABILITY_SHIFTS ),
+			$phase->value,
+			$result->value,
+			self::resolve_reason( $data, $phase, $result ),
+			self::sanitize_enum( $data, 'liability_shift', LiabilityShift::cases() )?->value,
 			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
 			self::sanitize_string_field( $data, 'amount_currency' ),
 			self::sanitize_date( $data, 'occurred_at' ),
@@ -367,39 +304,25 @@ class ReportContextData {
 	 * an unmapped value is omitted rather than skipping the report.
 	 *
 	 * @param array<string, mixed> $data   Raw fields.
-	 * @param string               $type   Event phase.
-	 * @param string               $result Outcome within the phase; gates payment reasons to refusals.
+	 * @param EventPhase           $phase  Event phase.
+	 * @param ReportResult         $result Outcome within the phase; gates payment reasons to refusals.
 	 * @return ?string Normalized reason, or null when unmapped or not applicable.
 	 */
-	private static function resolve_reason( array $data, string $type, string $result ): ?string {
-		if ( self::TYPE_REFUND === $type ) {
+	private static function resolve_reason( array $data, EventPhase $phase, ReportResult $result ): ?string {
+		if ( EventPhase::Refund === $phase ) {
 			return null;
 		}
 
-		if ( self::TYPE_PAYMENT === $type ) {
-			$refusals = array( ReportResult::PaymentDeclined->value, ReportResult::PaymentBlocked->value );
+		if ( EventPhase::Payment === $phase ) {
+			$refusals = array( ReportResult::PaymentDeclined, ReportResult::PaymentBlocked );
 			if ( ! in_array( $result, $refusals, true ) ) {
 				return null;
 			}
 
-			return self::sanitize_enum( $data, 'reason', self::enum_values( PaymentRefusalReason::cases() ) );
+			return self::sanitize_enum( $data, 'reason', PaymentRefusalReason::cases() )?->value;
 		}
 
-		return self::sanitize_enum( $data, 'reason', self::enum_values( DisputeReason::cases() ) );
-	}
-
-	/**
-	 * Extract the backing string values from a list of backed-enum cases.
-	 *
-	 * The vocabularies (`ReportResult`, `DisputeReason`, `PaymentRefusalReason`) are enums, but
-	 * {@see sanitize_enum()} matches a raw string against a list of allowed strings, so cases are
-	 * flattened to their wire values here.
-	 *
-	 * @param array<int, \BackedEnum> $cases Enum cases to read.
-	 * @return array<int, string> The cases' backing values, for use as a sanitize_enum allowlist.
-	 */
-	private static function enum_values( array $cases ): array {
-		return array_map( static fn( \BackedEnum $enum_case ): string => (string) $enum_case->value, $cases );
+		return self::sanitize_enum( $data, 'reason', DisputeReason::cases() )?->value;
 	}
 
 	/**

@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\FraudProtection\Schemas;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\EventPhase;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportResult;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -23,15 +24,12 @@ class ReportResultTest extends FraudProtectionUnitTestCase {
 	public function test_result_groups_partition_all_cases(): void {
 		$to_values = static fn( ReportResult $result ): string => $result->value;
 
-		$grouped = array_map(
-			$to_values,
-			array_merge(
-				ReportResult::PAYMENT_RESULTS,
-				ReportResult::DISPUTE_RESULTS,
-				ReportResult::REFUND_RESULTS
-			)
-		);
-		$all = array_map( $to_values, ReportResult::cases() );
+		$grouped = array();
+		foreach ( EventPhase::cases() as $phase ) {
+			$grouped = array_merge( $grouped, ReportResult::for_phase( $phase ) );
+		}
+		$grouped = array_map( $to_values, $grouped );
+		$all     = array_map( $to_values, ReportResult::cases() );
 
 		sort( $grouped );
 		sort( $all );
@@ -39,7 +37,7 @@ class ReportResultTest extends FraudProtectionUnitTestCase {
 		$this->assertSame(
 			$all,
 			$grouped,
-			'PAYMENT_RESULTS + DISPUTE_RESULTS + REFUND_RESULTS must equal every ReportResult case, with none omitted or double-counted — RESULTS_BY_TYPE validation relies on the groups being a complete, disjoint partition.'
+			'ReportResult::for_phase() across every EventPhase must together equal every ReportResult case, with none omitted or double-counted - for_phase() must be a complete, disjoint partition of the cases.'
 		);
 	}
 }
