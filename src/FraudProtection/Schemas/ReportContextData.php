@@ -62,9 +62,9 @@ class ReportContextData {
 	);
 
 	/**
-	 * Allowed `result` values per `type`.
+	 * Allowed `result` cases per `type`.
 	 *
-	 * @var array<string, array<int, string>>
+	 * @var array<string, array<int, ReportResult>>
 	 */
 	private const RESULTS_BY_TYPE = array(
 		self::TYPE_PAYMENT => ReportResult::PAYMENT_RESULTS,
@@ -285,7 +285,7 @@ class ReportContextData {
 			return null;
 		}
 
-		$result = self::sanitize_enum( $data, 'result', self::RESULTS_BY_TYPE[ $type ] );
+		$result = self::sanitize_enum( $data, 'result', self::enum_values( self::RESULTS_BY_TYPE[ $type ] ) );
 		if ( null === $result ) {
 			FraudProtectionController::log(
 				'error',
@@ -377,15 +377,29 @@ class ReportContextData {
 		}
 
 		if ( self::TYPE_PAYMENT === $type ) {
-			$refusals = array( ReportResult::PAYMENT_DECLINED, ReportResult::PAYMENT_BLOCKED );
+			$refusals = array( ReportResult::PaymentDeclined->value, ReportResult::PaymentBlocked->value );
 			if ( ! in_array( $result, $refusals, true ) ) {
 				return null;
 			}
 
-			return self::sanitize_enum( $data, 'reason', ReportReason::PAYMENT_REFUSAL_REASONS );
+			return self::sanitize_enum( $data, 'reason', self::enum_values( PaymentRefusalReason::cases() ) );
 		}
 
-		return self::sanitize_enum( $data, 'reason', ReportReason::DISPUTE_REASONS );
+		return self::sanitize_enum( $data, 'reason', self::enum_values( DisputeReason::cases() ) );
+	}
+
+	/**
+	 * Extract the backing string values from a list of backed-enum cases.
+	 *
+	 * The vocabularies (`ReportResult`, `DisputeReason`, `PaymentRefusalReason`) are enums, but
+	 * {@see sanitize_enum()} matches a raw string against a list of allowed strings, so cases are
+	 * flattened to their wire values here.
+	 *
+	 * @param array<int, \BackedEnum> $cases Enum cases to read.
+	 * @return array<int, string> The cases' backing values, for use as a sanitize_enum allowlist.
+	 */
+	private static function enum_values( array $cases ): array {
+		return array_map( static fn( \BackedEnum $enum_case ): string => (string) $enum_case->value, $cases );
 	}
 
 	/**
