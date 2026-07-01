@@ -21,104 +21,6 @@ class PaymentInstrumentData {
 	use SanitizesScalarFields;
 
 	/**
-	 * Card brand (e.g. 'visa', 'mastercard', 'amex').
-	 *
-	 * @var ?string
-	 */
-	private ?string $brand;
-
-	/**
-	 * Card funding type (e.g. 'credit', 'debit', 'prepaid', 'unknown').
-	 *
-	 * @var ?string
-	 */
-	private ?string $funding;
-
-	/**
-	 * Last four digits of the card number, bank account, or IBAN.
-	 *
-	 * @var ?string
-	 */
-	private ?string $last4;
-
-	/**
-	 * Unique fingerprint for cross-transaction matching.
-	 *
-	 * @var ?string
-	 */
-	private ?string $fingerprint;
-
-	/**
-	 * Two-letter country code (e.g. 'US', 'DE').
-	 *
-	 * @var ?string
-	 */
-	private ?string $country;
-
-	/**
-	 * Card expiration month (1-12).
-	 *
-	 * @var ?int
-	 */
-	private ?int $exp_month;
-
-	/**
-	 * Card expiration year (4-digit).
-	 *
-	 * @var ?int
-	 */
-	private ?int $exp_year;
-
-	/**
-	 * Billing postcode associated with the payment.
-	 *
-	 * @var ?string
-	 */
-	private ?string $billing_postcode;
-
-	/**
-	 * Digital wallet type for express checkout methods (e.g. 'apple_pay', 'google_pay', 'link').
-	 *
-	 * @var ?string
-	 */
-	private ?string $wallet;
-
-	/**
-	 * Bank routing code (e.g. SEPA bank_code, BECS bsb_number, US routing_number, iDEAL bic).
-	 *
-	 * @var ?string
-	 */
-	private ?string $bank_code;
-
-	/**
-	 * Bank Identification Number (first 6 digits of card number, a.k.a. IIN).
-	 *
-	 * @var ?string
-	 */
-	private ?string $bin;
-
-	/**
-	 * CVC verification result ('pass', 'fail', 'unavailable', 'unchecked').
-	 *
-	 * @var ?string
-	 */
-	private ?string $cvc_check;
-
-	/**
-	 * AVS street address verification result.
-	 *
-	 * @var ?string
-	 */
-	private ?string $avs_address_check;
-
-	/**
-	 * AVS postal code verification result.
-	 *
-	 * @var ?string
-	 */
-	private ?string $avs_postcode_check;
-
-	/**
 	 * Build an empty instrument (all nulls) for graceful degradation.
 	 *
 	 * @return self
@@ -161,52 +63,37 @@ class PaymentInstrumentData {
 	/**
 	 * Constructor.
 	 *
-	 * @param ?string $brand              Card brand.
-	 * @param ?string $funding            Card funding type.
-	 * @param ?string $last4              Last four digits.
-	 * @param ?string $fingerprint        Fingerprint.
-	 * @param ?string $country            Country code.
-	 * @param ?int    $exp_month          Expiration month.
-	 * @param ?int    $exp_year           Expiration year.
-	 * @param ?string $billing_postcode   Billing postcode.
-	 * @param ?string $wallet             Digital wallet type.
-	 * @param ?string $bank_code          Bank routing code.
-	 * @param ?string $bin                Bank Identification Number.
-	 * @param ?string $cvc_check          CVC verification result.
-	 * @param ?string $avs_address_check  AVS street address result.
-	 * @param ?string $avs_postcode_check AVS postal code result.
+	 * @param ?string $brand              Card brand (e.g. 'visa', 'mastercard', 'amex').
+	 * @param ?string $funding            Card funding type (e.g. 'credit', 'debit', 'prepaid', 'unknown').
+	 * @param ?string $last4              Last four digits of the card number, bank account, or IBAN.
+	 * @param ?string $fingerprint        Unique fingerprint for cross-transaction matching.
+	 * @param ?string $country            Two-letter country code (e.g. 'US', 'DE').
+	 * @param ?int    $exp_month          Card expiration month (1-12).
+	 * @param ?int    $exp_year           Card expiration year (4-digit).
+	 * @param ?string $billing_postcode   Billing postcode associated with the payment.
+	 * @param ?string $wallet             Digital wallet type for express checkout methods (e.g. 'apple_pay', 'google_pay', 'link').
+	 * @param ?string $bank_code          Bank routing code (e.g. SEPA bank_code, BECS bsb_number, US routing_number, iDEAL bic).
+	 * @param ?string $bin                Bank Identification Number (first 6 digits of card number, a.k.a. IIN).
+	 * @param ?string $cvc_check          CVC verification result ('pass', 'fail', 'unavailable', 'unchecked').
+	 * @param ?string $avs_address_check  AVS street address verification result.
+	 * @param ?string $avs_postcode_check AVS postal code verification result.
 	 */
 	private function __construct(
-		?string $brand,
-		?string $funding,
-		?string $last4,
-		?string $fingerprint,
-		?string $country,
-		?int $exp_month,
-		?int $exp_year,
-		?string $billing_postcode,
-		?string $wallet,
-		?string $bank_code,
-		?string $bin,
-		?string $cvc_check,
-		?string $avs_address_check,
-		?string $avs_postcode_check
-	) {
-		$this->brand              = $brand;
-		$this->funding            = $funding;
-		$this->last4              = $last4;
-		$this->fingerprint        = $fingerprint;
-		$this->country            = $country;
-		$this->exp_month          = $exp_month;
-		$this->exp_year           = $exp_year;
-		$this->billing_postcode   = $billing_postcode;
-		$this->wallet             = $wallet;
-		$this->bank_code          = $bank_code;
-		$this->bin                = $bin;
-		$this->cvc_check          = $cvc_check;
-		$this->avs_address_check  = $avs_address_check;
-		$this->avs_postcode_check = $avs_postcode_check;
-	}
+		private readonly ?string $brand,
+		private readonly ?string $funding,
+		private readonly ?string $last4,
+		private readonly ?string $fingerprint,
+		private readonly ?string $country,
+		private readonly ?int $exp_month,
+		private readonly ?int $exp_year,
+		private readonly ?string $billing_postcode,
+		private readonly ?string $wallet,
+		private readonly ?string $bank_code,
+		private readonly ?string $bin,
+		private readonly ?string $cvc_check,
+		private readonly ?string $avs_address_check,
+		private readonly ?string $avs_postcode_check
+	) {}
 
 	/**
 	 * Serialize to array.
