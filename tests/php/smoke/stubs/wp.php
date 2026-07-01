@@ -19,9 +19,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', sys_get_temp_dir() . '/wfp-smoke-abspath/' );
 }
 
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
+
 // Hook registry for assertions in tests.
-$GLOBALS['wfp_smoke_hooks']   = array();
-$GLOBALS['wfp_smoke_options'] = array();
+$GLOBALS['wfp_smoke_hooks']      = array();
+$GLOBALS['wfp_smoke_options']    = array();
+$GLOBALS['wfp_smoke_transients'] = array();
 
 if ( ! function_exists( 'add_action' ) ) {
 	function add_action( $hook, $callback, $priority = 10, $accepted_args = 1 ) {
@@ -87,6 +92,28 @@ if ( ! function_exists( 'get_option' ) ) {
 if ( ! function_exists( 'update_option' ) ) {
 	function update_option( $key, $value ) {
 		$GLOBALS['wfp_smoke_options'][ $key ] = $value;
+		return true;
+	}
+}
+
+// In-memory transient store. Expiration is ignored: scenarios run in a single
+// short-lived process, so time-based expiry never comes into play.
+if ( ! function_exists( 'get_transient' ) ) {
+	function get_transient( $key ) {
+		return $GLOBALS['wfp_smoke_transients'][ $key ] ?? false;
+	}
+}
+
+if ( ! function_exists( 'set_transient' ) ) {
+	function set_transient( $key, $value, $expiration = 0 ) {
+		$GLOBALS['wfp_smoke_transients'][ $key ] = $value;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'delete_transient' ) ) {
+	function delete_transient( $key ) {
+		unset( $GLOBALS['wfp_smoke_transients'][ $key ] );
 		return true;
 	}
 }
