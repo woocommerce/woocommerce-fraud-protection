@@ -118,7 +118,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
-				return FraudDecision::Allow->value;
+				return FraudDecision::Allow;
 			}
 		);
 
@@ -147,7 +147,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
-				return FraudDecision::Block->value;
+				return FraudDecision::Block;
 			}
 		);
 
@@ -221,7 +221,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_decision',
 			function () {
-				return FraudDecision::Block->value;
+				return FraudDecision::Block;
 			}
 		);
 

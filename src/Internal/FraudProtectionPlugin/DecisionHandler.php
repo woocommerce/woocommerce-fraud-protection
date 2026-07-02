@@ -74,12 +74,13 @@ class DecisionHandler {
 		 * - Whitelist specific conditions (e.g., certain IP ranges, logged-in users)
 		 * - Integrate with external fraud detection services
 		 *
-		 * The decision is passed and expected back as a string ('allow' or 'block').
-		 * Any other value is rejected and the original decision is used.
+		 * The decision is passed and expected back as a {@see FraudDecision}
+		 * (`FraudDecision::Allow` or `FraudDecision::Block`). Any other value is
+		 * rejected and the original decision is used.
 		 *
 		 * @since 0.1.0
 		 *
-		 * @param string               $decision     The decision from the API ('allow' or 'block').
+		 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
 		 * @param array<string, mixed> $session_data The session data that was analyzed.
 		 */
 		/**
@@ -87,13 +88,20 @@ class DecisionHandler {
 		 *
 		 * @var mixed $filtered
 		 */
-		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision->value, $session_data );
+		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision, $session_data );
 
-		$filtered_value    = is_string( $filtered ) ? $filtered : gettype( $filtered );
-		$filtered_decision = is_string( $filtered ) ? FraudDecision::tryFrom( $filtered ) : null;
+		// Validate filtered decision (third-party filters may return any value).
+		if ( $filtered instanceof FraudDecision && in_array( $filtered, FraudDecision::ACTIONABLE, true ) ) {
+			$decision = $filtered;
+		} else {
+			if ( $filtered instanceof FraudDecision ) {
+				$filtered_value = $filtered->value;
+			} elseif ( is_scalar( $filtered ) ) {
+				$filtered_value = (string) $filtered;
+			} else {
+				$filtered_value = gettype( $filtered );
+			}
 
-		// Validate filtered decision (third-party filters may return invalid values).
-		if ( is_null( $filtered_decision ) || ! in_array( $filtered_decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'warning',
 				sprintf( 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "%s". Using original decision "%s".', $filtered_value, $original_decision->value ),
@@ -109,9 +117,8 @@ class DecisionHandler {
 				),
 				true
 			);
-			$filtered_decision = $original_decision;
+			$decision = $original_decision;
 		}
-		$decision = $filtered_decision;
 
 		// Log if decision was overridden.
 		if ( $decision !== $original_decision ) {
