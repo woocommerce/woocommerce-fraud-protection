@@ -8,10 +8,10 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -88,7 +88,7 @@ class OrderEventsTracker {
 					'session_id'        => $session_id,
 					'order_id'          => $order->get_id(),
 					'error'             => $e->getTraceAsString(),
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),

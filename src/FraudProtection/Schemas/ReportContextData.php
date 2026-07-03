@@ -169,7 +169,7 @@ class ReportContextData {
 	public function to_array(): array {
 		$context                = array( 'schema_version' => self::SCHEMA_VERSION ) + get_object_vars( $this );
 		$context['occurred_at'] = gmdate( \DateTimeInterface::RFC3339, $this->occurred_at->getTimestamp() );
-		$context['instrument']  = null !== $this->instrument ? $this->instrument->to_array() : null;
+		$context['instrument']  = $this->instrument?->to_array();
 
 		return $context;
 	}

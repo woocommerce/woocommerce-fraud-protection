@@ -7,11 +7,11 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
-use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -176,7 +176,7 @@ class SessionVerifier {
 					'session_id'        => $session_id,
 					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
 					'exception'         => $e,
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),
@@ -203,7 +203,7 @@ class SessionVerifier {
 					'payment_type'      => $request_data['payment_method'] ?? '',
 					'hook'              => 'payment_data_resolution',
 					'exception'         => $e,
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),
@@ -241,7 +241,7 @@ class SessionVerifier {
 					'order_id'          => $order_id,
 					'hook'              => 'session_verify',
 					'exception'         => $e,
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),

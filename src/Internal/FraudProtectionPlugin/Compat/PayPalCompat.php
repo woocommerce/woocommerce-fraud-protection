@@ -8,9 +8,9 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
 defined( 'ABSPATH' ) || exit;
 

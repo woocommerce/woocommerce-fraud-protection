@@ -159,7 +159,7 @@ class ApiClient {
 	 * @param string                         $session_id Session ID associated with the request, included in log context for cross-system tracing.
 	 * @return VerifyResult The decision plus any Blackbox session ID returned in the response.
 	 */
-	private function process_decision_response( $response, array $event_data, string $session_id ): VerifyResult {
+	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
 			$error_data = $response->get_error_data() ?? array();
 			$error_data = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
@@ -256,7 +256,7 @@ class ApiClient {
 	 * @param array<string, mixed> $payload    Request payload.
 	 * @return array<string, mixed>|\WP_Error Parsed JSON response or WP_Error on failure.
 	 */
-	private function make_request( string $method, string $path, string $session_id, array $payload ) {
+	private function make_request( string $method, string $path, string $session_id, array $payload ): array|\WP_Error {
 		$body = \wp_json_encode(
 			array_merge(
 				$payload,
@@ -324,7 +324,7 @@ class ApiClient {
 	 * @param string               $body         JSON-encoded request body.
 	 * @return array<string, mixed>|\WP_Error WordPress HTTP response array, or WP_Error on failure.
 	 */
-	protected function jetpack_remote_request( array $request_args, string $body ) {
+	protected function jetpack_remote_request( array $request_args, string $body ): array|\WP_Error {
 		if ( ! class_exists( Jetpack_Connection_Client::class ) ) {
 			return new \WP_Error(
 				'jetpack_not_available',

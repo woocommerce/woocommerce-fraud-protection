@@ -70,7 +70,7 @@ class PaymentDataResolver {
 					'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
 					'payment_type'              => $payment_method,
 					'error'                     => $e,
-					'exception_class'           => get_class( $e ),
+					'exception_class'           => $e::class,
 					'exception_message'         => $e->getMessage(),
 					'exception_file'            => $e->getFile(),
 					'exception_line'            => $e->getLine(),
