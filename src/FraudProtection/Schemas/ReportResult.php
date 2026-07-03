@@ -1,6 +1,6 @@
 <?php
 /**
- * ReportResult class file.
+ * ReportResult enum file.
  */
 
 declare( strict_types=1 );
@@ -13,78 +13,71 @@ defined( 'ABSPATH' ) || exit;
  * Normalized payment-outcome results, the `result` vocabulary of a report context.
  *
  * Public surface: callers reference these when building a context via
- * `ReportContextData::from_array()`. Constant names carry the event type they belong to, and
- * the per-type sets below define which results are valid for which `type`.
+ * `ReportContextData::from_array()`. Case names carry the event phase they belong to; `for_phase()`
+ * returns the results valid for a given phase.
  */
-final class ReportResult {
+enum ReportResult: string {
 
 	// Payment results.
-	public const PAYMENT_CAPTURED        = 'captured';
-	public const PAYMENT_AUTHORIZED      = 'authorized';
-	public const PAYMENT_PENDING         = 'pending';
-	public const PAYMENT_DECLINED        = 'declined';
-	public const PAYMENT_BLOCKED         = 'blocked';
-	public const PAYMENT_REVIEW_PENDING  = 'review_pending';
-	public const PAYMENT_REVIEW_APPROVED = 'review_approved';
-	public const PAYMENT_REVIEW_REJECTED = 'review_rejected';
-	public const PAYMENT_REVIEW_EXPIRED  = 'review_expired';
-	public const PAYMENT_VOIDED          = 'voided';
-	public const PAYMENT_CANCELED        = 'canceled';
+	case PaymentCaptured       = 'captured';
+	case PaymentAuthorized     = 'authorized';
+	case PaymentPending        = 'pending';
+	case PaymentDeclined       = 'declined';
+	case PaymentBlocked        = 'blocked';
+	case PaymentReviewPending  = 'review_pending';
+	case PaymentReviewApproved = 'review_approved';
+	case PaymentReviewRejected = 'review_rejected';
+	case PaymentReviewExpired  = 'review_expired';
+	case PaymentVoided         = 'voided';
+	case PaymentCanceled       = 'canceled';
 
 	// Dispute results.
-	public const DISPUTE_INQUIRY   = 'inquiry';
-	public const DISPUTE_OPEN      = 'open';
-	public const DISPUTE_WON       = 'won';
-	public const DISPUTE_LOST      = 'lost';
-	public const DISPUTE_ACCEPTED  = 'accepted';
-	public const DISPUTE_WITHDRAWN = 'withdrawn';
-	public const DISPUTE_PREVENTED = 'prevented';
+	case DisputeInquiry   = 'inquiry';
+	case DisputeOpen      = 'open';
+	case DisputeWon       = 'won';
+	case DisputeLost      = 'lost';
+	case DisputeAccepted  = 'accepted';
+	case DisputeWithdrawn = 'withdrawn';
+	case DisputePrevented = 'prevented';
 
 	// Refund results.
-	public const REFUNDED           = 'refunded';
-	public const PARTIALLY_REFUNDED = 'partially_refunded';
+	case Refunded          = 'refunded';
+	case PartiallyRefunded = 'partially_refunded';
 
 	/**
-	 * Results valid for a payment event.
+	 * The result cases valid for a given event phase.
 	 *
-	 * @var array<int, string>
+	 * @param EventPhase $phase Event phase.
+	 * @return array<int, self>
 	 */
-	public const PAYMENT_RESULTS = array(
-		self::PAYMENT_CAPTURED,
-		self::PAYMENT_AUTHORIZED,
-		self::PAYMENT_PENDING,
-		self::PAYMENT_DECLINED,
-		self::PAYMENT_BLOCKED,
-		self::PAYMENT_REVIEW_PENDING,
-		self::PAYMENT_REVIEW_APPROVED,
-		self::PAYMENT_REVIEW_REJECTED,
-		self::PAYMENT_REVIEW_EXPIRED,
-		self::PAYMENT_VOIDED,
-		self::PAYMENT_CANCELED,
-	);
-
-	/**
-	 * Results valid for a dispute event.
-	 *
-	 * @var array<int, string>
-	 */
-	public const DISPUTE_RESULTS = array(
-		self::DISPUTE_INQUIRY,
-		self::DISPUTE_OPEN,
-		self::DISPUTE_WON,
-		self::DISPUTE_LOST,
-		self::DISPUTE_ACCEPTED,
-		self::DISPUTE_WITHDRAWN,
-		self::DISPUTE_PREVENTED,
-	);
-
-	/**
-	 * Results valid for a refund event.
-	 *
-	 * @var array<int, string>
-	 */
-	public const REFUND_RESULTS = array(
-		self::REFUNDED,
-		self::PARTIALLY_REFUNDED,
-	);
+	public static function for_phase( EventPhase $phase ): array {
+		return match ( $phase ) {
+			EventPhase::Payment => array(
+				self::PaymentCaptured,
+				self::PaymentAuthorized,
+				self::PaymentPending,
+				self::PaymentDeclined,
+				self::PaymentBlocked,
+				self::PaymentReviewPending,
+				self::PaymentReviewApproved,
+				self::PaymentReviewRejected,
+				self::PaymentReviewExpired,
+				self::PaymentVoided,
+				self::PaymentCanceled,
+			),
+			EventPhase::Dispute => array(
+				self::DisputeInquiry,
+				self::DisputeOpen,
+				self::DisputeWon,
+				self::DisputeLost,
+				self::DisputeAccepted,
+				self::DisputeWithdrawn,
+				self::DisputePrevented,
+			),
+			EventPhase::Refund => array(
+				self::Refunded,
+				self::PartiallyRefunded,
+			),
+		};
+	}
 }

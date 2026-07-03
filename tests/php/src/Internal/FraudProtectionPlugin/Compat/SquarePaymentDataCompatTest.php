@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub wc_square() in the global namespace if not loaded.
@@ -96,7 +97,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'avs_address_check'  => null,
 					'avs_postcode_check' => null,
 				),
-				'transaction_mode'        => PaymentMethodData::MODE_LIVE,
+				'transaction_mode'        => PaymentMode::Live->value,
 			),
 			$result->to_array()
 		);
@@ -182,7 +183,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotSame( $token_data, $result );
 		$array = $result->to_array();
-		$this->assertSame( PaymentMethodData::MODE_TEST, $array['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'visa', $array['instrument']['brand'] );
 		$this->assertSame( '4242', $array['instrument']['last4'] );
 	}
@@ -201,7 +202,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_TEST, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $result->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -218,6 +219,6 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->assertSame( PaymentMethodData::MODE_LIVE, $result->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Live->value, $result->to_array()['transaction_mode'] );
 	}
 }

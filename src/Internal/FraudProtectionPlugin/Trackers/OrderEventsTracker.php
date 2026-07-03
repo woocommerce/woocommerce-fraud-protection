@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
@@ -52,21 +53,13 @@ class OrderEventsTracker {
 	 * (i.e. after `woocommerce_store_api_checkout_order_processed`).
 	 *
 	 * @param \WC_Order         $order   The order to report on.
-	 * @param string            $source  The source of the event. Use ApiClient::REPORT_SOURCE_* constants; an unknown value defaults to REPORT_SOURCE_API.
+	 * @param ReportSource      $source  The source of the event.
 	 * @param ReportContextData $context The normalized event context.
 	 * @param string            $notes   Free-form notes. Must not contain raw gateway or customer data.
 	 */
-	public function fraud_protection_report( \WC_Order $order, string $source, ReportContextData $context, string $notes = '' ): void {
+	public function fraud_protection_report( \WC_Order $order, ReportSource $source, ReportContextData $context, string $notes = '' ): void {
 		$session_id = '';
 		try {
-			if ( ! in_array( $source, ApiClient::VALID_REPORT_SOURCES, true ) ) {
-				FraudProtectionController::log(
-					'warning',
-					sprintf( 'Unknown report source "%s", defaulting to "%s".', $source, ApiClient::REPORT_SOURCE_API )
-				);
-				$source = ApiClient::REPORT_SOURCE_API;
-			}
-
 			$session_id = $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY );
 			if ( ! is_string( $session_id ) || '' === $session_id ) {
 				FraudProtectionController::log(
@@ -81,7 +74,7 @@ class OrderEventsTracker {
 			$this->api_client->report(
 				$session_id,
 				array(
-					'source'  => $source,
+					'source'  => $source->value,
 					'notes'   => sanitize_text_field( $notes ),
 					'context' => $context->to_array(),
 				)
@@ -95,7 +88,7 @@ class OrderEventsTracker {
 					'session_id'        => $session_id,
 					'order_id'          => $order->get_id(),
 					'error'             => $e->getTraceAsString(),
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),

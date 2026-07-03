@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 
@@ -48,13 +49,13 @@ class FraudProtectionReporter {
 	 * (i.e. after `woocommerce_store_api_checkout_order_processed`).
 	 *
 	 * @param \WC_Order          $order   The order to report on.
-	 * @param string             $source  The source of the event. Use ApiClient::REPORT_SOURCE_* constants; an unknown value defaults to REPORT_SOURCE_API.
+	 * @param ReportSource       $source  The source of the event.
 	 * @param ?ReportContextData $context The normalized event context, or null to skip.
 	 * @param string             $notes   Free-form notes. Must not contain raw gateway or customer data.
 	 *
 	 * @return void
 	 */
-	public function report( \WC_Order $order, string $source, ?ReportContextData $context, string $notes = '' ): void {
+	public function report( \WC_Order $order, ReportSource $source, ?ReportContextData $context, string $notes = '' ): void {
 		if ( ! FraudProtectionController::feature_is_enabled() ) {
 			return;
 		}

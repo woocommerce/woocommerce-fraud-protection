@@ -15,90 +15,6 @@ defined( 'ABSPATH' ) || exit;
 class CartItem {
 
 	/**
-	 * WooCommerce product ID.
-	 *
-	 * @var int
-	 */
-	private int $product_id;
-
-	/**
-	 * Product name.
-	 *
-	 * @var ?string
-	 */
-	private ?string $name;
-
-	/**
-	 * Comma-separated category names.
-	 *
-	 * @var ?string
-	 */
-	private ?string $category;
-
-	/**
-	 * Product SKU.
-	 *
-	 * @var ?string
-	 */
-	private ?string $sku;
-
-	/**
-	 * Quantity in cart.
-	 *
-	 * @var int
-	 */
-	private int $quantity;
-
-	/**
-	 * Per-unit price.
-	 *
-	 * @var float
-	 */
-	private float $unit_price;
-
-	/**
-	 * Per-unit tax amount.
-	 *
-	 * @var float
-	 */
-	private float $unit_tax_amount;
-
-	/**
-	 * Per-unit discount amount.
-	 *
-	 * @var float
-	 */
-	private float $unit_discount_amount;
-
-	/**
-	 * WooCommerce product type.
-	 *
-	 * @var ?string
-	 */
-	private ?string $product_type;
-
-	/**
-	 * Whether the product is virtual.
-	 *
-	 * @var bool
-	 */
-	private bool $is_virtual;
-
-	/**
-	 * Whether the product is downloadable.
-	 *
-	 * @var bool
-	 */
-	private bool $is_downloadable;
-
-	/**
-	 * Product attributes.
-	 *
-	 * @var array
-	 */
-	private array $attributes;
-
-	/**
 	 * Private constructor — use factory methods.
 	 *
 	 * @param int     $product_id           WooCommerce product ID.
@@ -115,32 +31,19 @@ class CartItem {
 	 * @param array   $attributes           Product attributes.
 	 */
 	private function __construct(
-		int $product_id,
-		?string $name,
-		?string $category,
-		?string $sku,
-		int $quantity,
-		float $unit_price,
-		float $unit_tax_amount,
-		float $unit_discount_amount,
-		?string $product_type,
-		bool $is_virtual,
-		bool $is_downloadable,
-		array $attributes
-	) {
-		$this->product_id           = $product_id;
-		$this->name                 = $name;
-		$this->category             = $category;
-		$this->sku                  = $sku;
-		$this->quantity             = $quantity;
-		$this->unit_price           = $unit_price;
-		$this->unit_tax_amount      = $unit_tax_amount;
-		$this->unit_discount_amount = $unit_discount_amount;
-		$this->product_type         = $product_type;
-		$this->is_virtual           = $is_virtual;
-		$this->is_downloadable      = $is_downloadable;
-		$this->attributes           = $attributes;
-	}
+		private readonly int $product_id,
+		private readonly ?string $name,
+		private readonly ?string $category,
+		private readonly ?string $sku,
+		private readonly int $quantity,
+		private readonly float $unit_price,
+		private readonly float $unit_tax_amount,
+		private readonly float $unit_discount_amount,
+		private readonly ?string $product_type,
+		private readonly bool $is_virtual,
+		private readonly bool $is_downloadable,
+		private readonly array $attributes
+	) {}
 
 	/**
 	 * Build from a WooCommerce cart entry and its product.

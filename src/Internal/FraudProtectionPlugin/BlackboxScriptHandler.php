@@ -186,7 +186,7 @@ class BlackboxScriptHandler {
 	 *
 	 * @return int|false Blog ID or false if not available.
 	 */
-	private function get_blog_id() {
+	private function get_blog_id(): int|false {
 		if ( ! class_exists( \Jetpack_Options::class ) ) {
 			return false;
 		}

@@ -7,7 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
@@ -131,7 +131,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-abc', 'paypal_express_order_creation', 0, $data )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		// Should return normally without terminating.
 		$this->sut->verify_and_block_create_order( $data );
@@ -147,7 +147,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block_create_order( $data );
 
@@ -164,7 +164,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-blocked', 'paypal_express_order_creation', 0, $data )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		$this->blocked_session_notice
 			->expects( $this->once() )
@@ -200,7 +200,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( '', 'paypal_express_order_creation', 0, $data )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block_create_order( $data );
 	}

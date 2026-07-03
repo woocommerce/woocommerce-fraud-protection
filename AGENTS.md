@@ -6,7 +6,7 @@ For detailed architecture documentation (API patterns, blocking strategy, sessio
 
 ## Tech Stack
 
-PHP 7.4+ (no PHP 8.0+ features), WordPress, WooCommerce, Vanilla JS, Composer, npm/wp-scripts, Node 20.
+PHP 8.1+ (no PHP 8.2+ features), WordPress, WooCommerce, Vanilla JS, Composer, npm/wp-scripts, Node 20.
 
 ## Development Environment
 
@@ -77,7 +77,7 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 **No standalone functions**: Expose all functionality through PSR-4 classes (public API under `Automattic\WooCommerce\FraudProtection\`; everything else internal — see **Namespace** below), never through global/procedural functions. The sole exception is the pre-autoloader bootstrap (`woocommerce-fraud-protection.php` and `woocommerce-fraud-protection-loader.php`): those files run before the autoloader exists, so they cannot use classes (e.g. the loader's `plugins_url` filter callback).
 
-**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (`ReportContextData`, `ReportReason`, `ReportResult`). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` (`src/Internal/FraudProtectionPlugin/`); the `Internal\` location alone marks a class as internal — internal classes do **not** carry a class-level `@internal` tag (see the `@internal` convention below).
+**Namespace**: PSR-4 with the Composer root `Automattic\WooCommerce\` mapped to `src/`, mirroring WooCommerce core's public/internal split. Public API classes (consumed by third parties) live under `Automattic\WooCommerce\FraudProtection\` (`src/FraudProtection/`): currently `FraudProtectionReporter`, `SessionVerifier`, and the report schemas (the `ReportContextData` DTO plus the `EventPhase`, `ReportResult`, `DisputeReason`, `PaymentRefusalReason`, `LiabilityShift`, `ReportSource`, and `FraudDecision` enums). Everything else is internal under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` (`src/Internal/FraudProtectionPlugin/`); the `Internal\` location alone marks a class as internal — internal classes do **not** carry a class-level `@internal` tag (see the `@internal` convention below).
 
 > **Why `Internal\FraudProtectionPlugin` and not `Internal\FraudProtection`?** WooCommerce core itself shipped a built-in fraud-protection feature under `Automattic\WooCommerce\Internal\FraudProtection\` (added in WC 10.6.0, removed in 10.6.1); this plugin is its standalone successor. Reusing that exact namespace makes our classes collide with core's identically-named ones on WC versions that still ship them. The `Plugin` suffix is a deliberate, temporary disambiguation — **when this code is merged back into core, rename `Internal\FraudProtectionPlugin` → `Internal\FraudProtection`** (a single find/replace). The public `Automattic\WooCommerce\FraudProtection\` namespace does not collide and stays as-is.
 
@@ -102,12 +102,12 @@ Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <m
 ```
 src/                                    PHP source; PSR-4 root Automattic\WooCommerce\ -> src/
 src/FraudProtection/                    Public API (FraudProtectionReporter, SessionVerifier)
-src/FraudProtection/Schemas/            Public DTOs (ReportContextData, ReportReason, ReportResult)
+src/FraudProtection/Schemas/            Public DTO (ReportContextData) + vocabulary enums (EventPhase, ReportResult, DisputeReason, PaymentRefusalReason, LiabilityShift, ReportSource, FraudDecision)
 src/Internal/FraudProtectionPlugin/           Internal implementation (controller, API client, decision/payment handling, ...)
 src/Internal/FraudProtectionPlugin/Protectors/  Checkout/payment flow guards (Blocks, Shortcode, AddPaymentMethod, PayForOrder)
 src/Internal/FraudProtectionPlugin/Trackers/    Event/report trackers (Cart, Checkout, PaymentMethod, OrderEvents)
 src/Internal/FraudProtectionPlugin/Sessions/    Session lifecycle/state (ClearanceManager, DataCollector, BlockingHandler)
-src/Internal/FraudProtectionPlugin/Schemas/   Internal DTOs (Address, CartItem, OrderData, etc.)
+src/Internal/FraudProtectionPlugin/Schemas/   Internal DTOs (Address, CartItem, OrderData, ...) + enums (CheckResult, ClearanceStatus, PaymentMode)
 src/Internal/FraudProtectionPlugin/Compat/    Payment gateway compatibility layers (Stripe, Square)
 tests/php/                              PHPUnit tests (extend WC_Unit_Test_Case), mirrors src/ layout
 tests/js/                               Jest tests
@@ -130,9 +130,9 @@ The plugin bootstraps on the `woocommerce_loaded` action (not `plugins_loaded` �
 
 **Always default to "allow" when errors occur.** Invalid decisions, API failures, timeouts, or filter errors MUST all result in allowing the session. Never block legitimate transactions due to system errors.
 
-### 2. Use Decision Constants
+### 2. Use the FraudDecision enum
 
-Always use `ApiClient::DECISION_ALLOW`, `ApiClient::DECISION_BLOCK`, `ApiClient::VALID_DECISIONS`. Never hardcode decision strings.
+Always use the `FraudDecision` enum: `FraudDecision::Allow`, `FraudDecision::Block`, and `FraudDecision::ACTIONABLE` (the set of decisions the plugin acts on). Never hardcode decision strings; when a raw string must be validated (wire payloads, filter returns) go through `FraudDecision::tryFrom()` and check membership in `FraudDecision::ACTIONABLE`.
 
 ### 3. Error Messages Must Not Reveal Fraud Detection
 
@@ -144,7 +144,7 @@ This code is open source. Never expose aggregation/correlation logic, risk scori
 
 ## Common Pitfalls
 
-- **No PHP 8.0+ features**: No enums, named arguments, typed class constants, `match`, fibers, readonly properties, intersection types, or `str_contains()`/`str_starts_with()`.
+- **No PHP 8.2+ features**: The minimum runtime is PHP 8.1, so 8.0/8.1 features are fine (enums, `match`, `readonly` properties, named arguments, fibers, intersection types, `never` return type, first-class callable syntax, `str_contains()`/`str_starts_with()`). Do NOT use anything introduced after 8.1 — e.g. `readonly` classes / DNF types (8.2), typed class constants / `json_validate()` / `#[\Override]` (8.3), property hooks / asymmetric visibility (8.4). The files the kill-switch CI job exercises are the exception: they must stay PHP 7.x-parseable so the unsupported-PHP kill switch can bail before any 8.1 syntax is loaded. These are the two pre-autoloader entry points (`woocommerce-fraud-protection.php` and `woocommerce-fraud-protection-loader.php`, both `php -l`-checked on 7.4/8.0) plus the kill-switch smoke test and the stubs it loads (`tests/php/smoke/scenarios/10-php-version-kill-switch.php` and `tests/php/smoke/stubs/wp.php`, run on 7.4/8.0). Keep all of them free of 8.1+ syntax.
 - **PaymentMethodData gateway param**: The `$gateway` string is the REQUIRED first constructor argument.
 - **Sticky blocked state**: Once a session is blocked via `DecisionHandler`, it stays blocked even if a subsequent verify returns "allow". This is intentional — don't "fix" it.
 - **Separate try-catch blocks are intentional**: In `SessionVerifier::verify_session()`, payment resolution and session verification have independent try-catch blocks so one failing doesn't prevent the other from running. Do not merge them.
@@ -168,7 +168,7 @@ Keep the changes description concise but include the **why** and **how** behind 
 ### PR Review Checklist
 
 - [ ] Fail-open pattern: All error cases default to "allow"
-- [ ] Constants: Using `ApiClient::DECISION_*` constants, not strings
+- [ ] Decisions: Using the `FraudDecision` enum (`FraudDecision::Allow` / `Block` / `ACTIONABLE`), not decision strings
 - [ ] Error messages: Generic, don't reveal fraud detection
 - [ ] Open source safe: No aggregation logic, risk scores, or rule details exposed
 - [ ] Hooks-based integration: All WC integration through hooks, no direct WC Core modifications

@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\FraudProtection;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
@@ -137,9 +138,9 @@ class SessionVerifier {
 	 * @param string $source       Identifies the caller (e.g. 'blocks_checkout').
 	 * @param int    $order_id     The WooCommerce order ID (0 for pre-order flows).
 	 * @param array  $request_data Request data containing payment_method and payment_data.
-	 * @return string The final decision: 'allow' or 'block'.
+	 * @return FraudDecision The final decision: Allow or Block.
 	 */
-	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): string {
+	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
 		try {
 			/**
 			 * Filters whether to skip session verification.
@@ -164,7 +165,7 @@ class SessionVerifier {
 					'info',
 					sprintf( 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source )
 				);
-				return ApiClient::DECISION_ALLOW;
+				return FraudDecision::Allow;
 			}
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
@@ -175,7 +176,7 @@ class SessionVerifier {
 					'session_id'        => $session_id,
 					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
 					'exception'         => $e,
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),
@@ -202,7 +203,7 @@ class SessionVerifier {
 					'payment_type'      => $request_data['payment_method'] ?? '',
 					'hook'              => 'payment_data_resolution',
 					'exception'         => $e,
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),
@@ -222,13 +223,13 @@ class SessionVerifier {
 			$payload = $this->data_collector->get_collected_data( $order_id );
 
 			$payload['source']  = $source;
-			$payload['payment'] = $payment_data ? $payment_data->to_array() : null;
+			$payload['payment'] = $payment_data?->to_array();
 
 			$result   = $this->api_client->verify( $session_id, $payload );
-			$decision = $this->decision_handler->apply_decision( $result->get_decision(), $payload );
+			$decision = $this->decision_handler->apply_decision( $result->decision, $payload );
 
 			// No collect session: persist the ID Blackbox generated so /report can attach the outcome.
-			$effective_session_id = '' === $session_id ? $result->get_session_id() : $session_id;
+			$effective_session_id = '' === $session_id ? $result->session_id : $session_id;
 			$this->persist_session_id( $effective_session_id, $order_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
@@ -240,7 +241,7 @@ class SessionVerifier {
 					'order_id'          => $order_id,
 					'hook'              => 'session_verify',
 					'exception'         => $e,
-					'exception_class'   => get_class( $e ),
+					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
 					'exception_line'    => $e->getLine(),
@@ -253,7 +254,7 @@ class SessionVerifier {
 				),
 				true
 			);
-			return ApiClient::DECISION_ALLOW;
+			return FraudDecision::Allow;
 		}
 
 		return $decision;

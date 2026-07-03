@@ -7,10 +7,10 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -112,7 +112,7 @@ class PayPalCompat {
 			WC()->session->set( self::VERIFIED_SESSION_ID_KEY, $session_id );
 		}
 
-		if ( ApiClient::DECISION_BLOCK === $decision ) {
+		if ( FraudDecision::Block === $decision ) {
 			wp_send_json_error(
 				array( 'message' => $this->blocked_session_notice->get_message_plaintext( 'purchase' ) ),
 				403
@@ -304,7 +304,7 @@ class PayPalCompat {
 	 * @return bool
 	 */
 	private function is_paypal_gateway( string $gateway_id ): bool {
-		return 0 === strpos( $gateway_id, self::PAYPAL_GATEWAY_PREFIX );
+		return str_starts_with( $gateway_id, self::PAYPAL_GATEWAY_PREFIX );
 	}
 
 	/**

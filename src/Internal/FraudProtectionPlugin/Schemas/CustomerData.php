@@ -18,32 +18,18 @@ defined( 'ABSPATH' ) || exit;
 class CustomerData {
 
 	/**
-	 * Billing email.
-	 *
-	 * @var ?string
-	 */
-	private ?string $billing_email;
-
-	/**
-	 * Lifetime order count.
-	 *
-	 * @var int
-	 */
-	private int $lifetime_order_count;
-
-	/**
 	 * Billing address.
 	 *
 	 * @var Address
 	 */
-	private Address $billing_address;
+	private readonly Address $billing_address;
 
 	/**
 	 * Shipping address.
 	 *
 	 * @var Address
 	 */
-	private Address $shipping_address;
+	private readonly Address $shipping_address;
 
 	/**
 	 * Private constructor — use factory methods.
@@ -54,15 +40,13 @@ class CustomerData {
 	 * @param ?Address $shipping_address     Shipping address (defaults to empty).
 	 */
 	private function __construct(
-		?string $billing_email = null,
-		int $lifetime_order_count = 0,
+		private readonly ?string $billing_email = null,
+		private readonly int $lifetime_order_count = 0,
 		?Address $billing_address = null,
 		?Address $shipping_address = null
 	) {
-		$this->billing_email        = $billing_email;
-		$this->lifetime_order_count = $lifetime_order_count;
-		$this->billing_address      = $billing_address ?? Address::empty();
-		$this->shipping_address     = $shipping_address ?? Address::empty();
+		$this->billing_address  = $billing_address ?? Address::empty();
+		$this->shipping_address = $shipping_address ?? Address::empty();
 	}
 
 	/**

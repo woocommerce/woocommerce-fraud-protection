@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\ClearanceStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 /**
@@ -37,13 +38,12 @@ class SessionClearanceManagerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Test that session status constants are defined correctly.
+	 * Test that the clearance status enum maps to the persisted string values.
 	 */
-	public function test_session_status_constants(): void {
-		$this->assertEquals( 'pending', SessionClearanceManager::STATUS_PENDING );
-		$this->assertEquals( 'allowed', SessionClearanceManager::STATUS_ALLOWED );
-		$this->assertEquals( 'blocked', SessionClearanceManager::STATUS_BLOCKED );
-		$this->assertEquals( SessionClearanceManager::STATUS_ALLOWED, SessionClearanceManager::DEFAULT_STATUS );
+	public function test_clearance_status_values(): void {
+		$this->assertSame( 'pending', ClearanceStatus::Pending->value );
+		$this->assertSame( 'allowed', ClearanceStatus::Allowed->value );
+		$this->assertSame( 'blocked', ClearanceStatus::Blocked->value );
 	}
 
 	/**
@@ -52,7 +52,7 @@ class SessionClearanceManagerTest extends FraudProtectionUnitTestCase {
 	public function test_default_session_status_without_session(): void {
 		// If session is not available, should return DEFAULT_STATUS.
 		$status = $this->sut->get_session_status();
-		$this->assertEquals( SessionClearanceManager::DEFAULT_STATUS, $status );
+		$this->assertEquals( ClearanceStatus::Allowed, $status );
 	}
 
 	/**
@@ -105,11 +105,11 @@ class SessionClearanceManagerTest extends FraudProtectionUnitTestCase {
 	public function test_reset_session_sets_status_to_default(): void {
 		// Set to blocked first.
 		$this->sut->block_session();
-		$this->assertEquals( SessionClearanceManager::STATUS_BLOCKED, $this->sut->get_session_status() );
+		$this->assertEquals( ClearanceStatus::Blocked, $this->sut->get_session_status() );
 
 		// Reset should go back to DEFAULT_STATUS.
 		$this->sut->reset_session();
-		$this->assertEquals( SessionClearanceManager::DEFAULT_STATUS, $this->sut->get_session_status() );
+		$this->assertEquals( ClearanceStatus::Allowed, $this->sut->get_session_status() );
 	}
 
 	/**
@@ -118,19 +118,19 @@ class SessionClearanceManagerTest extends FraudProtectionUnitTestCase {
 	public function test_session_status_transitions(): void {
 		// Start with allowed.
 		$this->sut->allow_session();
-		$this->assertEquals( SessionClearanceManager::STATUS_ALLOWED, $this->sut->get_session_status() );
+		$this->assertEquals( ClearanceStatus::Allowed, $this->sut->get_session_status() );
 
 		// Transition to pending.
 		$this->sut->challenge_session();
-		$this->assertEquals( SessionClearanceManager::STATUS_PENDING, $this->sut->get_session_status() );
+		$this->assertEquals( ClearanceStatus::Pending, $this->sut->get_session_status() );
 
 		// Transition to blocked.
 		$this->sut->block_session();
-		$this->assertEquals( SessionClearanceManager::STATUS_BLOCKED, $this->sut->get_session_status() );
+		$this->assertEquals( ClearanceStatus::Blocked, $this->sut->get_session_status() );
 
 		// Transition back to allowed.
 		$this->sut->allow_session();
-		$this->assertEquals( SessionClearanceManager::STATUS_ALLOWED, $this->sut->get_session_status() );
+		$this->assertEquals( ClearanceStatus::Allowed, $this->sut->get_session_status() );
 	}
 
 	/**
@@ -141,7 +141,7 @@ class SessionClearanceManagerTest extends FraudProtectionUnitTestCase {
 		WC()->session->set( '_fraud_protection_clearance_status', 'invalid_status' );
 
 		// Should return default status for invalid values.
-		$this->assertEquals( SessionClearanceManager::DEFAULT_STATUS, $this->sut->get_session_status() );
+		$this->assertEquals( ClearanceStatus::Allowed, $this->sut->get_session_status() );
 	}
 
 	/**

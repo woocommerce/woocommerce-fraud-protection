@@ -58,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['7.4', '8.1']
+        php: ['8.1']
 
     steps:
       - name: Checkout code
@@ -91,6 +91,38 @@ jobs:
 
       - name: Run smoke tests
         run: tests/php/smoke/run.sh
+
+  kill-switch:
+    name: PHP Kill Switch (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+
+    # Verify the unsupported-PHP kill switch on the versions the plugin no longer
+    # supports. No Composer install: on these runtimes the main file must bail
+    # before the autoloader, so the scenario only needs the WP stubs.
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Lint plugin entry points (must stay parseable on unsupported PHP)
+        run: |
+          php -l woocommerce-fraud-protection.php
+          php -l woocommerce-fraud-protection-loader.php
+
+      - name: Verify the unsupported-PHP kill switch bails silently
+        run: php tests/php/smoke/scenarios/10-php-version-kill-switch.php
 
   phpstan:
     name: PHPStan Static Analysis
@@ -136,7 +168,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['7.4', '8.1']
+        php: ['8.1']
 
     services:
       mysql:

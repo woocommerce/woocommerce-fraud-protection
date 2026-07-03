@@ -15,69 +15,6 @@ defined( 'ABSPATH' ) || exit;
 class Address {
 
 	/**
-	 * First name.
-	 *
-	 * @var ?string
-	 */
-	private ?string $first_name;
-
-	/**
-	 * Last name.
-	 *
-	 * @var ?string
-	 */
-	private ?string $last_name;
-
-	/**
-	 * Address line 1.
-	 *
-	 * @var ?string
-	 */
-	private ?string $address_1;
-
-	/**
-	 * Address line 2.
-	 *
-	 * @var ?string
-	 */
-	private ?string $address_2;
-
-	/**
-	 * City.
-	 *
-	 * @var ?string
-	 */
-	private ?string $city;
-
-	/**
-	 * State.
-	 *
-	 * @var ?string
-	 */
-	private ?string $state;
-
-	/**
-	 * Postcode.
-	 *
-	 * @var ?string
-	 */
-	private ?string $postcode;
-
-	/**
-	 * Country code.
-	 *
-	 * @var ?string
-	 */
-	private ?string $country;
-
-	/**
-	 * Phone number.
-	 *
-	 * @var ?string
-	 */
-	private ?string $phone;
-
-	/**
 	 * Private constructor — use factory methods.
 	 *
 	 * @param ?string $first_name First name.
@@ -87,30 +24,20 @@ class Address {
 	 * @param ?string $city       City.
 	 * @param ?string $state      State.
 	 * @param ?string $postcode   Postcode.
-	 * @param ?string $country    Country.
-	 * @param ?string $phone      Phone.
+	 * @param ?string $country    Country code.
+	 * @param ?string $phone      Phone number.
 	 */
 	private function __construct(
-		?string $first_name = null,
-		?string $last_name = null,
-		?string $address_1 = null,
-		?string $address_2 = null,
-		?string $city = null,
-		?string $state = null,
-		?string $postcode = null,
-		?string $country = null,
-		?string $phone = null
-	) {
-		$this->first_name = $first_name;
-		$this->last_name  = $last_name;
-		$this->address_1  = $address_1;
-		$this->address_2  = $address_2;
-		$this->city       = $city;
-		$this->state      = $state;
-		$this->postcode   = $postcode;
-		$this->country    = $country;
-		$this->phone      = $phone;
-	}
+		private readonly ?string $first_name = null,
+		private readonly ?string $last_name = null,
+		private readonly ?string $address_1 = null,
+		private readonly ?string $address_2 = null,
+		private readonly ?string $city = null,
+		private readonly ?string $state = null,
+		private readonly ?string $postcode = null,
+		private readonly ?string $country = null,
+		private readonly ?string $phone = null
+	) {}
 
 	/**
 	 * Build from WC_Customer billing fields.

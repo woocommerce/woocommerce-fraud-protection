@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Schemas;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\CheckResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -83,21 +84,21 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 
 
 	/**
-	 * @testdox sanitize_check() accepts valid check constants.
+	 * @testdox sanitize_check() accepts valid check values.
 	 */
 	public function test_sanitize_check_accepts_valid_values(): void {
 		$instrument = PaymentInstrumentData::from_array(
 			array(
-				'cvc_check'          => PaymentInstrumentData::CHECK_PASS,
-				'avs_address_check'  => PaymentInstrumentData::CHECK_FAIL,
-				'avs_postcode_check' => PaymentInstrumentData::CHECK_UNAVAILABLE,
+				'cvc_check'          => CheckResult::Pass->value,
+				'avs_address_check'  => CheckResult::Fail->value,
+				'avs_postcode_check' => CheckResult::Unavailable->value,
 			)
 		);
 
 		$array = $instrument->to_array();
-		$this->assertSame( PaymentInstrumentData::CHECK_PASS, $array['cvc_check'] );
-		$this->assertSame( PaymentInstrumentData::CHECK_FAIL, $array['avs_address_check'] );
-		$this->assertSame( PaymentInstrumentData::CHECK_UNAVAILABLE, $array['avs_postcode_check'] );
+		$this->assertSame( CheckResult::Pass->value, $array['cvc_check'] );
+		$this->assertSame( CheckResult::Fail->value, $array['avs_address_check'] );
+		$this->assertSame( CheckResult::Unavailable->value, $array['avs_postcode_check'] );
 	}
 
 	/**

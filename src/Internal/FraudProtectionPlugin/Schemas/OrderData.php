@@ -15,83 +15,6 @@ defined( 'ABSPATH' ) || exit;
 class OrderData {
 
 	/**
-	 * Order ID.
-	 *
-	 * @var int
-	 */
-	private int $order_id;
-
-	/**
-	 * Customer ID or 'guest'.
-	 *
-	 * @var int|string
-	 */
-	private $customer_id;
-
-	/**
-	 * Order total.
-	 *
-	 * @var float
-	 */
-	private float $total;
-
-	/**
-	 * Items subtotal.
-	 *
-	 * @var float
-	 */
-	private float $items_total;
-
-	/**
-	 * Shipping total.
-	 *
-	 * @var float
-	 */
-	private float $shipping_total;
-
-	/**
-	 * Tax total.
-	 *
-	 * @var float
-	 */
-	private float $tax_total;
-
-	/**
-	 * Shipping tax rate.
-	 *
-	 * @var ?float
-	 */
-	private ?float $shipping_tax_rate;
-
-	/**
-	 * Discount total.
-	 *
-	 * @var float
-	 */
-	private float $discount_total;
-
-	/**
-	 * Currency code.
-	 *
-	 * @var ?string
-	 */
-	private ?string $currency;
-
-	/**
-	 * Cart hash.
-	 *
-	 * @var ?string
-	 */
-	private ?string $cart_hash;
-
-	/**
-	 * Cart items.
-	 *
-	 * @var CartItem[]
-	 */
-	private array $items;
-
-	/**
 	 * Private constructor — use factory methods.
 	 *
 	 * @param int        $order_id          Order ID (0 when not yet created).
@@ -107,30 +30,18 @@ class OrderData {
 	 * @param CartItem[] $items             Cart items.
 	 */
 	private function __construct(
-		int $order_id = 0,
-		$customer_id = 'guest',
-		float $total = 0,
-		float $items_total = 0,
-		float $shipping_total = 0,
-		float $tax_total = 0,
-		?float $shipping_tax_rate = null,
-		float $discount_total = 0,
-		?string $currency = null,
-		?string $cart_hash = null,
-		array $items = array()
-	) {
-		$this->order_id          = $order_id;
-		$this->customer_id       = $customer_id;
-		$this->total             = $total;
-		$this->items_total       = $items_total;
-		$this->shipping_total    = $shipping_total;
-		$this->tax_total         = $tax_total;
-		$this->shipping_tax_rate = $shipping_tax_rate;
-		$this->discount_total    = $discount_total;
-		$this->currency          = $currency;
-		$this->cart_hash         = $cart_hash;
-		$this->items             = $items;
-	}
+		private readonly int $order_id = 0,
+		private readonly int|string $customer_id = 'guest',
+		private readonly float $total = 0,
+		private readonly float $items_total = 0,
+		private readonly float $shipping_total = 0,
+		private readonly float $tax_total = 0,
+		private readonly ?float $shipping_tax_rate = null,
+		private readonly float $discount_total = 0,
+		private readonly ?string $currency = null,
+		private readonly ?string $cart_hash = null,
+		private readonly array $items = array()
+	) {}
 
 	/**
 	 * Build from a WooCommerce cart.

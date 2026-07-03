@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\Jetpack\Connection\Client as Jetpack_Connection_Client;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 
 defined( 'ABSPATH' ) || exit;
@@ -49,57 +50,6 @@ class ApiClient {
 	 * Blackbox API report endpoint path.
 	 */
 	private const REPORT_ENDPOINT = '/report';
-
-	/**
-	 * Decision type: allow session.
-	 */
-	public const DECISION_ALLOW = 'allow';
-
-	/**
-	 * Decision type: block session.
-	 */
-	public const DECISION_BLOCK = 'block';
-
-	/**
-	 * Decision type: challenge session.
-	 */
-	public const DECISION_CHALLENGE = 'challenge';
-
-	/**
-	 * Valid decision values that can be returned by the API.
-	 *
-	 * @var array<string>
-	 */
-	public const VALID_DECISIONS = array(
-		self::DECISION_ALLOW,
-		self::DECISION_BLOCK,
-	);
-
-	/**
-	 * Report source: chargeback event.
-	 */
-	public const REPORT_SOURCE_CHARGEBACK = 'chargeback';
-
-	/**
-	 * Report source: manual review outcome.
-	 */
-	public const REPORT_SOURCE_MANUAL_REVIEW = 'manual_review';
-
-	/**
-	 * Report source: API-driven event.
-	 */
-	public const REPORT_SOURCE_API = 'api';
-
-	/**
-	 * Valid report source values.
-	 *
-	 * @var array<string>
-	 */
-	public const VALID_REPORT_SOURCES = array(
-		self::REPORT_SOURCE_CHARGEBACK,
-		self::REPORT_SOURCE_MANUAL_REVIEW,
-		self::REPORT_SOURCE_API,
-	);
 
 	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
@@ -209,7 +159,7 @@ class ApiClient {
 	 * @param string                         $session_id Session ID associated with the request, included in log context for cross-system tracing.
 	 * @return VerifyResult The decision plus any Blackbox session ID returned in the response.
 	 */
-	private function process_decision_response( $response, array $event_data, string $session_id ): VerifyResult {
+	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
 			$error_data = $response->get_error_data() ?? array();
 			$error_data = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
@@ -230,12 +180,12 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( self::DECISION_ALLOW, '' );
+			return VerifyResult::create( FraudDecision::Allow, '' );
 		}
 
-		$decision = $this->extract_decision( $response );
+		$raw = $this->extract_decision( $response );
 
-		if ( null === $decision ) {
+		if ( is_null( $raw ) ) {
 			FraudProtectionController::log(
 				'error',
 				'Could not extract decision from response. Failing open with "allow" decision.',
@@ -248,27 +198,29 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( self::DECISION_ALLOW, '' );
+			return VerifyResult::create( FraudDecision::Allow, '' );
 		}
 
-		if ( ! in_array( $decision, self::VALID_DECISIONS, true ) ) {
+		$decision = FraudDecision::tryFrom( $raw );
+
+		if ( is_null( $decision ) || ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'error',
 				sprintf(
 					'Invalid decision value "%s". Failing open with "allow" decision.',
-					$decision
+					$raw
 				),
 				array(
 					'event_source'      => 'api_verify',
 					'session_id'        => $session_id,
 					'api_endpoint'      => self::VERIFY_ENDPOINT,
 					'http_status'       => (int) wp_remote_retrieve_response_code( $response ),
-					'decision_received' => $decision,
+					'decision_received' => $raw,
 					'response'          => $response,
 				),
 				true
 			);
-			return VerifyResult::create( self::DECISION_ALLOW, '' );
+			return VerifyResult::create( FraudDecision::Allow, '' );
 		}
 
 		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
@@ -277,7 +229,7 @@ class ApiClient {
 			'info',
 			sprintf(
 				'Fraud decision received: %s | Source: %s',
-				$decision,
+				$decision->value,
 				$source
 			),
 			array( 'response' => $response )
@@ -304,7 +256,7 @@ class ApiClient {
 	 * @param array<string, mixed> $payload    Request payload.
 	 * @return array<string, mixed>|\WP_Error Parsed JSON response or WP_Error on failure.
 	 */
-	private function make_request( string $method, string $path, string $session_id, array $payload ) {
+	private function make_request( string $method, string $path, string $session_id, array $payload ): array|\WP_Error {
 		$body = \wp_json_encode(
 			array_merge(
 				$payload,
@@ -372,7 +324,7 @@ class ApiClient {
 	 * @param string               $body         JSON-encoded request body.
 	 * @return array<string, mixed>|\WP_Error WordPress HTTP response array, or WP_Error on failure.
 	 */
-	protected function jetpack_remote_request( array $request_args, string $body ) {
+	protected function jetpack_remote_request( array $request_args, string $body ): array|\WP_Error {
 		if ( ! class_exists( Jetpack_Connection_Client::class ) ) {
 			return new \WP_Error(
 				'jetpack_not_available',
@@ -517,10 +469,17 @@ class ApiClient {
 	 *
 	 * @return int|false Blog ID or false if not available.
 	 */
-	private function get_blog_id() {
+	private function get_blog_id(): int|false {
 		if ( ! class_exists( \Jetpack_Options::class ) ) {
 			return false;
 		}
-		return \Jetpack_Options::get_option( 'id' );
+
+		$blog_id = \Jetpack_Options::get_option( 'id' );
+
+		if ( ! is_numeric( $blog_id ) || (int) $blog_id <= 0 ) {
+			return false;
+		}
+
+		return (int) $blog_id;
 	}
 }

@@ -7,10 +7,10 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
-use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -116,7 +116,7 @@ class SubscriptionsChangePaymentCompat {
 			$request_data
 		);
 
-		if ( ApiClient::DECISION_BLOCK === $decision ) {
+		if ( FraudDecision::Block === $decision ) {
 			$message = $this->blocked_session_notice->get_message_html( 'generic' );
 			if ( ! wc_has_notice( $message, 'error' ) ) {
 				wc_add_notice( $message, 'error' );

@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
@@ -98,13 +99,13 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 			->with(
 				'bb-session-123',
 				array(
-					'source'  => ApiClient::REPORT_SOURCE_CHARGEBACK,
+					'source'  => ReportSource::Chargeback->value,
 					'notes'   => 'Visa CB 10.4 fraud.',
 					'context' => $context->to_array(),
 				)
 			);
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_CHARGEBACK, $context, 'Visa CB 10.4 fraud.' );
+		$this->sut->fraud_protection_report( $order, ReportSource::Chargeback, $context, 'Visa CB 10.4 fraud.' );
 	}
 
 	/**
@@ -127,35 +128,10 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 				}
 			);
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, $this->make_context() );
+		$this->sut->fraud_protection_report( $order, ReportSource::Api, $this->make_context() );
 
 		$this->assertSame( 'stripe', $captured['context']['gateway'], 'gateway should be backfilled from the order' );
 		$this->assertSame( $order->get_id(), $captured['context']['correlation_order_id'], 'order_id should be backfilled from the order' );
-	}
-
-	/**
-	 * @testdox fraud_protection_report() defaults an unknown source to 'api' and still reports.
-	 */
-	public function test_fraud_protection_report_defaults_unknown_source(): void {
-		$order = \WC_Helper_Order::create_order();
-		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'bb-session-123' );
-		$order->save_meta_data();
-
-		$captured = array();
-		$this->api_client
-			->expects( $this->once() )
-			->method( 'report' )
-			->willReturnCallback(
-				function ( string $session_id, array $payload ) use ( &$captured ) {
-					$captured = $payload;
-					return true;
-				}
-			);
-
-		$this->sut->fraud_protection_report( $order, 'made_up_source', $this->make_context() );
-
-		$this->assertSame( ApiClient::REPORT_SOURCE_API, $captured['source'] );
-		$this->assertLogged( 'warning', 'Unknown report source "made_up_source", defaulting to "api".' );
 	}
 
 	/**
@@ -168,7 +144,7 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'report' );
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, $this->make_context() );
+		$this->sut->fraud_protection_report( $order, ReportSource::Api, $this->make_context() );
 
 		$this->assertLogged( 'warning', 'Missing session ID in order meta, skipping Blackbox API report.' );
 	}
@@ -185,7 +161,7 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 			->method( 'report' )
 			->willThrowException( new \RuntimeException( 'API connection failed' ) );
 
-		$this->sut->fraud_protection_report( $order, ApiClient::REPORT_SOURCE_API, $this->make_context() );
+		$this->sut->fraud_protection_report( $order, ReportSource::Api, $this->make_context() );
 
 		$this->assertLogged( 'error', 'Failed to report 3rd party event to Blackbox API' );
 	}

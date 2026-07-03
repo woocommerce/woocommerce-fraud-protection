@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Schemas;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -83,42 +84,23 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 					'avs_address_check'  => null,
 					'avs_postcode_check' => null,
 				),
-				'transaction_mode'        => PaymentMethodData::MODE_UNKNOWN,
+				'transaction_mode'        => PaymentMode::Unknown->value,
 			),
 			$data->to_array()
 		);
 	}
 
 	/**
-	 * @testdox Invalid transaction_mode falls back to unknown.
-	 */
-	public function test_invalid_transaction_mode_falls_back_to_unknown(): void {
-		$data = new PaymentMethodData( 'stripe', 'card', false, null, 'sandbox' );
-
-		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $data->to_array()['transaction_mode'] );
-	}
-
-	/**
-	 * @testdox with_transaction_mode() validates the mode value.
-	 */
-	public function test_with_transaction_mode_validates(): void {
-		$data   = new PaymentMethodData( 'stripe', 'card' );
-		$result = $data->with_transaction_mode( 'invalid' );
-
-		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $result->to_array()['transaction_mode'] );
-	}
-
-	/**
 	 * @testdox Valid transaction_mode values are preserved.
 	 */
 	public function test_valid_transaction_modes_preserved(): void {
-		$test    = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMethodData::MODE_TEST );
-		$live    = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMethodData::MODE_LIVE );
-		$unknown = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMethodData::MODE_UNKNOWN );
+		$test    = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Test );
+		$live    = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Live );
+		$unknown = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Unknown );
 
-		$this->assertSame( PaymentMethodData::MODE_TEST, $test->to_array()['transaction_mode'] );
-		$this->assertSame( PaymentMethodData::MODE_LIVE, $live->to_array()['transaction_mode'] );
-		$this->assertSame( PaymentMethodData::MODE_UNKNOWN, $unknown->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $test->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Live->value, $live->to_array()['transaction_mode'] );
+		$this->assertSame( PaymentMode::Unknown->value, $unknown->to_array()['transaction_mode'] );
 	}
 
 	/**
@@ -128,11 +110,11 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242', 'fingerprint' => 'fp_abc', 'country' => 'US', 'exp_month' => 12, 'exp_year' => 2028, 'billing_postcode' => '10001' ) );
 		$original   = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
-		$result = $original->with_transaction_mode( PaymentMethodData::MODE_TEST );
+		$result = $original->with_transaction_mode( PaymentMode::Test );
 
 		$expected = array_merge(
 			$original->to_array(),
-			array( 'transaction_mode' => PaymentMethodData::MODE_TEST )
+			array( 'transaction_mode' => PaymentMode::Test->value )
 		);
 
 		$this->assertSame( $expected, $result->to_array() );

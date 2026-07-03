@@ -68,7 +68,7 @@ trait ClassicFormDataExtractionTrait {
 		$length  = strlen( $prefix );
 
 		foreach ( $form_data as $key => $value ) {
-			if ( 0 === strpos( $key, $prefix ) && is_string( $value ) ) {
+			if ( str_starts_with( $key, $prefix ) && is_string( $value ) ) {
 				$address[ substr( $key, $length ) ] = $value;
 			}
 		}
@@ -114,7 +114,7 @@ trait ClassicFormDataExtractionTrait {
 
 			$skip = false;
 			foreach ( $excluded_prefixes as $prefix ) {
-				if ( 0 === strpos( $key, $prefix ) ) {
+				if ( str_starts_with( $key, $prefix ) ) {
 					$skip = true;
 					break;
 				}

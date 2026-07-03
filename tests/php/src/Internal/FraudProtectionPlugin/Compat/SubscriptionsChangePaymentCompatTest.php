@@ -7,7 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
@@ -133,7 +133,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( 'test-session-123', 'subscriptions_change_payment_method', 42, $this->isType( 'array' ) )
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block( $subscription );
 
@@ -159,7 +159,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		try {
 			$this->sut->verify_and_block( $subscription );
@@ -203,7 +203,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 					}
 				)
 			)
-			->willReturn( ApiClient::DECISION_ALLOW );
+			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block( $subscription );
 	}
@@ -225,7 +225,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier
 			->method( 'verify_session' )
-			->willReturn( ApiClient::DECISION_BLOCK );
+			->willReturn( FraudDecision::Block );
 
 		// Pre-add the same notice.
 		wc_add_notice( 'Blocked message.', 'error' );

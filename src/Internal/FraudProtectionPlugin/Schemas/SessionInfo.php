@@ -15,32 +15,15 @@ defined( 'ABSPATH' ) || exit;
 class SessionInfo {
 
 	/**
-	 * WooCommerce session ID.
-	 *
-	 * @var ?string
-	 */
-	private ?string $wc_identity_id;
-
-	/**
-	 * WordPress user email (logged-in users only).
-	 *
-	 * @var ?string
-	 */
-	private ?string $email;
-
-	/**
 	 * Private constructor — use factory methods.
 	 *
 	 * @param ?string $wc_identity_id WooCommerce session ID.
-	 * @param ?string $email         WordPress user email.
+	 * @param ?string $email          WordPress user email (logged-in users only).
 	 */
 	private function __construct(
-		?string $wc_identity_id = null,
-		?string $email = null
-	) {
-		$this->wc_identity_id = $wc_identity_id;
-		$this->email          = $email;
-	}
+		private readonly ?string $wc_identity_id = null,
+		private readonly ?string $email = null
+	) {}
 
 	/**
 	 * Build from the current request context.
