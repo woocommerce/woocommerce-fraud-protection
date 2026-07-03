@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -78,6 +80,18 @@ class OrderData {
 				}
 				$items[] = CartItem::from_cart_entry( $cart_item, $product );
 			} catch ( \Throwable $e ) {
+				FraudProtectionController::log(
+					'warning',
+					'Failed to build cart item for order data; item dropped',
+					array(
+						'event_source'      => 'order_data_from_cart',
+						'exception_class'   => $e::class,
+						'exception_message' => $e->getMessage(),
+						'exception_file'    => $e->getFile(),
+						'exception_line'    => $e->getLine(),
+					),
+					true
+				);
 				continue;
 			}
 		}

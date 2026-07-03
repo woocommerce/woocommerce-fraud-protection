@@ -299,6 +299,161 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox track_cart_item_added() preserves float quantities.
+	 */
+	public function test_track_cart_item_added_preserves_float_quantity(): void {
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( 'cart_item_added' ),
+				$this->callback(
+					function ( $event_data ) {
+						$this->assertSame( 2.5, $event_data['quantity'] );
+						return true;
+					}
+				)
+			);
+
+		$this->sut->track_cart_item_added( $this->test_product->get_id(), 2.5 );
+	}
+
+	/**
+	 * @testdox track_cart_item_updated() tracks fractional quantity changes with raw values.
+	 */
+	public function test_track_cart_item_updated_tracks_fractional_change(): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( 'cart_item_updated' ),
+				$this->callback(
+					function ( $event_data ) {
+						$this->assertSame( 2.5, $event_data['quantity'] );
+						$this->assertSame( 2.0, $event_data['old_quantity'] );
+						return true;
+					}
+				)
+			);
+
+		$this->sut->track_cart_item_updated( $cart_item_key, 2.5, 2.0, WC()->cart );
+	}
+
+	/**
+	 * @testdox track_cart_item_updated() skips numerically equal int and float quantities.
+	 */
+	public function test_track_cart_item_updated_skips_equal_int_and_float(): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 2 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
+
+		$this->sut->track_cart_item_updated( $cart_item_key, 2.0, 2, WC()->cart );
+	}
+
+	/**
+	 * @testdox track_cart_item_removed() preserves float quantities from cart contents.
+	 */
+	public function test_track_cart_item_removed_preserves_float_quantity(): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( 'cart_item_removed' ),
+				$this->callback(
+					function ( $event_data ) {
+						$this->assertSame( 2.5, $event_data['quantity'] );
+						return true;
+					}
+				)
+			);
+
+		WC()->cart->cart_contents[ $cart_item_key ]['quantity'] = 2.5;
+		WC()->cart->remove_cart_item( $cart_item_key );
+
+		$this->sut->track_cart_item_removed( $cart_item_key, WC()->cart );
+	}
+
+	/**
+	 * @testdox track_cart_item_restored() preserves float quantities from cart contents.
+	 */
+	public function test_track_cart_item_restored_preserves_float_quantity(): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( 'cart_item_restored' ),
+				$this->callback(
+					function ( $event_data ) {
+						$this->assertSame( 2.5, $event_data['quantity'] );
+						return true;
+					}
+				)
+			);
+
+		WC()->cart->cart_contents[ $cart_item_key ]['quantity'] = 2.5;
+
+		$this->sut->track_cart_item_restored( $cart_item_key, WC()->cart );
+	}
+
+	/**
+	 * @testdox Tracker callbacks catch collector exceptions and log the failure.
+	 */
+	public function test_callback_catches_collector_exception_and_logs(): void {
+		$this->mock_collector
+			->method( 'collect' )
+			->willThrowException( new \TypeError( 'boom' ) );
+
+		$this->sut->track_cart_item_added( $this->test_product->get_id(), 1 );
+
+		$this->assertLogged(
+			'error',
+			'Cart event tracker callback failed',
+			array(
+				'event_source'    => 'cart_event_tracker',
+				'hook'            => 'internal_woocommerce_cart_item_added_from_user_request',
+				'exception_class' => \TypeError::class,
+			)
+		);
+	}
+
+	/**
+	 * @testdox track_cart_item_restored() catches a non-numeric quantity and logs the failure.
+	 */
+	public function test_track_cart_item_restored_catches_non_numeric_quantity(): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
+
+		WC()->cart->cart_contents[ $cart_item_key ]['quantity'] = 'not-a-number';
+
+		$this->sut->track_cart_item_restored( $cart_item_key, WC()->cart );
+
+		$this->assertLogged(
+			'error',
+			'Cart event tracker callback failed',
+			array(
+				'event_source' => 'cart_event_tracker',
+				'hook'         => 'woocommerce_cart_item_restored',
+			)
+		);
+	}
+
+	/**
 	 * Cleanup after test.
 	 */
 	public function tearDown(): void {

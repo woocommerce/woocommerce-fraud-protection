@@ -91,4 +91,30 @@ class CartItemTest extends FraudProtectionUnitTestCase {
 		$this->assertIsFloat( $arr['unit_discount_amount'] );
 	}
 
+	/**
+	 * @testdox from_cart_entry() preserves float quantities and divides unit amounts by them.
+	 */
+	public function test_from_cart_entry_preserves_float_quantity(): void {
+		WC()->cart->empty_cart();
+
+		$product = \WC_Helper_Product::create_simple_product();
+
+		WC()->cart->add_to_cart( $product->get_id(), 1 );
+		WC()->cart->calculate_totals();
+
+		$cart_contents = WC()->cart->get_cart();
+		$cart_item     = reset( $cart_contents );
+
+		$cart_item['quantity']      = 2.5;
+		$cart_item['line_tax']      = 5.0;
+		$cart_item['line_subtotal'] = 25.0;
+		$cart_item['line_total']    = 20.0;
+
+		$arr = CartItem::from_cart_entry( $cart_item, $cart_item['data'] )->to_array();
+
+		$this->assertSame( 2.5, $arr['quantity'] );
+		$this->assertSame( 2.0, $arr['unit_tax_amount'] );
+		$this->assertSame( 2.0, $arr['unit_discount_amount'] );
+	}
+
 }
