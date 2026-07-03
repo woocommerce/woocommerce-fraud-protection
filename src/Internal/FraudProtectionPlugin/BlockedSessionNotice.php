@@ -7,16 +7,19 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Handles blocked session messaging for fraud protection.
+ * Registers the WordPress hooks that surface the blocked-session notice on
+ * store pages and the add-payment-method page.
  *
- * This class provides:
- * - Hook into shortcode checkout to display blocked notice
- * - Message generation for both HTML (shortcode) and plaintext (Store API) contexts
+ * The message text itself is produced by {@see BlockedSessionMessage} (public);
+ * this class wires it into WooCommerce notices and exposes thin
+ * get_message_html()/get_message_plaintext() delegators for internal callers.
  *
  * Note: Store API (block checkout) and payment gateway filtering are handled
  * directly in WC Core classes (Checkout.php and WC_Payment_Gateways).
@@ -31,14 +34,23 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	private SessionClearanceManager $session_manager;
 
 	/**
+	 * Blocked-session message generator.
+	 *
+	 * @var BlockedSessionMessage
+	 */
+	private BlockedSessionMessage $message;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionClearanceManager $session_manager The session clearance manager instance.
+	 * @param BlockedSessionMessage   $message         The blocked-session message generator.
 	 */
-	final public function init( SessionClearanceManager $session_manager ): void {
+	final public function init( SessionClearanceManager $session_manager, BlockedSessionMessage $message ): void {
 		$this->session_manager = $session_manager;
+		$this->message         = $message;
 	}
 
 	/**
@@ -109,88 +121,26 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	/**
 	 * Get the blocked session message as HTML.
 	 *
-	 * Includes a mailto link for the support email.
+	 * Thin delegator to {@see BlockedSessionMessage::get_html()}, kept so internal
+	 * hook callbacks and protectors can render the notice without depending on the
+	 * public message class directly.
 	 *
 	 * @param MessageContext $context Message context: Purchase for purchase-specific message, Generic for general use.
 	 * @return string HTML message with mailto link.
 	 */
 	public function get_message_html( MessageContext $context = MessageContext::Generic ): string {
-		$email = $this->get_support_email();
-
-		if ( '' === $email ) {
-			return __( 'We are unable to process this request online.', 'woocommerce-fraud-protection' );
-		}
-
-		if ( MessageContext::Purchase === $context ) {
-			return sprintf(
-				/* translators: %1$s: mailto link, %2$s: email address */
-				__( 'We are unable to process this request online. Please <a href="%1$s">contact support (%2$s)</a> to complete your purchase.', 'woocommerce-fraud-protection' ),
-				esc_url( 'mailto:' . $email ),
-				esc_html( $email )
-			);
-		}
-
-		return sprintf(
-			/* translators: %1$s: mailto link, %2$s: email address */
-			__( 'We are unable to process this request online. Please <a href="%1$s">contact support (%2$s)</a> for assistance.', 'woocommerce-fraud-protection' ),
-			esc_url( 'mailto:' . $email ),
-			esc_html( $email )
-		);
+		return $this->message->get_html( $context );
 	}
 
 	/**
 	 * Get the blocked session message as plaintext.
 	 *
-	 * Used by Store API responses where HTML is not supported.
+	 * Thin delegator to {@see BlockedSessionMessage::get_plaintext()}.
 	 *
 	 * @param MessageContext $context Message context: Purchase for purchase-specific message, Generic for general use.
 	 * @return string Plaintext message with email address.
 	 */
 	public function get_message_plaintext( MessageContext $context = MessageContext::Generic ): string {
-		$email = $this->get_support_email();
-
-		if ( '' === $email ) {
-			return __( 'We are unable to process this request online.', 'woocommerce-fraud-protection' );
-		}
-
-		if ( MessageContext::Purchase === $context ) {
-			return sprintf(
-				/* translators: %s: support email address */
-				__( 'We are unable to process this request online. Please contact support (%s) to complete your purchase.', 'woocommerce-fraud-protection' ),
-				$email
-			);
-		}
-
-		return sprintf(
-			/* translators: %s: support email address */
-			__( 'We are unable to process this request online. Please contact support (%s) for assistance.', 'woocommerce-fraud-protection' ),
-			$email
-		);
-	}
-
-	/**
-	 * Resolve the support email shown in blocked-session messages.
-	 *
-	 * Falls back along the chain: WooCommerce mailer "from" address -> admin_email.
-	 * The WC_Emails mailer can be unavailable on early page renders or partial WC bootstraps,
-	 * so the chain is wrapped in defensive checks to avoid fatalling render-time hooks.
-	 *
-	 * @return string Support email address. May be empty if no source produces a value.
-	 */
-	private function get_support_email(): string {
-		if ( function_exists( 'WC' ) ) {
-			$wc     = WC();
-			$mailer = $wc instanceof \WooCommerce ? $wc->mailer() : null;
-			if ( $mailer instanceof \WC_Emails ) {
-				$from = $mailer->get_from_address();
-				if ( is_string( $from ) && '' !== $from ) {
-					return $from;
-				}
-			}
-		}
-
-		$admin_email = get_option( 'admin_email', '' );
-
-		return is_string( $admin_email ) ? $admin_email : '';
+		return $this->message->get_plaintext( $context );
 	}
 }

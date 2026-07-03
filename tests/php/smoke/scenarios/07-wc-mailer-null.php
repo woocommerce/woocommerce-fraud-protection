@@ -2,7 +2,7 @@
 /**
  * Smoke scenario: WC()->mailer() returning null / non-WC_Emails.
  *
- * BlockedSessionNotice support-email lookup must not fatal when the WC
+ * BlockedSessionMessage support-email lookup must not fatal when the WC
  * mailer is unavailable. The get_support_email() helper falls back through
  * the WC mailer's "from" address to admin_email.
  *
@@ -32,14 +32,11 @@ if ( ! function_exists( 'WC' ) ) {
 	}
 }
 
-$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager();
-
-$notice = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice();
-$notice->init( $session_manager );
+$message = new \Automattic\WooCommerce\FraudProtection\BlockedSessionMessage();
 
 // Pre-fix this fatals on WC()->mailer()->get_from_address().
-$html      = $notice->get_message_html( \Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext::Purchase );
-$plaintext = $notice->get_message_plaintext();
+$html      = $message->get_html( \Automattic\WooCommerce\FraudProtection\MessageContext::Purchase );
+$plaintext = $message->get_plaintext();
 
 wfp_smoke_assert(
 	is_string( $html ) && false !== strpos( $html, 'admin@example.test' ),

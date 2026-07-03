@@ -9,7 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;

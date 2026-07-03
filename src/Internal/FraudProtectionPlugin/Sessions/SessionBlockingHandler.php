@@ -8,7 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 

@@ -7,11 +7,10 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -50,26 +49,26 @@ class PayPalCompat {
 	private SessionVerifier $session_verifier;
 
 	/**
-	 * Blocked session notice instance.
+	 * Blocked-session message generator.
 	 *
-	 * @var BlockedSessionNotice
+	 * @var BlockedSessionMessage
 	 */
-	private BlockedSessionNotice $blocked_session_notice;
+	private BlockedSessionMessage $blocked_session_message;
 
 	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionVerifier      $session_verifier       The session verifier instance.
-	 * @param BlockedSessionNotice $blocked_session_notice The blocked session notice instance.
+	 * @param SessionVerifier       $session_verifier        The session verifier instance.
+	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionNotice $blocked_session_notice
+		BlockedSessionMessage $blocked_session_message
 	): void {
-		$this->session_verifier       = $session_verifier;
-		$this->blocked_session_notice = $blocked_session_notice;
+		$this->session_verifier        = $session_verifier;
+		$this->blocked_session_message = $blocked_session_message;
 	}
 
 	/**
@@ -100,7 +99,7 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function verify_and_block_create_order( array $data ): void {
-		$session_id = sanitize_text_field( $data[ BlackboxScriptHandler::SESSION_ID_FIELD ] ?? '' );
+		$session_id = sanitize_text_field( $data[ SessionVerifier::SESSION_ID_FIELD ] ?? '' );
 
 		$decision = $this->session_verifier->verify_session( $session_id, self::ORDER_CREATION_SOURCE, 0, $data );
 
@@ -115,7 +114,7 @@ class PayPalCompat {
 
 		if ( FraudDecision::Block === $decision ) {
 			wp_send_json_error(
-				array( 'message' => $this->blocked_session_notice->get_message_plaintext( MessageContext::Purchase ) ),
+				array( 'message' => $this->blocked_session_message->get_plaintext( MessageContext::Purchase ) ),
 				403
 			);
 		}
