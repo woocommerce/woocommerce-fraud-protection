@@ -7,11 +7,10 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\CheckResult;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
+use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -105,13 +104,13 @@ class WooPaymentsPaymentDataCompat {
 		try {
 			$pm_details = $api_client->get_payment_method( $pm_id );
 		} catch ( \Throwable $e ) {
-			FraudProtectionController::log(
-				'warning',
+			wc_get_logger()->warning(
 				sprintf(
 					'WooPaymentsPaymentDataCompat: Failed to resolve payment method %s — %s',
 					$pm_id,
 					$e->getMessage()
-				)
+				),
+				array( 'source' => 'woocommerce-payments' )
 			);
 			return $resolved->with_transaction_mode( $transaction_mode );
 		}

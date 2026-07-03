@@ -8,8 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMode;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub PayPal Payments PPCP and ConnectionState if not loaded.

@@ -5,7 +5,9 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas;
+namespace Automattic\WooCommerce\FraudProtection\Schemas;
+
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SanitizesScalarFields;
 
 defined( 'ABSPATH' ) || exit;
 

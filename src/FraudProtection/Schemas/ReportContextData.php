@@ -8,7 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection\Schemas;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SanitizesScalarFields;
 
 defined( 'ABSPATH' ) || exit;

@@ -7,8 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 
 defined( 'ABSPATH' ) || exit;
 
