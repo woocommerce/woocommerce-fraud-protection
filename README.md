@@ -71,4 +71,49 @@ $decision = $verifier->verify_session( $session_id, $source, $order_id, $request
 
 Dependency-free classes (`BlockedSessionMessage`, the report DTOs, and the enums) can be constructed directly (e.g. `new BlockedSessionMessage()`).
 
+### Extension filters
+
+Two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Both are fail-open: an exception or invalid return never blocks a transaction.
+
+- **`woocommerce_fraud_protection_skip_session_verify`** — return `true` to tell the built-in checkout protectors to skip their verification for a flow that runs its own `SessionVerifier::verify_session()` call, so the same session is not verified twice.
+
+  ```php
+  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', bool $skip, string $source, array $request_data, string $session_id );
+  ```
+
+- **`woocommerce_fraud_protection_enqueue_blackbox_scripts`** — return `true` to load the Blackbox scripts on a page the plugin would not otherwise target (e.g. product or cart pages that render express-checkout buttons).
+
+  ```php
+  apply_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts', bool $should_enqueue );
+  ```
+
+### JavaScript integration
+
+On pages where the Blackbox scripts are loaded, the plugin exposes a small API on `window.wcFraudProtection`:
+
+- **`acquireSessionId(): Promise<string>`** — resolves to a Blackbox session ID, or an empty string on timeout/error (fail-open). Send this value to the server under the field name in `window.wcFraudProtection.config.sessionIdField` (which mirrors `SessionVerifier::SESSION_ID_FIELD`); the server reads it back before calling `verify_session()`.
+- **`reset(): void`** — clears Blackbox state so a subsequent payment attempt gets a fresh session.
+
+`config.sessionIdField` is the only supported entry on `config`; the rest are internal to the plugin's own init script and may change.
+
+Enqueue your integration script with `wc-fraud-protection-blackbox-init` as a dependency so it runs after the API is set up, and use the `woocommerce_fraud_protection_enqueue_blackbox_scripts` filter (above) to ensure the scripts load on your page:
+
+```js
+( function () {
+	const fp = window.wcFraudProtection;
+	if ( ! fp ) {
+		return;
+	}
+
+	// When your gateway is about to submit, acquire a session ID and attach it:
+	fp.acquireSessionId().then( function ( sessionId ) {
+		requestBody[ fp.config.sessionIdField ] = sessionId;
+		// ... send the request, then reset for the next attempt:
+		fp.reset();
+	} );
+} )();
+```
+
+The plugin owns only this shared Blackbox infrastructure (the SDK loader, the `wc-fraud-protection-blackbox-init` init script, and the localized `config`). A gateway's own interceptor script is owned and enqueued by the gateway — from its own plugin URL and version — not by this plugin.
+
 All the code in the `src/Internal/` directory (`Automattic\WooCommerce\Internal` as the root namespace) is for **exclusive internal usage** of the plugin and **MUST NOT** be used by other plugins (or otherwise from outside of this plugin): backwards compatibility for this code across plugin versions is not guaranteed.

@@ -95,7 +95,7 @@ Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <m
 
 **Compat layers**: Gateway compat classes in `src/Internal/FraudProtectionPlugin/Compat/` follow a pass-through pattern: receive `$resolved` as first parameter, return it unchanged if the gateway doesn't match, only override on successful resolution. This allows chaining.
 
-**Filter hooks**: Be judicious — once released, they must be maintained. Always validate filtered output and fall back to the original value on invalid data.
+**Filter hooks**: Be judicious — once released, they must be maintained. Always validate filtered output and fall back to the original value on invalid data. The two released public extension filters are `woocommerce_fraud_protection_skip_session_verify` and `woocommerce_fraud_protection_enqueue_blackbox_scripts` (both `@since 0.1.0`, both fail-open). Together with the `window.wcFraudProtection` JS API (`acquireSessionId()` / `reset()`, plus `config.sessionIdField`) and the `wc-fraud-protection-blackbox-init` script handle, they form the public integration surface for gateway compat layers and must stay stable. Gateway-specific interceptor JS (e.g. `paypal-express.js`) is owned and enqueued by the gateway from its own plugin URL/version, not by this plugin; the plugin owns only the shared Blackbox infrastructure (SDK loader, init script, localized `config`). See the README "Public API" section for the consumer-facing contract.
 
 ## Architecture
 
