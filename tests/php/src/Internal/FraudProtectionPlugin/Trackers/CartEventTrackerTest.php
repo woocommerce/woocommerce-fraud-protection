@@ -408,23 +408,109 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Tracker callbacks catch collector exceptions and log the failure.
+	 * @testdox track_cart_item_added() does not throw on a non-numeric product ID.
 	 */
-	public function test_callback_catches_collector_exception_and_logs(): void {
+	public function test_track_cart_item_added_ignores_non_numeric_product_id(): void {
 		$this->mock_collector
-			->method( 'collect' )
-			->willThrowException( new \TypeError( 'boom' ) );
+			->expects( $this->never() )
+			->method( 'collect' );
 
-		$this->sut->track_cart_item_added( $this->test_product->get_id(), 1 );
+		$this->sut->track_cart_item_added( 'not-a-number', 1 );
+	}
+
+	/**
+	 * @testdox track_cart_item_updated() logs a forwarded failure for a string quantity instead of tracking it.
+	 */
+	public function test_track_cart_item_updated_catches_string_quantity(): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 2 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
+
+		$this->sut->track_cart_item_updated( $cart_item_key, '3.5', 2, WC()->cart );
 
 		$this->assertLogged(
 			'error',
 			'Cart event tracker callback failed',
 			array(
 				'event_source'    => 'cart_event_tracker',
-				'hook'            => 'internal_woocommerce_cart_item_added_from_user_request',
+				'hook'            => 'internal_woocommerce_cart_item_updated_from_user_request',
 				'exception_class' => \TypeError::class,
-			)
+			),
+			true
+		);
+	}
+
+	/**
+	 * Data provider: one invoker per tracker hook callback.
+	 *
+	 * @return array<string, array{string, \Closure}>
+	 */
+	public static function provider_tracker_callbacks(): array {
+		return array(
+			'page loaded' => array(
+				'template_redirect',
+				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					add_filter( 'woocommerce_is_cart', '__return_true' );
+					$sut->track_cart_page_loaded();
+				},
+			),
+			'added'       => array(
+				'internal_woocommerce_cart_item_added_from_user_request',
+				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					$sut->track_cart_item_added( $product->get_id(), 1 );
+				},
+			),
+			'updated'     => array(
+				'internal_woocommerce_cart_item_updated_from_user_request',
+				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					$sut->track_cart_item_updated( $cart_item_key, 5, 1, WC()->cart );
+				},
+			),
+			'removed'     => array(
+				'internal_woocommerce_cart_item_removed_from_user_request',
+				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					WC()->cart->remove_cart_item( $cart_item_key );
+					$sut->track_cart_item_removed( $cart_item_key, WC()->cart );
+				},
+			),
+			'restored'    => array(
+				'woocommerce_cart_item_restored',
+				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					$sut->track_cart_item_restored( $cart_item_key, WC()->cart );
+				},
+			),
+		);
+	}
+
+	/**
+	 * @dataProvider provider_tracker_callbacks
+	 * @testdox Each tracker callback catches a collector exception and logs a forwarded failure.
+	 *
+	 * @param string   $hook   The WordPress hook the callback is registered on.
+	 * @param \Closure $invoke Invokes the callback under test.
+	 */
+	public function test_each_callback_catches_collector_exception_and_logs( string $hook, \Closure $invoke ): void {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
+
+		$this->mock_collector
+			->method( 'collect' )
+			->willThrowException( new \RuntimeException( 'boom' ) );
+
+		$invoke( $this->sut, $this->test_product, $cart_item_key );
+
+		$this->assertLogged(
+			'error',
+			'Cart event tracker callback failed',
+			array(
+				'event_source'    => 'cart_event_tracker',
+				'hook'            => $hook,
+				'exception_class' => \RuntimeException::class,
+			),
+			true
 		);
 	}
 
@@ -449,7 +535,8 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 			array(
 				'event_source' => 'cart_event_tracker',
 				'hook'         => 'woocommerce_cart_item_restored',
-			)
+			),
+			true
 		);
 	}
 

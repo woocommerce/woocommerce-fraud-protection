@@ -92,7 +92,6 @@ class OrderData {
 					),
 					true
 				);
-				continue;
 			}
 		}
 

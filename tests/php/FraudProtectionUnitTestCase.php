@@ -123,9 +123,10 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	 * @param string                    $level            Expected log level (e.g. 'info', 'warning', 'error').
 	 * @param string                    $substring        Substring expected in the log message.
 	 * @param ?array<string, mixed>     $expected_context Optional context subset that must be present in the entry's context.
+	 * @param ?bool                     $forwarded        Optional expected platform-log forwarding flag.
 	 * @return void
 	 */
-	protected function assertLogged( string $level, string $substring, ?array $expected_context = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.
+	protected function assertLogged( string $level, string $substring, ?array $expected_context = null, ?bool $forwarded = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.
 		$this->assertNotNull( $this->logging_spy, 'spy_on_controller_logging() must be called before asserting on logged entries.' );
 
 		foreach ( $this->logging_spy->entries as $entry ) {
@@ -133,6 +134,9 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 				continue;
 			}
 			if ( null !== $expected_context && ! $this->context_is_subset( $expected_context, $entry['context'] ) ) {
+				continue;
+			}
+			if ( null !== $forwarded && $entry['forwarded'] !== $forwarded ) {
 				continue;
 			}
 			$this->addToAssertionCount( 1 );

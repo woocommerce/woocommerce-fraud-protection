@@ -187,7 +187,8 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 			array(
 				'event_source'    => 'order_data_from_cart',
 				'exception_class' => \RuntimeException::class,
-			)
+			),
+			true
 		);
 	}
 

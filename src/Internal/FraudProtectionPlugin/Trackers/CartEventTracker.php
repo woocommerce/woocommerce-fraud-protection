@@ -82,11 +82,14 @@ class CartEventTracker {
 	 *
 	 * @internal
 	 *
+	 * No native parameter types: a mistyped hook argument would throw at
+	 * parameter binding, before the fail-open guard can catch it.
+	 *
 	 * @param int       $product_id Product ID.
 	 * @param int|float $quantity   Quantity added.
 	 * @return void
 	 */
-	public function track_cart_item_added( int $product_id, int|float $quantity ): void {
+	public function track_cart_item_added( $product_id, $quantity ): void {
 		try {
 			$product = wc_get_product( $product_id );
 			if ( ! $product ) {
