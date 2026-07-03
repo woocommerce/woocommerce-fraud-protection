@@ -54,29 +54,29 @@ class PaymentInstrumentData {
 			self::sanitize_string_field( $data, 'wallet' ),
 			self::sanitize_string_field( $data, 'bank_code' ),
 			self::sanitize_string_field( $data, 'bin' ),
-			self::sanitize_enum( $data, 'cvc_check', CheckResult::cases() )?->value,
-			self::sanitize_enum( $data, 'avs_address_check', CheckResult::cases() )?->value,
-			self::sanitize_enum( $data, 'avs_postcode_check', CheckResult::cases() )?->value
+			self::sanitize_enum( $data, 'cvc_check', CheckResult::cases() ),
+			self::sanitize_enum( $data, 'avs_address_check', CheckResult::cases() ),
+			self::sanitize_enum( $data, 'avs_postcode_check', CheckResult::cases() )
 		);
 	}
 
 	/**
 	 * Constructor.
 	 *
-	 * @param ?string $brand              Card brand (e.g. 'visa', 'mastercard', 'amex').
-	 * @param ?string $funding            Card funding type (e.g. 'credit', 'debit', 'prepaid', 'unknown').
-	 * @param ?string $last4              Last four digits of the card number, bank account, or IBAN.
-	 * @param ?string $fingerprint        Unique fingerprint for cross-transaction matching.
-	 * @param ?string $country            Two-letter country code (e.g. 'US', 'DE').
-	 * @param ?int    $exp_month          Card expiration month (1-12).
-	 * @param ?int    $exp_year           Card expiration year (4-digit).
-	 * @param ?string $billing_postcode   Billing postcode associated with the payment.
-	 * @param ?string $wallet             Digital wallet type for express checkout methods (e.g. 'apple_pay', 'google_pay', 'link').
-	 * @param ?string $bank_code          Bank routing code (e.g. SEPA bank_code, BECS bsb_number, US routing_number, iDEAL bic).
-	 * @param ?string $bin                Bank Identification Number (first 6 digits of card number, a.k.a. IIN).
-	 * @param ?string $cvc_check          CVC verification result ('pass', 'fail', 'unavailable', 'unchecked').
-	 * @param ?string $avs_address_check  AVS street address verification result.
-	 * @param ?string $avs_postcode_check AVS postal code verification result.
+	 * @param ?string      $brand              Card brand (e.g. 'visa', 'mastercard', 'amex').
+	 * @param ?string      $funding            Card funding type (e.g. 'credit', 'debit', 'prepaid', 'unknown').
+	 * @param ?string      $last4              Last four digits of the card number, bank account, or IBAN.
+	 * @param ?string      $fingerprint        Unique fingerprint for cross-transaction matching.
+	 * @param ?string      $country            Two-letter country code (e.g. 'US', 'DE').
+	 * @param ?int         $exp_month          Card expiration month (1-12).
+	 * @param ?int         $exp_year           Card expiration year (4-digit).
+	 * @param ?string      $billing_postcode   Billing postcode associated with the payment.
+	 * @param ?string      $wallet             Digital wallet type for express checkout methods (e.g. 'apple_pay', 'google_pay', 'link').
+	 * @param ?string      $bank_code          Bank routing code (e.g. SEPA bank_code, BECS bsb_number, US routing_number, iDEAL bic).
+	 * @param ?string      $bin                Bank Identification Number (first 6 digits of card number, a.k.a. IIN).
+	 * @param ?CheckResult $cvc_check          CVC verification result.
+	 * @param ?CheckResult $avs_address_check  AVS street address verification result.
+	 * @param ?CheckResult $avs_postcode_check AVS postal code verification result.
 	 */
 	private function __construct(
 		private readonly ?string $brand,
@@ -90,9 +90,9 @@ class PaymentInstrumentData {
 		private readonly ?string $wallet,
 		private readonly ?string $bank_code,
 		private readonly ?string $bin,
-		private readonly ?string $cvc_check,
-		private readonly ?string $avs_address_check,
-		private readonly ?string $avs_postcode_check
+		private readonly ?CheckResult $cvc_check,
+		private readonly ?CheckResult $avs_address_check,
+		private readonly ?CheckResult $avs_postcode_check
 	) {}
 
 	/**
@@ -113,9 +113,9 @@ class PaymentInstrumentData {
 			'wallet'             => $this->wallet,
 			'bank_code'          => $this->bank_code,
 			'bin'                => $this->bin,
-			'cvc_check'          => $this->cvc_check,
-			'avs_address_check'  => $this->avs_address_check,
-			'avs_postcode_check' => $this->avs_postcode_check,
+			'cvc_check'          => $this->cvc_check?->value,
+			'avs_address_check'  => $this->avs_address_check?->value,
+			'avs_postcode_check' => $this->avs_postcode_check?->value,
 		);
 	}
 }

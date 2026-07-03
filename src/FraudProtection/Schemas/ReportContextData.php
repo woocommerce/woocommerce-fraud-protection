@@ -41,27 +41,27 @@ class ReportContextData {
 	 * `gateway` and `correlation_order_id` are intentionally not readonly: with_order_defaults()
 	 * backfills them on a clone. Every other field is readonly.
 	 *
-	 * @param string                 $type                               Event phase, as the backing string of an `EventPhase` case.
-	 * @param string                 $result                             Outcome within the phase (validated against ReportResult::for_phase()).
-	 * @param ?string                $reason                             Normalized cause, or null when unmapped or not applicable.
-	 * @param ?string                $liability_shift                    3DS/SCA liability outcome, or null when undeterminable.
-	 * @param ?int                   $amount_minor_units                 Amount in minor units, or null when no amount is known.
-	 * @param ?string                $amount_currency                    ISO-4217 currency code, or null when no amount is known.
-	 * @param \DateTimeImmutable     $occurred_at                        Best known event time. Rendered to UTC ISO 8601 at serialization. Always set.
-	 * @param string                 $gateway                            WooCommerce gateway ID. May be empty until enriched from the order.
-	 * @param ?int                   $correlation_order_id               Correlation: Woo order ID, or null.
-	 * @param ?string                $correlation_transaction_id         Correlation: provider transaction/charge ID, or null.
-	 * @param ?string                $correlation_payment_attempt_id     Correlation: provider payment-attempt/order ID, or null.
-	 * @param ?string                $correlation_dispute_id             Correlation: provider dispute ID, or null.
-	 * @param ?string                $correlation_refund_id              Correlation: provider refund ID, or null.
-	 * @param ?string                $correlation_network_transaction_id Correlation: card-network transaction reference, or null.
-	 * @param ?PaymentInstrumentData $instrument                         Normalized payment instrument (reuses the verify-side shape), or null when none is known.
+	 * @param EventPhase                              $type                               Event phase.
+	 * @param ReportResult                            $result                             Outcome within the phase (validated against ReportResult::for_phase()).
+	 * @param DisputeReason|PaymentRefusalReason|null $reason            Normalized cause, or null when unmapped or not applicable.
+	 * @param ?LiabilityShift                         $liability_shift                    3DS/SCA liability outcome, or null when undeterminable.
+	 * @param ?int                                    $amount_minor_units                 Amount in minor units, or null when no amount is known.
+	 * @param ?string                                 $amount_currency                    ISO-4217 currency code, or null when no amount is known.
+	 * @param \DateTimeImmutable                      $occurred_at                        Best known event time. Rendered to UTC ISO 8601 at serialization. Always set.
+	 * @param string                                  $gateway                            WooCommerce gateway ID. May be empty until enriched from the order.
+	 * @param ?int                                    $correlation_order_id               Correlation: Woo order ID, or null.
+	 * @param ?string                                 $correlation_transaction_id         Correlation: provider transaction/charge ID, or null.
+	 * @param ?string                                 $correlation_payment_attempt_id     Correlation: provider payment-attempt/order ID, or null.
+	 * @param ?string                                 $correlation_dispute_id             Correlation: provider dispute ID, or null.
+	 * @param ?string                                 $correlation_refund_id              Correlation: provider refund ID, or null.
+	 * @param ?string                                 $correlation_network_transaction_id Correlation: card-network transaction reference, or null.
+	 * @param ?PaymentInstrumentData                  $instrument                         Normalized payment instrument (reuses the verify-side shape), or null when none is known.
 	 */
 	private function __construct(
-		private readonly string $type,
-		private readonly string $result,
-		private readonly ?string $reason,
-		private readonly ?string $liability_shift,
+		private readonly EventPhase $type,
+		private readonly ReportResult $result,
+		private readonly DisputeReason|PaymentRefusalReason|null $reason,
+		private readonly ?LiabilityShift $liability_shift,
 		private readonly ?int $amount_minor_units,
 		private readonly ?string $amount_currency,
 		private readonly \DateTimeImmutable $occurred_at,
@@ -114,10 +114,10 @@ class ReportContextData {
 		}
 
 		return new self(
-			$phase->value,
-			$result->value,
+			$phase,
+			$result,
 			self::resolve_reason( $data, $phase, $result ),
-			self::sanitize_enum( $data, 'liability_shift', LiabilityShift::cases() )?->value,
+			self::sanitize_enum( $data, 'liability_shift', LiabilityShift::cases() ),
 			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
 			self::sanitize_string_field( $data, 'amount_currency' ),
 			self::sanitize_date( $data, 'occurred_at' ),
@@ -161,15 +161,20 @@ class ReportContextData {
 	 * that did not resolve — the verify-side convention, so Blackbox parses one stable shape.
 	 *
 	 * The property names are the wire keys, so the body derives from the object's own properties;
-	 * `schema_version` (a constant), `occurred_at` (a DateTime rendered to UTC ISO 8601) and
+	 * `schema_version` (a constant), the enum fields (`type`, `result`, `reason`, `liability_shift`,
+	 * rendered to their backing values), `occurred_at` (a DateTime rendered to UTC ISO 8601) and
 	 * `instrument` (nested) are special-cased.
 	 *
 	 * @return array<string, mixed>
 	 */
 	public function to_array(): array {
-		$context                = array( 'schema_version' => self::SCHEMA_VERSION ) + get_object_vars( $this );
-		$context['occurred_at'] = gmdate( \DateTimeInterface::RFC3339, $this->occurred_at->getTimestamp() );
-		$context['instrument']  = $this->instrument?->to_array();
+		$context                    = array( 'schema_version' => self::SCHEMA_VERSION ) + get_object_vars( $this );
+		$context['type']            = $this->type->value;
+		$context['result']          = $this->result->value;
+		$context['reason']          = $this->reason?->value;
+		$context['liability_shift'] = $this->liability_shift?->value;
+		$context['occurred_at']     = gmdate( \DateTimeInterface::RFC3339, $this->occurred_at->getTimestamp() );
+		$context['instrument']      = $this->instrument?->to_array();
 
 		return $context;
 	}
@@ -186,9 +191,9 @@ class ReportContextData {
 	 * @param array<string, mixed> $data   Raw fields.
 	 * @param EventPhase           $phase  Event phase.
 	 * @param ReportResult         $result Outcome within the phase; gates payment reasons to refusals.
-	 * @return ?string Normalized reason, or null when unmapped or not applicable.
+	 * @return DisputeReason|PaymentRefusalReason|null Normalized reason, or null when unmapped or not applicable.
 	 */
-	private static function resolve_reason( array $data, EventPhase $phase, ReportResult $result ): ?string {
+	private static function resolve_reason( array $data, EventPhase $phase, ReportResult $result ): DisputeReason|PaymentRefusalReason|null {
 		if ( EventPhase::Refund === $phase ) {
 			return null;
 		}
@@ -199,10 +204,10 @@ class ReportContextData {
 				return null;
 			}
 
-			return self::sanitize_enum( $data, 'reason', PaymentRefusalReason::cases() )?->value;
+			return self::sanitize_enum( $data, 'reason', PaymentRefusalReason::cases() );
 		}
 
-		return self::sanitize_enum( $data, 'reason', DisputeReason::cases() )?->value;
+		return self::sanitize_enum( $data, 'reason', DisputeReason::cases() );
 	}
 
 	/**

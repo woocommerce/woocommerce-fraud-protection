@@ -173,9 +173,9 @@ class WooPaymentsPaymentDataCompat {
 		// 'iin' (BIN) is undocumented but present in Stripe PaymentMethod responses.
 		$bin                = $type_data['iin'] ?? null;
 		$checks             = is_array( $type_data['checks'] ?? null ) ? $type_data['checks'] : array();
-		$cvc_check          = ( self::CHECK_MAP[ $checks['cvc_check'] ?? '' ] ?? null )?->value;
-		$avs_address_check  = ( self::CHECK_MAP[ $checks['address_line1_check'] ?? '' ] ?? null )?->value;
-		$avs_postcode_check = ( self::CHECK_MAP[ $checks['address_postal_code_check'] ?? '' ] ?? null )?->value;
+		$cvc_check          = self::CHECK_MAP[ $checks['cvc_check'] ?? '' ] ?? null;
+		$avs_address_check  = self::CHECK_MAP[ $checks['address_line1_check'] ?? '' ] ?? null;
+		$avs_postcode_check = self::CHECK_MAP[ $checks['address_postal_code_check'] ?? '' ] ?? null;
 
 		$instrument = PaymentInstrumentData::from_array(
 			array(
