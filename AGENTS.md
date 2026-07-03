@@ -130,9 +130,9 @@ The plugin bootstraps on the `woocommerce_loaded` action (not `plugins_loaded` �
 
 **Always default to "allow" when errors occur.** Invalid decisions, API failures, timeouts, or filter errors MUST all result in allowing the session. Never block legitimate transactions due to system errors.
 
-### 2. Use Decision Constants
+### 2. Use the FraudDecision enum
 
-Always use `ApiClient::DECISION_ALLOW`, `ApiClient::DECISION_BLOCK`, `ApiClient::VALID_DECISIONS`. Never hardcode decision strings.
+Always use the `FraudDecision` enum: `FraudDecision::Allow`, `FraudDecision::Block`, and `FraudDecision::ACTIONABLE` (the set of decisions the plugin acts on). Never hardcode decision strings; when a raw string must be validated (wire payloads, filter returns) go through `FraudDecision::tryFrom()` and check membership in `FraudDecision::ACTIONABLE`.
 
 ### 3. Error Messages Must Not Reveal Fraud Detection
 
@@ -144,7 +144,7 @@ This code is open source. Never expose aggregation/correlation logic, risk scori
 
 ## Common Pitfalls
 
-- **No PHP 8.2+ features**: The minimum runtime is PHP 8.1, so 8.0/8.1 features are fine (enums, `match`, `readonly` properties, named arguments, fibers, intersection types, `never` return type, first-class callable syntax, `str_contains()`/`str_starts_with()`). Do NOT use anything introduced after 8.1 — e.g. `readonly` classes / DNF types (8.2), typed class constants / `json_validate()` / `#[\Override]` (8.3), property hooks / asymmetric visibility (8.4). The main plugin file (`woocommerce-fraud-protection.php`) is the sole exception: it must stay PHP 7.x-parseable so its unsupported-PHP kill switch can bail before any 8.1 syntax is loaded.
+- **No PHP 8.2+ features**: The minimum runtime is PHP 8.1, so 8.0/8.1 features are fine (enums, `match`, `readonly` properties, named arguments, fibers, intersection types, `never` return type, first-class callable syntax, `str_contains()`/`str_starts_with()`). Do NOT use anything introduced after 8.1 — e.g. `readonly` classes / DNF types (8.2), typed class constants / `json_validate()` / `#[\Override]` (8.3), property hooks / asymmetric visibility (8.4). The files the kill-switch CI job exercises are the exception: they must stay PHP 7.x-parseable so the unsupported-PHP kill switch can bail before any 8.1 syntax is loaded. These are the two pre-autoloader entry points (`woocommerce-fraud-protection.php` and `woocommerce-fraud-protection-loader.php`, both `php -l`-checked on 7.4/8.0) plus the kill-switch smoke test and the stubs it loads (`tests/php/smoke/scenarios/10-php-version-kill-switch.php` and `tests/php/smoke/stubs/wp.php`, run on 7.4/8.0). Keep all of them free of 8.1+ syntax.
 - **PaymentMethodData gateway param**: The `$gateway` string is the REQUIRED first constructor argument.
 - **Sticky blocked state**: Once a session is blocked via `DecisionHandler`, it stays blocked even if a subsequent verify returns "allow". This is intentional — don't "fix" it.
 - **Separate try-catch blocks are intentional**: In `SessionVerifier::verify_session()`, payment resolution and session verification have independent try-catch blocks so one failing doesn't prevent the other from running. Do not merge them.
@@ -168,7 +168,7 @@ Keep the changes description concise but include the **why** and **how** behind 
 ### PR Review Checklist
 
 - [ ] Fail-open pattern: All error cases default to "allow"
-- [ ] Constants: Using `ApiClient::DECISION_*` constants, not strings
+- [ ] Decisions: Using the `FraudDecision` enum (`FraudDecision::Allow` / `Block` / `ACTIONABLE`), not decision strings
 - [ ] Error messages: Generic, don't reveal fraud detection
 - [ ] Open source safe: No aggregation logic, risk scores, or rule details exposed
 - [ ] Hooks-based integration: All WC integration through hooks, no direct WC Core modifications
