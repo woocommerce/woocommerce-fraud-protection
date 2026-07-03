@@ -1,5 +1,11 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-07-03 - version 0.1.5
+* Fixed - Fatal error in cart event tracking on stores that allow decimal product quantities; quantity tracking now supports whole and fractional values.
+* Updated - Cart event tracking callbacks now fail open and log unexpected errors instead of interrupting shopper requests.
+* Updated - Require PHP 8.1 or newer; on older PHP versions the plugin safely skips loading instead of activating.
+* Updated - Modernized the codebase with PHP 8.1 enums and readonly data objects; public interfaces and filters now use typed enums (e.g. FraudDecision) in place of decision strings.
+
 2026-07-01 - version 0.1.4
 * Added - Reporting interface for payment outcomes (payments, disputes, refunds).
 * Fixed - Skip fraud verification on classic checkout submissions that already failed WooCommerce validation, avoiding unnecessary processing.
