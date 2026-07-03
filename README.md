@@ -58,4 +58,17 @@ The test bootstrap locates WooCommerce automatically. To run against an existing
 
 The public code API for this plugin consists of the classes inside the `src/FraudProtection/` directory (`Automattic\WooCommerce\FraudProtection` as the root namespace).
 
+### Obtaining the services
+
+Stateful services (`SessionVerifier`, `FraudProtectionReporter`) declare their dependencies through an `init()` method and are wired by WooCommerce's dependency-injection container, so resolve them from the container rather than constructing them directly:
+
+```php
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+
+$verifier = wc_get_container()->get( SessionVerifier::class );
+$decision = $verifier->verify_session( $session_id, $source, $order_id, $request_data );
+```
+
+Dependency-free classes (`BlockedSessionMessage`, the report DTOs, and the enums) can be constructed directly (e.g. `new BlockedSessionMessage()`).
+
 All the code in the `src/Internal/` directory (`Automattic\WooCommerce\Internal` as the root namespace) is for **exclusive internal usage** of the plugin and **MUST NOT** be used by other plugins (or otherwise from outside of this plugin): backwards compatibility for this code across plugin versions is not guaranteed.
