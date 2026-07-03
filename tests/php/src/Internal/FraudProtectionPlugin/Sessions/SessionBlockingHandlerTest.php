@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
@@ -109,7 +110,7 @@ class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 		$this->session_manager_mock->method( 'is_session_blocked' )->willReturn( true );
 		$this->blocked_notice_mock->expects( $this->once() )
 			->method( 'get_message_html' )
-			->with( 'purchase' )
+			->with( MessageContext::Purchase )
 			->willReturn( 'Blocked message' );
 
 		$result = $this->sut->validate_add_to_cart( true, 1, 1 );
@@ -211,7 +212,7 @@ class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 		$this->session_manager_mock->method( 'is_session_blocked' )->willReturn( true );
 		$this->blocked_notice_mock->expects( $this->once() )
 			->method( 'get_message_plaintext' )
-			->with( 'purchase' )
+			->with( MessageContext::Purchase )
 			->willReturn( 'Purchase blocked' );
 		$server  = $this->createMock( \WP_REST_Server::class );
 		$request = $this->create_rest_request( $route, 'POST' );

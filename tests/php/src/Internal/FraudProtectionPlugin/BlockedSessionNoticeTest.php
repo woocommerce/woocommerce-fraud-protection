@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 /**
@@ -88,7 +89,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		remove_filter( 'woocommerce_is_checkout', '__return_true' );
 
-		$this->assertTrue( wc_has_notice( $this->sut->get_message_html( 'purchase' ), 'error' ), 'Should add purchase notice on checkout' );
+		$this->assertTrue( wc_has_notice( $this->sut->get_message_html( MessageContext::Purchase ), 'error' ), 'Should add purchase notice on checkout' );
 	}
 
 	/**
@@ -106,7 +107,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		remove_filter( 'woocommerce_is_cart', '__return_true' );
 
-		$this->assertTrue( wc_has_notice( $this->sut->get_message_html( 'purchase' ), 'error' ), 'Should add purchase notice on cart' );
+		$this->assertTrue( wc_has_notice( $this->sut->get_message_html( MessageContext::Purchase ), 'error' ), 'Should add purchase notice on cart' );
 	}
 
 	/**
@@ -124,7 +125,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		remove_filter( 'woocommerce_is_checkout', '__return_true' );
 
-		$this->assertFalse( wc_has_notice( $this->sut->get_message_html( 'purchase' ), 'error' ), 'Should not add notice when session is allowed' );
+		$this->assertFalse( wc_has_notice( $this->sut->get_message_html( MessageContext::Purchase ), 'error' ), 'Should not add notice when session is allowed' );
 	}
 
 	/**
@@ -145,7 +146,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		// Count error notices.
 		$notices      = wc_get_notices( 'error' );
-		$message      = $this->sut->get_message_html( 'purchase' );
+		$message      = $this->sut->get_message_html( MessageContext::Purchase );
 		$notice_count = 0;
 		foreach ( $notices as $notice ) {
 			if ( $notice['notice'] === $message ) {
@@ -191,10 +192,10 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Test get message html purchase context.
 	 *
-	 * @testdox get_message_html should return purchase-specific message when context is 'purchase'.
+	 * @testdox get_message_html should return purchase-specific message when context is MessageContext::Purchase.
 	 */
 	public function test_get_message_html_purchase_context(): void {
-		$message = $this->sut->get_message_html( 'purchase' );
+		$message = $this->sut->get_message_html( MessageContext::Purchase );
 
 		$this->assertEquals(
 			'We are unable to process this request online. Please <a href="mailto:support@example.com">contact support (support@example.com)</a> to complete your purchase.',
@@ -205,11 +206,11 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Test get message html generic context.
 	 *
-	 * @testdox get_message_html should return generic message when context is 'generic' or not specified.
+	 * @testdox get_message_html should return generic message when context is MessageContext::Generic or not specified.
 	 */
 	public function test_get_message_html_generic_context(): void {
 		$message_default  = $this->sut->get_message_html();
-		$message_explicit = $this->sut->get_message_html( 'generic' );
+		$message_explicit = $this->sut->get_message_html( MessageContext::Generic );
 
 		$expected = 'We are unable to process this request online. Please <a href="mailto:support@example.com">contact support (support@example.com)</a> for assistance.';
 
@@ -220,10 +221,10 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Test get message plaintext purchase context.
 	 *
-	 * @testdox get_message_plaintext should return purchase-specific message when context is 'purchase'.
+	 * @testdox get_message_plaintext should return purchase-specific message when context is MessageContext::Purchase.
 	 */
 	public function test_get_message_plaintext_purchase_context(): void {
-		$message = $this->sut->get_message_plaintext( 'purchase' );
+		$message = $this->sut->get_message_plaintext( MessageContext::Purchase );
 
 		$this->assertEquals(
 			'We are unable to process this request online. Please contact support (support@example.com) to complete your purchase.',
@@ -234,11 +235,11 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Test get message plaintext generic context.
 	 *
-	 * @testdox get_message_plaintext should return generic message when context is 'generic' or not specified.
+	 * @testdox get_message_plaintext should return generic message when context is MessageContext::Generic or not specified.
 	 */
 	public function test_get_message_plaintext_generic_context(): void {
 		$message_default  = $this->sut->get_message_plaintext();
-		$message_explicit = $this->sut->get_message_plaintext( 'generic' );
+		$message_explicit = $this->sut->get_message_plaintext( MessageContext::Generic );
 
 		$expected = 'We are unable to process this request online. Please contact support (support@example.com) for assistance.';
 
@@ -257,7 +258,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 		update_option( 'admin_email', 'admin-fallback@example.com' );
 
 		try {
-			$message = $this->sut->get_message_plaintext( 'purchase' );
+			$message = $this->sut->get_message_plaintext( MessageContext::Purchase );
 
 			$this->assertStringContainsString(
 				'admin-fallback@example.com',
@@ -282,7 +283,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 		add_filter( 'pre_option_admin_email', '__return_empty_string' );
 
 		try {
-			$html_purchase     = $this->sut->get_message_html( 'purchase' );
+			$html_purchase     = $this->sut->get_message_html( MessageContext::Purchase );
 			$plaintext_generic = $this->sut->get_message_plaintext();
 
 			$this->assertStringNotContainsString( '()', $html_purchase, 'HTML message must not render an empty parenthetical.' );

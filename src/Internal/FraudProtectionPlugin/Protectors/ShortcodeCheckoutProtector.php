@@ -12,6 +12,7 @@ use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -112,7 +113,7 @@ class ShortcodeCheckoutProtector {
 		if ( FraudDecision::Block === $decision ) {
 			$errors->add(
 				'woocommerce_checkout_error',
-				$this->blocked_session_notice->get_message_plaintext( 'purchase' )
+				$this->blocked_session_notice->get_message_plaintext( MessageContext::Purchase )
 			);
 		}
 	}

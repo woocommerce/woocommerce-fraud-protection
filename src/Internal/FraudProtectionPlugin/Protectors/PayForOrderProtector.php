@@ -12,6 +12,7 @@ use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -105,7 +106,7 @@ class PayForOrderProtector {
 		);
 
 		if ( FraudDecision::Block === $decision ) {
-			$message = $this->blocked_session_notice->get_message_html( 'purchase' );
+			$message = $this->blocked_session_notice->get_message_html( MessageContext::Purchase );
 			if ( ! wc_has_notice( $message, 'error' ) ) {
 				wc_add_notice( $message, 'error' );
 			}

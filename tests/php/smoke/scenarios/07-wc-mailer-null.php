@@ -38,7 +38,7 @@ $notice = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSess
 $notice->init( $session_manager );
 
 // Pre-fix this fatals on WC()->mailer()->get_from_address().
-$html      = $notice->get_message_html( 'purchase' );
+$html      = $notice->get_message_html( \Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext::Purchase );
 $plaintext = $notice->get_message_plaintext();
 
 wfp_smoke_assert(

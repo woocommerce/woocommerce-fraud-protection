@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -114,7 +115,7 @@ class PayPalCompat {
 
 		if ( FraudDecision::Block === $decision ) {
 			wp_send_json_error(
-				array( 'message' => $this->blocked_session_notice->get_message_plaintext( 'purchase' ) ),
+				array( 'message' => $this->blocked_session_notice->get_message_plaintext( MessageContext::Purchase ) ),
 				403
 			);
 		}

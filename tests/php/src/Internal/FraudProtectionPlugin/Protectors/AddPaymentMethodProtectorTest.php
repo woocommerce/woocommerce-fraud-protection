@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -162,7 +163,7 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 		$this->blocked_session_notice
 			->expects( $this->once() )
 			->method( 'get_message_html' )
-			->with( 'generic' );
+			->with( MessageContext::Generic );
 
 		$this->session_verifier
 			->method( 'verify_session' )

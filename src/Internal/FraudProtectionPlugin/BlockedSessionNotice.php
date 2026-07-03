@@ -76,7 +76,7 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 			return;
 		}
 
-		$message = $this->get_message_html( 'purchase' );
+		$message = $this->get_message_html( MessageContext::Purchase );
 
 		if ( wc_has_notice( $message, 'error' ) ) {
 			return;
@@ -111,17 +111,17 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	 *
 	 * Includes a mailto link for the support email.
 	 *
-	 * @param string $context Message context: 'purchase' for purchase-specific message, 'generic' for general use.
+	 * @param MessageContext $context Message context: Purchase for purchase-specific message, Generic for general use.
 	 * @return string HTML message with mailto link.
 	 */
-	public function get_message_html( string $context = 'generic' ): string {
+	public function get_message_html( MessageContext $context = MessageContext::Generic ): string {
 		$email = $this->get_support_email();
 
 		if ( '' === $email ) {
 			return __( 'We are unable to process this request online.', 'woocommerce-fraud-protection' );
 		}
 
-		if ( 'purchase' === $context ) {
+		if ( MessageContext::Purchase === $context ) {
 			return sprintf(
 				/* translators: %1$s: mailto link, %2$s: email address */
 				__( 'We are unable to process this request online. Please <a href="%1$s">contact support (%2$s)</a> to complete your purchase.', 'woocommerce-fraud-protection' ),
@@ -143,17 +143,17 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 	 *
 	 * Used by Store API responses where HTML is not supported.
 	 *
-	 * @param string $context Message context: 'purchase' for purchase-specific message, 'generic' for general use.
+	 * @param MessageContext $context Message context: Purchase for purchase-specific message, Generic for general use.
 	 * @return string Plaintext message with email address.
 	 */
-	public function get_message_plaintext( string $context = 'generic' ): string {
+	public function get_message_plaintext( MessageContext $context = MessageContext::Generic ): string {
 		$email = $this->get_support_email();
 
 		if ( '' === $email ) {
 			return __( 'We are unable to process this request online.', 'woocommerce-fraud-protection' );
 		}
 
-		if ( 'purchase' === $context ) {
+		if ( MessageContext::Purchase === $context ) {
 			return sprintf(
 				/* translators: %s: support email address */
 				__( 'We are unable to process this request online. Please contact support (%s) to complete your purchase.', 'woocommerce-fraud-protection' ),

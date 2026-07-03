@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -169,7 +170,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->blocked_session_notice
 			->expects( $this->once() )
 			->method( 'get_message_plaintext' )
-			->with( 'purchase' );
+			->with( MessageContext::Purchase );
 
 		// wp_send_json_error() echoes JSON then calls wp_die(). Force AJAX
 		// context (otherwise it calls bare die()) and override the die

@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -128,7 +129,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->verify_and_block( $order );
 
-		$this->assertFalse( wc_has_notice( $this->blocked_session_notice->get_message_html( 'purchase' ), 'error' ) );
+		$this->assertFalse( wc_has_notice( $this->blocked_session_notice->get_message_html( MessageContext::Purchase ), 'error' ) );
 	}
 
 	/**
@@ -168,7 +169,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 		$this->blocked_session_notice
 			->expects( $this->once() )
 			->method( 'get_message_html' )
-			->with( 'purchase' );
+			->with( MessageContext::Purchase );
 
 		$this->session_verifier
 			->method( 'verify_session' )
@@ -214,7 +215,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Block );
 
 		// Pre-add the same notice.
-		$message = $this->blocked_session_notice->get_message_html( 'purchase' );
+		$message = $this->blocked_session_notice->get_message_html( MessageContext::Purchase );
 		wc_add_notice( $message, 'error' );
 
 		$this->sut->verify_and_block( $order );

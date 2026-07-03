@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -83,7 +84,7 @@ class SessionBlockingHandler {
 	 */
 	public function validate_add_to_cart( $passed, $_product_id, $_quantity, $_variation_id = 0, $_variations = array() ): bool { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Parameters required by hook signature.
 		if ( $this->session_manager->is_session_blocked() ) {
-			wc_add_notice( $this->blocked_notice->get_message_html( 'purchase' ), 'error' );
+			wc_add_notice( $this->blocked_notice->get_message_html( MessageContext::Purchase ), 'error' );
 			return false;
 		}
 
@@ -169,7 +170,7 @@ class SessionBlockingHandler {
 		if ( $this->session_manager->is_session_blocked() ) {
 			return new \WP_Error(
 				'woocommerce_rest_forbidden',
-				$this->blocked_notice->get_message_plaintext( 'purchase' ),
+				$this->blocked_notice->get_message_plaintext( MessageContext::Purchase ),
 				array( 'status' => 403 )
 			);
 		}

@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -153,7 +154,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$this->blocked_session_notice
 			->expects( $this->once() )
 			->method( 'get_message_html' )
-			->with( 'generic' )
+			->with( MessageContext::Generic )
 			->willReturn( 'We are unable to process this request online. Please <a href="mailto:test@example.com">contact support (test@example.com)</a> for assistance.' );
 
 		$this->session_verifier
@@ -220,7 +221,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->blocked_session_notice
 			->method( 'get_message_html' )
-			->with( 'generic' )
+			->with( MessageContext::Generic )
 			->willReturn( 'Blocked message.' );
 
 		$this->session_verifier

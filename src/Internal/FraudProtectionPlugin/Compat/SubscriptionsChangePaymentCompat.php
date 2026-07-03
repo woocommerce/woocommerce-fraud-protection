@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -117,7 +118,7 @@ class SubscriptionsChangePaymentCompat {
 		);
 
 		if ( FraudDecision::Block === $decision ) {
-			$message = $this->blocked_session_notice->get_message_html( 'generic' );
+			$message = $this->blocked_session_notice->get_message_html( MessageContext::Generic );
 			if ( ! wc_has_notice( $message, 'error' ) ) {
 				wc_add_notice( $message, 'error' );
 			}
