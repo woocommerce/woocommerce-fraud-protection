@@ -63,6 +63,19 @@ class DecisionHandler {
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
 
+		// The parameter type permits FraudDecision::Challenge, which is not actionable and not yet
+		// supported. Fail open on any non-actionable decision so it can never reach the session
+		// update or be returned to the caller.
+		if ( ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
+			FraudProtectionController::log(
+				'warning',
+				sprintf( 'Non-actionable decision "%s" received. Defaulting to "allow".', $decision->value ),
+				array_merge( $log_context, array( 'decision_received' => $decision->value ) ),
+				true
+			);
+			$decision = FraudDecision::Allow;
+		}
+
 		$original_decision = $decision;
 
 		/**

@@ -305,6 +305,23 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 
+	/**
+	 * Test verify fails open on a known-but-non-actionable decision.
+	 *
+	 * `challenge` is a valid FraudDecision case but is not in FraudDecision::ACTIONABLE, so it must
+	 * be rejected on the same fail-open path as an unrecognized value.
+	 *
+	 * @testdox verify() fails open with allow when decision is challenge (non-actionable)
+	 */
+	public function test_verify_fails_open_on_non_actionable_decision(): void {
+		$sut = $this->api_client_returning( $this->decision_response( 'challenge' ) );
+
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertLogged( 'error', 'Invalid decision value "challenge"' );
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| No-session payload tests

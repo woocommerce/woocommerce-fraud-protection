@@ -110,6 +110,30 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Test non-actionable decision input fails open to allow.
+	 *
+	 * @testdox Should coerce a non-actionable decision (challenge) to allow.
+	 */
+	public function test_non_actionable_decision_defaults_to_allow(): void {
+		$this->session_manager
+			->method( 'is_session_blocked' )
+			->willReturn( false );
+
+		$this->session_manager
+			->expects( $this->once() )
+			->method( 'allow_session' );
+
+		$this->session_manager
+			->expects( $this->never() )
+			->method( 'block_session' );
+
+		$result = $this->sut->apply_decision( FraudDecision::Challenge, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result );
+		$this->assertLogged( 'warning', 'Non-actionable decision "challenge" received' );
+	}
+
+	/**
 	 * Test filter can override block to allow.
 	 *
 	 * @testdox Should allow filter to override decision from block to allow.
