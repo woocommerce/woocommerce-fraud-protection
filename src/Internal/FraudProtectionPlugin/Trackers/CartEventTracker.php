@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -65,8 +66,12 @@ class CartEventTracker {
 	 * @return void
 	 */
 	public function track_cart_page_loaded(): void {
-		if ( function_exists( 'is_cart' ) && is_cart() ) {
-			$this->session_data_collector->collect( 'cart_page_loaded', array() );
+		try {
+			if ( function_exists( 'is_cart' ) && is_cart() ) {
+				$this->session_data_collector->collect( 'cart_page_loaded', array() );
+			}
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'template_redirect', $e );
 		}
 	}
 
@@ -77,31 +82,38 @@ class CartEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param int $product_id Product ID.
-	 * @param int $quantity   Quantity added.
+	 * No native parameter types: a mistyped hook argument would throw at
+	 * parameter binding, before the fail-open guard can catch it.
+	 *
+	 * @param int       $product_id Product ID.
+	 * @param int|float $quantity   Quantity added.
 	 * @return void
 	 */
-	public function track_cart_item_added( int $product_id, int $quantity ): void {
-		$product = wc_get_product( $product_id );
-		if ( ! $product ) {
-			return;
+	public function track_cart_item_added( $product_id, $quantity ): void {
+		try {
+			$product = wc_get_product( $product_id );
+			if ( ! $product ) {
+				return;
+			}
+
+			$variation_id = 0;
+
+			if ( 'variation' === $product->get_type() ) {
+				$variation_id = $product_id;
+				$product_id   = $product->get_parent_id();
+			}
+
+			$event_data = $this->build_cart_event_data(
+				'item_added',
+				$product_id,
+				$quantity,
+				$variation_id
+			);
+
+			$this->session_data_collector->collect( 'cart_item_added', $event_data );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'internal_woocommerce_cart_item_added_from_user_request', $e );
 		}
-
-		$variation_id = 0;
-
-		if ( 'variation' === $product->get_type() ) {
-			$variation_id = $product_id;
-			$product_id   = $product->get_parent_id();
-		}
-
-		$event_data = $this->build_cart_event_data(
-			'item_added',
-			$product_id,
-			$quantity,
-			$variation_id
-		);
-
-		$this->session_data_collector->collect( 'cart_item_added', $event_data );
 	}
 
 	/**
@@ -111,32 +123,36 @@ class CartEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param string $cart_item_key Cart item key.
-	 * @param int    $quantity      New quantity.
-	 * @param int    $old_quantity  Old quantity.
-	 * @param object $cart          Cart object.
+	 * @param string    $cart_item_key Cart item key.
+	 * @param int|float $quantity      New quantity.
+	 * @param int|float $old_quantity  Old quantity.
+	 * @param object    $cart          Cart object.
 	 * @return void
 	 */
 	public function track_cart_item_updated( $cart_item_key, $quantity, $old_quantity, $cart ): void {
-		$cart_item = $cart->cart_contents[ $cart_item_key ] ?? null;
+		try {
+			$cart_item = $cart->cart_contents[ $cart_item_key ] ?? null;
 
-		if ( (int) $quantity === (int) $old_quantity || ! $cart_item ) {
-			return;
+			if ( (float) $quantity === (float) $old_quantity || ! $cart_item ) {
+				return;
+			}
+
+			$product_id   = $cart_item['product_id'] ?? 0;
+			$variation_id = $cart_item['variation_id'] ?? 0;
+
+			$event_data = $this->build_cart_event_data(
+				'item_updated',
+				$product_id,
+				$quantity,
+				$variation_id
+			);
+
+			$event_data['old_quantity'] = $old_quantity;
+
+			$this->session_data_collector->collect( 'cart_item_updated', $event_data );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'internal_woocommerce_cart_item_updated_from_user_request', $e );
 		}
-
-		$product_id   = $cart_item['product_id'] ?? 0;
-		$variation_id = $cart_item['variation_id'] ?? 0;
-
-		$event_data = $this->build_cart_event_data(
-			'item_updated',
-			$product_id,
-			(int) $quantity,
-			$variation_id
-		);
-
-		$event_data['old_quantity'] = (int) $old_quantity;
-
-		$this->session_data_collector->collect( 'cart_item_updated', $event_data );
 	}
 
 	/**
@@ -151,24 +167,28 @@ class CartEventTracker {
 	 * @return void
 	 */
 	public function track_cart_item_removed( $cart_item_key, $cart ): void {
-		$cart_item = $cart->removed_cart_contents[ $cart_item_key ] ?? null;
+		try {
+			$cart_item = $cart->removed_cart_contents[ $cart_item_key ] ?? null;
 
-		if ( ! $cart_item ) {
-			return;
+			if ( ! $cart_item ) {
+				return;
+			}
+
+			$product_id   = $cart_item['product_id'] ?? 0;
+			$variation_id = $cart_item['variation_id'] ?? 0;
+			$quantity     = $cart_item['quantity'] ?? 0;
+
+			$event_data = $this->build_cart_event_data(
+				'item_removed',
+				$product_id,
+				$quantity,
+				$variation_id
+			);
+
+			$this->session_data_collector->collect( 'cart_item_removed', $event_data );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'internal_woocommerce_cart_item_removed_from_user_request', $e );
 		}
-
-		$product_id   = $cart_item['product_id'] ?? 0;
-		$variation_id = $cart_item['variation_id'] ?? 0;
-		$quantity     = $cart_item['quantity'] ?? 0;
-
-		$event_data = $this->build_cart_event_data(
-			'item_removed',
-			$product_id,
-			$quantity,
-			$variation_id
-		);
-
-		$this->session_data_collector->collect( 'cart_item_removed', $event_data );
 	}
 
 	/**
@@ -183,24 +203,28 @@ class CartEventTracker {
 	 * @return void
 	 */
 	public function track_cart_item_restored( $cart_item_key, $cart ): void {
-		$cart_item = $cart->cart_contents[ $cart_item_key ] ?? null;
+		try {
+			$cart_item = $cart->cart_contents[ $cart_item_key ] ?? null;
 
-		if ( ! $cart_item ) {
-			return;
+			if ( ! $cart_item ) {
+				return;
+			}
+
+			$product_id   = $cart_item['product_id'] ?? 0;
+			$variation_id = $cart_item['variation_id'] ?? 0;
+			$quantity     = $cart_item['quantity'] ?? 0;
+
+			$event_data = $this->build_cart_event_data(
+				'item_restored',
+				$product_id,
+				$quantity,
+				$variation_id
+			);
+
+			$this->session_data_collector->collect( 'cart_item_restored', $event_data );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_cart_item_restored', $e );
 		}
-
-		$product_id   = $cart_item['product_id'] ?? 0;
-		$variation_id = $cart_item['variation_id'] ?? 0;
-		$quantity     = $cart_item['quantity'] ?? 0;
-
-		$event_data = $this->build_cart_event_data(
-			'item_restored',
-			$product_id,
-			$quantity,
-			$variation_id
-		);
-
-		$this->session_data_collector->collect( 'cart_item_restored', $event_data );
 	}
 
 	/**
@@ -210,13 +234,13 @@ class CartEventTracker {
 	 * and current cart state. This data will be merged with comprehensive
 	 * session data during event dispatching.
 	 *
-	 * @param string $action       Action type (item_added, item_updated, item_removed, item_restored).
-	 * @param int    $product_id   Product ID.
-	 * @param int    $quantity     Quantity.
-	 * @param int    $variation_id Variation ID.
+	 * @param string    $action       Action type (item_added, item_updated, item_removed, item_restored).
+	 * @param int       $product_id   Product ID.
+	 * @param int|float $quantity     Quantity.
+	 * @param int       $variation_id Variation ID.
 	 * @return array Cart event data.
 	 */
-	private function build_cart_event_data( string $action, int $product_id, int $quantity, int $variation_id ): array {
+	private function build_cart_event_data( string $action, int $product_id, int|float $quantity, int $variation_id ): array {
 		$cart_item_count = 0;
 
 		// Get current cart item count if cart is available.
@@ -230,6 +254,29 @@ class CartEventTracker {
 			'quantity'        => $quantity,
 			'variation_id'    => $variation_id,
 			'cart_item_count' => $cart_item_count,
+		);
+	}
+
+	/**
+	 * Log a tracker callback failure (fail-open: the failure never reaches the shopper request).
+	 *
+	 * @param string     $hook The WordPress hook the failing callback is registered on.
+	 * @param \Throwable $e    The caught throwable.
+	 * @return void
+	 */
+	private function log_tracker_failure( string $hook, \Throwable $e ): void {
+		FraudProtectionController::log(
+			'error',
+			'Cart event tracker callback failed',
+			array(
+				'event_source'      => 'cart_event_tracker',
+				'hook'              => $hook,
+				'exception_class'   => $e::class,
+				'exception_message' => $e->getMessage(),
+				'exception_file'    => $e->getFile(),
+				'exception_line'    => $e->getLine(),
+			),
+			true
 		);
 	}
 }

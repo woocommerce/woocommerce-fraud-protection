@@ -17,25 +17,25 @@ class CartItem {
 	/**
 	 * Private constructor — use factory methods.
 	 *
-	 * @param int     $product_id           WooCommerce product ID.
-	 * @param ?string $name                 Product name.
-	 * @param ?string $category             Comma-separated category names.
-	 * @param ?string $sku                  Product SKU.
-	 * @param int     $quantity             Quantity in cart.
-	 * @param float   $unit_price           Per-unit price.
-	 * @param float   $unit_tax_amount      Per-unit tax amount.
-	 * @param float   $unit_discount_amount Per-unit discount amount.
-	 * @param ?string $product_type         WooCommerce product type.
-	 * @param bool    $is_virtual           Whether the product is virtual.
-	 * @param bool    $is_downloadable      Whether the product is downloadable.
-	 * @param array   $attributes           Product attributes.
+	 * @param int       $product_id           WooCommerce product ID.
+	 * @param ?string   $name                 Product name.
+	 * @param ?string   $category             Comma-separated category names.
+	 * @param ?string   $sku                  Product SKU.
+	 * @param int|float $quantity             Quantity in cart.
+	 * @param float     $unit_price           Per-unit price.
+	 * @param float     $unit_tax_amount      Per-unit tax amount.
+	 * @param float     $unit_discount_amount Per-unit discount amount.
+	 * @param ?string   $product_type         WooCommerce product type.
+	 * @param bool      $is_virtual           Whether the product is virtual.
+	 * @param bool      $is_downloadable      Whether the product is downloadable.
+	 * @param array     $attributes           Product attributes.
 	 */
 	private function __construct(
 		private readonly int $product_id,
 		private readonly ?string $name,
 		private readonly ?string $category,
 		private readonly ?string $sku,
-		private readonly int $quantity,
+		private readonly int|float $quantity,
 		private readonly float $unit_price,
 		private readonly float $unit_tax_amount,
 		private readonly float $unit_discount_amount,

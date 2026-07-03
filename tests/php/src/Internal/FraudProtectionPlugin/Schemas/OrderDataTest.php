@@ -140,4 +140,56 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 		$this->assertArrayHasKey( 'quantity', $arr['items'][0] );
 	}
 
+	/**
+	 * @testdox from_cart() keeps items with float quantities.
+	 */
+	public function test_from_cart_keeps_float_quantity_item(): void {
+		$product = \WC_Helper_Product::create_simple_product();
+
+		$cart_item_key = WC()->cart->add_to_cart( $product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
+
+		WC()->cart->cart_contents[ $cart_item_key ]['quantity'] = 2.5;
+		WC()->cart->calculate_totals();
+
+		$arr = OrderData::from_cart( 0, WC()->cart, WC()->customer )->to_array();
+
+		$this->assertCount( 1, $arr['items'] );
+		$this->assertSame( 2.5, $arr['items'][0]['quantity'] );
+	}
+
+	/**
+	 * @testdox from_cart() drops a throwing item, keeps the rest, and logs a warning.
+	 */
+	public function test_from_cart_drops_and_logs_throwing_item(): void {
+		$product = \WC_Helper_Product::create_simple_product();
+
+		WC()->cart->add_to_cart( $product->get_id(), 1 );
+		WC()->cart->calculate_totals();
+
+		$bad_product = $this->createMock( \WC_Product::class );
+		$bad_product->method( 'get_price' )->willThrowException( new \RuntimeException( 'boom' ) );
+
+		WC()->cart->cart_contents['bad_item_key'] = array(
+			'data'          => $bad_product,
+			'quantity'      => 1,
+			'line_tax'      => 0,
+			'line_subtotal' => 0,
+			'line_total'    => 0,
+		);
+
+		$arr = OrderData::from_cart( 0, WC()->cart, WC()->customer )->to_array();
+
+		$this->assertCount( 1, $arr['items'] );
+		$this->assertLogged(
+			'warning',
+			'Failed to build cart item',
+			array(
+				'event_source'    => 'order_data_from_cart',
+				'exception_class' => \RuntimeException::class,
+			),
+			true
+		);
+	}
+
 }
