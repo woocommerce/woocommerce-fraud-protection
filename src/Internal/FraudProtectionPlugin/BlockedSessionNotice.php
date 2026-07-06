@@ -17,9 +17,8 @@ defined( 'ABSPATH' ) || exit;
  * Registers the WordPress hooks that surface the blocked-session notice on
  * store pages and the add-payment-method page.
  *
- * The message text itself is produced by {@see BlockedSessionMessage} (public);
- * this class wires it into WooCommerce notices and exposes thin
- * get_message_html()/get_message_plaintext() delegators for internal callers.
+ * The message text itself is produced by the public {@see BlockedSessionMessage},
+ * which this class wires into WooCommerce notices.
  *
  * Note: Store API (block checkout) and payment gateway filtering are handled
  * directly in WC Core classes (Checkout.php and WC_Payment_Gateways).
@@ -88,7 +87,7 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 			return;
 		}
 
-		$message = $this->get_message_html( MessageContext::Purchase );
+		$message = $this->message->get_html( MessageContext::Purchase );
 
 		if ( wc_has_notice( $message, 'error' ) ) {
 			return;
@@ -112,35 +111,9 @@ class BlockedSessionNotice /* implements RegisterHooksInterface */ {
 			return;
 		}
 
-		$message = $this->get_message_html();
+		$message = $this->message->get_html();
 		if ( ! wc_has_notice( $message, 'error' ) ) {
 			wc_add_notice( $message, 'error' );
 		}
-	}
-
-	/**
-	 * Get the blocked session message as HTML.
-	 *
-	 * Thin delegator to {@see BlockedSessionMessage::get_html()}, kept so internal
-	 * hook callbacks and protectors can render the notice without depending on the
-	 * public message class directly.
-	 *
-	 * @param MessageContext $context Message context: Purchase for purchase-specific message, Generic for general use.
-	 * @return string HTML message with mailto link.
-	 */
-	public function get_message_html( MessageContext $context = MessageContext::Generic ): string {
-		return $this->message->get_html( $context );
-	}
-
-	/**
-	 * Get the blocked session message as plaintext.
-	 *
-	 * Thin delegator to {@see BlockedSessionMessage::get_plaintext()}.
-	 *
-	 * @param MessageContext $context Message context: Purchase for purchase-specific message, Generic for general use.
-	 * @return string Plaintext message with email address.
-	 */
-	public function get_message_plaintext( MessageContext $context = MessageContext::Generic ): string {
-		return $this->message->get_plaintext( $context );
 	}
 }

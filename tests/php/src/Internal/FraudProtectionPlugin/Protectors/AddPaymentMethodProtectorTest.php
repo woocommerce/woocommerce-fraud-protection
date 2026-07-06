@@ -9,7 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -39,9 +39,9 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Mock blocked session notice.
 	 *
-	 * @var BlockedSessionNotice&\PHPUnit\Framework\MockObject\MockObject
+	 * @var BlockedSessionMessage&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	private $blocked_session_notice;
+	private $blocked_session_message;
 
 	/**
 	 * Set up test fixtures.
@@ -50,16 +50,16 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
-		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
+		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 
-		$this->blocked_session_notice
-			->method( 'get_message_html' )
+		$this->blocked_session_message
+			->method( 'get_html' )
 			->willReturn( 'We are unable to process this request online. Please <a href="mailto:test@example.com">contact support (test@example.com)</a> for assistance.' );
 
 		$this->sut = new AddPaymentMethodProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice
+			$this->blocked_session_message
 		);
 	}
 
@@ -160,9 +160,9 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 	public function test_verify_uses_generic_context_for_blocked_message(): void {
 		$_POST['payment_method'] = 'stripe';
 
-		$this->blocked_session_notice
+		$this->blocked_session_message
 			->expects( $this->once() )
-			->method( 'get_message_html' )
+			->method( 'get_html' )
 			->with( MessageContext::Generic );
 
 		$this->session_verifier

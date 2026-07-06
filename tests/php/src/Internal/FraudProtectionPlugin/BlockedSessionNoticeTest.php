@@ -35,15 +35,23 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 	private $mock_session_manager;
 
 	/**
+	 * Blocked-session message generator injected into the SUT, used to compute expected notice text.
+	 *
+	 * @var BlockedSessionMessage
+	 */
+	private $message;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
 		$this->mock_session_manager = $this->createMock( SessionClearanceManager::class );
+		$this->message              = new BlockedSessionMessage();
 
 		$this->sut = new BlockedSessionNotice();
-		$this->sut->init( $this->mock_session_manager, new BlockedSessionMessage() );
+		$this->sut->init( $this->mock_session_manager, $this->message );
 		$this->sut->register();
 
 		// Set a custom support email.
@@ -90,7 +98,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		remove_filter( 'woocommerce_is_checkout', '__return_true' );
 
-		$this->assertTrue( wc_has_notice( $this->sut->get_message_html( MessageContext::Purchase ), 'error' ), 'Should add purchase notice on checkout' );
+		$this->assertTrue( wc_has_notice( $this->message->get_html( MessageContext::Purchase ), 'error' ), 'Should add purchase notice on checkout' );
 	}
 
 	/**
@@ -108,7 +116,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		remove_filter( 'woocommerce_is_cart', '__return_true' );
 
-		$this->assertTrue( wc_has_notice( $this->sut->get_message_html( MessageContext::Purchase ), 'error' ), 'Should add purchase notice on cart' );
+		$this->assertTrue( wc_has_notice( $this->message->get_html( MessageContext::Purchase ), 'error' ), 'Should add purchase notice on cart' );
 	}
 
 	/**
@@ -126,7 +134,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		remove_filter( 'woocommerce_is_checkout', '__return_true' );
 
-		$this->assertFalse( wc_has_notice( $this->sut->get_message_html( MessageContext::Purchase ), 'error' ), 'Should not add notice when session is allowed' );
+		$this->assertFalse( wc_has_notice( $this->message->get_html( MessageContext::Purchase ), 'error' ), 'Should not add notice when session is allowed' );
 	}
 
 	/**
@@ -147,7 +155,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 
 		// Count error notices.
 		$notices      = wc_get_notices( 'error' );
-		$message      = $this->sut->get_message_html( MessageContext::Purchase );
+		$message      = $this->message->get_html( MessageContext::Purchase );
 		$notice_count = 0;
 		foreach ( $notices as $notice ) {
 			if ( $notice['notice'] === $message ) {
@@ -169,7 +177,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 		do_action( 'before_woocommerce_add_payment_method' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
 
 		$this->assertTrue(
-			wc_has_notice( $this->sut->get_message_html(), 'error' ),
+			wc_has_notice( $this->message->get_html(), 'error' ),
 			'Should add blocked notice on add payment method page'
 		);
 	}
@@ -185,7 +193,7 @@ class BlockedSessionNoticeTest extends FraudProtectionUnitTestCase {
 		do_action( 'before_woocommerce_add_payment_method' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment
 
 		$this->assertFalse(
-			wc_has_notice( $this->sut->get_message_html(), 'error' ),
+			wc_has_notice( $this->message->get_html(), 'error' ),
 			'Non-blocked sessions should not add any notice'
 		);
 	}

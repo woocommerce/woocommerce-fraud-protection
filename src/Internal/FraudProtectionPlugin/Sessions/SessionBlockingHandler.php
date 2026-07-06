@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
@@ -30,11 +30,11 @@ class SessionBlockingHandler {
 	private SessionClearanceManager $session_manager;
 
 	/**
-	 * Blocked session notice instance.
+	 * Blocked-session message generator.
 	 *
-	 * @var BlockedSessionNotice
+	 * @var BlockedSessionMessage
 	 */
-	private BlockedSessionNotice $blocked_notice;
+	private BlockedSessionMessage $blocked_message;
 
 	/**
 	 * Initialize with dependencies.
@@ -42,11 +42,11 @@ class SessionBlockingHandler {
 	 * @internal
 	 *
 	 * @param SessionClearanceManager $session_manager The session clearance manager instance.
-	 * @param BlockedSessionNotice    $blocked_notice  The blocked session notice instance.
+	 * @param BlockedSessionMessage   $blocked_message The blocked-session message generator.
 	 */
-	final public function init( SessionClearanceManager $session_manager, BlockedSessionNotice $blocked_notice ): void {
+	final public function init( SessionClearanceManager $session_manager, BlockedSessionMessage $blocked_message ): void {
 		$this->session_manager = $session_manager;
-		$this->blocked_notice  = $blocked_notice;
+		$this->blocked_message = $blocked_message;
 	}
 
 	/**
@@ -84,7 +84,7 @@ class SessionBlockingHandler {
 	 */
 	public function validate_add_to_cart( $passed, $_product_id, $_quantity, $_variation_id = 0, $_variations = array() ): bool { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Parameters required by hook signature.
 		if ( $this->session_manager->is_session_blocked() ) {
-			wc_add_notice( $this->blocked_notice->get_message_html( MessageContext::Purchase ), 'error' );
+			wc_add_notice( $this->blocked_message->get_html( MessageContext::Purchase ), 'error' );
 			return false;
 		}
 
@@ -170,7 +170,7 @@ class SessionBlockingHandler {
 		if ( $this->session_manager->is_session_blocked() ) {
 			return new \WP_Error(
 				'woocommerce_rest_forbidden',
-				$this->blocked_notice->get_message_plaintext( MessageContext::Purchase ),
+				$this->blocked_message->get_plaintext( MessageContext::Purchase ),
 				array( 'status' => 403 )
 			);
 		}

@@ -7,12 +7,12 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\FraudProtection\MessageContext;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -44,26 +44,26 @@ class ShortcodeCheckoutProtector {
 	private SessionVerifier $session_verifier;
 
 	/**
-	 * Blocked session notice instance.
+	 * Blocked-session message generator.
 	 *
-	 * @var BlockedSessionNotice
+	 * @var BlockedSessionMessage
 	 */
-	private BlockedSessionNotice $blocked_session_notice;
+	private BlockedSessionMessage $blocked_session_message;
 
 	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionVerifier      $session_verifier       The session verifier instance.
-	 * @param BlockedSessionNotice $blocked_session_notice The blocked session notice instance.
+	 * @param SessionVerifier       $session_verifier        The session verifier instance.
+	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionNotice $blocked_session_notice
+		BlockedSessionMessage $blocked_session_message
 	): void {
-		$this->session_verifier       = $session_verifier;
-		$this->blocked_session_notice = $blocked_session_notice;
+		$this->session_verifier        = $session_verifier;
+		$this->blocked_session_message = $blocked_session_message;
 	}
 
 	/**
@@ -113,7 +113,7 @@ class ShortcodeCheckoutProtector {
 		if ( FraudDecision::Block === $decision ) {
 			$errors->add(
 				'woocommerce_checkout_error',
-				$this->blocked_session_notice->get_message_plaintext( MessageContext::Purchase )
+				$this->blocked_session_message->get_plaintext( MessageContext::Purchase )
 			);
 		}
 	}

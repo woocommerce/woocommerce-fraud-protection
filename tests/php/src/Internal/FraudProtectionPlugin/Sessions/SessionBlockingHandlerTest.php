@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
@@ -37,9 +37,9 @@ class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Mock blocked notice.
 	 *
-	 * @var BlockedSessionNotice|\PHPUnit\Framework\MockObject\MockObject
+	 * @var BlockedSessionMessage|\PHPUnit\Framework\MockObject\MockObject
 	 */
-	private $blocked_notice_mock;
+	private $blocked_message_mock;
 
 	/**
 	 * Set up test fixtures.
@@ -48,10 +48,10 @@ class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->session_manager_mock = $this->createMock( SessionClearanceManager::class );
-		$this->blocked_notice_mock  = $this->createMock( BlockedSessionNotice::class );
+		$this->blocked_message_mock  = $this->createMock( BlockedSessionMessage::class );
 
 		$this->sut = new SessionBlockingHandler();
-		$this->sut->init( $this->session_manager_mock, $this->blocked_notice_mock );
+		$this->sut->init( $this->session_manager_mock, $this->blocked_message_mock );
 
 		wc_clear_notices();
 	}
@@ -108,8 +108,8 @@ class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_validate_add_to_cart_returns_false_when_blocked(): void {
 		$this->session_manager_mock->method( 'is_session_blocked' )->willReturn( true );
-		$this->blocked_notice_mock->expects( $this->once() )
-			->method( 'get_message_html' )
+		$this->blocked_message_mock->expects( $this->once() )
+			->method( 'get_html' )
 			->with( MessageContext::Purchase )
 			->willReturn( 'Blocked message' );
 
@@ -210,8 +210,8 @@ class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_filter_store_api_requests_blocks_routes_when_blocked( string $route ): void {
 		$this->session_manager_mock->method( 'is_session_blocked' )->willReturn( true );
-		$this->blocked_notice_mock->expects( $this->once() )
-			->method( 'get_message_plaintext' )
+		$this->blocked_message_mock->expects( $this->once() )
+			->method( 'get_plaintext' )
 			->with( MessageContext::Purchase )
 			->willReturn( 'Purchase blocked' );
 		$server  = $this->createMock( \WP_REST_Server::class );
@@ -251,7 +251,7 @@ class SessionBlockingHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_filter_store_api_requests_blocks_all_write_methods( string $method ): void {
 		$this->session_manager_mock->method( 'is_session_blocked' )->willReturn( true );
-		$this->blocked_notice_mock->method( 'get_message_plaintext' )->willReturn( 'Blocked' );
+		$this->blocked_message_mock->method( 'get_plaintext' )->willReturn( 'Blocked' );
 		$server  = $this->createMock( \WP_REST_Server::class );
 		$request = $this->create_rest_request( '/wc/store/v1/checkout', $method );
 

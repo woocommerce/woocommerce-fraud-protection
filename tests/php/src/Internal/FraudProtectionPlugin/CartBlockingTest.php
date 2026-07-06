@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
@@ -74,11 +74,11 @@ class CartBlockingTest extends FraudProtectionUnitTestCase {
 		$session_manager_mock = $this->createMock( SessionClearanceManager::class );
 		$session_manager_mock->method( 'is_session_blocked' )->willReturn( $is_blocked );
 
-		$blocked_notice_mock = $this->createMock( BlockedSessionNotice::class );
-		$blocked_notice_mock->method( 'get_message_html' )->willReturn( 'Blocked message' );
+		$blocked_message_mock = $this->createMock( BlockedSessionMessage::class );
+		$blocked_message_mock->method( 'get_html' )->willReturn( 'Blocked message' );
 
 		$handler = new SessionBlockingHandler();
-		$handler->init( $session_manager_mock, $blocked_notice_mock );
+		$handler->init( $session_manager_mock, $blocked_message_mock );
 
 		return $handler;
 	}
