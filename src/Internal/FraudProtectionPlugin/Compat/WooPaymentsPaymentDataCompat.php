@@ -115,7 +115,7 @@ class WooPaymentsPaymentDataCompat {
 				'warning',
 				sprintf(
 					'WooPaymentsPaymentDataCompat: Failed to resolve payment method %s — %s',
-					$pm_id,
+					sanitize_text_field( $pm_id ),
 					$e->getMessage()
 				)
 			);
