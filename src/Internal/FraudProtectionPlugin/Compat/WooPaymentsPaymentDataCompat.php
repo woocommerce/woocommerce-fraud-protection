@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -104,13 +105,19 @@ class WooPaymentsPaymentDataCompat {
 		try {
 			$pm_details = $api_client->get_payment_method( $pm_id );
 		} catch ( \Throwable $e ) {
-			wc_get_logger()->warning(
+			// This is the one deliberate Internal dependency this compat layer keeps.
+			// FraudProtectionController::log() is used on purpose (rather than
+			// wc_get_logger()) so the entry stays in the monitored `woo-fraud-protection`
+			// log stream with the session-identity prefix and this PR remains
+			// behavior-neutral. The extraction into the WooPayments repo will rewrite
+			// this single line to that gateway's own logger.
+			FraudProtectionController::log(
+				'warning',
 				sprintf(
 					'WooPaymentsPaymentDataCompat: Failed to resolve payment method %s — %s',
 					$pm_id,
 					$e->getMessage()
-				),
-				array( 'source' => 'woocommerce-payments' )
+				)
 			);
 			return $resolved->with_transaction_mode( $transaction_mode );
 		}
