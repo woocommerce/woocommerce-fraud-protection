@@ -8,7 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -38,9 +39,9 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Mock blocked session notice.
 	 *
-	 * @var BlockedSessionNotice&\PHPUnit\Framework\MockObject\MockObject
+	 * @var BlockedSessionMessage&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	private $blocked_session_notice;
+	private $blocked_session_message;
 
 	/**
 	 * Set up test fixtures.
@@ -49,12 +50,12 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
-		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
+		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 
 		$this->sut = new SubscriptionsChangePaymentCompat();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice
+			$this->blocked_session_message
 		);
 	}
 
@@ -150,10 +151,10 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-456';
 		$_POST['payment_method']                 = 'woocommerce_payments';
 
-		$this->blocked_session_notice
+		$this->blocked_session_message
 			->expects( $this->once() )
-			->method( 'get_message_html' )
-			->with( 'generic' )
+			->method( 'get_html' )
+			->with( MessageContext::Generic )
 			->willReturn( 'We are unable to process this request online. Please <a href="mailto:test@example.com">contact support (test@example.com)</a> for assistance.' );
 
 		$this->session_verifier
@@ -218,9 +219,9 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-dedup';
 		$_POST['payment_method']                 = 'stripe';
 
-		$this->blocked_session_notice
-			->method( 'get_message_html' )
-			->with( 'generic' )
+		$this->blocked_session_message
+			->method( 'get_html' )
+			->with( MessageContext::Generic )
 			->willReturn( 'Blocked message.' );
 
 		$this->session_verifier

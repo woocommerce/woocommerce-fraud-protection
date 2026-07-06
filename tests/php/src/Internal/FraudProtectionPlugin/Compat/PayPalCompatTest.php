@@ -8,8 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -36,11 +36,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	private $session_verifier;
 
 	/**
-	 * Mock blocked session notice.
+	 * Mock blocked-session message generator.
 	 *
-	 * @var BlockedSessionNotice&\PHPUnit\Framework\MockObject\MockObject
+	 * @var BlockedSessionMessage&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	private $blocked_session_notice;
+	private $blocked_session_message;
 
 	/**
 	 * Set up test fixtures.
@@ -48,17 +48,17 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->session_verifier       = $this->createMock( SessionVerifier::class );
-		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
+		$this->session_verifier        = $this->createMock( SessionVerifier::class );
+		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 
-		$this->blocked_session_notice
-			->method( 'get_message_plaintext' )
+		$this->blocked_session_message
+			->method( 'get_plaintext' )
 			->willReturn( 'We are unable to process this request online. Please contact support (test@example.com) to complete your purchase.' );
 
 		$this->sut = new PayPalCompat();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice
+			$this->blocked_session_message
 		);
 	}
 
@@ -125,7 +125,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify_and_block_create_order() extracts session_id from data and calls verify_session — allows on ALLOW.
 	 */
 	public function test_verify_allows_on_allow_decision(): void {
-		$data = array( BlackboxScriptHandler::SESSION_ID_FIELD => 'test-session-abc' );
+		$data = array( SessionVerifier::SESSION_ID_FIELD => 'test-session-abc' );
 
 		$this->session_verifier
 			->expects( $this->once() )
@@ -158,7 +158,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify_and_block_create_order() sends JSON error with 403 on BLOCK decision.
 	 */
 	public function test_verify_blocks_on_block_decision(): void {
-		$data = array( BlackboxScriptHandler::SESSION_ID_FIELD => 'test-session-blocked' );
+		$data = array( SessionVerifier::SESSION_ID_FIELD => 'test-session-blocked' );
 
 		$this->session_verifier
 			->expects( $this->once() )
@@ -166,10 +166,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->with( 'test-session-blocked', 'paypal_express_order_creation', 0, $data )
 			->willReturn( FraudDecision::Block );
 
-		$this->blocked_session_notice
+		$this->blocked_session_message
 			->expects( $this->once() )
-			->method( 'get_message_plaintext' )
-			->with( 'purchase' );
+			->method( 'get_plaintext' )
+			->with( MessageContext::Purchase );
 
 		// wp_send_json_error() echoes JSON then calls wp_die(). Force AJAX
 		// context (otherwise it calls bare die()) and override the die

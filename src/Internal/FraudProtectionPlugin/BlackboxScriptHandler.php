@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 defined( 'ABSPATH' ) || exit;
@@ -38,14 +39,6 @@ class BlackboxScriptHandler {
 	 * proceed with an empty session ID and let server-side verify decide.
 	 */
 	private const SESSION_ID_TIMEOUT_MS = 3000;
-
-	/**
-	 * Name of the form field carrying the Blackbox session ID.
-	 *
-	 * Used by classic form protectors (via ClassicFormDataExtractionTrait)
-	 * and passed to JS via wcFraudProtection.config.
-	 */
-	public const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 
 	/**
 	 * Session clearance manager.
@@ -175,7 +168,7 @@ class BlackboxScriptHandler {
 					'apiKey'         => self::API_KEY_PREFIX . ':' . $blog_id,
 					'identityKey'    => $wc_identity_id,
 					'timeout'        => self::SESSION_ID_TIMEOUT_MS,
-					'sessionIdField' => self::SESSION_ID_FIELD,
+					'sessionIdField' => SessionVerifier::SESSION_ID_FIELD,
 				),
 			)
 		);

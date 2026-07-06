@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
@@ -38,9 +38,9 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Mock blocked session notice.
 	 *
-	 * @var BlockedSessionNotice&\PHPUnit\Framework\MockObject\MockObject
+	 * @var BlockedSessionMessage&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	private $blocked_session_notice;
+	private $blocked_session_message;
 
 	/**
 	 * Set up test fixtures.
@@ -49,16 +49,16 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
-		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
+		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 
-		$this->blocked_session_notice
-			->method( 'get_message_plaintext' )
+		$this->blocked_session_message
+			->method( 'get_plaintext' )
 			->willReturn( 'We are unable to process this request online. Please contact support (test@example.com) to complete your purchase.' );
 
 		$this->sut = new BlocksCheckoutProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice
+			$this->blocked_session_message
 		);
 	}
 

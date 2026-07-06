@@ -5,7 +5,9 @@
 
 declare( strict_types=1 );
 
-namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas;
+namespace Automattic\WooCommerce\FraudProtection\Schemas;
+
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SanitizesScalarFields;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -15,6 +17,13 @@ defined( 'ABSPATH' ) || exit;
  * Contains normalized information about the payment instrument (card, bank
  * account, etc.) resolved from gateway-specific payment data. Fields are
  * nullable — only those applicable to the instrument type are populated.
+ *
+ * Instances are built with {@see from_array()} (or {@see empty()}), not a public
+ * constructor. This is deliberate: instruments are assembled from untrusted
+ * gateway data (decoded API JSON, $_POST, third-party filter returns) whose field
+ * types are not guaranteed, so from_array() sanitizes each value at that boundary:
+ * a malformed one is coerced or dropped (and logged), never allowed to throw a
+ * TypeError under strict_types mid-checkout, per the fail-open rule.
  */
 class PaymentInstrumentData {
 
@@ -30,15 +39,22 @@ class PaymentInstrumentData {
 	}
 
 	/**
-	 * Create from an associative array.
+	 * Create from an associative array of raw (possibly untrusted) instrument fields.
 	 *
-	 * Keys correspond to property names. Missing keys default to null, and unrecognized
-	 * keys are ignored. Each value is sanitized defensively so a malformed one never
-	 * reaches the strict constructor: a wrongly-typed value is coerced where it can be
-	 * (a scalar to string) or dropped to null, and either case is logged so a
-	 * misbehaving integration surfaces instead of failing silently.
+	 * Recognized keys (all optional); missing keys default to null and unrecognized
+	 * keys are ignored:
+	 *   - strings: brand, funding, last4, fingerprint, country, billing_postcode,
+	 *     wallet, bank_code, bin
+	 *   - ints: exp_month, exp_year
+	 *   - CheckResult (a case or its backing string): cvc_check, avs_address_check,
+	 *     avs_postcode_check
 	 *
-	 * @param array $data Instrument fields.
+	 * Each value is sanitized defensively so a malformed one never reaches the strict
+	 * constructor: a wrongly-typed value is coerced where it can be (a scalar to string)
+	 * or dropped to null, and either case is logged so a misbehaving integration surfaces
+	 * instead of failing silently. The value itself is never logged.
+	 *
+	 * @param array<string, mixed> $data Raw instrument fields (see recognized keys above).
 	 * @return self
 	 */
 	public static function from_array( array $data = array() ): self {

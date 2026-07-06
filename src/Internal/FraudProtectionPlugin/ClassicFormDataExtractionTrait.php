@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -23,7 +25,7 @@ trait ClassicFormDataExtractionTrait {
 	 */
 	private function get_blackbox_session_id(): string {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce before this hook fires.
-		$session_id = isset( $_POST[ BlackboxScriptHandler::SESSION_ID_FIELD ] ) ? sanitize_text_field( wp_unslash( $_POST[ BlackboxScriptHandler::SESSION_ID_FIELD ] ) ) : '';
+		$session_id = isset( $_POST[ SessionVerifier::SESSION_ID_FIELD ] ) ? sanitize_text_field( wp_unslash( $_POST[ SessionVerifier::SESSION_ID_FIELD ] ) ) : '';
 		return $session_id;
 	}
 

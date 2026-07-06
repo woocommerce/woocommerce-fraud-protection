@@ -184,6 +184,9 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$data = wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
 		$this->assertStringContainsString( '"apiKey":"woo:42"', $data, 'apiKey should be woo:{blog_id} with no identity segment' );
 		$this->assertStringContainsString( '"identityKey":"mock-session-id"', $data, 'identityKey should carry the WC identity ID separately' );
+		// Pinned literally: config.sessionIdField is the documented public JS contract
+		// (mirrors SessionVerifier::SESSION_ID_FIELD), so a rename/drop must fail here.
+		$this->assertStringContainsString( '"sessionIdField":"wc_fraud_protection_session_id"', $data, 'config.sessionIdField should carry the documented request field name' );
 	}
 
 	/**

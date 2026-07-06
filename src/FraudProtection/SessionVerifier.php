@@ -38,6 +38,16 @@ class SessionVerifier {
 	public const ORDER_BLACKBOX_SESSION_ID_KEY = '_wc_fraud_protection_session_id';
 
 	/**
+	 * Name of the request field carrying the Blackbox session ID.
+	 *
+	 * The Blackbox JS writes the acquired session ID into a form field / request
+	 * parameter of this name; server-side flows read it back from the request
+	 * payload before calling {@see verify_session()}. Exposed so gateway compat
+	 * layers can read the session ID from their own request payloads.
+	 */
+	public const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+
+	/**
 	 * Session data collector instance.
 	 *
 	 * @var SessionDataCollector

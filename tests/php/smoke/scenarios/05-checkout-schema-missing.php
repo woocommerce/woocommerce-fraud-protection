@@ -36,11 +36,11 @@ wfp_smoke_assert(
 // register_store_api_extension is private - call register() to exercise it.
 // register() runs register_store_api_extension() unconditionally, which is the
 // path under test.
-$session_verifier       = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
-$blocked_session_notice = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice();
+$session_verifier        = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
+$blocked_session_message = new \Automattic\WooCommerce\FraudProtection\BlockedSessionMessage();
 
 $protector = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector();
-$protector->init( $session_verifier, $blocked_session_notice );
+$protector->init( $session_verifier, $blocked_session_message );
 $protector->register();
 
 wfp_smoke_assert(

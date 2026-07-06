@@ -5,16 +5,16 @@
 
 declare( strict_types = 1 );
 
-namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Schemas;
+namespace Automattic\WooCommerce\Tests\FraudProtection\Schemas;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\CheckResult;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Tests for the PaymentInstrumentData class.
  *
- * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\PaymentInstrumentData
+ * @covers \Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData
  */
 class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 

@@ -8,7 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlockedSessionNotice;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -38,9 +39,9 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Mock blocked session notice.
 	 *
-	 * @var BlockedSessionNotice&\PHPUnit\Framework\MockObject\MockObject
+	 * @var BlockedSessionMessage&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	private $blocked_session_notice;
+	private $blocked_session_message;
 
 	/**
 	 * Set up test fixtures.
@@ -49,16 +50,16 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
-		$this->blocked_session_notice = $this->createMock( BlockedSessionNotice::class );
+		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 
-		$this->blocked_session_notice
-			->method( 'get_message_html' )
+		$this->blocked_session_message
+			->method( 'get_html' )
 			->willReturn( 'We are unable to process this request online. Please <a href="mailto:test@example.com">contact support (test@example.com)</a> for assistance.' );
 
 		$this->sut = new PayForOrderProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_notice
+			$this->blocked_session_message
 		);
 	}
 
@@ -128,7 +129,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->verify_and_block( $order );
 
-		$this->assertFalse( wc_has_notice( $this->blocked_session_notice->get_message_html( 'purchase' ), 'error' ) );
+		$this->assertFalse( wc_has_notice( $this->blocked_session_message->get_html( MessageContext::Purchase ), 'error' ) );
 	}
 
 	/**
@@ -165,10 +166,10 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 		$order = $this->createMock( \WC_Order::class );
 		$order->method( 'get_id' )->willReturn( 1 );
 
-		$this->blocked_session_notice
+		$this->blocked_session_message
 			->expects( $this->once() )
-			->method( 'get_message_html' )
-			->with( 'purchase' );
+			->method( 'get_html' )
+			->with( MessageContext::Purchase );
 
 		$this->session_verifier
 			->method( 'verify_session' )
@@ -214,7 +215,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Block );
 
 		// Pre-add the same notice.
-		$message = $this->blocked_session_notice->get_message_html( 'purchase' );
+		$message = $this->blocked_session_message->get_html( MessageContext::Purchase );
 		wc_add_notice( $message, 'error' );
 
 		$this->sut->verify_and_block( $order );
