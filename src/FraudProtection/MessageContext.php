@@ -12,8 +12,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Context in which a blocked-session message is shown.
  *
- * Used by `BlockedSessionNotice::get_message_html()` and
- * `get_message_plaintext()` to select the wording of the blocked-session message.
+ * Used by `BlockedSessionMessage::get_html()` and `get_plaintext()` to select
+ * the wording of the blocked-session message.
  */
 enum MessageContext: string {
 
