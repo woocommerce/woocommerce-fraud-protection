@@ -69,11 +69,17 @@ $verifier = wc_get_container()->get( SessionVerifier::class );
 $decision = $verifier->verify_session( $session_id, $source, $order_id, $request_data );
 ```
 
-Dependency-free classes (`BlockedSessionMessage`, the report DTOs, and the enums) can be constructed directly (e.g. `new BlockedSessionMessage()`).
+The remaining public classes are used directly: `BlockedSessionMessage` and `PaymentMethodData` have public constructors (`new`), while the other DTOs have private constructors and are built via their static factories (`ReportContextData::from_array()`, `PaymentInstrumentData::from_array()` / `::empty()`). The enums are used as cases (e.g. `MessageContext::Purchase`).
 
 ### Extension filters
 
-Two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Both are fail-open: an exception or invalid return never blocks a transaction.
+Three hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. All are fail-open: an exception or invalid return falls back to the plugin's default and never blocks a transaction.
+
+- **`woocommerce_fraud_protection_resolved_payment_data`** — the primary hook for payment gateways: enrich or replace the resolved payment data included in the fraud-check payload (card brand, last4, transaction mode, and so on). Return a `PaymentMethodData`; an invalid return falls back to the baseline resolved from the WC payment token.
+
+  ```php
+  apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMethodData $resolved, array $checkout_payment_fields );
+  ```
 
 - **`woocommerce_fraud_protection_skip_session_verify`** — return `true` to tell the built-in checkout protectors to skip their verification for a flow that runs its own `SessionVerifier::verify_session()` call, so the same session is not verified twice.
 
