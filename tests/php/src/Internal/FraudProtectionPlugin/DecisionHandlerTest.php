@@ -24,10 +24,19 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	private $sut;
 
 	/**
+	 * The session handler in place before the test, restored in tearDown().
+	 *
+	 * @var \WC_Session|null
+	 */
+	private $original_session;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
+
+		$this->original_session = WC()->session;
 
 		$this->sut = new DecisionHandler();
 	}
@@ -36,6 +45,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
+		WC()->session = $this->original_session;
 		remove_all_filters( 'woocommerce_fraud_protection_decision' );
 		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
 		parent::tearDown();

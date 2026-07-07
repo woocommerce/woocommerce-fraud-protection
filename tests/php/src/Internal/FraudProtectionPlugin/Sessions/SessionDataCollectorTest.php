@@ -33,10 +33,19 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	private $session_identity_manager;
 
 	/**
+	 * The session handler in place before the test, restored in tearDown().
+	 *
+	 * @var \WC_Session|null
+	 */
+	private $original_session;
+
+	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
 		parent::setUp();
+
+		$this->original_session = WC()->session;
 
 		// Ensure WooCommerce cart and session are available.
 		if ( ! did_action( 'woocommerce_load_cart_from_session' ) && function_exists( 'wc_load_cart' ) ) {
@@ -52,6 +61,14 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		// Clear any existing session data before each test.
 		WC()->session->set( 'fraud_protection_collected_data', null );
+	}
+
+	/**
+	 * Runs after each test.
+	 */
+	public function tearDown(): void {
+		WC()->session = $this->original_session;
+		parent::tearDown();
 	}
 
 	/**
@@ -880,16 +897,10 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	 * @testdox get_collected_data() returns structure with empty collected_events when session is unavailable.
 	 */
 	public function test_get_collected_data_returns_empty_collected_events_when_session_unavailable(): void {
-		// Store original session.
-		$original_session = WC()->session;
-
-		// Set session to null to simulate unavailability.
+		// Set session to null to simulate unavailability; tearDown() restores the original.
 		WC()->session = null; // @phpstan-ignore assign.propertyType
 
 		$result = $this->sut->get_collected_data();
-
-		// Restore original session.
-		WC()->session = $original_session;
 
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'collected_events', $result );

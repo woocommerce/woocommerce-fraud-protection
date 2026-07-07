@@ -25,15 +25,32 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	private $sut;
 
 	/**
+	 * The session handler in place before the test, restored in tearDown().
+	 *
+	 * @var \WC_Session|null
+	 */
+	private $original_session;
+
+	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
+		$this->original_session = WC()->session;
+
 		WC()->session = new \WC_Session_Handler();
 		WC()->session->init();
 
 		$this->sut = new SessionIdentityManager();
+	}
+
+	/**
+	 * Runs after each test.
+	 */
+	public function tearDown(): void {
+		WC()->session = $this->original_session;
+		parent::tearDown();
 	}
 
 	/**
