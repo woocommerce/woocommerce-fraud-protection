@@ -9,7 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 
 /**
  * Tests for SessionDataCollector.
@@ -26,11 +26,11 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	private $sut;
 
 	/**
-	 * SessionClearanceManager instance.
+	 * SessionIdentityManager instance.
 	 *
-	 * @var SessionClearanceManager
+	 * @var SessionIdentityManager
 	 */
-	private $session_clearance_manager;
+	private $session_identity_manager;
 
 	/**
 	 * Runs before each test.
@@ -43,9 +43,9 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 			wc_load_cart();
 		}
 
-		$this->session_clearance_manager = new SessionClearanceManager();
+		$this->session_identity_manager = new SessionIdentityManager();
 		$this->sut                       = new SessionDataCollector();
-		$this->sut->init( $this->session_clearance_manager );
+		$this->sut->init( $this->session_identity_manager );
 
 		// Disable taxes before adding products to cart.
 		update_option( 'woocommerce_calc_taxes', 'no' );
@@ -212,9 +212,9 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Test wc_identity_id is retrieved from SessionClearanceManager.
+	 * Test wc_identity_id is retrieved from SessionIdentityManager.
 	 */
-	public function test_session_id_retrieved_from_session_clearance_manager(): void {
+	public function test_session_id_retrieved_from_session_identity_manager(): void {
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
 

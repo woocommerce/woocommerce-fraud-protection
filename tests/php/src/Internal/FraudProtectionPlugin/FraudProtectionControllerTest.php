@@ -6,7 +6,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 
 /**
  * Tests for the FraudProtectionController class.
@@ -35,7 +35,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		// Clear identity ID so log messages don't get an unexpected prefix.
 		if ( WC()->session ) {
-			WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
 		}
 	}
 
@@ -155,16 +155,6 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 			has_action( 'woocommerce_checkout_order_processed' ),
 			'woocommerce_checkout_order_processed hook should be registered'
 		);
-
-		// Verify blocking hooks are registered.
-		$this->assertNotFalse(
-			has_filter( 'woocommerce_add_to_cart_validation' ),
-			'woocommerce_add_to_cart_validation filter should be registered'
-		);
-		$this->assertNotFalse(
-			has_filter( 'woocommerce_available_payment_gateways' ),
-			'woocommerce_available_payment_gateways filter should be registered'
-		);
 	}
 
 	/**
@@ -268,7 +258,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	public function test_log_prepends_identity_id_when_available(): void {
 		$messages = $this->capture_logged_messages();
 
-		WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, 'test-identity-123' );
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, 'test-identity-123' );
 
 		FraudProtectionController::log( 'info', 'Test message' );
 
@@ -282,7 +272,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$messages = $this->capture_logged_messages();
 
 		// Ensure no identity ID is set.
-		WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
 
 		FraudProtectionController::log( 'info', 'Test message' );
 
@@ -339,7 +329,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		// Clean up session identity ID.
 		if ( WC()->session ) {
-			WC()->session->set( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY, null );
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
 		}
 	}
 

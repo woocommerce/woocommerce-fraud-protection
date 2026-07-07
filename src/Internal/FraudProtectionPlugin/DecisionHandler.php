@@ -8,7 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -16,41 +15,31 @@ defined( 'ABSPATH' ) || exit;
  * Handles fraud protection decision application.
  *
  * This class is responsible for:
- * - Applying extension override filters for whitelisting
- * - Coordinating with SessionClearanceManager to apply decisions
+ * - Validating decisions and applying extension override filters for whitelisting
+ * - Applying learning mode
+ *
+ * Stateless by design: the returned decision applies only to the current
+ * checkout/payment attempt, and enforcement is up to the caller (e.g. throwing
+ * a RouteException or adding a checkout error). Nothing is persisted, so every
+ * new attempt is verified from scratch — a block does not follow the shopper,
+ * and the `woocommerce_fraud_protection_decision` filter can override the
+ * verdict on any subsequent attempt.
  */
 class DecisionHandler {
 
 	/**
-	 * Session clearance manager instance.
-	 *
-	 * @var SessionClearanceManager
-	 */
-	private SessionClearanceManager $session_manager;
-
-	/**
-	 * Initialize with dependencies.
-	 *
-	 * @internal
-	 *
-	 * @param SessionClearanceManager $session_manager The session clearance manager instance.
-	 */
-	final public function init( SessionClearanceManager $session_manager ): void {
-		$this->session_manager = $session_manager;
-	}
-
-	/**
 	 * Apply a fraud protection decision.
 	 *
-	 * This method processes a decision from the API, applies any override filters,
-	 * validates the result, and updates the session status accordingly.
+	 * This method processes a decision from the API, applies any override
+	 * filters, validates the result, and returns the final decision for the
+	 * caller to enforce on the current attempt.
 	 *
 	 * The input decision is expected to be pre-validated by ApiClient.
 	 *
 	 * The decision flow:
 	 * 1. Apply the `woocommerce_fraud_protection_decision` filter for overrides
 	 * 2. Validate the filtered decision (third-party filters may return invalid values)
-	 * 3. Update session status via SessionClearanceManager
+	 * 3. Apply learning mode (suppresses Block decisions while active)
 	 *
 	 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
 	 * @param array<string, mixed> $session_data The session data that was sent to the API.
@@ -175,42 +164,6 @@ class DecisionHandler {
 			$decision = FraudDecision::Allow;
 		}
 
-		// Apply the decision to the session.
-		$this->update_session_status( $decision );
-
 		return $decision;
-	}
-
-	/**
-	 * Update the session status based on the decision.
-	 *
-	 * Important: Once a session is blocked, it stays blocked until explicitly reset.
-	 * This prevents race conditions where emptying the cart (done during block_session)
-	 * causes subsequent fraud checks to return "allow" (due to lower cart value),
-	 * which would incorrectly unblock the session.
-	 *
-	 * @param FraudDecision $decision The decision to apply.
-	 * @return void
-	 */
-	private function update_session_status( FraudDecision $decision ): void {
-		// Don't overwrite a blocked session with an allow decision.
-		// Once blocked, a session should stay blocked until explicitly reset.
-		if ( FraudDecision::Allow === $decision && $this->session_manager->is_session_blocked() ) {
-			FraudProtectionController::log(
-				'info',
-				'Preserving blocked session status. Allow decision not applied to already-blocked session.'
-			);
-			return;
-		}
-
-		switch ( $decision ) {
-			case FraudDecision::Allow:
-				$this->session_manager->allow_session();
-				break;
-
-			case FraudDecision::Block:
-				$this->session_manager->block_session();
-				break;
-		}
 	}
 }
