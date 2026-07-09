@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDa
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\LogContextSanitizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
@@ -21,6 +22,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrder
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CartEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\PaymentMethodEventTracker;
@@ -127,6 +129,20 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionBlockingHandler $session_blocking_handler;
 
 	/**
+	 * Database schema manager instance.
+	 *
+	 * @var SchemaManager
+	 */
+	private SchemaManager $schema_manager;
+
+	/**
+	 * Session event pruner instance.
+	 *
+	 * @var SessionEventPruner
+	 */
+	private SessionEventPruner $session_event_pruner;
+
+	/**
 	 * Register hooks. To be run at `woocommerce_loaded`.
 	 */
 	public function register(): void {
@@ -171,6 +187,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
 	 * @param AddPaymentMethodProtector  $add_payment_method_protector The instance of AddPaymentMethodProtector to use.
 	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
+	 * @param SchemaManager              $schema_manager               The instance of SchemaManager to use.
+	 * @param SessionEventPruner         $session_event_pruner         The instance of SessionEventPruner to use.
 	 */
 	final public function init(
 		BlockedSessionNotice $blocked_session_notice,
@@ -183,7 +201,9 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		BlocksCheckoutProtector $blocks_checkout_protector,
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
 		AddPaymentMethodProtector $add_payment_method_protector,
-		PayForOrderProtector $pay_for_order_protector
+		PayForOrderProtector $pay_for_order_protector,
+		SchemaManager $schema_manager,
+		SessionEventPruner $session_event_pruner
 	): void {
 		self::$instance = $this;
 
@@ -198,6 +218,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
 		$this->add_payment_method_protector = $add_payment_method_protector;
 		$this->pay_for_order_protector      = $pay_for_order_protector;
+		$this->schema_manager               = $schema_manager;
+		$this->session_event_pruner         = $session_event_pruner;
 	}
 
 	/**
@@ -206,6 +228,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @internal
 	 */
 	public function handle_init(): void {
+		$this->schema_manager->register();
+		$this->session_event_pruner->register();
 		$this->blocked_session_notice->register();
 		$this->blackbox_script_handler->register();
 		$this->session_verifier->register();

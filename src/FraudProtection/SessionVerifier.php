@@ -13,6 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -235,11 +236,21 @@ class SessionVerifier {
 			$payload['source']  = $source;
 			$payload['payment'] = $payment_data?->to_array();
 
-			$result   = $this->api_client->verify( $session_id, $payload );
-			$decision = $this->decision_handler->apply_decision( $result->decision, $payload );
+			$result = $this->api_client->verify( $session_id, $payload );
 
 			// No collect session: persist the ID Blackbox generated so /report can attach the outcome.
 			$effective_session_id = '' === $session_id ? $result->session_id : $session_id;
+
+			// Bundle per-verify data for the session event recorder (added after the
+			// API call, so it is never sent to Blackbox).
+			$payload[ SessionEventRecorder::VERIFY_RESULT_KEY ] = array(
+				'session_id'     => $effective_session_id,
+				'risk_score'     => $result->risk_score,
+				'payment_method' => (string) ( $request_data['payment_method'] ?? '' ),
+			);
+
+			$decision = $this->decision_handler->apply_decision( $result->decision, $payload );
+
 			$this->persist_session_id( $effective_session_id, $order_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(

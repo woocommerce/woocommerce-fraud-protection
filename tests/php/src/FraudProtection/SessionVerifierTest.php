@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -144,10 +145,23 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->with( $session_id, $expected_payload )
 			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
+		// The decision handler receives the same payload enriched with the
+		// verify-result bundle for the session event recorder.
+		$expected_decision_payload = array_merge(
+			$expected_payload,
+			array(
+				SessionEventRecorder::VERIFY_RESULT_KEY => array(
+					'session_id'     => $session_id,
+					'risk_score'     => null,
+					'payment_method' => 'woocommerce_payments',
+				),
+			)
+		);
+
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( FraudDecision::Allow, $expected_payload )
+			->with( FraudDecision::Allow, $expected_decision_payload )
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( $session_id, 'blocks_checkout', $order_id, $request_data );

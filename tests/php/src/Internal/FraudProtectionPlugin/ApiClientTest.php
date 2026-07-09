@@ -306,20 +306,20 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Test verify fails open on a known-but-non-actionable decision.
+	 * Test verify passes through a known-but-non-actionable decision.
 	 *
-	 * `challenge` is a valid FraudDecision case but is not in FraudDecision::ACTIONABLE, so it must
-	 * be rejected on the same fail-open path as an unrecognized value.
+	 * `challenge` is a valid FraudDecision case that is not in FraudDecision::ACTIONABLE.
+	 * It survives parsing so the session event recorder can see the raw verdict;
+	 * DecisionHandler is responsible for coercing it to allow.
 	 *
-	 * @testdox verify() fails open with allow when decision is challenge (non-actionable)
+	 * @testdox verify() returns the challenge decision unchanged (coercion happens in DecisionHandler)
 	 */
-	public function test_verify_fails_open_on_non_actionable_decision(): void {
+	public function test_verify_passes_through_non_actionable_decision(): void {
 		$sut = $this->api_client_returning( $this->decision_response( 'challenge' ) );
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertLogged( 'error', 'Invalid decision value "challenge"' );
+		$this->assertSame( FraudDecision::Challenge, $result->decision );
 	}
 
 	/*

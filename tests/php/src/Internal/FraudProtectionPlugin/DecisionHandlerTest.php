@@ -9,7 +9,10 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -32,14 +35,22 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	private $session_manager;
 
 	/**
+	 * Mock session event recorder.
+	 *
+	 * @var SessionEventRecorder&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $event_recorder;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
 		$this->session_manager = $this->createMock( SessionClearanceManager::class );
+		$this->event_recorder  = $this->createMock( SessionEventRecorder::class );
 		$this->sut             = new DecisionHandler();
-		$this->sut->init( $this->session_manager );
+		$this->sut->init( $this->session_manager, $this->event_recorder );
 	}
 
 	/**
@@ -265,5 +276,67 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
+	}
+
+	/**
+	 * @testdox Records the raw block verdict as not enforced when learning mode suppresses it.
+	 */
+	public function test_records_suppressed_block_verdict_as_not_enforced(): void {
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_verdict' )
+			->with( FraudDecision::Block, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->anything() );
+
+		$this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+	}
+
+	/**
+	 * @testdox Records the raw block verdict as blocked when enforcement is active.
+	 */
+	public function test_records_enforced_block_verdict_as_blocked(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_verdict' )
+			->with( FraudDecision::Block, SessionFinalStatus::Blocked, SessionTrigger::Blackbox, $this->anything() );
+
+		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Block, $result );
+	}
+
+	/**
+	 * @testdox Records the raw challenge verdict as not enforced while returning allow.
+	 */
+	public function test_records_challenge_verdict_and_returns_allow(): void {
+		$this->session_manager
+			->method( 'is_session_blocked' )
+			->willReturn( false );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_verdict' )
+			->with( FraudDecision::Challenge, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->anything() );
+
+		$result = $this->sut->apply_decision( FraudDecision::Challenge, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
+	 * @testdox Passes the raw allow verdict to the recorder, which filters it out itself.
+	 */
+	public function test_passes_allow_verdict_to_recorder(): void {
+		$this->session_manager
+			->method( 'is_session_blocked' )
+			->willReturn( false );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_verdict' )
+			->with( FraudDecision::Allow, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->anything() );
+
+		$this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 	}
 }

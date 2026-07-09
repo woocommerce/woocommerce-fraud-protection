@@ -201,9 +201,12 @@ class ApiClient {
 			return VerifyResult::create( FraudDecision::Allow, '' );
 		}
 
+		// Any valid FraudDecision is accepted here, including the not-yet-actionable
+		// Challenge: DecisionHandler coerces non-actionable decisions to Allow, and the
+		// raw verdict is what the session event recorder needs to see.
 		$decision = FraudDecision::tryFrom( $raw );
 
-		if ( is_null( $decision ) || ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
+		if ( is_null( $decision ) ) {
 			FraudProtectionController::log(
 				'error',
 				sprintf(
