@@ -324,14 +324,18 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 	/*
 	|--------------------------------------------------------------------------
-	| No-session payload tests
+	| Verify payload tests
 	|--------------------------------------------------------------------------
 	*/
 
 	/**
-	 * @testdox verify() adds visitor_ip and full_headers when session_id is empty
+	 * @testdox verify() adds visitor_ip and full_headers regardless of session_id
+	 *
+	 * @dataProvider verify_session_id_provider
+	 *
+	 * @param string $session_id Session ID passed to verify(), or empty for no-session.
 	 */
-	public function test_verify_adds_visitor_ip_and_full_headers_for_no_session(): void {
+	public function test_verify_adds_visitor_ip_and_full_headers( string $session_id ): void {
 		$captured_body = null;
 
 		$sut = $this->api_client_returning(
@@ -342,7 +346,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		);
 
 		$sut->verify(
-			'',
+			$session_id,
 			array(
 				'session' => array(
 					'wc_identity_id' => 'abc',
@@ -356,39 +360,22 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'abc', $captured_body['context']['session']['wc_identity_id'] );
 		$this->assertSame( 'test@example.com', $captured_body['context']['session']['email'] );
 
-		// Top-level no-session fields present.
+		// Top-level request metadata fields present.
 		$this->assertArrayHasKey( 'visitor_ip', $captured_body );
 		$this->assertArrayHasKey( 'full_headers', $captured_body );
 		$this->assertIsArray( $captured_body['full_headers'] );
 	}
 
 	/**
-	 * @testdox verify() does not restructure payload when session_id is present
+	 * Session IDs for verify() request-metadata payload coverage.
+	 *
+	 * @return array<string, array{string}>
 	 */
-	public function test_verify_keeps_normal_payload_with_session(): void {
-		$captured_body = null;
-
-		$sut = $this->api_client_returning(
-			$this->decision_response( 'allow' ),
-			function ( array $request_args, string $body ) use ( &$captured_body ) {
-				$captured_body = json_decode( $body, true );
-			}
+	public function verify_session_id_provider(): array {
+		return array(
+			'no session'   => array( '' ),
+			'with session' => array( 'has-session' ),
 		);
-
-		$sut->verify(
-			'has-session',
-			array(
-				'session' => array(
-					'wc_identity_id' => 'abc',
-					'email'          => 'test@example.com',
-				),
-				'source'  => 'blocks_checkout',
-			)
-		);
-
-		// No top-level no-session fields when session_id is present.
-		$this->assertArrayNotHasKey( 'visitor_ip', $captured_body );
-		$this->assertArrayNotHasKey( 'full_headers', $captured_body );
 	}
 
 	/*

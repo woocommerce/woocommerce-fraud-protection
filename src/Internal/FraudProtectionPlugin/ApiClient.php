@@ -59,21 +59,17 @@ class ApiClient {
 	 *
 	 * @param string               $session_id Session ID to verify.
 	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
-	 * @return VerifyResult The decision, the Blackbox session ID (generated server-side on the no-session path), and the risk score.
+	 * @return VerifyResult The decision, the Blackbox session ID (generated server-side on the no-session or degraded path), and the risk score.
 	 */
 	public function verify( string $session_id, array $context ): VerifyResult {
-		$payload = array( 'context' => $this->filter_empty_values( $context ) );
-
-		// No-session case: send visitor_ip and full_headers at top level.
-		if ( '' === $session_id ) {
-			$payload['visitor_ip']   = Schemas\SessionInfo::get_ip_address();
-			$payload['full_headers'] = self::get_request_headers();
-		}
+		$payload = array(
+			'context'      => $this->filter_empty_values( $context ),
+			'visitor_ip'   => Schemas\SessionInfo::get_ip_address(),
+			'full_headers' => self::get_request_headers(),
+		);
 
 		$log_payload = $payload;
-		if ( isset( $log_payload['full_headers'] ) ) {
-			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
-		}
+		$log_payload['full_headers'] = sprintf( '(%d headers)', count( $payload['full_headers'] ?? array() ) );
 
 		FraudProtectionController::log(
 			'info',

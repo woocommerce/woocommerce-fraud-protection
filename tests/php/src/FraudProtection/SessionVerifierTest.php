@@ -489,9 +489,9 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() keeps the collect ID when present, even if the response returns a different ID.
+	 * @testdox verify_session() prefers the Blackbox-returned session ID over the request ID (degraded verify).
 	 */
-	public function test_verify_session_keeps_collect_id_when_present(): void {
+	public function test_verify_session_prefers_returned_session_id_over_request_id(): void {
 		$order = \WC_Helper_Order::create_order();
 
 		$this->stub_verification_with_returned_id( 'bb-returned-xyz' );
@@ -501,8 +501,34 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$saved_order = wc_get_order( $order->get_id() );
 		$this->assertInstanceOf( \WC_Order::class, $saved_order );
 		$this->assertSame(
+			'bb-returned-xyz',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+		$this->assertSame(
+			'bb-returned-xyz',
+			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() keeps the request session ID when the verify response omits one (normal sessionful path).
+	 */
+	public function test_verify_session_keeps_request_id_when_response_session_id_empty(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		$this->stub_verification_with_returned_id( '' );
+
+		$this->sut->verify_session( 'collect-abc', 'blocks_checkout', $order->get_id() );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
+		$this->assertSame(
 			'collect-abc',
 			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+		$this->assertSame(
+			'collect-abc',
+			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
 		);
 	}
 
