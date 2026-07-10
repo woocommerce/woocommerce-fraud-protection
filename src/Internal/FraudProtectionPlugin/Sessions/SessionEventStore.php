@@ -12,7 +12,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Persistence for recorded session events (the blocked/challenged sessions log).
+ * Persistence for recorded session events (the sessions log).
  *
  * One row per Blackbox session: `record_event()` upserts on `session_id`,
  * incrementing the `attempts` counter and refreshing `last_seen` on repeats.

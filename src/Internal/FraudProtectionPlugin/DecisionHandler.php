@@ -195,14 +195,16 @@ class DecisionHandler {
 		// Apply the decision to the session.
 		$this->update_session_status( $decision );
 
-		// Record the raw verdict (not the enforcement outcome): block/challenge events are
-		// recorded even when enforcement was suppressed. The recorder is fail-open.
-		$this->event_recorder->record_verdict(
-			$raw_verdict,
-			FraudDecision::Block === $decision ? SessionFinalStatus::Blocked : SessionFinalStatus::NotEnforced,
-			SessionTrigger::Blackbox,
-			$session_data
-		);
+		// Record every parsed verdict, keyed on the raw one (not the enforcement outcome), so
+		// suppressed blocks and challenges are recorded faithfully. The recorder is fail-open.
+		if ( FraudDecision::Block === $decision ) {
+			$final_status = SessionFinalStatus::Blocked;
+		} elseif ( FraudDecision::Allow === $raw_verdict ) {
+			$final_status = SessionFinalStatus::Allowed;
+		} else {
+			$final_status = SessionFinalStatus::NotEnforced;
+		}
+		$this->event_recorder->record_verdict( $raw_verdict, $final_status, SessionTrigger::Blackbox, $session_data );
 
 		return $decision;
 	}

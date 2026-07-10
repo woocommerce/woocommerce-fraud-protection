@@ -135,14 +135,23 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An allow verdict leaves the sessions table untouched.
+	 * @testdox An allow verdict is recorded as allowed.
 	 */
-	public function test_allow_verdict_is_not_recorded(): void {
-		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'allow' ) );
+	public function test_allow_verdict_is_recorded_as_allowed(): void {
+		$verifier = $this->a_session_verifier_receiving(
+			array(
+				'decision'   => 'allow',
+				'risk_score' => 0.02,
+			)
+		);
 
 		$verifier->verify_session( 'integration-session-3', 'blocks_checkout' );
 
-		$this->assertSame( 0, $this->event_store->count_events() );
+		$row = $this->event_store->get_by_session_id( 'integration-session-3' );
+		$this->assertNotNull( $row, 'Allowed sessions must be recorded too' );
+		$this->assertSame( 'allow', $row['verdict'] );
+		$this->assertSame( 'allowed', $row['final_status'] );
+		$this->assertSame( 0.02, (float) $row['risk_score'] );
 	}
 
 	/**

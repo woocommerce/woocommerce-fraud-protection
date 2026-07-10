@@ -325,9 +325,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Passes the raw allow verdict to the recorder, which filters it out itself.
+	 * @testdox Records the raw allow verdict as allowed.
 	 */
-	public function test_passes_allow_verdict_to_recorder(): void {
+	public function test_records_allow_verdict_as_allowed(): void {
 		$this->session_manager
 			->method( 'is_session_blocked' )
 			->willReturn( false );
@@ -335,7 +335,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$this->event_recorder
 			->expects( $this->once() )
 			->method( 'record_verdict' )
-			->with( FraudDecision::Allow, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->anything() );
+			->with( FraudDecision::Allow, SessionFinalStatus::Allowed, SessionTrigger::Blackbox, $this->anything() );
 
 		$this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 	}

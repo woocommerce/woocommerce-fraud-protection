@@ -20,12 +20,15 @@ defined( 'ABSPATH' ) || exit;
  */
 enum SessionFinalStatus: string {
 
+	/** The session was allowed (the verdict was allow and nothing overrode it). */
+	case Allowed = 'allowed';
+
 	/** The session was blocked (the verdict was enforced). */
 	case Blocked = 'blocked';
 
 	/** A block verdict was overridden by a merchant allow-list rule. */
 	case AllowedByAllowlist = 'allowed_by_allowlist';
 
-	/** The verdict was not enforced (learning mode, filter override, or non-actionable verdict). */
+	/** A non-allow verdict was not enforced (learning mode, filter override, or non-actionable verdict). */
 	case NotEnforced = 'not_enforced';
 }

@@ -97,16 +97,26 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should not record allow verdicts.
+	 * @testdox Should record allow verdicts too.
 	 */
-	public function test_does_not_record_allow_verdicts(): void {
+	public function test_records_allow_verdicts(): void {
 		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
 
+		$captured = null;
 		$this->event_store
-			->expects( $this->never() )
-			->method( 'record_event' );
+			->expects( $this->once() )
+			->method( 'record_event' )
+			->willReturnCallback(
+				function ( array $event ) use ( &$captured ) {
+					$captured = $event;
+					return true;
+				}
+			);
 
-		$this->sut->record_verdict( FraudDecision::Allow, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$this->sut->record_verdict( FraudDecision::Allow, SessionFinalStatus::Allowed, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+
+		$this->assertSame( 'allow', $captured['verdict'] );
+		$this->assertSame( 'allowed', $captured['final_status'] );
 	}
 
 	/**

@@ -16,13 +16,15 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Records actionable fraud verdicts into the sessions log.
+ * Records fraud verdicts into the sessions log.
  *
  * Invoked from `DecisionHandler::apply_decision()` with the raw parsed wire
  * verdict — not the enforcement outcome — so that block and challenge
- * verdicts are recorded even when enforcement is suppressed (learning mode,
- * filter overrides). Only Block and Challenge verdicts are recorded; ordinary
- * allowed traffic never touches the table.
+ * verdicts are recorded faithfully even when enforcement is suppressed
+ * (learning mode, filter overrides). Every parsed verdict is recorded,
+ * allowed sessions included, so merchants can act on any session from its
+ * row (e.g. add the shopper to the positive or negative list). Paths that
+ * produce no parsed verdict (skip filter, transport failures) record nothing.
  *
  * Fail-open: recording failures are logged and never affect checkout.
  */
@@ -34,11 +36,6 @@ class SessionEventRecorder {
 	 * the key is added after the verify call.
 	 */
 	public const VERIFY_RESULT_KEY = '_verify_result';
-
-	/**
-	 * The verdicts that get recorded.
-	 */
-	private const RECORDED_VERDICTS = array( FraudDecision::Block, FraudDecision::Challenge );
 
 	/**
 	 * Session event store instance.
@@ -68,7 +65,7 @@ class SessionEventRecorder {
 	}
 
 	/**
-	 * Record a verdict if it is one of the recorded kinds and the feature is enabled.
+	 * Record a verdict if the feature is enabled.
 	 *
 	 * @param FraudDecision      $raw_verdict  The raw parsed wire verdict, before any coercion or override.
 	 * @param SessionFinalStatus $final_status The effective outcome after overrides.
@@ -78,7 +75,7 @@ class SessionEventRecorder {
 	 */
 	public function record_verdict( FraudDecision $raw_verdict, SessionFinalStatus $final_status, SessionTrigger $trigger, array $session_data ): void {
 		try {
-			if ( ! in_array( $raw_verdict, self::RECORDED_VERDICTS, true ) || ! $this->merchant_lists_feature->is_enabled() ) {
+			if ( ! $this->merchant_lists_feature->is_enabled() ) {
 				return;
 			}
 
