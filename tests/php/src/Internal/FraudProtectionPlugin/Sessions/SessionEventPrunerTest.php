@@ -50,6 +50,7 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 		remove_all_actions( SessionEventPruner::PRUNE_ACTION_HOOK );
 		remove_all_actions( 'add_option_' . MerchantListsFeature::OPTION_NAME );
 		remove_all_actions( 'update_option_' . MerchantListsFeature::OPTION_NAME );
+		remove_all_actions( 'delete_option_' . MerchantListsFeature::OPTION_NAME );
 		if ( function_exists( 'as_unschedule_all_actions' ) ) {
 			as_unschedule_all_actions( SessionEventPruner::PRUNE_ACTION_HOOK );
 		}
@@ -121,5 +122,18 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 
 		update_option( MerchantListsFeature::OPTION_NAME, 'no' );
 		$this->assertFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Disabling the option should unschedule the pruning job' );
+	}
+
+	/**
+	 * @testdox Should unschedule the recurring job when the feature option is deleted.
+	 */
+	public function test_option_deletion_reconciles_the_schedule(): void {
+		$this->sut->register();
+
+		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
+		$this->assertNotFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ) );
+
+		delete_option( MerchantListsFeature::OPTION_NAME );
+		$this->assertFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Deleting the option (a missing option means feature off) should unschedule the pruning job' );
 	}
 }
