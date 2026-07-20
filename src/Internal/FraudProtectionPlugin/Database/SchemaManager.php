@@ -151,6 +151,10 @@ class SchemaManager {
 	 * `SessionFinalStatus`, `SessionTrigger`). The trigger column is named
 	 * `trigger_type` because `trigger` is a MySQL reserved word.
 	 *
+	 * `metadata` is reserved for gateway-supplied per-session data (JSON
+	 * object, `LONGTEXT` per WooCommerce core's convention for JSON blobs).
+	 * Nothing writes it yet: the collection mechanism will be added later.
+	 *
 	 * @return string
 	 */
 	public function get_sessions_table_schema(): string {
@@ -176,6 +180,7 @@ class SchemaManager {
 	billing_name VARCHAR(255) NOT NULL DEFAULT '',
 	order_id BIGINT UNSIGNED NULL,
 	payment_method VARCHAR(64) NOT NULL DEFAULT '',
+	metadata LONGTEXT NULL,
 	reported_at DATETIME NULL,
 	PRIMARY KEY  (id),
 	KEY session_id (session_id),
