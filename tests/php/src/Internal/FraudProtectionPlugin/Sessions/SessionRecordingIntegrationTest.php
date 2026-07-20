@@ -93,7 +93,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A block decision suppressed by learning mode is recorded as not enforced, with its risk score.
+	 * @testdox A block decision suppressed by learning mode is recorded as received block with final status allowed, with its risk score.
 	 */
 	public function test_suppressed_block_decision_is_recorded(): void {
 		$verifier = $this->a_session_verifier_receiving(
@@ -110,7 +110,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$row = $this->event_store->get_by_session_id( 'integration-session-1' );
 		$this->assertNotNull( $row, 'The decision should have been recorded in the sessions table' );
 		$this->assertSame( 'block', $row['decision'] );
-		$this->assertSame( 'not_enforced', $row['final_status'] );
+		$this->assertSame( 'allowed', $row['final_status'] );
 		$this->assertSame( 'blackbox', $row['trigger_type'] );
 		$this->assertSame( 'blocks_checkout', $row['source'] );
 		$this->assertSame( 0.87, (float) $row['risk_score'] );

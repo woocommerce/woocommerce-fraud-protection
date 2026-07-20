@@ -20,7 +20,4 @@ enum SessionTrigger: string {
 
 	/** The decision came from the Blackbox verify API. */
 	case Blackbox = 'blackbox';
-
-	/** The decision was produced by a merchant negative-list rule. */
-	case NegativeList = 'negative_list';
 }

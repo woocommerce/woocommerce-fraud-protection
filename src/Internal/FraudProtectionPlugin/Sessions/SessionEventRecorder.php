@@ -68,10 +68,10 @@ class SessionEventRecorder {
 	/**
 	 * Record a decision if the feature is enabled.
 	 *
-	 * The recorded final status is derived here from the two decisions:
-	 * applied Block means the session was blocked; otherwise a received Allow
-	 * was simply allowed, and anything else (a received block or challenge
-	 * that ended up allowed) was not enforced.
+	 * The recorded final status is the outcome actually applied to the
+	 * session: blocked when the applied decision is Block, allowed otherwise.
+	 * A suppressed or overridden block stays visible as the received decision
+	 * (`decision = block`) paired with `final_status = allowed`.
 	 *
 	 * @param FraudDecision  $received_decision The decision as received from the API, before any coercion or override.
 	 * @param FraudDecision  $applied_decision  The decision actually applied to the session, after overrides.
@@ -85,7 +85,7 @@ class SessionEventRecorder {
 				return;
 			}
 
-			$final_status = $this->derive_final_status( $received_decision, $applied_decision );
+			$final_status = FraudDecision::Block === $applied_decision ? SessionFinalStatus::Blocked : SessionFinalStatus::Allowed;
 			$event        = $this->build_event( $received_decision, $final_status, $trigger, $session_data );
 
 			if ( ! $this->event_store->record_event( $event ) ) {
@@ -116,22 +116,6 @@ class SessionEventRecorder {
 				true
 			);
 		}
-	}
-
-	/**
-	 * Derive the recorded final status from the received and applied decisions.
-	 *
-	 * @param FraudDecision $received The decision as received from the API.
-	 * @param FraudDecision $applied  The decision actually applied to the session.
-	 * @return SessionFinalStatus
-	 */
-	private function derive_final_status( FraudDecision $received, FraudDecision $applied ): SessionFinalStatus {
-		if ( FraudDecision::Block === $applied ) {
-			return SessionFinalStatus::Blocked;
-		}
-		return FraudDecision::Allow === $received
-			? SessionFinalStatus::Allowed
-			: SessionFinalStatus::NotEnforced;
 	}
 
 	/**

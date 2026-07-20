@@ -132,15 +132,15 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should derive final status not_enforced for a suppressed block decision.
+	 * @testdox Should derive final status allowed for a suppressed block decision, keeping the received block.
 	 */
-	public function test_derives_not_enforced_for_suppressed_block(): void {
+	public function test_derives_allowed_for_suppressed_block(): void {
 		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
 
 		$captured = $this->record_and_capture( FraudDecision::Block, FraudDecision::Allow );
 
 		$this->assertSame( 'block', $captured['decision'] );
-		$this->assertSame( 'not_enforced', $captured['final_status'] );
+		$this->assertSame( 'allowed', $captured['final_status'] );
 	}
 
 	/**
@@ -191,7 +191,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( 'account@example.com', $captured['email'] );
 		$this->assertSame( 'challenge', $captured['decision'] );
-		$this->assertSame( 'not_enforced', $captured['final_status'] );
+		$this->assertSame( 'allowed', $captured['final_status'] );
 	}
 
 	/**

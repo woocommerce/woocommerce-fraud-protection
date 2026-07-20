@@ -71,7 +71,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 				'session_id'       => 'session-abc',
 				'source'           => 'blocks_checkout',
 				'decision'         => 'block',
-				'final_status'     => 'not_enforced',
+				'final_status'     => 'allowed',
 				'trigger_type'     => 'blackbox',
 				'risk_score'       => 0.91,
 				'email'            => 'customer@example.com',
@@ -100,7 +100,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertNotNull( $row, 'The recorded row should be retrievable by session ID' );
 		$this->assertSame( '1', (string) $row['attempts'] );
 		$this->assertSame( 'block', $row['decision'] );
-		$this->assertSame( 'not_enforced', $row['final_status'] );
+		$this->assertSame( 'allowed', $row['final_status'] );
 		$this->assertSame( 'blackbox', $row['trigger_type'] );
 		$this->assertSame( 0.91, (float) $row['risk_score'] );
 		$this->assertSame( 'customer@example.com', $row['email'] );

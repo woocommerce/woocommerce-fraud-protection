@@ -10,9 +10,11 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Effective outcome of a recorded fraud-protection session event, after any
- * overrides: what actually happened, as opposed to what Blackbox said
- * (the received decision).
+ * Outcome actually applied to a recorded fraud-protection session, as opposed
+ * to what Blackbox said (the received decision). The *reason* for an outcome
+ * is not part of this vocabulary: a block suppressed by learning mode or a
+ * filter override reads as `decision = block` paired with
+ * `final_status = allowed`.
  *
  * Stored as the backing string in the `final_status` column of the sessions
  * table. The vocabulary is deliberately open-ended: the future challenge flow
@@ -20,15 +22,9 @@ defined( 'ABSPATH' ) || exit;
  */
 enum SessionFinalStatus: string {
 
-	/** The session was allowed (the decision was allow and nothing overrode it). */
+	/** The session was allowed. */
 	case Allowed = 'allowed';
 
-	/** The session was blocked (the decision was enforced). */
+	/** The session was blocked. */
 	case Blocked = 'blocked';
-
-	/** A block decision was overridden by a merchant allow-list rule. */
-	case AllowedByAllowlist = 'allowed_by_allowlist';
-
-	/** A non-allow decision was not enforced (learning mode, filter override, or non-actionable decision). */
-	case NotEnforced = 'not_enforced';
 }
