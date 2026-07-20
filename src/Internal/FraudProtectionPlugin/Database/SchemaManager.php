@@ -144,11 +144,12 @@ class SchemaManager {
 	/**
 	 * Get the dbDelta schema for the sessions table.
 	 *
-	 * One row per Blackbox session (unique `session_id`, nullable for the rare
-	 * no-session verify). Enum-valued columns hold the backing values of
-	 * string-backed PHP enums (`FraudDecision`, `SessionFinalStatus`,
-	 * `SessionTrigger`). The trigger column is named `trigger_type` because
-	 * `trigger` is a MySQL reserved word.
+	 * One row per recorded verify event, plain-inserted: `session_id` is
+	 * indexed but not unique (repeated session IDs keep separate rows, and it
+	 * is nullable for the rare no-session verify). Enum-valued columns hold
+	 * the backing values of string-backed PHP enums (`FraudDecision`,
+	 * `SessionFinalStatus`, `SessionTrigger`). The trigger column is named
+	 * `trigger_type` because `trigger` is a MySQL reserved word.
 	 *
 	 * @return string
 	 */
@@ -159,9 +160,7 @@ class SchemaManager {
 		return "CREATE TABLE {$table} (
 	id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	session_id VARCHAR(64) NULL,
-	first_seen DATETIME NOT NULL,
-	last_seen DATETIME NOT NULL,
-	attempts SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+	recorded_at DATETIME NOT NULL,
 	source VARCHAR(32) NOT NULL DEFAULT '',
 	decision VARCHAR(16) NOT NULL,
 	final_status VARCHAR(32) NOT NULL,
@@ -179,9 +178,9 @@ class SchemaManager {
 	payment_method VARCHAR(64) NOT NULL DEFAULT '',
 	reported_at DATETIME NULL,
 	PRIMARY KEY  (id),
-	UNIQUE KEY session_id (session_id),
+	KEY session_id (session_id),
 	KEY email (email),
-	KEY last_seen (last_seen)
+	KEY recorded_at (recorded_at)
 ) {$collate};";
 	}
 }

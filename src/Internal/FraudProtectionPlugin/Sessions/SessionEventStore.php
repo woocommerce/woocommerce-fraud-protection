@@ -14,10 +14,10 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Persistence for recorded session events (the sessions log).
  *
- * One row per Blackbox session: `record_event()` upserts on `session_id`,
- * incrementing the `attempts` counter and refreshing `last_seen` on repeats.
- * Events with no session ID cannot be deduplicated and insert a new row each
- * time (the unique index allows multiple NULLs).
+ * One row per recorded verify event: `record_event()` plain-inserts every
+ * event, so repeated session IDs keep one row each and a decision change
+ * across repeated attempts is never lost. Attempt counts are a read-time
+ * aggregate, not a stored column.
  */
 class SessionEventStore {
 
@@ -40,13 +40,10 @@ class SessionEventStore {
 	}
 
 	/**
-	 * Record a session event, upserting by session ID.
+	 * Record a session event as a new row.
 	 *
-	 * On a repeated session ID the volatile fields (decision, final status,
-	 * trigger, contact and billing data, order ID, source) take the latest
-	 * value, `attempts` is incremented, `last_seen` is refreshed, and
-	 * `first_seen` is preserved. A null risk score or order ID never
-	 * overwrites a previously recorded value.
+	 * Every event is a plain insert: repeated session IDs are not folded, so
+	 * each attempt keeps its own decision and final status.
 	 *
 	 * @param array<string, mixed> $event The event data to record: session_id, source, decision, final_status,
 	 *                                    trigger_type, risk_score (nullable float), email, ip, ip_country,
@@ -57,12 +54,10 @@ class SessionEventStore {
 		global $wpdb;
 
 		$table = $this->schema_manager->get_sessions_table_name();
-		$now   = gmdate( 'Y-m-d H:i:s' );
 
 		$columns = array(
 			'session_id'       => '' === $event['session_id'] ? null : $event['session_id'],
-			'first_seen'       => $now,
-			'last_seen'        => $now,
+			'recorded_at'      => gmdate( 'Y-m-d H:i:s' ),
 			'source'           => $event['source'],
 			'decision'         => $event['decision'],
 			'final_status'     => $event['final_status'],
@@ -98,63 +93,14 @@ class SessionEventStore {
 		}
 
 		$sql = 'INSERT INTO ' . $table . ' (' . implode( ', ', array_keys( $columns ) ) . ')
-			VALUES (' . implode( ', ', $placeholders ) . ')
-			ON DUPLICATE KEY UPDATE
-				last_seen = VALUES(last_seen),
-				attempts = attempts + 1,
-				source = VALUES(source),
-				decision = VALUES(decision),
-				final_status = VALUES(final_status),
-				trigger_type = VALUES(trigger_type),
-				risk_score = COALESCE(VALUES(risk_score), risk_score),
-				email = VALUES(email),
-				ip = VALUES(ip),
-				ip_country = VALUES(ip_country),
-				billing_country = VALUES(billing_country),
-				billing_state = VALUES(billing_state),
-				billing_city = VALUES(billing_city),
-				billing_postcode = VALUES(billing_postcode),
-				billing_name = VALUES(billing_name),
-				order_id = COALESCE(VALUES(order_id), order_id),
-				payment_method = VALUES(payment_method)';
+			VALUES (' . implode( ', ', $placeholders ) . ')';
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
 		return false !== $wpdb->query( $wpdb->prepare( $sql, $values ) );
 	}
 
 	/**
-	 * Get a recorded event row by its Blackbox session ID.
-	 *
-	 * @param string $session_id The Blackbox session ID.
-	 * @return ?array<string, mixed> The row as an associative array, or null if not found.
-	 */
-	public function get_by_session_id( string $session_id ): ?array {
-		global $wpdb;
-
-		$table = $this->schema_manager->get_sessions_table_name();
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE session_id = %s", $session_id ), ARRAY_A );
-
-		return is_array( $row ) ? $row : null;
-	}
-
-	/**
-	 * Count the recorded event rows.
-	 *
-	 * @return int
-	 */
-	public function count_events(): int {
-		global $wpdb;
-
-		$table = $this->schema_manager->get_sessions_table_name();
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
-	}
-
-	/**
-	 * Delete event rows whose `last_seen` is older than the given number of days.
+	 * Delete event rows whose `recorded_at` is older than the given number of days.
 	 *
 	 * Deletes in batches to keep individual queries small.
 	 *
@@ -170,7 +116,7 @@ class SessionEventStore {
 
 		do {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE last_seen < %s LIMIT 1000", $cutoff ) );
+			$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE recorded_at < %s LIMIT 1000", $cutoff ) );
 			if ( false === $deleted ) {
 				break;
 			}

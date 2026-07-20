@@ -15,7 +15,6 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -25,13 +24,6 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
  * SessionEventStore together.
  */
 class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
-
-	/**
-	 * Session event store bound to the test table.
-	 *
-	 * @var SessionEventStore
-	 */
-	private $event_store;
 
 	/**
 	 * Set up test fixtures.
@@ -44,8 +36,6 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$schema_manager = wc_get_container()->get( SchemaManager::class );
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $schema_manager->get_sessions_table_schema() );
-
-		$this->event_store = wc_get_container()->get( SessionEventStore::class );
 	}
 
 	/**
@@ -60,6 +50,38 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		delete_option( MerchantListsFeature::OPTION_NAME );
 		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
 		parent::tearDown();
+	}
+
+	/**
+	 * Get the latest recorded row for a session ID, straight from the table.
+	 *
+	 * The store exposes no read methods (production only writes and prunes),
+	 * so tests inspect the table directly.
+	 *
+	 * @param string $session_id The Blackbox session ID.
+	 * @return ?array The row as an associative array, or null if not found.
+	 */
+	private function latest_row_for( string $session_id ): ?array {
+		global $wpdb;
+
+		$table = wc_get_container()->get( SchemaManager::class )->get_sessions_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE session_id = %s ORDER BY id DESC LIMIT 1", $session_id ), ARRAY_A );
+
+		return is_array( $row ) ? $row : null;
+	}
+
+	/**
+	 * Count the rows in the sessions table.
+	 *
+	 * @return int
+	 */
+	private function count_rows(): int {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . wc_get_container()->get( SchemaManager::class )->get_sessions_table_name() );
 	}
 
 	/**
@@ -107,7 +129,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $decision, 'Learning mode (default) should suppress the block' );
 
-		$row = $this->event_store->get_by_session_id( 'integration-session-1' );
+		$row = $this->latest_row_for( 'integration-session-1' );
 		$this->assertNotNull( $row, 'The decision should have been recorded in the sessions table' );
 		$this->assertSame( 'block', $row['decision'] );
 		$this->assertSame( 'allowed', $row['final_status'] );
@@ -128,7 +150,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Block, $decision );
 
-		$row = $this->event_store->get_by_session_id( 'integration-session-2' );
+		$row = $this->latest_row_for( 'integration-session-2' );
 		$this->assertNotNull( $row );
 		$this->assertSame( 'blocked', $row['final_status'] );
 		$this->assertNull( $row['risk_score'], 'No risk score in the response should record as null' );
@@ -147,7 +169,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$verifier->verify_session( 'integration-session-3', 'blocks_checkout' );
 
-		$row = $this->event_store->get_by_session_id( 'integration-session-3' );
+		$row = $this->latest_row_for( 'integration-session-3' );
 		$this->assertNotNull( $row, 'Allowed sessions must be recorded too' );
 		$this->assertSame( 'allow', $row['decision'] );
 		$this->assertSame( 'allowed', $row['final_status'] );
@@ -165,6 +187,6 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$decision = $verifier->verify_session( 'integration-session-4', 'blocks_checkout' );
 
 		$this->assertSame( FraudDecision::Allow, $decision );
-		$this->assertSame( 0, $this->event_store->count_events() );
+		$this->assertSame( 0, $this->count_rows() );
 	}
 }
