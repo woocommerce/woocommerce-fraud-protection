@@ -20,7 +20,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Integration test for the session recording pipeline: a verify call whose
- * transport returns a block verdict must produce a row in the sessions table,
+ * transport returns a block decision must produce a row in the sessions table,
  * exercising ApiClient parsing, DecisionHandler, SessionEventRecorder and
  * SessionEventStore together.
  */
@@ -93,9 +93,9 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A block verdict suppressed by learning mode is recorded as not enforced, with its risk score.
+	 * @testdox A block decision suppressed by learning mode is recorded as not enforced, with its risk score.
 	 */
-	public function test_suppressed_block_verdict_is_recorded(): void {
+	public function test_suppressed_block_decision_is_recorded(): void {
 		$verifier = $this->a_session_verifier_receiving(
 			array(
 				'decision'   => 'block',
@@ -108,8 +108,8 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( FraudDecision::Allow, $decision, 'Learning mode (default) should suppress the block' );
 
 		$row = $this->event_store->get_by_session_id( 'integration-session-1' );
-		$this->assertNotNull( $row, 'The verdict should have been recorded in the sessions table' );
-		$this->assertSame( 'block', $row['verdict'] );
+		$this->assertNotNull( $row, 'The decision should have been recorded in the sessions table' );
+		$this->assertSame( 'block', $row['decision'] );
 		$this->assertSame( 'not_enforced', $row['final_status'] );
 		$this->assertSame( 'blackbox', $row['trigger_type'] );
 		$this->assertSame( 'blocks_checkout', $row['source'] );
@@ -117,9 +117,9 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An enforced block verdict is recorded as blocked.
+	 * @testdox An enforced block decision is recorded as blocked.
 	 */
-	public function test_enforced_block_verdict_is_recorded_as_blocked(): void {
+	public function test_enforced_block_decision_is_recorded_as_blocked(): void {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
 		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'block' ) );
@@ -135,9 +135,9 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An allow verdict is recorded as allowed.
+	 * @testdox An allow decision is recorded as allowed.
 	 */
-	public function test_allow_verdict_is_recorded_as_allowed(): void {
+	public function test_allow_decision_is_recorded_as_allowed(): void {
 		$verifier = $this->a_session_verifier_receiving(
 			array(
 				'decision'   => 'allow',
@@ -149,7 +149,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$row = $this->event_store->get_by_session_id( 'integration-session-3' );
 		$this->assertNotNull( $row, 'Allowed sessions must be recorded too' );
-		$this->assertSame( 'allow', $row['verdict'] );
+		$this->assertSame( 'allow', $row['decision'] );
 		$this->assertSame( 'allowed', $row['final_status'] );
 		$this->assertSame( 0.02, (float) $row['risk_score'] );
 	}

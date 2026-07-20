@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
@@ -279,27 +278,27 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Records the raw block verdict as not enforced when learning mode suppresses it.
+	 * @testdox Records the received block decision with the applied allow when learning mode suppresses it.
 	 */
-	public function test_records_suppressed_block_verdict_as_not_enforced(): void {
+	public function test_records_suppressed_block_decision(): void {
 		$this->event_recorder
 			->expects( $this->once() )
-			->method( 'record_verdict' )
-			->with( FraudDecision::Block, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->anything() );
+			->method( 'record_decision' )
+			->with( FraudDecision::Block, FraudDecision::Allow, SessionTrigger::Blackbox, $this->anything() );
 
 		$this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 	}
 
 	/**
-	 * @testdox Records the raw block verdict as blocked when enforcement is active.
+	 * @testdox Records the block decision as both received and applied when enforcement is active.
 	 */
-	public function test_records_enforced_block_verdict_as_blocked(): void {
+	public function test_records_enforced_block_decision(): void {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
 		$this->event_recorder
 			->expects( $this->once() )
-			->method( 'record_verdict' )
-			->with( FraudDecision::Block, SessionFinalStatus::Blocked, SessionTrigger::Blackbox, $this->anything() );
+			->method( 'record_decision' )
+			->with( FraudDecision::Block, FraudDecision::Block, SessionTrigger::Blackbox, $this->anything() );
 
 		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
@@ -307,17 +306,17 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Records the raw challenge verdict as not enforced while returning allow.
+	 * @testdox Records the received challenge decision with the applied allow while returning allow.
 	 */
-	public function test_records_challenge_verdict_and_returns_allow(): void {
+	public function test_records_challenge_decision_and_returns_allow(): void {
 		$this->session_manager
 			->method( 'is_session_blocked' )
 			->willReturn( false );
 
 		$this->event_recorder
 			->expects( $this->once() )
-			->method( 'record_verdict' )
-			->with( FraudDecision::Challenge, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->anything() );
+			->method( 'record_decision' )
+			->with( FraudDecision::Challenge, FraudDecision::Allow, SessionTrigger::Blackbox, $this->anything() );
 
 		$result = $this->sut->apply_decision( FraudDecision::Challenge, array( 'session_id' => 'test' ) );
 
@@ -325,17 +324,17 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Records the raw allow verdict as allowed.
+	 * @testdox Records the allow decision as both received and applied.
 	 */
-	public function test_records_allow_verdict_as_allowed(): void {
+	public function test_records_allow_decision(): void {
 		$this->session_manager
 			->method( 'is_session_blocked' )
 			->willReturn( false );
 
 		$this->event_recorder
 			->expects( $this->once() )
-			->method( 'record_verdict' )
-			->with( FraudDecision::Allow, SessionFinalStatus::Allowed, SessionTrigger::Blackbox, $this->anything() );
+			->method( 'record_decision' )
+			->with( FraudDecision::Allow, FraudDecision::Allow, SessionTrigger::Blackbox, $this->anything() );
 
 		$this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 	}

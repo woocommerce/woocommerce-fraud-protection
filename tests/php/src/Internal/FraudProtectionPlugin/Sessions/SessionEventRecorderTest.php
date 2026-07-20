@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
@@ -86,6 +85,30 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Record a decision and return the event row captured by the store mock.
+	 *
+	 * @param FraudDecision $received The decision as received from the API.
+	 * @param FraudDecision $applied  The decision actually applied.
+	 * @param ?array        $payload  The session data payload (defaults to {@see a_session_data_payload()}).
+	 * @return ?array The captured event row.
+	 */
+	private function record_and_capture( FraudDecision $received, FraudDecision $applied, ?array $payload = null ): ?array {
+		$captured = null;
+		$this->event_store
+			->method( 'record_event' )
+			->willReturnCallback(
+				function ( array $event ) use ( &$captured ) {
+					$captured = $event;
+					return true;
+				}
+			);
+
+		$this->sut->record_decision( $received, $applied, SessionTrigger::Blackbox, $payload ?? $this->a_session_data_payload() );
+
+		return $captured;
+	}
+
+	/**
 	 * @testdox Should not record anything when the feature is disabled.
 	 */
 	public function test_does_not_record_when_feature_disabled(): void {
@@ -93,54 +116,58 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'record_event' );
 
-		$this->sut->record_verdict( FraudDecision::Block, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$this->sut->record_decision( FraudDecision::Block, FraudDecision::Allow, SessionTrigger::Blackbox, $this->a_session_data_payload() );
 	}
 
 	/**
-	 * @testdox Should record allow verdicts too.
+	 * @testdox Should record allow decisions too, with final status allowed.
 	 */
-	public function test_records_allow_verdicts(): void {
+	public function test_records_allow_decisions(): void {
 		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
 
-		$captured = null;
-		$this->event_store
-			->expects( $this->once() )
-			->method( 'record_event' )
-			->willReturnCallback(
-				function ( array $event ) use ( &$captured ) {
-					$captured = $event;
-					return true;
-				}
-			);
+		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Allow );
 
-		$this->sut->record_verdict( FraudDecision::Allow, SessionFinalStatus::Allowed, SessionTrigger::Blackbox, $this->a_session_data_payload() );
-
-		$this->assertSame( 'allow', $captured['verdict'] );
+		$this->assertSame( 'allow', $captured['decision'] );
 		$this->assertSame( 'allowed', $captured['final_status'] );
 	}
 
 	/**
-	 * @testdox Should map the session data payload to an event row for block verdicts.
+	 * @testdox Should derive final status not_enforced for a suppressed block decision.
 	 */
-	public function test_records_block_verdict_with_mapped_payload(): void {
+	public function test_derives_not_enforced_for_suppressed_block(): void {
 		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
 
-		$captured = null;
-		$this->event_store
-			->expects( $this->once() )
-			->method( 'record_event' )
-			->willReturnCallback(
-				function ( array $event ) use ( &$captured ) {
-					$captured = $event;
-					return true;
-				}
-			);
+		$captured = $this->record_and_capture( FraudDecision::Block, FraudDecision::Allow );
 
-		$this->sut->record_verdict( FraudDecision::Block, SessionFinalStatus::Blocked, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$this->assertSame( 'block', $captured['decision'] );
+		$this->assertSame( 'not_enforced', $captured['final_status'] );
+	}
+
+	/**
+	 * @testdox Should derive final status blocked whenever the applied decision is block.
+	 */
+	public function test_derives_blocked_for_applied_block(): void {
+		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
+
+		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Block );
+
+		$this->assertSame( 'allow', $captured['decision'] );
+		$this->assertSame( 'blocked', $captured['final_status'], 'A filter override to block, enforced, should be recorded as blocked' );
+	}
+
+	/**
+	 * @testdox Should map the session data payload to an event row for block decisions.
+	 */
+	public function test_records_block_decision_with_mapped_payload(): void {
+		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
+
+		$this->event_store->expects( $this->once() )->method( 'record_event' );
+
+		$captured = $this->record_and_capture( FraudDecision::Block, FraudDecision::Block );
 
 		$this->assertSame( 'session-xyz', $captured['session_id'] );
 		$this->assertSame( 'blocks_checkout', $captured['source'] );
-		$this->assertSame( 'block', $captured['verdict'] );
+		$this->assertSame( 'block', $captured['decision'] );
 		$this->assertSame( 'blocked', $captured['final_status'] );
 		$this->assertSame( 'blackbox', $captured['trigger_type'] );
 		$this->assertSame( 0.87, $captured['risk_score'] );
@@ -160,20 +187,11 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 		$payload                              = $this->a_session_data_payload();
 		$payload['customer']['billing_email'] = '';
 
-		$captured = null;
-		$this->event_store
-			->method( 'record_event' )
-			->willReturnCallback(
-				function ( array $event ) use ( &$captured ) {
-					$captured = $event;
-					return true;
-				}
-			);
-
-		$this->sut->record_verdict( FraudDecision::Challenge, SessionFinalStatus::NotEnforced, SessionTrigger::Blackbox, $payload );
+		$captured = $this->record_and_capture( FraudDecision::Challenge, FraudDecision::Allow, $payload );
 
 		$this->assertSame( 'account@example.com', $captured['email'] );
-		$this->assertSame( 'challenge', $captured['verdict'] );
+		$this->assertSame( 'challenge', $captured['decision'] );
+		$this->assertSame( 'not_enforced', $captured['final_status'] );
 	}
 
 	/**
@@ -186,7 +204,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 			->method( 'record_event' )
 			->willReturn( false );
 
-		$this->sut->record_verdict( FraudDecision::Block, SessionFinalStatus::Blocked, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$this->sut->record_decision( FraudDecision::Block, FraudDecision::Block, SessionTrigger::Blackbox, $this->a_session_data_payload() );
 
 		$this->assertLogged( 'warning', 'Failed to record session event' );
 	}
@@ -201,7 +219,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 			->method( 'record_event' )
 			->willThrowException( new \RuntimeException( 'database exploded' ) );
 
-		$this->sut->record_verdict( FraudDecision::Block, SessionFinalStatus::Blocked, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$this->sut->record_decision( FraudDecision::Block, FraudDecision::Block, SessionTrigger::Blackbox, $this->a_session_data_payload() );
 
 		$this->assertLogged( 'warning', 'Session event recording failed' );
 	}

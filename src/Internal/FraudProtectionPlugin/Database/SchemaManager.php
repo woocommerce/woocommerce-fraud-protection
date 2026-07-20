@@ -163,7 +163,7 @@ class SchemaManager {
 	last_seen DATETIME NOT NULL,
 	attempts SMALLINT UNSIGNED NOT NULL DEFAULT 1,
 	source VARCHAR(32) NOT NULL DEFAULT '',
-	verdict VARCHAR(16) NOT NULL,
+	decision VARCHAR(16) NOT NULL,
 	final_status VARCHAR(32) NOT NULL,
 	trigger_type VARCHAR(16) NOT NULL,
 	risk_score DOUBLE NULL,

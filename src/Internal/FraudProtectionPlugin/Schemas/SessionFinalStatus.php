@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Effective outcome of a recorded fraud-protection session event, after any
  * overrides: what actually happened, as opposed to what Blackbox said
- * (the raw verdict).
+ * (the received decision).
  *
  * Stored as the backing string in the `final_status` column of the sessions
  * table. The vocabulary is deliberately open-ended: the future challenge flow
@@ -20,15 +20,15 @@ defined( 'ABSPATH' ) || exit;
  */
 enum SessionFinalStatus: string {
 
-	/** The session was allowed (the verdict was allow and nothing overrode it). */
+	/** The session was allowed (the decision was allow and nothing overrode it). */
 	case Allowed = 'allowed';
 
-	/** The session was blocked (the verdict was enforced). */
+	/** The session was blocked (the decision was enforced). */
 	case Blocked = 'blocked';
 
-	/** A block verdict was overridden by a merchant allow-list rule. */
+	/** A block decision was overridden by a merchant allow-list rule. */
 	case AllowedByAllowlist = 'allowed_by_allowlist';
 
-	/** A non-allow verdict was not enforced (learning mode, filter override, or non-actionable verdict). */
+	/** A non-allow decision was not enforced (learning mode, filter override, or non-actionable decision). */
 	case NotEnforced = 'not_enforced';
 }

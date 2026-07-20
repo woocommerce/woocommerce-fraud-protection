@@ -16,15 +16,16 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Records fraud verdicts into the sessions log.
+ * Records fraud decisions into the sessions log.
  *
- * Invoked from `DecisionHandler::apply_decision()` with the raw parsed wire
- * verdict — not the enforcement outcome — so that block and challenge
- * verdicts are recorded faithfully even when enforcement is suppressed
- * (learning mode, filter overrides). Every parsed verdict is recorded,
- * allowed sessions included, so merchants can act on any session from its
- * row (e.g. add the shopper to the positive or negative list). Paths that
- * produce no parsed verdict (skip filter, transport failures) record nothing.
+ * Invoked from `DecisionHandler::apply_decision()` with the decision as
+ * received from the API — not the enforcement outcome — so that block and
+ * challenge decisions are recorded faithfully even when enforcement is
+ * suppressed (learning mode, filter overrides). Every parsed decision is
+ * recorded, allowed sessions included, so merchants can act on any session
+ * from its row (e.g. add the shopper to the positive or negative list).
+ * Paths that produce no parsed decision (skip filter, transport failures)
+ * record nothing.
  *
  * Fail-open: recording failures are logged and never affect checkout.
  */
@@ -65,21 +66,27 @@ class SessionEventRecorder {
 	}
 
 	/**
-	 * Record a verdict if the feature is enabled.
+	 * Record a decision if the feature is enabled.
 	 *
-	 * @param FraudDecision      $raw_verdict  The raw parsed wire verdict, before any coercion or override.
-	 * @param SessionFinalStatus $final_status The effective outcome after overrides.
-	 * @param SessionTrigger     $trigger      The mechanism that produced the verdict.
-	 * @param array              $session_data The session data payload, enriched with the {@see self::VERIFY_RESULT_KEY} bundle.
+	 * The recorded final status is derived here from the two decisions:
+	 * applied Block means the session was blocked; otherwise a received Allow
+	 * was simply allowed, and anything else (a received block or challenge
+	 * that ended up allowed) was not enforced.
+	 *
+	 * @param FraudDecision  $received_decision The decision as received from the API, before any coercion or override.
+	 * @param FraudDecision  $applied_decision  The decision actually applied to the session, after overrides.
+	 * @param SessionTrigger $trigger           The mechanism that produced the decision.
+	 * @param array          $session_data      The session data payload, enriched with the {@see self::VERIFY_RESULT_KEY} bundle.
 	 * @return void
 	 */
-	public function record_verdict( FraudDecision $raw_verdict, SessionFinalStatus $final_status, SessionTrigger $trigger, array $session_data ): void {
+	public function record_decision( FraudDecision $received_decision, FraudDecision $applied_decision, SessionTrigger $trigger, array $session_data ): void {
 		try {
 			if ( ! $this->merchant_lists_feature->is_enabled() ) {
 				return;
 			}
 
-			$event = $this->build_event( $raw_verdict, $final_status, $trigger, $session_data );
+			$final_status = $this->derive_final_status( $received_decision, $applied_decision );
+			$event        = $this->build_event( $received_decision, $final_status, $trigger, $session_data );
 
 			if ( ! $this->event_store->record_event( $event ) ) {
 				global $wpdb;
@@ -112,15 +119,31 @@ class SessionEventRecorder {
 	}
 
 	/**
+	 * Derive the recorded final status from the received and applied decisions.
+	 *
+	 * @param FraudDecision $received The decision as received from the API.
+	 * @param FraudDecision $applied  The decision actually applied to the session.
+	 * @return SessionFinalStatus
+	 */
+	private function derive_final_status( FraudDecision $received, FraudDecision $applied ): SessionFinalStatus {
+		if ( FraudDecision::Block === $applied ) {
+			return SessionFinalStatus::Blocked;
+		}
+		return FraudDecision::Allow === $received
+			? SessionFinalStatus::Allowed
+			: SessionFinalStatus::NotEnforced;
+	}
+
+	/**
 	 * Map the session data payload to a sessions table event row.
 	 *
-	 * @param FraudDecision      $raw_verdict  The raw parsed wire verdict.
-	 * @param SessionFinalStatus $final_status The effective outcome after overrides.
-	 * @param SessionTrigger     $trigger      The mechanism that produced the verdict.
-	 * @param array              $session_data The session data payload.
+	 * @param FraudDecision      $received_decision The decision as received from the API.
+	 * @param SessionFinalStatus $final_status      The effective outcome after overrides.
+	 * @param SessionTrigger     $trigger           The mechanism that produced the decision.
+	 * @param array              $session_data      The session data payload.
 	 * @return array<string, mixed> The event row for {@see SessionEventStore::record_event()}.
 	 */
-	private function build_event( FraudDecision $raw_verdict, SessionFinalStatus $final_status, SessionTrigger $trigger, array $session_data ): array {
+	private function build_event( FraudDecision $received_decision, SessionFinalStatus $final_status, SessionTrigger $trigger, array $session_data ): array {
 		$verify_result = is_array( $session_data[ self::VERIFY_RESULT_KEY ] ?? null ) ? $session_data[ self::VERIFY_RESULT_KEY ] : array();
 		$customer      = is_array( $session_data['customer'] ?? null ) ? $session_data['customer'] : array();
 		$billing       = is_array( $customer['billing_address'] ?? null ) ? $customer['billing_address'] : array();
@@ -141,7 +164,7 @@ class SessionEventRecorder {
 		return array(
 			'session_id'       => substr( (string) ( $verify_result['session_id'] ?? '' ), 0, 64 ),
 			'source'           => substr( (string) ( $session_data['source'] ?? '' ), 0, 32 ),
-			'verdict'          => $raw_verdict->value,
+			'decision'         => $received_decision->value,
 			'final_status'     => $final_status->value,
 			'trigger_type'     => $trigger->value,
 			'risk_score'       => is_numeric( $risk_score ) ? (float) $risk_score : null,

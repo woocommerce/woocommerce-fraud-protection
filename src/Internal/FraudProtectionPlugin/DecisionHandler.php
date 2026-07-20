@@ -8,7 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
@@ -66,23 +65,23 @@ class DecisionHandler {
 	 * 2. Apply the `woocommerce_fraud_protection_decision` filter for overrides
 	 * 3. Validate the filtered decision (third-party filters may return invalid values)
 	 * 4. Update session status via SessionClearanceManager
-	 * 5. Record the raw verdict into the sessions log (fail-open)
+	 * 5. Record the received decision into the sessions log (fail-open)
 	 *
 	 * @param FraudDecision        $decision     The decision from the API.
-	 * @param array<string, mixed> $session_data The session data that was sent to the API.
+	 * @param array<string, mixed> $session_data The session data that was sent to the API, extended with the verify result.
 	 * @return FraudDecision The final applied decision after any filter overrides.
 	 */
 	public function apply_decision( FraudDecision $decision, array $session_data ): FraudDecision {
-		$raw_verdict = $decision;
-		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
-		$log_context = array(
+		$received_decision = $decision;
+		$session           = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
+		$log_context       = array(
 			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
 
 		// Challenge is not actionable yet (the challenge flow is not implemented). Fail open on
 		// any non-actionable decision so it can never reach the session update or be returned to
-		// the caller. The raw verdict captured above is still recorded below.
+		// the caller. The received decision captured above is still recorded below.
 		if ( ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'warning',
@@ -195,16 +194,9 @@ class DecisionHandler {
 		// Apply the decision to the session.
 		$this->update_session_status( $decision );
 
-		// Record every parsed verdict, keyed on the raw one (not the enforcement outcome), so
-		// suppressed blocks and challenges are recorded faithfully. The recorder is fail-open.
-		if ( FraudDecision::Block === $decision ) {
-			$final_status = SessionFinalStatus::Blocked;
-		} elseif ( FraudDecision::Allow === $raw_verdict ) {
-			$final_status = SessionFinalStatus::Allowed;
-		} else {
-			$final_status = SessionFinalStatus::NotEnforced;
-		}
-		$this->event_recorder->record_verdict( $raw_verdict, $final_status, SessionTrigger::Blackbox, $session_data );
+		// Record the received decision (not the enforcement outcome), so suppressed
+		// blocks and challenges are recorded faithfully. The recorder is fail-open.
+		$this->event_recorder->record_decision( $received_decision, $decision, SessionTrigger::Blackbox, $session_data );
 
 		return $decision;
 	}

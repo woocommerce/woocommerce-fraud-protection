@@ -42,13 +42,13 @@ class SessionEventStore {
 	/**
 	 * Record a session event, upserting by session ID.
 	 *
-	 * On a repeated session ID the volatile fields (verdict, final status,
+	 * On a repeated session ID the volatile fields (decision, final status,
 	 * trigger, contact and billing data, order ID, source) take the latest
 	 * value, `attempts` is incremented, `last_seen` is refreshed, and
 	 * `first_seen` is preserved. A null risk score or order ID never
 	 * overwrites a previously recorded value.
 	 *
-	 * @param array<string, mixed> $event The event data to record: session_id, source, verdict, final_status,
+	 * @param array<string, mixed> $event The event data to record: session_id, source, decision, final_status,
 	 *                                    trigger_type, risk_score (nullable float), email, ip, ip_country,
 	 *                                    billing_country/state/city/postcode/name, order_id and payment_method.
 	 * @return bool True on success, false on database failure.
@@ -64,7 +64,7 @@ class SessionEventStore {
 			'first_seen'       => $now,
 			'last_seen'        => $now,
 			'source'           => $event['source'],
-			'verdict'          => $event['verdict'],
+			'decision'         => $event['decision'],
 			'final_status'     => $event['final_status'],
 			'trigger_type'     => $event['trigger_type'],
 			'risk_score'       => $event['risk_score'],
@@ -103,7 +103,7 @@ class SessionEventStore {
 				last_seen = VALUES(last_seen),
 				attempts = attempts + 1,
 				source = VALUES(source),
-				verdict = VALUES(verdict),
+				decision = VALUES(decision),
 				final_status = VALUES(final_status),
 				trigger_type = VALUES(trigger_type),
 				risk_score = COALESCE(VALUES(risk_score), risk_score),

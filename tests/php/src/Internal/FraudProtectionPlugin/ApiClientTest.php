@@ -309,7 +309,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * Test verify passes through a known-but-non-actionable decision.
 	 *
 	 * `challenge` is a valid FraudDecision case that is not in FraudDecision::ACTIONABLE.
-	 * It survives parsing so the session event recorder can see the raw verdict;
+	 * It survives parsing so the session event recorder can see the received decision;
 	 * DecisionHandler is responsible for coercing it to allow.
 	 *
 	 * @testdox verify() returns the challenge decision unchanged (coercion happens in DecisionHandler)

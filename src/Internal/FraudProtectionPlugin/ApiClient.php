@@ -203,7 +203,7 @@ class ApiClient {
 
 		// Any valid FraudDecision is accepted here, including the not-yet-actionable
 		// Challenge: DecisionHandler coerces non-actionable decisions to Allow, and the
-		// raw verdict is what the session event recorder needs to see.
+		// decision as received is what the session event recorder needs to see.
 		$decision = FraudDecision::tryFrom( $raw );
 
 		if ( is_null( $decision ) ) {
