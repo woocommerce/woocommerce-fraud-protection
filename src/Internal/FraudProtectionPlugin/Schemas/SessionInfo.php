@@ -50,7 +50,7 @@ class SessionInfo {
 	/**
 	 * Get client IP address using WooCommerce geolocation utility.
 	 *
-	 * Public for use by ApiClient in the no-session case (visitor_ip).
+	 * Public for use by ApiClient as the top-level visitor_ip on every verify.
 	 *
 	 * @return ?string IP address or null.
 	 */
