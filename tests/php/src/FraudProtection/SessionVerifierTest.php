@@ -511,6 +511,32 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() persists the returned session ID and returns the block on a blocked degraded verify.
+	 */
+	public function test_verify_session_persists_returned_id_under_block_verdict(): void {
+		$order = \WC_Helper_Order::create_order();
+
+		// A tampered request ID degrades; Blackbox creates a new session and blocks it.
+		$this->stub_verification_with_returned_id( 'bb-degraded-block', FraudDecision::Block );
+
+		$result = $this->sut->verify_session( 'tampered-collect-id', 'blocks_checkout', $order->get_id() );
+
+		$this->assertSame( FraudDecision::Block, $result );
+
+		// The Blackbox-created ID is what /report must correlate against, not the tampered one.
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
+		$this->assertSame(
+			'bb-degraded-block',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+		$this->assertSame(
+			'bb-degraded-block',
+			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+	}
+
+	/**
 	 * @testdox verify_session() keeps the request session ID when the verify response omits one (normal sessionful path).
 	 */
 	public function test_verify_session_keeps_request_id_when_response_session_id_empty(): void {
@@ -617,20 +643,21 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Stub a verification pipeline where the API returns a specific session ID.
 	 *
-	 * @param string $returned_session_id The session ID Blackbox returns in the verify response.
+	 * @param string        $returned_session_id The session ID Blackbox returns in the verify response.
+	 * @param FraudDecision $decision            The decision returned by both verify() and apply_decision().
 	 */
-	private function stub_verification_with_returned_id( string $returned_session_id ): void {
+	private function stub_verification_with_returned_id( string $returned_session_id, FraudDecision $decision = FraudDecision::Allow ): void {
 		$this->data_collector
 			->method( 'get_collected_data' )
 			->willReturn( array() );
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, $returned_session_id ) );
+			->willReturn( VerifyResult::create( $decision, $returned_session_id ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )
-			->willReturn( FraudDecision::Allow );
+			->willReturn( $decision );
 	}
 
 	/*
