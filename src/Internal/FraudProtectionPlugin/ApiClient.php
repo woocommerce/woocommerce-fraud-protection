@@ -65,7 +65,7 @@ class ApiClient {
 		$payload = array(
 			'context'      => $this->filter_empty_values( $context ),
 			'visitor_ip'   => Schemas\SessionInfo::get_ip_address(),
-			'full_headers' => self::get_request_headers(),
+			'full_headers' => $this->get_request_headers(),
 		);
 
 		$log_payload                 = $payload;
@@ -425,8 +425,8 @@ class ApiClient {
 	 *
 	 * @return array<string, ?string> Header name => value map.
 	 */
-	private static function get_request_headers(): array {
-		$raw_headers = function_exists( 'getallheaders' ) ? getallheaders() : false;
+	private function get_request_headers(): array {
+		$raw_headers = $this->get_raw_request_headers();
 		$headers     = array();
 		if ( is_array( $raw_headers ) ) {
 			foreach ( $raw_headers as $name => $value ) {
@@ -451,7 +451,17 @@ class ApiClient {
 		}
 
 		// Strip sensitive headers (case-insensitive — header names vary by server).
-		$sensitive = array( 'cookie', 'authorization', 'x-wp-nonce', 'x-woo-session', 'nonce' );
+		$sensitive = array(
+			'cookie',
+			'authorization',
+			'proxy-authorization',
+			'authentication',
+			'x-api-key',
+			'www-authenticate',
+			'x-wp-nonce',
+			'x-woo-session',
+			'nonce',
+		);
 		foreach ( array_keys( $headers ) as $name ) {
 			if ( in_array( strtolower( $name ), $sensitive, true ) ) {
 				unset( $headers[ $name ] );
@@ -459,6 +469,18 @@ class ApiClient {
 		}
 
 		return $headers;
+	}
+
+	/**
+	 * Read the raw request headers from the SAPI.
+	 *
+	 * Isolated in its own `protected` method so tests can override it (see
+	 * {@see ApiClientTest}); getallheaders() is unavailable under CLI.
+	 *
+	 * @return array<string, string>|false Raw header map, or false when unavailable.
+	 */
+	protected function get_raw_request_headers(): array|false {
+		return function_exists( 'getallheaders' ) ? getallheaders() : false;
 	}
 
 	/**

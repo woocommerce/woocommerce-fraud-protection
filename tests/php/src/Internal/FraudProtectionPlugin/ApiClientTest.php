@@ -397,6 +397,54 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/**
+	 * @testdox verify() strips sensitive headers from full_headers case-insensitively and keeps the rest
+	 */
+	public function test_verify_strips_sensitive_headers(): void {
+		$_SERVER['GEOIP_COUNTRY_CODE'] = 'DE';
+
+		try {
+			$captured_body = null;
+
+			$sut = $this->getMockBuilder( ApiClient::class )
+				->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
+				->getMock();
+			$sut->method( 'get_raw_request_headers' )->willReturn(
+				array(
+					'User-Agent'          => 'Mozilla/5.0',
+					'Accept-Language'     => 'en-US',
+					'Cookie'              => 'wp_logged_in=secret',
+					'AUTHORIZATION'       => 'Bearer secret',
+					'Proxy-Authorization' => 'Basic secret',
+					'X-Api-Key'           => 'secret-key',
+					'X-WP-Nonce'          => 'nonce-value',
+				)
+			);
+			$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+				function ( array $request_args, string $body ) use ( &$captured_body ) {
+					$captured_body = json_decode( $body, true );
+					return $this->decision_response( 'allow' );
+				}
+			);
+
+			$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+			$headers = $captured_body['full_headers'];
+
+			// Benign headers and GEOIP server variables pass through.
+			$this->assertSame( 'Mozilla/5.0', $headers['User-Agent'] );
+			$this->assertSame( 'en-US', $headers['Accept-Language'] );
+			$this->assertSame( 'DE', $headers['GEOIP_COUNTRY_CODE'] );
+
+			// Credential-bearing headers are stripped regardless of casing.
+			foreach ( array( 'Cookie', 'AUTHORIZATION', 'Proxy-Authorization', 'X-Api-Key', 'X-WP-Nonce' ) as $stripped ) {
+				$this->assertArrayNotHasKey( $stripped, $headers );
+			}
+		} finally {
+			unset( $_SERVER['GEOIP_COUNTRY_CODE'] );
+		}
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Session ID capture tests
