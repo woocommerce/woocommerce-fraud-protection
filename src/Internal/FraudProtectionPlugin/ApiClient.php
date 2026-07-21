@@ -69,7 +69,7 @@ class ApiClient {
 		);
 
 		$log_payload = $payload;
-		$log_payload['full_headers'] = sprintf( '(%d headers)', count( $payload['full_headers'] ?? array() ) );
+		$log_payload['full_headers'] = sprintf( '(%d headers)', count( $payload['full_headers'] ) );
 
 		FraudProtectionController::log(
 			'info',
