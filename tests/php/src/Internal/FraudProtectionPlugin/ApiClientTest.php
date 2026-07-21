@@ -128,6 +128,25 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify() URL-encodes the session ID so a crafted value cannot alter the request URL
+	 */
+	public function test_verify_url_encodes_session_id(): void {
+		$captured_url = null;
+
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args ) use ( &$captured_url ) {
+				$captured_url = $request_args['url'];
+			}
+		);
+
+		// Characters that survive sanitize_text_field() but would malform the URL or pivot the path.
+		$sut->verify( 'a b%#?/../report', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/a%20b%25%23%3F%2F..%2Freport', $captured_url );
+	}
+
+	/**
 	 * @testdox verify() strips null and empty-string values from context but preserves top-level fields
 	 */
 	public function test_verify_filters_empty_values_only_in_context(): void {

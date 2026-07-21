@@ -271,7 +271,8 @@ class ApiClient {
 		}
 
 		$request_args = array(
-			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . $session_id,
+			// The session ID is client-supplied: encode it so it cannot malform or redirect the request URL.
+			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . rawurlencode( $session_id ),
 			'method'        => $method,
 			'timeout'       => self::DEFAULT_TIMEOUT,
 			'headers'       => array( 'Content-Type' => 'application/json' ),
