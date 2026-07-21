@@ -45,14 +45,6 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Tear down test fixtures.
-	 */
-	public function tearDown(): void {
-		delete_option( MerchantListsFeature::OPTION_NAME );
-		parent::tearDown();
-	}
-
-	/**
 	 * A session data payload as assembled by SessionVerifier.
 	 *
 	 * @return array
@@ -109,22 +101,26 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should not record anything when the feature is disabled.
+	 * @testdox Should not record anything when the feature gate is off.
 	 */
 	public function test_does_not_record_when_feature_disabled(): void {
+		$disabled_feature = $this->createMock( MerchantListsFeature::class );
+		$disabled_feature->method( 'is_enabled' )->willReturn( false );
+
+		$sut = new SessionEventRecorder();
+		$sut->init( $this->event_store, $disabled_feature );
+
 		$this->event_store
 			->expects( $this->never() )
 			->method( 'record_event' );
 
-		$this->sut->record_decision( FraudDecision::Block, FraudDecision::Allow, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$sut->record_decision( FraudDecision::Block, FraudDecision::Allow, SessionTrigger::Blackbox, $this->a_session_data_payload() );
 	}
 
 	/**
 	 * @testdox Should record allow decisions too, with final status allowed.
 	 */
 	public function test_records_allow_decisions(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Allow );
 
 		$this->assertSame( 'allow', $captured['decision'] );
@@ -135,8 +131,6 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should derive final status allowed for a suppressed block decision, keeping the received block.
 	 */
 	public function test_derives_allowed_for_suppressed_block(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$captured = $this->record_and_capture( FraudDecision::Block, FraudDecision::Allow );
 
 		$this->assertSame( 'block', $captured['decision'] );
@@ -147,8 +141,6 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should derive final status blocked whenever the applied decision is block.
 	 */
 	public function test_derives_blocked_for_applied_block(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Block );
 
 		$this->assertSame( 'allow', $captured['decision'] );
@@ -159,8 +151,6 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should map the session data payload to an event row for block decisions.
 	 */
 	public function test_records_block_decision_with_mapped_payload(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$this->event_store->expects( $this->once() )->method( 'record_event' );
 
 		$captured = $this->record_and_capture( FraudDecision::Block, FraudDecision::Block );
@@ -182,8 +172,6 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should fall back to the account email when there is no billing email.
 	 */
 	public function test_falls_back_to_account_email(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$payload                              = $this->a_session_data_payload();
 		$payload['customer']['billing_email'] = '';
 
@@ -198,8 +186,6 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should log a warning and not throw when the store reports a failure.
 	 */
 	public function test_logs_warning_when_store_fails(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$this->event_store
 			->method( 'record_event' )
 			->willReturn( false );
@@ -213,8 +199,6 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should log a warning and not throw when the store throws.
 	 */
 	public function test_fails_open_when_store_throws(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$this->event_store
 			->method( 'record_event' )
 			->willThrowException( new \RuntimeException( 'database exploded' ) );

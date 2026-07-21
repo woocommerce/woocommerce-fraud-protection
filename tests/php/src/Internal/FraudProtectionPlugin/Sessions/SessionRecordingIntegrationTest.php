@@ -12,7 +12,6 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -31,8 +30,6 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$schema_manager = wc_get_container()->get( SchemaManager::class );
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $schema_manager->get_sessions_table_schema() );
@@ -47,7 +44,6 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . wc_get_container()->get( SchemaManager::class )->get_sessions_table_name() );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
-		delete_option( MerchantListsFeature::OPTION_NAME );
 		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
 		parent::tearDown();
 	}
@@ -177,16 +173,15 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox No row is recorded when the feature is disabled.
+	 * @testdox Each verify event of a repeated session ID gets its own row.
 	 */
-	public function test_nothing_is_recorded_when_feature_disabled(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'no' );
+	public function test_repeated_verifies_record_one_row_each(): void {
+		$this->a_session_verifier_receiving( array( 'decision' => 'allow' ) )
+			->verify_session( 'integration-session-4', 'blocks_checkout' );
+		$this->a_session_verifier_receiving( array( 'decision' => 'block' ) )
+			->verify_session( 'integration-session-4', 'blocks_checkout' );
 
-		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'block' ) );
-
-		$decision = $verifier->verify_session( 'integration-session-4', 'blocks_checkout' );
-
-		$this->assertSame( FraudDecision::Allow, $decision );
-		$this->assertSame( 0, $this->count_rows() );
+		$this->assertSame( 2, $this->count_rows() );
+		$this->assertSame( 'block', $this->latest_row_for( 'integration-session-4' )['decision'] );
 	}
 }

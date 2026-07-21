@@ -49,6 +49,11 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
+		// The feature gate is always on, so the plugin installs the schema for real
+		// during the test bootstrap; clear the recorded version so each test starts
+		// from a not-yet-installed state.
+		delete_option( SchemaManager::DB_VERSION_OPTION );
+
 		// phpcs:ignore Squiz.Commenting -- test double.
 		$this->fake_wpdb = new class() {
 			public $prefix         = 'wp_';
@@ -91,16 +96,20 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		delete_option( SchemaManager::DB_VERSION_OPTION );
-		delete_option( MerchantListsFeature::OPTION_NAME );
-		remove_all_filters( 'woocommerce_fraud_protection_merchant_lists_enabled' );
 		parent::tearDown();
 	}
 
 	/**
-	 * @testdox Should not run dbDelta when the feature is disabled.
+	 * @testdox Should not run dbDelta when the feature gate is off.
 	 */
 	public function test_does_not_install_schema_when_feature_disabled(): void {
-		$this->sut->register();
+		$disabled_feature = $this->createMock( MerchantListsFeature::class );
+		$disabled_feature->method( 'is_enabled' )->willReturn( false );
+
+		$sut = new SchemaManager();
+		$sut->init( $disabled_feature, wc_get_container()->get( LegacyProxy::class ) );
+
+		$sut->register();
 
 		$this->assertEmpty( $this->db_delta_calls, 'dbDelta must not run while the feature is off' );
 		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'The schema version option must not be set' );
@@ -110,7 +119,6 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should run dbDelta with the sessions schema and store the schema version when the table exists afterwards.
 	 */
 	public function test_installs_schema_when_feature_enabled(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
 		$this->fake_wpdb->get_var_result = 'wp_wc_fraud_protection_sessions';
 
 		$this->sut->register();
@@ -124,7 +132,6 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should log an error and not store the schema version when the table does not exist after dbDelta.
 	 */
 	public function test_does_not_store_version_when_table_creation_fails(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
 		$this->fake_wpdb->get_var_result = null;
 
 		$this->sut->register();
@@ -137,7 +144,6 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should be idempotent: no dbDelta run once the stored version matches.
 	 */
 	public function test_register_is_idempotent(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
 		$this->fake_wpdb->get_var_result = 'wp_wc_fraud_protection_sessions';
 
 		$this->sut->register();

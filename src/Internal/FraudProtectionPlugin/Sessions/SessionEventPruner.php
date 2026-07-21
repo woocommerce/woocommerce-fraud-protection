@@ -69,32 +69,18 @@ class SessionEventPruner {
 	 * The callback is always registered so queued actions never go unhandled.
 	 * Rescheduling of each next daily run is Action Scheduler's own job (it
 	 * perpetuates recurring actions when processing them); reconciliation here
-	 * only covers the first schedule after the feature is enabled and the
-	 * teardown after it is disabled. It runs when the feature option changes
-	 * (added, updated or deleted — works from WP-CLI and code, no admin visit
-	 * needed) and, as a safety net for filter-driven flips, on admin requests —
-	 * but not on frontend requests, to avoid an Action Scheduler lookup on
-	 * every page load.
+	 * only covers the first schedule (and the teardown, should the feature gate
+	 * ever be turned off in code). It runs on admin requests only, not on
+	 * frontend ones, to avoid an Action Scheduler lookup on every page load:
+	 * with a 30-day retention window, waiting for the first admin request to
+	 * schedule the job is harmless.
 	 */
 	public function register(): void {
 		add_action( self::PRUNE_ACTION_HOOK, array( $this, 'handle_wc_fraud_protection_prune_sessions' ) );
-		add_action( 'add_option_' . MerchantListsFeature::OPTION_NAME, array( $this, 'handle_merchant_lists_option_changed' ) );
-		add_action( 'update_option_' . MerchantListsFeature::OPTION_NAME, array( $this, 'handle_merchant_lists_option_changed' ) );
-		add_action( 'delete_option_' . MerchantListsFeature::OPTION_NAME, array( $this, 'handle_merchant_lists_option_changed' ) );
 
 		if ( is_admin() ) {
 			$this->reconcile_schedule();
 		}
-	}
-
-	/**
-	 * Reconcile the pruning schedule when the feature option is added, updated
-	 * or deleted.
-	 *
-	 * @internal
-	 */
-	public function handle_merchant_lists_option_changed(): void {
-		$this->reconcile_schedule();
 	}
 
 	/**

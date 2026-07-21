@@ -46,11 +46,7 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		delete_option( MerchantListsFeature::OPTION_NAME );
 		remove_all_actions( SessionEventPruner::PRUNE_ACTION_HOOK );
-		remove_all_actions( 'add_option_' . MerchantListsFeature::OPTION_NAME );
-		remove_all_actions( 'update_option_' . MerchantListsFeature::OPTION_NAME );
-		remove_all_actions( 'delete_option_' . MerchantListsFeature::OPTION_NAME );
 		if ( function_exists( 'as_unschedule_all_actions' ) ) {
 			as_unschedule_all_actions( SessionEventPruner::PRUNE_ACTION_HOOK );
 		}
@@ -58,11 +54,9 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should prune with the retention period when the feature is enabled.
+	 * @testdox Should prune with the retention period.
 	 */
-	public function test_prunes_when_feature_enabled(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
+	public function test_prunes_with_the_retention_period(): void {
 		$this->event_store
 			->expects( $this->once() )
 			->method( 'prune_older_than' )
@@ -75,22 +69,26 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should not prune when the feature is disabled.
+	 * @testdox Should not prune when the feature gate is off.
 	 */
 	public function test_does_not_prune_when_feature_disabled(): void {
+		$disabled_feature = $this->createMock( MerchantListsFeature::class );
+		$disabled_feature->method( 'is_enabled' )->willReturn( false );
+
+		$sut = new SessionEventPruner();
+		$sut->init( $this->event_store, $disabled_feature );
+
 		$this->event_store
 			->expects( $this->never() )
 			->method( 'prune_older_than' );
 
-		$this->sut->handle_wc_fraud_protection_prune_sessions();
+		$sut->handle_wc_fraud_protection_prune_sessions();
 	}
 
 	/**
 	 * @testdox Should log a warning and not throw when pruning fails.
 	 */
 	public function test_fails_open_when_pruning_throws(): void {
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-
 		$this->event_store
 			->method( 'prune_older_than' )
 			->willThrowException( new \RuntimeException( 'database exploded' ) );
@@ -110,30 +108,39 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should schedule the recurring job when the feature option is switched on, and unschedule it when switched off.
+	 * @testdox Should schedule the recurring job on an admin request, and not schedule a second one.
 	 */
-	public function test_option_change_reconciles_the_schedule(): void {
+	public function test_admin_request_schedules_the_job_once(): void {
+		set_current_screen( 'dashboard' );
+
 		$this->sut->register();
+		$first = as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK );
+		$this->assertNotFalse( $first, 'An admin request should schedule the pruning job' );
 
-		$this->assertFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Nothing should be scheduled while the feature is off' );
+		$this->sut->register();
+		$this->assertSame( $first, as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'A second admin request must not schedule a duplicate job' );
 
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
-		$this->assertNotFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Enabling the option should schedule the pruning job without an admin request' );
-
-		update_option( MerchantListsFeature::OPTION_NAME, 'no' );
-		$this->assertFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Disabling the option should unschedule the pruning job' );
+		set_current_screen( 'front' );
 	}
 
 	/**
-	 * @testdox Should unschedule the recurring job when the feature option is deleted.
+	 * @testdox Should unschedule the recurring job when the feature gate is off.
 	 */
-	public function test_option_deletion_reconciles_the_schedule(): void {
-		$this->sut->register();
+	public function test_unschedules_the_job_when_feature_disabled(): void {
+		set_current_screen( 'dashboard' );
 
-		update_option( MerchantListsFeature::OPTION_NAME, 'yes' );
+		$this->sut->register();
 		$this->assertNotFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ) );
 
-		delete_option( MerchantListsFeature::OPTION_NAME );
-		$this->assertFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Deleting the option (a missing option means feature off) should unschedule the pruning job' );
+		$disabled_feature = $this->createMock( MerchantListsFeature::class );
+		$disabled_feature->method( 'is_enabled' )->willReturn( false );
+
+		$sut = new SessionEventPruner();
+		$sut->init( $this->event_store, $disabled_feature );
+		$sut->register();
+
+		$this->assertFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Turning the gate off in code should unschedule the pruning job' );
+
+		set_current_screen( 'front' );
 	}
 }
