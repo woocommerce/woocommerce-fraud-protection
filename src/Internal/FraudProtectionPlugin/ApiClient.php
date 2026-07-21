@@ -417,7 +417,7 @@ class ApiClient {
 	}
 
 	/**
-	 * Get all HTTP request headers for the no-session case.
+	 * Get all HTTP request headers to send with every verify request.
 	 *
 	 * Uses getallheaders() when available, augmented with GEOIP and
 	 * crawler server variables.
