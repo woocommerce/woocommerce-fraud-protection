@@ -82,7 +82,8 @@ class SessionIdentityManager {
 			$identity_id = WC()->call_function( 'wc_rand_hash', 'customer_', 30 );
 			FraudProtectionController::log(
 				'warning',
-				'FraudProtection: Created new fallback session identity ID for customer. This should rarely happen. User ID: ' . get_current_user_id()
+				'Created new fallback session identity ID for customer. This should rarely happen.',
+				array( 'user_id' => get_current_user_id() )
 			);
 		}
 

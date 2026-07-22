@@ -53,8 +53,8 @@ class DecisionHandler {
 		);
 
 		// The parameter type permits FraudDecision::Challenge, which is not actionable and not yet
-		// supported. Fail open on any non-actionable decision so it can never reach the session
-		// update or be returned to the caller.
+		// supported. Fail open on any non-actionable decision so only actionable decisions are
+		// returned to the caller.
 		if ( ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'warning',
