@@ -27,21 +27,21 @@ defined( 'ABSPATH' ) || exit;
 class SessionDataCollector {
 
 	/**
-	 * SessionClearanceManager instance.
+	 * SessionIdentityManager instance.
 	 *
-	 * @var SessionClearanceManager
+	 * @var SessionIdentityManager
 	 */
-	private SessionClearanceManager $session_clearance_manager;
+	private SessionIdentityManager $session_identity_manager;
 
 	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionClearanceManager $session_clearance_manager The session clearance manager instance.
+	 * @param SessionIdentityManager $session_identity_manager The session identity manager instance.
 	 */
-	final public function init( SessionClearanceManager $session_clearance_manager ): void {
-		$this->session_clearance_manager = $session_clearance_manager;
+	final public function init( SessionIdentityManager $session_identity_manager ): void {
+		$this->session_identity_manager = $session_identity_manager;
 	}
 
 	/**
@@ -56,7 +56,7 @@ class SessionDataCollector {
 	 */
 	public function collect( ?string $event_type = null, array $event_data = array() ): void {
 		// Ensure cart and session are loaded.
-		$this->session_clearance_manager->ensure_cart_loaded();
+		$this->session_identity_manager->ensure_cart_loaded();
 
 		$data = array(
 			'event_type' => $event_type,
@@ -161,7 +161,7 @@ class SessionDataCollector {
 	 */
 	private function get_session_data(): SessionInfo {
 		try {
-			return SessionInfo::from_request( $this->session_clearance_manager->get_identity_id() );
+			return SessionInfo::from_request( $this->session_identity_manager->get_identity_id() );
 		} catch ( \Throwable $e ) {
 			return SessionInfo::empty();
 		}

@@ -29,7 +29,7 @@ if ( ! function_exists( 'WC' ) ) {
 	}
 }
 
-$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager();
+$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager();
 $collector       = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector();
 $collector->init( $session_manager );
 

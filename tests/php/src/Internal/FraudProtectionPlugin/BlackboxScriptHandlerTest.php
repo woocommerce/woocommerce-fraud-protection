@@ -8,7 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\BlackboxScriptHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -26,9 +26,9 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	private $sut;
 
 	/**
-	 * Mock session clearance manager.
+	 * Mock session identity manager.
 	 *
-	 * @var SessionClearanceManager&\PHPUnit\Framework\MockObject\MockObject
+	 * @var SessionIdentityManager&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $mock_session_manager;
 
@@ -41,7 +41,7 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		// Remove any bootstrap-registered enqueue handlers so only the test SUT runs.
 		remove_all_actions( 'wp_enqueue_scripts' );
 
-		$this->mock_session_manager = $this->createMock( SessionClearanceManager::class );
+		$this->mock_session_manager = $this->createMock( SessionIdentityManager::class );
 		$this->mock_session_manager->method( 'get_identity_id' )->willReturn( 'mock-session-id' );
 
 		$this->sut = new BlackboxScriptHandler();

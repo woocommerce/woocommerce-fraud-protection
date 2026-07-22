@@ -9,7 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 
 /**
  * Tests for SessionDataCollector.
@@ -26,11 +26,18 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	private $sut;
 
 	/**
-	 * SessionClearanceManager instance.
+	 * SessionIdentityManager instance.
 	 *
-	 * @var SessionClearanceManager
+	 * @var SessionIdentityManager
 	 */
-	private $session_clearance_manager;
+	private $session_identity_manager;
+
+	/**
+	 * The session handler in place before the test, restored in tearDown().
+	 *
+	 * @var \WC_Session|null
+	 */
+	private $original_session;
 
 	/**
 	 * Runs before each test.
@@ -38,20 +45,30 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
+		$this->original_session = WC()->session;
+
 		// Ensure WooCommerce cart and session are available.
 		if ( ! did_action( 'woocommerce_load_cart_from_session' ) && function_exists( 'wc_load_cart' ) ) {
 			wc_load_cart();
 		}
 
-		$this->session_clearance_manager = new SessionClearanceManager();
+		$this->session_identity_manager = new SessionIdentityManager();
 		$this->sut                       = new SessionDataCollector();
-		$this->sut->init( $this->session_clearance_manager );
+		$this->sut->init( $this->session_identity_manager );
 
 		// Disable taxes before adding products to cart.
 		update_option( 'woocommerce_calc_taxes', 'no' );
 
 		// Clear any existing session data before each test.
 		WC()->session->set( 'fraud_protection_collected_data', null );
+	}
+
+	/**
+	 * Runs after each test.
+	 */
+	public function tearDown(): void {
+		WC()->session = $this->original_session;
+		parent::tearDown();
 	}
 
 	/**
@@ -212,9 +229,9 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Test wc_identity_id is retrieved from SessionClearanceManager.
+	 * Test wc_identity_id is retrieved from SessionIdentityManager.
 	 */
-	public function test_session_id_retrieved_from_session_clearance_manager(): void {
+	public function test_session_id_retrieved_from_session_identity_manager(): void {
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
 
@@ -880,16 +897,10 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	 * @testdox get_collected_data() returns structure with empty collected_events when session is unavailable.
 	 */
 	public function test_get_collected_data_returns_empty_collected_events_when_session_unavailable(): void {
-		// Store original session.
-		$original_session = WC()->session;
-
-		// Set session to null to simulate unavailability.
+		// Set session to null to simulate unavailability; tearDown() restores the original.
 		WC()->session = null; // @phpstan-ignore assign.propertyType
 
 		$result = $this->sut->get_collected_data();
-
-		// Restore original session.
-		WC()->session = $original_session;
 
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'collected_events', $result );
