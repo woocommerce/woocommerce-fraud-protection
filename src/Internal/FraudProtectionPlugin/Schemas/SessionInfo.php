@@ -28,7 +28,7 @@ class SessionInfo {
 	/**
 	 * Build from the current request context.
 	 *
-	 * @param string $wc_identity_id WooCommerce session ID from SessionClearanceManager.
+	 * @param string $wc_identity_id WooCommerce session ID from SessionIdentityManager.
 	 * @return self
 	 */
 	public static function from_request( string $wc_identity_id ): self {

@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 
 defined( 'ABSPATH' ) || exit;
@@ -18,18 +17,19 @@ defined( 'ABSPATH' ) || exit;
  * Handles fraud protection decision application.
  *
  * This class is responsible for:
- * - Applying extension override filters for whitelisting
- * - Coordinating with SessionClearanceManager to apply decisions
+ * - Validating decisions and applying extension override filters for whitelisting
+ * - Applying learning mode
  * - Recording actionable verdicts into the sessions log via SessionEventRecorder
+ *
+ * Stateless by design: the returned decision applies only to the current
+ * checkout/payment attempt, and enforcement is up to the caller (e.g. throwing
+ * a RouteException or adding a checkout error). No blocking state is persisted,
+ * so every new attempt is verified from scratch — a block does not follow the
+ * shopper, and the `woocommerce_fraud_protection_decision` filter can override
+ * the verdict on any subsequent attempt. The sessions log is a write-only
+ * record; it never feeds back into decisions.
  */
 class DecisionHandler {
-
-	/**
-	 * Session clearance manager instance.
-	 *
-	 * @var SessionClearanceManager
-	 */
-	private SessionClearanceManager $session_manager;
 
 	/**
 	 * Session event recorder instance.
@@ -43,19 +43,18 @@ class DecisionHandler {
 	 *
 	 * @internal
 	 *
-	 * @param SessionClearanceManager $session_manager The session clearance manager instance.
-	 * @param SessionEventRecorder    $event_recorder  The session event recorder instance.
+	 * @param SessionEventRecorder $event_recorder The session event recorder instance.
 	 */
-	final public function init( SessionClearanceManager $session_manager, SessionEventRecorder $event_recorder ): void {
-		$this->session_manager = $session_manager;
-		$this->event_recorder  = $event_recorder;
+	final public function init( SessionEventRecorder $event_recorder ): void {
+		$this->event_recorder = $event_recorder;
 	}
 
 	/**
 	 * Apply a fraud protection decision.
 	 *
-	 * This method processes a decision from the API, applies any override filters,
-	 * validates the result, and updates the session status accordingly.
+	 * This method processes a decision from the API, applies any override
+	 * filters, validates the result, and returns the final decision for the
+	 * caller to enforce on the current attempt.
 	 *
 	 * The input decision is any valid FraudDecision parsed by ApiClient;
 	 * non-actionable decisions (Challenge) are coerced to Allow here.
@@ -64,7 +63,7 @@ class DecisionHandler {
 	 * 1. Coerce non-actionable decisions to Allow
 	 * 2. Apply the `woocommerce_fraud_protection_decision` filter for overrides
 	 * 3. Validate the filtered decision (third-party filters may return invalid values)
-	 * 4. Update session status via SessionClearanceManager
+	 * 4. Apply learning mode (suppresses Block decisions while active)
 	 * 5. Record the received decision into the sessions log (fail-open)
 	 *
 	 * @param FraudDecision        $decision     The decision from the API.
@@ -79,9 +78,9 @@ class DecisionHandler {
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
 
-		// Challenge is not actionable yet (the challenge flow is not implemented). Fail open on
-		// any non-actionable decision so it can never reach the session update or be returned to
-		// the caller. The received decision captured above is still recorded below.
+		// The parameter type permits FraudDecision::Challenge, which is not actionable and not yet
+		// supported. Fail open on any non-actionable decision so only actionable decisions are
+		// returned to the caller. The received decision captured above is still recorded below.
 		if ( ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'warning',
@@ -191,46 +190,10 @@ class DecisionHandler {
 			$decision = FraudDecision::Allow;
 		}
 
-		// Apply the decision to the session.
-		$this->update_session_status( $decision );
-
 		// Record the received decision (not the enforcement outcome), so suppressed
 		// blocks and challenges are recorded faithfully. The recorder is fail-open.
 		$this->event_recorder->record_decision( $received_decision, $decision, SessionTrigger::Blackbox, $session_data );
 
 		return $decision;
-	}
-
-	/**
-	 * Update the session status based on the decision.
-	 *
-	 * Important: Once a session is blocked, it stays blocked until explicitly reset.
-	 * This prevents race conditions where emptying the cart (done during block_session)
-	 * causes subsequent fraud checks to return "allow" (due to lower cart value),
-	 * which would incorrectly unblock the session.
-	 *
-	 * @param FraudDecision $decision The decision to apply.
-	 * @return void
-	 */
-	private function update_session_status( FraudDecision $decision ): void {
-		// Don't overwrite a blocked session with an allow decision.
-		// Once blocked, a session should stay blocked until explicitly reset.
-		if ( FraudDecision::Allow === $decision && $this->session_manager->is_session_blocked() ) {
-			FraudProtectionController::log(
-				'info',
-				'Preserving blocked session status. Allow decision not applied to already-blocked session.'
-			);
-			return;
-		}
-
-		switch ( $decision ) {
-			case FraudDecision::Allow:
-				$this->session_manager->allow_session();
-				break;
-
-			case FraudDecision::Block:
-				$this->session_manager->block_session();
-				break;
-		}
 	}
 }
