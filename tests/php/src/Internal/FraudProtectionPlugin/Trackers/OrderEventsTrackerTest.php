@@ -235,11 +235,10 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 
 		// A null occurred_at falls back to the current time as a UTC ISO 8601 string.
 		$this->sut->fraud_protection_report( $order, ReportSource::Api, 'rep_now', $this->make_context() );
-		$this->assertMatchesRegularExpression(
-			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/',
-			$captured['occurred_at'],
-			'a null occurred_at falls back to a UTC ISO 8601 timestamp'
-		);
+		$fallback = \DateTimeImmutable::createFromFormat( \DateTimeInterface::RFC3339, $captured['occurred_at'] );
+		$this->assertInstanceOf( \DateTimeImmutable::class, $fallback, 'the fallback is a parseable RFC3339 timestamp' );
+		$this->assertSame( $captured['occurred_at'], $fallback->format( \DateTimeInterface::RFC3339 ), 'the fallback is a canonical RFC3339 string' );
+		$this->assertSame( 0, $fallback->getOffset(), 'the fallback occurred_at is UTC' );
 	}
 
 	/**
