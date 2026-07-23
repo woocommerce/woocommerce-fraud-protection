@@ -53,6 +53,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		// during the test bootstrap; clear the recorded version so each test starts
 		// from a not-yet-installed state.
 		delete_option( SchemaManager::DB_VERSION_OPTION );
+		delete_option( SchemaManager::DB_INSTALL_STATE_OPTION );
 
 		// phpcs:ignore Squiz.Commenting -- test double.
 		$this->fake_wpdb = new class() {
@@ -96,6 +97,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		delete_option( SchemaManager::DB_VERSION_OPTION );
+		delete_option( SchemaManager::DB_INSTALL_STATE_OPTION );
 		parent::tearDown();
 	}
 
@@ -150,5 +152,135 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		$this->sut->register();
 
 		$this->assertCount( 1, $this->db_delta_calls, 'The second register() must not run dbDelta again' );
+	}
+
+	/**
+	 * Seed the installation retry state option.
+	 *
+	 * @param array $overrides Values overriding the default seeded state.
+	 */
+	private function seed_install_state( array $overrides = array() ): void {
+		update_option(
+			SchemaManager::DB_INSTALL_STATE_OPTION,
+			array_merge(
+				array(
+					'schema_version' => SchemaManager::SCHEMA_VERSION,
+					'attempts'       => 1,
+					'last_attempt'   => time(),
+					'last_error'     => '',
+				),
+				$overrides
+			),
+			false
+		);
+	}
+
+	/**
+	 * @testdox Should record the attempt count and the last database error in the retry state when installation fails.
+	 */
+	public function test_failed_install_records_retry_state(): void {
+		$this->fake_wpdb->get_var_result = null;
+		$this->fake_wpdb->last_error     = 'Specified key was too long';
+
+		$this->sut->register();
+
+		$state = get_option( SchemaManager::DB_INSTALL_STATE_OPTION );
+		$this->assertIsArray( $state );
+		$this->assertSame( SchemaManager::SCHEMA_VERSION, $state['schema_version'] );
+		$this->assertSame( 1, $state['attempts'] );
+		$this->assertSame( 'Specified key was too long', $state['last_error'] );
+		$this->assertEqualsWithDelta( time(), $state['last_attempt'], 5 );
+	}
+
+	/**
+	 * @testdox Should not retry a failed installation within the retry interval.
+	 */
+	public function test_failed_install_is_not_retried_within_the_interval(): void {
+		$this->fake_wpdb->get_var_result = null;
+
+		$this->sut->register();
+		$this->sut->register();
+
+		$this->assertCount( 1, $this->db_delta_calls, 'The second register() must be throttled' );
+	}
+
+	/**
+	 * @testdox Should retry a failed installation once the retry interval has elapsed.
+	 */
+	public function test_failed_install_is_retried_after_the_interval(): void {
+		$this->fake_wpdb->get_var_result = null;
+		$this->seed_install_state( array( 'last_attempt' => time() - HOUR_IN_SECONDS - 1 ) );
+
+		$this->sut->register();
+
+		$this->assertCount( 1, $this->db_delta_calls );
+		$state = get_option( SchemaManager::DB_INSTALL_STATE_OPTION );
+		$this->assertSame( 2, $state['attempts'] );
+	}
+
+	/**
+	 * @testdox Should stop attempting after the maximum number of failed attempts.
+	 */
+	public function test_gives_up_after_max_attempts(): void {
+		$this->fake_wpdb->get_var_result = null;
+		$this->seed_install_state(
+			array(
+				'attempts'     => 24,
+				'last_attempt' => time() - 2 * HOUR_IN_SECONDS,
+			)
+		);
+
+		$this->sut->register();
+
+		$this->assertEmpty( $this->db_delta_calls, 'No further attempts must run after giving up' );
+	}
+
+	/**
+	 * @testdox Should reset the retry state, given-up included, when the schema version is bumped.
+	 */
+	public function test_schema_version_bump_resets_the_retry_state(): void {
+		$this->fake_wpdb->get_var_result = 'wp_wc_fraud_protection_sessions';
+		$this->seed_install_state(
+			array(
+				'schema_version' => 999,
+				'attempts'       => 24,
+				'last_attempt'   => time(),
+			)
+		);
+
+		$this->sut->register();
+
+		$this->assertCount( 1, $this->db_delta_calls, 'A version bump must start a fresh round of attempts' );
+		$this->assertSame( SchemaManager::SCHEMA_VERSION, (int) get_option( SchemaManager::DB_VERSION_OPTION ) );
+	}
+
+	/**
+	 * @testdox Should delete the retry state when installation succeeds.
+	 */
+	public function test_successful_install_clears_retry_state(): void {
+		$this->fake_wpdb->get_var_result = 'wp_wc_fraud_protection_sessions';
+		$this->seed_install_state(
+			array(
+				'attempts'     => 3,
+				'last_attempt' => time() - 2 * HOUR_IN_SECONDS,
+			)
+		);
+
+		$this->sut->register();
+
+		$this->assertSame( SchemaManager::SCHEMA_VERSION, (int) get_option( SchemaManager::DB_VERSION_OPTION ) );
+		$this->assertFalse( get_option( SchemaManager::DB_INSTALL_STATE_OPTION ), 'The retry state must be cleared on success' );
+	}
+
+	/**
+	 * @testdox is_schema_installed() should report whether the stored version matches the current one.
+	 */
+	public function test_is_schema_installed(): void {
+		$this->assertFalse( $this->sut->is_schema_installed() );
+
+		$this->fake_wpdb->get_var_result = 'wp_wc_fraud_protection_sessions';
+		$this->sut->register();
+
+		$this->assertTrue( $this->sut->is_schema_installed() );
 	}
 }

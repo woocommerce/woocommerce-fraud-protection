@@ -32,9 +32,33 @@ class SchemaManager {
 	public const DB_VERSION_OPTION = 'woocommerce_fraud_protection_db_version';
 
 	/**
-	 * Schema version written by this build. Bump when the schema changes.
+	 * Schema version written by this build. Bump when the schema changes,
+	 * including fixes to the schema string itself: the bump is what resets
+	 * the retry state on sites where a previous installation gave up.
 	 */
 	public const SCHEMA_VERSION = 1;
+
+	/**
+	 * Option holding the schema installation retry state: an array with
+	 * `schema_version` (the version the attempts target), `attempts`,
+	 * `last_attempt` (Unix timestamp) and `last_error` (the database error
+	 * from the most recent failed attempt). Present only while installation
+	 * is failing or after it gave up, it is deleted on success.
+	 */
+	public const DB_INSTALL_STATE_OPTION = 'woocommerce_fraud_protection_db_install_state';
+
+	/**
+	 * Give up after this many failed installation attempts: combined with
+	 * the retry interval this is roughly a day of retries, after which the
+	 * failure is likely deterministic (e.g. a config issue) and retrying
+	 * forever would just log forever.
+	 */
+	private const MAX_INSTALL_ATTEMPTS = 24;
+
+	/**
+	 * Minimum time between installation attempts, in seconds.
+	 */
+	private const INSTALL_RETRY_INTERVAL = HOUR_IN_SECONDS;
 
 	/**
 	 * Merchant lists feature gate instance.
@@ -84,15 +108,51 @@ class SchemaManager {
 	}
 
 	/**
+	 * Whether the installed schema version matches the one this build needs.
+	 *
+	 * While this is false (installation pending, failing, or given up),
+	 * consumers of the sessions table should skip their reads and writes.
+	 *
+	 * @return bool
+	 */
+	public function is_schema_installed(): bool {
+		return self::SCHEMA_VERSION === (int) get_option( self::DB_VERSION_OPTION, 0 );
+	}
+
+	/**
 	 * Run dbDelta when the stored schema version is older than the current one.
 	 *
 	 * Fail-open: any failure is logged and the version option is left
-	 * untouched, so the next request retries; nothing is thrown.
+	 * untouched, so a later request retries; nothing is thrown. Retries are
+	 * throttled through {@see self::DB_INSTALL_STATE_OPTION} to at most one
+	 * attempt per {@see self::INSTALL_RETRY_INTERVAL}, and abandoned after
+	 * {@see self::MAX_INSTALL_ATTEMPTS} failures: a failure persisting that
+	 * long is likely deterministic, and retrying forever would log forever.
+	 * A schema version bump resets the state, so a build that fixes the
+	 * migration gets a fresh round of attempts. The state is deleted on
+	 * success.
 	 */
 	private function maybe_install_schema(): void {
-		if ( self::SCHEMA_VERSION === (int) get_option( self::DB_VERSION_OPTION, 0 ) ) {
+		if ( $this->is_schema_installed() ) {
 			return;
 		}
+
+		$state = $this->get_install_state();
+
+		if ( $state['attempts'] >= self::MAX_INSTALL_ATTEMPTS ) {
+			return;
+		}
+
+		if ( time() - $state['last_attempt'] < self::INSTALL_RETRY_INTERVAL ) {
+			return;
+		}
+
+		// Claim the retry slot before attempting, so concurrent requests and
+		// repeated failures are bounded to one attempt (and one log entry)
+		// per interval.
+		++$state['attempts'];
+		$state['last_attempt'] = time();
+		update_option( self::DB_INSTALL_STATE_OPTION, $state, false );
 
 		try {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -106,12 +166,14 @@ class SchemaManager {
 			// before recording the schema version as installed.
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
+				$this->record_failed_attempt( $state, (string) $wpdb->last_error );
 				FraudProtectionController::log(
 					'error',
 					'Sessions table creation failed: table does not exist after dbDelta.',
 					array(
 						'event_source' => 'schema_manager',
 						'db_error'     => $wpdb->last_error,
+						'attempts'     => $state['attempts'],
 					),
 					true
 				);
@@ -119,17 +181,20 @@ class SchemaManager {
 			}
 
 			update_option( self::DB_VERSION_OPTION, self::SCHEMA_VERSION );
+			delete_option( self::DB_INSTALL_STATE_OPTION );
 
 			FraudProtectionController::log(
 				'info',
 				sprintf( 'Database schema installed (version %d).', self::SCHEMA_VERSION )
 			);
 		} catch ( \Throwable $e ) {
+			$this->record_failed_attempt( $state, $e->getMessage() );
 			FraudProtectionController::log(
 				'error',
 				'Database schema installation failed',
 				array(
 					'event_source'      => 'schema_manager',
+					'attempts'          => $state['attempts'],
 					'exception'         => $e,
 					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
@@ -139,6 +204,43 @@ class SchemaManager {
 				true
 			);
 		}
+	}
+
+	/**
+	 * Get the schema installation retry state.
+	 *
+	 * @return array{schema_version: int, attempts: int, last_attempt: int, last_error: string}
+	 */
+	private function get_install_state(): array {
+		$state = get_option( self::DB_INSTALL_STATE_OPTION, array() );
+		$state = is_array( $state ) ? $state : array();
+
+		// A version bump means a new build, possibly one that fixes the
+		// migration: forget the failure history and start a fresh round.
+		if ( self::SCHEMA_VERSION !== (int) ( $state['schema_version'] ?? 0 ) ) {
+			$state = array();
+		}
+
+		return array(
+			'schema_version' => self::SCHEMA_VERSION,
+			'attempts'       => max( 0, (int) ( $state['attempts'] ?? 0 ) ),
+			'last_attempt'   => max( 0, (int) ( $state['last_attempt'] ?? 0 ) ),
+			'last_error'     => (string) ( $state['last_error'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Persist the database error of a failed attempt into the retry state.
+	 *
+	 * The attempt count and timestamp were already persisted when the slot
+	 * was claimed; only the error is added here.
+	 *
+	 * @param array  $state The retry state claimed for this attempt.
+	 * @param string $error The error message from the failed attempt.
+	 */
+	private function record_failed_attempt( array $state, string $error ): void {
+		$state['last_error'] = $error;
+		update_option( self::DB_INSTALL_STATE_OPTION, $state, false );
 	}
 
 	/**

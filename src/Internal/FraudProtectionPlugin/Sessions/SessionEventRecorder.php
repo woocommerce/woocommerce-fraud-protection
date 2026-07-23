@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
@@ -30,6 +31,11 @@ defined( 'ABSPATH' ) || exit;
  * trigger, keeping unverified sessions distinguishable from genuine allows.
  * Paths where verification is skipped entirely (the skip filter) record
  * nothing.
+ *
+ * Recording also requires the sessions schema to be installed: while it is
+ * pending, failing, or given up ({@see SchemaManager::is_schema_installed()}),
+ * events are skipped silently instead of failing an insert (and logging a
+ * warning) on every verify.
  *
  * Fail-open: recording failures are logged and never affect checkout.
  */
@@ -57,16 +63,25 @@ class SessionEventRecorder {
 	private MerchantListsFeature $merchant_lists_feature;
 
 	/**
+	 * Schema manager instance.
+	 *
+	 * @var SchemaManager
+	 */
+	private SchemaManager $schema_manager;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionEventStore    $event_store            The session event store instance.
 	 * @param MerchantListsFeature $merchant_lists_feature The merchant lists feature gate instance.
+	 * @param SchemaManager        $schema_manager         The schema manager instance.
 	 */
-	final public function init( SessionEventStore $event_store, MerchantListsFeature $merchant_lists_feature ): void {
+	final public function init( SessionEventStore $event_store, MerchantListsFeature $merchant_lists_feature, SchemaManager $schema_manager ): void {
 		$this->event_store            = $event_store;
 		$this->merchant_lists_feature = $merchant_lists_feature;
+		$this->schema_manager         = $schema_manager;
 	}
 
 	/**
@@ -86,6 +101,12 @@ class SessionEventRecorder {
 	public function record_decision( FraudDecision $received_decision, FraudDecision $applied_decision, SessionTrigger $trigger, array $session_data ): void {
 		try {
 			if ( ! $this->merchant_lists_feature->is_enabled() ) {
+				return;
+			}
+
+			// No schema, no recording: inserting into a missing table would fail
+			// and log a warning on every single verify.
+			if ( ! $this->schema_manager->is_schema_installed() ) {
 				return;
 			}
 

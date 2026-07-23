@@ -33,6 +33,10 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$schema_manager = wc_get_container()->get( SchemaManager::class );
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $schema_manager->get_sessions_table_schema() );
+
+		// The recorder skips events while the schema is not recorded as
+		// installed, so stamp the version the same way a real install does.
+		update_option( SchemaManager::DB_VERSION_OPTION, SchemaManager::SCHEMA_VERSION );
 	}
 
 	/**

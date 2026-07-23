@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
@@ -34,14 +35,25 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	private $event_store;
 
 	/**
+	 * Mock schema manager reporting the schema as installed.
+	 *
+	 * @var SchemaManager&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $schema_manager;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
 		$this->event_store = $this->createMock( SessionEventStore::class );
-		$this->sut         = new SessionEventRecorder();
-		$this->sut->init( $this->event_store, new MerchantListsFeature() );
+
+		$this->schema_manager = $this->createMock( SchemaManager::class );
+		$this->schema_manager->method( 'is_schema_installed' )->willReturn( true );
+
+		$this->sut = new SessionEventRecorder();
+		$this->sut->init( $this->event_store, new MerchantListsFeature(), $this->schema_manager );
 	}
 
 	/**
@@ -108,13 +120,30 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 		$disabled_feature->method( 'is_enabled' )->willReturn( false );
 
 		$sut = new SessionEventRecorder();
-		$sut->init( $this->event_store, $disabled_feature );
+		$sut->init( $this->event_store, $disabled_feature, $this->schema_manager );
 
 		$this->event_store
 			->expects( $this->never() )
 			->method( 'record_event' );
 
 		$sut->record_decision( FraudDecision::Block, FraudDecision::Allow, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+	}
+
+	/**
+	 * @testdox Should not record anything while the sessions schema is not installed.
+	 */
+	public function test_does_not_record_when_schema_not_installed(): void {
+		$missing_schema = $this->createMock( SchemaManager::class );
+		$missing_schema->method( 'is_schema_installed' )->willReturn( false );
+
+		$sut = new SessionEventRecorder();
+		$sut->init( $this->event_store, new MerchantListsFeature(), $missing_schema );
+
+		$this->event_store
+			->expects( $this->never() )
+			->method( 'record_event' );
+
+		$sut->record_decision( FraudDecision::Block, FraudDecision::Block, SessionTrigger::Blackbox, $this->a_session_data_payload() );
 	}
 
 	/**
