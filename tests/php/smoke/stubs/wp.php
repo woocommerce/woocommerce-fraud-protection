@@ -148,12 +148,6 @@ if ( ! function_exists( 'sanitize_email' ) ) {
 	}
 }
 
-if ( ! function_exists( 'sanitize_text_field' ) ) {
-	function sanitize_text_field( $str ) {
-		return is_string( $str ) ? trim( $str ) : '';
-	}
-}
-
 if ( ! function_exists( 'is_checkout' ) ) {
 	function is_checkout() {
 		return false;

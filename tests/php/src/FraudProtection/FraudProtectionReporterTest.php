@@ -149,4 +149,33 @@ class FraudProtectionReporterTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->report( $order, ReportSource::Chargeback, $id, $context );
 	}
+
+	/**
+	 * @testdox report() forwards a valid report_id to the tracker verbatim, without transforming it.
+	 */
+	public function test_report_forwards_report_id_verbatim(): void {
+		$order = $this->createMock( \WC_Order::class );
+		// An internal double space and surrounding whitespace: sanitize_text_field would collapse and
+		// trim these, so this pins that the idempotency key is passed through unchanged.
+		$id      = '  evt_9  double  ';
+		$context = ReportContextData::from_array(
+			array(
+				'type'   => 'dispute',
+				'result' => 'lost',
+			)
+		);
+
+		$this->tracker->expects( $this->once() )
+			->method( 'fraud_protection_report' )
+			->with(
+				$this->identicalTo( $order ),
+				$this->identicalTo( ReportSource::Chargeback ),
+				$this->identicalTo( $id ),
+				$this->identicalTo( $context ),
+				$this->isNull(),
+				''
+			);
+
+		$this->sut->report( $order, ReportSource::Chargeback, $id, $context );
+	}
 }

@@ -66,7 +66,7 @@ class FraudProtectionReporter {
 			return;
 		}
 
-		$report_id = self::sanitize_report_id( $report_id );
+		$report_id = self::validate_report_id( $report_id );
 		if ( is_null( $report_id ) ) {
 			FraudProtectionController::log(
 				'error',
@@ -87,22 +87,21 @@ class FraudProtectionReporter {
 	}
 
 	/**
-	 * Validate the required report_id, returning the sanitized value or null when unusable.
+	 * Validate the required report_id, or null when unusable.
 	 *
-	 * The report's idempotency key: a non-empty string of 255 characters or fewer. Sanitized for
-	 * transport, which is deterministic, so re-sending the same raw value yields the same key. An
-	 * unusable value returns null so report() skips instead of sending a request the endpoint would
-	 * reject.
+	 * The report's idempotency key is opaque: a non-empty string of 255 characters or fewer, returned
+	 * verbatim. It is never transformed, so the caller's exact value reaches the endpoint and a retry
+	 * reuses the same key; sanitizing it could collapse two distinct ids into one. An unusable value
+	 * returns null so report() skips instead of sending a request the endpoint would reject.
 	 *
 	 * @param string $report_id Raw idempotency key.
-	 * @return ?string The sanitized report_id, or null when empty or too long.
+	 * @return ?string The report_id unchanged, or null when empty or too long.
 	 */
-	private static function sanitize_report_id( string $report_id ): ?string {
-		$clean = sanitize_text_field( $report_id );
-		if ( '' === $clean || strlen( $clean ) > 255 ) {
+	private static function validate_report_id( string $report_id ): ?string {
+		if ( '' === trim( $report_id ) || strlen( $report_id ) > 255 ) {
 			return null;
 		}
 
-		return $clean;
+		return $report_id;
 	}
 }
