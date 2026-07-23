@@ -10,7 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -63,12 +63,12 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 */
 	private function a_session_data_payload(): array {
 		return array(
-			'source'                                 => 'blocks_checkout',
-			'session'                                => array(
+			'source'   => 'blocks_checkout',
+			'session'  => array(
 				'wc_identity_id' => 'identity-1',
 				'email'          => 'account@example.com',
 			),
-			'customer'                               => array(
+			'customer' => array(
 				'billing_email'   => 'Customer@Example.COM ',
 				'billing_address' => array(
 					'first_name' => 'Jane',
@@ -79,13 +79,19 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 					'country'    => 'US',
 				),
 			),
-			'order'                                  => array( 'order_id' => 456 ),
-			SessionEventRecorder::VERIFY_RESULT_KEY => array(
-				'session_id'     => 'session-xyz',
-				'risk_score'     => 0.87,
-				'payment_method' => 'woocommerce_payments',
-			),
+			'order'    => array( 'order_id' => 456 ),
+			'payment'  => array( 'gateway' => 'woocommerce_payments' ),
 		);
+	}
+
+	/**
+	 * A verify result carrying the given received decision.
+	 *
+	 * @param FraudDecision $received The decision as received from the API.
+	 * @return VerifyResult
+	 */
+	private function a_verify_result( FraudDecision $received ): VerifyResult {
+		return VerifyResult::create( $received, 'session-xyz', 0.87 );
 	}
 
 	/**
@@ -97,6 +103,18 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @return ?array The captured event row.
 	 */
 	private function record_and_capture( FraudDecision $received, FraudDecision $applied, ?array $payload = null ): ?array {
+		return $this->record_result_and_capture( $this->a_verify_result( $received ), $applied, $payload );
+	}
+
+	/**
+	 * Record a verify result and return the event row captured by the store mock.
+	 *
+	 * @param VerifyResult  $result  The verify result to record.
+	 * @param FraudDecision $applied The decision actually applied.
+	 * @param ?array        $payload The session data payload (defaults to {@see a_session_data_payload()}).
+	 * @return ?array The captured event row.
+	 */
+	private function record_result_and_capture( VerifyResult $result, FraudDecision $applied, ?array $payload = null ): ?array {
 		$captured = null;
 		$this->event_store
 			->method( 'record_event' )
@@ -107,7 +125,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 				}
 			);
 
-		$this->sut->record_decision( $received, $applied, SessionTrigger::Blackbox, $payload ?? $this->a_session_data_payload() );
+		$this->sut->record_decision( $result, $applied, $payload ?? $this->a_session_data_payload() );
 
 		return $captured;
 	}
@@ -126,7 +144,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'record_event' );
 
-		$sut->record_decision( FraudDecision::Block, FraudDecision::Allow, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$sut->record_decision( $this->a_verify_result( FraudDecision::Block ), FraudDecision::Allow, $this->a_session_data_payload() );
 	}
 
 	/**
@@ -143,7 +161,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'record_event' );
 
-		$sut->record_decision( FraudDecision::Block, FraudDecision::Block, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$sut->record_decision( $this->a_verify_result( FraudDecision::Block ), FraudDecision::Block, $this->a_session_data_payload() );
 	}
 
 	/**
@@ -198,6 +216,19 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should record fail-open results under the verify_error trigger, distinguishable from genuine Blackbox allows.
+	 */
+	public function test_derives_verify_error_trigger_for_fail_open_results(): void {
+		$captured = $this->record_result_and_capture( VerifyResult::fail_open( 'session-xyz' ), FraudDecision::Allow );
+
+		$this->assertSame( 'allow', $captured['decision'] );
+		$this->assertSame( 'allowed', $captured['final_status'] );
+		$this->assertSame( 'verify_error', $captured['trigger_type'] );
+		$this->assertSame( 'session-xyz', $captured['session_id'], 'The session ID the request was made with should be recorded' );
+		$this->assertNull( $captured['risk_score'] );
+	}
+
+	/**
 	 * @testdox Should fall back to the account email when there is no billing email.
 	 */
 	public function test_falls_back_to_account_email(): void {
@@ -233,7 +264,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 			->method( 'record_event' )
 			->willReturn( false );
 
-		$this->sut->record_decision( FraudDecision::Block, FraudDecision::Block, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$this->sut->record_decision( $this->a_verify_result( FraudDecision::Block ), FraudDecision::Block, $this->a_session_data_payload() );
 
 		$this->assertLogged( 'warning', 'Failed to record session event' );
 	}
@@ -246,7 +277,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 			->method( 'record_event' )
 			->willThrowException( new \RuntimeException( 'database exploded' ) );
 
-		$this->sut->record_decision( FraudDecision::Block, FraudDecision::Block, SessionTrigger::Blackbox, $this->a_session_data_payload() );
+		$this->sut->record_decision( $this->a_verify_result( FraudDecision::Block ), FraudDecision::Block, $this->a_session_data_payload() );
 
 		$this->assertLogged( 'warning', 'Session event recording failed' );
 	}

@@ -12,9 +12,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -239,25 +237,9 @@ class SessionVerifier {
 
 			$result = $this->api_client->verify( $session_id, $payload );
 
-			// No collect session: persist the ID Blackbox generated so /report can attach the outcome.
-			$effective_session_id = '' === $session_id ? $result->session_id : $session_id;
+			$decision = $this->decision_handler->apply_decision( $result, $payload );
 
-			// Bundle per-verify data for the session event recorder (added after the
-			// API call, so it is never sent to Blackbox).
-			$payload[ SessionEventRecorder::VERIFY_RESULT_KEY ] = array(
-				'session_id'     => $effective_session_id,
-				'risk_score'     => $result->risk_score,
-				'payment_method' => (string) ( $request_data['payment_method'] ?? '' ),
-			);
-
-			// A fail-open verify produced no real verdict: record it under the
-			// verify_error trigger so the synthetic allow stays distinguishable
-			// from a genuine Blackbox allow in the sessions log.
-			$trigger = $result->fail_open ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
-
-			$decision = $this->decision_handler->apply_decision( $result->decision, $payload, $trigger );
-
-			$this->persist_session_id( $effective_session_id, $order_id );
+			$this->persist_session_id( $result->session_id, $order_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'error',

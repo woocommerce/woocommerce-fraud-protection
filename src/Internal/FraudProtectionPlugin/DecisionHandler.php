@@ -8,7 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 
 defined( 'ABSPATH' ) || exit;
@@ -52,11 +52,11 @@ class DecisionHandler {
 	/**
 	 * Apply a fraud protection decision.
 	 *
-	 * This method processes a decision from the API, applies any override
+	 * This method processes a verify result from the API, applies any override
 	 * filters, validates the result, and returns the final decision for the
 	 * caller to enforce on the current attempt.
 	 *
-	 * The input decision is any valid FraudDecision parsed by ApiClient;
+	 * The result decision is any valid FraudDecision parsed by ApiClient;
 	 * non-actionable decisions (Challenge) are coerced to Allow here.
 	 *
 	 * The decision flow:
@@ -66,22 +66,21 @@ class DecisionHandler {
 	 * 4. Apply learning mode (suppresses Block decisions while active)
 	 * 5. Record the received decision into the sessions log (fail-open)
 	 *
-	 * @param FraudDecision        $decision     The decision from the API.
-	 * @param array<string, mixed> $session_data The session data that was sent to the API, extended with the verify result.
-	 * @param SessionTrigger       $trigger      The mechanism that produced the decision, recorded into the sessions log.
+	 * @param VerifyResult         $result       The verify result from the API.
+	 * @param array<string, mixed> $session_data The session data that was sent to the API.
 	 * @return FraudDecision The final applied decision after any filter overrides.
 	 */
-	public function apply_decision( FraudDecision $decision, array $session_data, SessionTrigger $trigger = SessionTrigger::Blackbox ): FraudDecision {
-		$received_decision = $decision;
-		$session           = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
-		$log_context       = array(
+	public function apply_decision( VerifyResult $result, array $session_data ): FraudDecision {
+		$decision    = $result->decision;
+		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
+		$log_context = array(
 			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
 
-		// The parameter type permits FraudDecision::Challenge, which is not actionable and not yet
+		// The result may carry FraudDecision::Challenge, which is not actionable and not yet
 		// supported. Fail open on any non-actionable decision so only actionable decisions are
-		// returned to the caller. The received decision captured above is still recorded below.
+		// returned to the caller. The decision as received ($result->decision) is still recorded below.
 		if ( ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'warning',
@@ -94,15 +93,12 @@ class DecisionHandler {
 
 		$original_decision = $decision;
 
-		// The filter payload is deliberate, not the raw internal array: the recorder
-		// bundle is stripped and replaced with the intentional `verify_result` subset
-		// (no session ID) documented on the filter below.
-		$verify_result       = is_array( $session_data[ SessionEventRecorder::VERIFY_RESULT_KEY ] ?? null ) ? $session_data[ SessionEventRecorder::VERIFY_RESULT_KEY ] : array();
-		$filter_session_data = $session_data;
-		unset( $filter_session_data[ SessionEventRecorder::VERIFY_RESULT_KEY ] );
+		// The filter payload extends the session data with the intentional
+		// `verify_result` subset (no session ID) documented on the filter below.
+		$filter_session_data                  = $session_data;
 		$filter_session_data['verify_result'] = array(
-			'risk_score'     => is_numeric( $verify_result['risk_score'] ?? null ) ? (float) $verify_result['risk_score'] : null,
-			'payment_method' => (string) ( $verify_result['payment_method'] ?? '' ),
+			'risk_score'     => $result->risk_score,
+			'payment_method' => (string) ( $session_data['payment']['gateway'] ?? '' ),
 		);
 
 		/**
@@ -210,7 +206,7 @@ class DecisionHandler {
 
 		// Record the received decision (not the enforcement outcome), so suppressed
 		// blocks and challenges are recorded faithfully. The recorder is fail-open.
-		$this->event_recorder->record_decision( $received_decision, $decision, $trigger, $session_data );
+		$this->event_recorder->record_decision( $result, $decision, $session_data );
 
 		return $decision;
 	}

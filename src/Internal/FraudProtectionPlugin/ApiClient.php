@@ -59,7 +59,7 @@ class ApiClient {
 	 *
 	 * @param string               $session_id Session ID to verify.
 	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
-	 * @return VerifyResult The decision, the Blackbox session ID (generated server-side on the no-session path), and the risk score.
+	 * @return VerifyResult The decision, the effective session ID (the requested one, or the server-generated one on the no-session path), and the risk score.
 	 */
 	public function verify( string $session_id, array $context ): VerifyResult {
 		$payload = array( 'context' => $this->filter_empty_values( $context ) );
@@ -156,8 +156,8 @@ class ApiClient {
 	 *
 	 * @param array<string, mixed>|\WP_Error $response   API response or WP_Error.
 	 * @param array<string, mixed>           $event_data Event data for logging.
-	 * @param string                         $session_id Session ID associated with the request, included in log context for cross-system tracing.
-	 * @return VerifyResult The decision plus any Blackbox session ID returned in the response, or the fail-open result when no verdict could be extracted.
+	 * @param string                         $session_id Session ID associated with the request, carried into the result and included in log context for cross-system tracing.
+	 * @return VerifyResult The decision plus the effective session ID, or the fail-open result when no verdict could be extracted.
 	 */
 	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
@@ -180,7 +180,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::fail_open();
+			return VerifyResult::fail_open( $session_id );
 		}
 
 		$raw = $this->extract_decision( $response );
@@ -198,7 +198,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::fail_open();
+			return VerifyResult::fail_open( $session_id );
 		}
 
 		// Any valid FraudDecision is accepted here, including the not-yet-actionable
@@ -223,7 +223,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::fail_open();
+			return VerifyResult::fail_open( $session_id );
 		}
 
 		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
@@ -240,7 +240,8 @@ class ApiClient {
 
 		return VerifyResult::create(
 			$decision,
-			$this->extract_session_id( $response ),
+			// No collect session: use the ID Blackbox generated so /report can attach the outcome.
+			'' === $session_id ? $this->extract_session_id( $response ) : $session_id,
 			$this->extract_risk_score( $response )
 		);
 	}

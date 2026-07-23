@@ -13,9 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -140,29 +138,20 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
+		$verify_result = VerifyResult::create( FraudDecision::Allow, $session_id );
+
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
 			->with( $session_id, $expected_payload )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+			->willReturn( $verify_result );
 
-		// The decision handler receives the same payload enriched with the
-		// verify-result bundle for the session event recorder.
-		$expected_decision_payload = array_merge(
-			$expected_payload,
-			array(
-				SessionEventRecorder::VERIFY_RESULT_KEY => array(
-					'session_id'     => $session_id,
-					'risk_score'     => null,
-					'payment_method' => 'woocommerce_payments',
-				),
-			)
-		);
-
+		// The decision handler receives the verify result and the same payload
+		// that was sent to the API, unchanged.
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( FraudDecision::Allow, $expected_decision_payload, SessionTrigger::Blackbox )
+			->with( $verify_result, $expected_payload )
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( $session_id, 'blocks_checkout', $order_id, $request_data );
@@ -193,21 +182,23 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() applies a fail-open verify result under the verify_error trigger.
+	 * @testdox verify_session() passes a fail-open verify result through to apply_decision() unchanged.
 	 */
-	public function test_verify_session_uses_verify_error_trigger_for_fail_open_verify(): void {
+	public function test_verify_session_passes_fail_open_result_to_decision_handler(): void {
 		$this->data_collector
 			->method( 'get_collected_data' )
 			->willReturn( array() );
 
+		$verify_result = VerifyResult::fail_open( 'session-123' );
+
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::fail_open() );
+			->willReturn( $verify_result );
 
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( FraudDecision::Allow, $this->anything(), SessionTrigger::VerifyError )
+			->with( $verify_result, $this->anything() )
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( 'session-123', 'blocks_checkout', 0 );
@@ -527,24 +518,6 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() keeps the collect ID when present, even if the response returns a different ID.
-	 */
-	public function test_verify_session_keeps_collect_id_when_present(): void {
-		$order = \WC_Helper_Order::create_order();
-
-		$this->stub_verification_with_returned_id( 'bb-returned-xyz' );
-
-		$this->sut->verify_session( 'collect-abc', 'blocks_checkout', $order->get_id() );
-
-		$saved_order = wc_get_order( $order->get_id() );
-		$this->assertInstanceOf( \WC_Order::class, $saved_order );
-		$this->assertSame(
-			'collect-abc',
-			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
-		);
-	}
-
-	/**
 	 * @testdox verify_session() does not attach a prior checkout's session ID to a new order when the current verify has none.
 	 */
 	public function test_verify_session_does_not_attach_stale_session_id_to_new_order(): void {
@@ -611,6 +584,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Stub a successful verification pipeline (data collector, API, decision handler).
+	 *
+	 * The API client stub echoes the requested session ID back in the result,
+	 * mirroring the real client's contract (the result carries the effective
+	 * session ID: the requested one, or the server-generated one on the
+	 * no-session path).
 	 */
 	private function stub_successful_verification(): void {
 		$this->data_collector
@@ -619,7 +597,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+			->willReturnCallback(
+				function ( string $session_id ) {
+					return VerifyResult::create( FraudDecision::Allow, $session_id );
+				}
+			);
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -627,18 +609,18 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Stub a verification pipeline where the API returns a specific session ID.
+	 * Stub a verification pipeline whose verify result carries a specific session ID.
 	 *
-	 * @param string $returned_session_id The session ID Blackbox returns in the verify response.
+	 * @param string $effective_session_id The effective session ID carried in the verify result.
 	 */
-	private function stub_verification_with_returned_id( string $returned_session_id ): void {
+	private function stub_verification_with_returned_id( string $effective_session_id ): void {
 		$this->data_collector
 			->method( 'get_collected_data' )
 			->willReturn( array() );
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, $returned_session_id ) );
+			->willReturn( VerifyResult::create( FraudDecision::Allow, $effective_session_id ) );
 
 		$this->decision_handler
 			->method( 'apply_decision' )

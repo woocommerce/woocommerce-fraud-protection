@@ -13,6 +13,11 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Immutable result of a Blackbox `verify` call: decision, session ID, and risk score.
+ *
+ * The session ID is the *effective* one for the verify: the ID the request was
+ * made with, or the server-generated one on the no-session path. It is the ID
+ * to persist and record; ApiClient resolves request-vs-response when building
+ * the result.
  */
 class VerifyResult {
 
@@ -20,7 +25,7 @@ class VerifyResult {
 	 * Private constructor — use the create() or fail_open() factories.
 	 *
 	 * @param FraudDecision $decision   The fraud decision.
-	 * @param string        $session_id The Blackbox session ID, or empty string if none.
+	 * @param string        $session_id The effective Blackbox session ID, or empty string if none.
 	 * @param ?float        $risk_score The Blackbox risk score, or null if none.
 	 * @param bool          $fail_open  Whether the decision is a synthetic allow produced by failing open.
 	 */
@@ -35,10 +40,11 @@ class VerifyResult {
 	 * Build a VerifyResult, sanitizing the session ID.
 	 *
 	 * The decision is expected to be pre-validated by ApiClient. The session ID
-	 * originates from the API response, so it is sanitized here.
+	 * originates from the API response or the request payload, so it is
+	 * sanitized here.
 	 *
 	 * @param FraudDecision $decision   The fraud decision.
-	 * @param string        $session_id The Blackbox session ID from the response (raw).
+	 * @param string        $session_id The effective Blackbox session ID (raw).
 	 * @param ?float        $risk_score The Blackbox risk score from the response, or null if absent.
 	 * @return self
 	 */
@@ -51,9 +57,10 @@ class VerifyResult {
 	 * verification could not obtain a real verdict (transport error,
 	 * unparseable response, unknown decision value).
 	 *
+	 * @param string $session_id The session ID the verify request was made with (raw).
 	 * @return self
 	 */
-	public static function fail_open(): self {
-		return new self( FraudDecision::Allow, '', null, true );
+	public static function fail_open( string $session_id ): self {
+		return new self( FraudDecision::Allow, \sanitize_text_field( $session_id ), null, true );
 	}
 }

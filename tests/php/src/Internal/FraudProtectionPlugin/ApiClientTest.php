@@ -231,7 +231,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertSame( '', $result->session_id );
+		$this->assertSame( 'test-session-id', $result->session_id, 'The fail-open result should carry the session ID the request was made with' );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
@@ -292,7 +292,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertSame( '', $result->session_id );
+		$this->assertSame( 'test-session-id', $result->session_id, 'The fail-open result should carry the session ID the request was made with' );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
@@ -442,6 +442,29 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
 		$this->assertNull( $result->risk_score );
+	}
+
+	/**
+	 * @testdox verify() keeps the requested session ID when one was provided, ignoring any session ID in the response
+	 */
+	public function test_verify_keeps_requested_session_id(): void {
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode(
+					array(
+						'data' => array(
+							'session_id' => 'server-generated-id',
+							'decision'   => 'allow',
+						),
+					)
+				),
+			)
+		);
+
+		$result = $sut->verify( 'requested-id', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( 'requested-id', $result->session_id );
 	}
 
 	/*
