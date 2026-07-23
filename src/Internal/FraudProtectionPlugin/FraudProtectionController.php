@@ -19,8 +19,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentM
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionBlockingHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CartEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\PaymentMethodEventTracker;
@@ -48,13 +47,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @var FraudProtectionController
 	 */
 	protected static FraudProtectionController $instance;
-
-	/**
-	 * Blocked session notice instance.
-	 *
-	 * @var BlockedSessionNotice
-	 */
-	private BlockedSessionNotice $blocked_session_notice;
 
 	/**
 	 * Blackbox script handler instance.
@@ -120,13 +112,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionVerifier $session_verifier;
 
 	/**
-	 * Session blocking handler instance.
-	 *
-	 * @var SessionBlockingHandler
-	 */
-	private SessionBlockingHandler $session_blocking_handler;
-
-	/**
 	 * Register hooks. To be run at `woocommerce_loaded`.
 	 */
 	public function register(): void {
@@ -160,12 +145,10 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @internal
 	 *
-	 * @param BlockedSessionNotice       $blocked_session_notice       The instance of BlockedSessionNotice to use.
 	 * @param BlackboxScriptHandler      $blackbox_script_handler      The instance of BlackboxScriptHandler to use.
 	 * @param CartEventTracker           $cart_event_tracker           The instance of CartEventTracker to use.
 	 * @param CheckoutEventTracker       $checkout_event_tracker       The instance of CheckoutEventTracker to use.
 	 * @param PaymentMethodEventTracker  $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
-	 * @param SessionBlockingHandler     $session_blocking_handler     The instance of SessionBlockingHandler to use.
 	 * @param SessionVerifier            $session_verifier             The instance of SessionVerifier to use.
 	 * @param BlocksCheckoutProtector    $blocks_checkout_protector    The instance of BlocksCheckoutProtector to use.
 	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The instance of ShortcodeCheckoutProtector to use.
@@ -173,12 +156,10 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
 	 */
 	final public function init(
-		BlockedSessionNotice $blocked_session_notice,
 		BlackboxScriptHandler $blackbox_script_handler,
 		CartEventTracker $cart_event_tracker,
 		CheckoutEventTracker $checkout_event_tracker,
 		PaymentMethodEventTracker $payment_method_event_tracker,
-		SessionBlockingHandler $session_blocking_handler,
 		SessionVerifier $session_verifier,
 		BlocksCheckoutProtector $blocks_checkout_protector,
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
@@ -187,12 +168,10 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	): void {
 		self::$instance = $this;
 
-		$this->blocked_session_notice       = $blocked_session_notice;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
 		$this->cart_event_tracker           = $cart_event_tracker;
 		$this->checkout_event_tracker       = $checkout_event_tracker;
 		$this->payment_method_event_tracker = $payment_method_event_tracker;
-		$this->session_blocking_handler     = $session_blocking_handler;
 		$this->session_verifier             = $session_verifier;
 		$this->blocks_checkout_protector    = $blocks_checkout_protector;
 		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
@@ -206,14 +185,12 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @internal
 	 */
 	public function handle_init(): void {
-		$this->blocked_session_notice->register();
 		$this->blackbox_script_handler->register();
 		$this->session_verifier->register();
 		$this->blocks_checkout_protector->register();
 		$this->shortcode_checkout_protector->register();
 		$this->add_payment_method_protector->register();
 		$this->pay_for_order_protector->register();
-		$this->session_blocking_handler->register();
 		$this->cart_event_tracker->register();
 		$this->checkout_event_tracker->register();
 		$this->payment_method_event_tracker->register();
@@ -416,7 +393,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 			return '';
 		}
 
-		$identity_id = $wc->session->get( SessionClearanceManager::CUSTOMER_IDENTITY_ID_KEY );
+		$identity_id = $wc->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY );
 
 		return is_string( $identity_id ) ? $identity_id : '';
 	}

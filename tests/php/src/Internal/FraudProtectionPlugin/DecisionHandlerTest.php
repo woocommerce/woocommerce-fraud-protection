@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -25,11 +24,11 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	private $sut;
 
 	/**
-	 * Mock session clearance manager.
+	 * The session handler in place before the test, restored in tearDown().
 	 *
-	 * @var SessionClearanceManager&\PHPUnit\Framework\MockObject\MockObject
+	 * @var \WC_Session|null
 	 */
-	private $session_manager;
+	private $original_session;
 
 	/**
 	 * Set up test fixtures.
@@ -37,15 +36,16 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->session_manager = $this->createMock( SessionClearanceManager::class );
-		$this->sut             = new DecisionHandler();
-		$this->sut->init( $this->session_manager );
+		$this->original_session = WC()->session;
+
+		$this->sut = new DecisionHandler();
 	}
 
 	/**
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
+		WC()->session = $this->original_session;
 		remove_all_filters( 'woocommerce_fraud_protection_decision' );
 		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
 		parent::tearDown();
@@ -54,59 +54,74 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Test apply allow decision.
 	 *
-	 * @testdox Should apply allow decision and update session to allowed when session is not blocked.
+	 * @testdox Should return the allow decision unchanged.
 	 */
 	public function test_apply_allow_decision(): void {
-		$this->session_manager
-			->method( 'is_session_blocked' )
-			->willReturn( false );
-
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'allow_session' );
-
 		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}
 
 	/**
-	 * Test allow decision does not overwrite blocked session.
-	 *
-	 * @testdox Should preserve blocked session status when allow decision is received.
-	 *
-	 * This prevents race conditions where emptying the cart during block_session
-	 * causes subsequent fraud checks to return "allow" (due to lower cart value).
-	 */
-	public function test_allow_decision_does_not_overwrite_blocked_session(): void {
-		$this->session_manager
-			->method( 'is_session_blocked' )
-			->willReturn( true );
-
-		$this->session_manager
-			->expects( $this->never() )
-			->method( 'allow_session' );
-
-		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
-
-		$this->assertLogged( 'info', 'Preserving blocked session status' );
-	}
-
-	/**
 	 * Test apply block decision.
 	 *
-	 * @testdox Should apply block decision and update session to blocked.
+	 * @testdox Should return the block decision unchanged when learning mode is off.
 	 */
 	public function test_apply_block_decision(): void {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'block_session' );
+		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Block, $result );
+	}
+
+	/**
+	 * Test that block decisions are not sticky across attempts.
+	 *
+	 * Regression test: a block verdict must apply only to the attempt that
+	 * produced it. A subsequent verify returning allow must be honored, so
+	 * false positives can retry and the `woocommerce_fraud_protection_decision`
+	 * whitelist filter remains a working recovery path.
+	 *
+	 * @testdox Should honor an allow decision on the attempt following a block.
+	 */
+	public function test_block_decision_is_not_sticky_across_attempts(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		$first_result  = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+		$second_result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Block, $first_result );
+		$this->assertSame( FraudDecision::Allow, $second_result );
+	}
+
+	/**
+	 * Test that a block decision has no session or cart side effects.
+	 *
+	 * Regression test: blocking must not write any state to the WC session
+	 * (the old sticky clearance status) nor empty the shopper's cart.
+	 *
+	 * @testdox Should leave the WC session and cart untouched on a block decision.
+	 */
+	public function test_block_decision_leaves_session_and_cart_untouched(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		WC()->session = new \WC_Session_Handler();
+		WC()->session->init();
+
+		$product = \WC_Helper_Product::create_simple_product();
+		WC()->cart->add_to_cart( $product->get_id(), 1 );
+		$cart_count = WC()->cart->get_cart_contents_count();
+		$this->assertGreaterThan( 0, $cart_count );
 
 		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
+		$this->assertSame( $cart_count, WC()->cart->get_cart_contents_count(), 'Cart should not be emptied on block' );
+		$this->assertNull( WC()->session->get( '_fraud_protection_clearance_status' ), 'No clearance status should be written to the session' );
+
+		WC()->cart->empty_cart();
+		$product->delete( true );
 	}
 
 	/**
@@ -115,18 +130,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should coerce a non-actionable decision (challenge) to allow.
 	 */
 	public function test_non_actionable_decision_defaults_to_allow(): void {
-		$this->session_manager
-			->method( 'is_session_blocked' )
-			->willReturn( false );
-
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'allow_session' );
-
-		$this->session_manager
-			->expects( $this->never() )
-			->method( 'block_session' );
-
 		$result = $this->sut->apply_decision( FraudDecision::Challenge, array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
@@ -145,14 +148,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 				return FraudDecision::Allow;
 			}
 		);
-
-		$this->session_manager
-			->method( 'is_session_blocked' )
-			->willReturn( false );
-
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'allow_session' );
 
 		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
@@ -175,10 +170,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'block_session' );
-
 		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
@@ -200,10 +191,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'block_session' );
-
 		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
@@ -220,18 +207,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Learning mode suppresses block decision from API.
 	 */
 	public function test_learning_mode_suppresses_block(): void {
-		$this->session_manager
-			->method( 'is_session_blocked' )
-			->willReturn( false );
-
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'allow_session' );
-
-		$this->session_manager
-			->expects( $this->never() )
-			->method( 'block_session' );
-
 		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
@@ -248,18 +223,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 				return FraudDecision::Block;
 			}
 		);
-
-		$this->session_manager
-			->method( 'is_session_blocked' )
-			->willReturn( false );
-
-		$this->session_manager
-			->expects( $this->once() )
-			->method( 'allow_session' );
-
-		$this->session_manager
-			->expects( $this->never() )
-			->method( 'block_session' );
 
 		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 

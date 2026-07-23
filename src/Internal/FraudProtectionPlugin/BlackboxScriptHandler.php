@@ -8,7 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionClearanceManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -41,21 +41,21 @@ class BlackboxScriptHandler {
 	private const SESSION_ID_TIMEOUT_MS = 3000;
 
 	/**
-	 * Session clearance manager.
+	 * Session identity manager.
 	 *
-	 * @var SessionClearanceManager
+	 * @var SessionIdentityManager
 	 */
-	private SessionClearanceManager $session_clearance_manager;
+	private SessionIdentityManager $session_identity_manager;
 
 	/**
 	 * Initialize dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionClearanceManager $session_clearance_manager Session clearance manager.
+	 * @param SessionIdentityManager $session_identity_manager Session identity manager.
 	 */
-	final public function init( SessionClearanceManager $session_clearance_manager ): void {
-		$this->session_clearance_manager = $session_clearance_manager;
+	final public function init( SessionIdentityManager $session_identity_manager ): void {
+		$this->session_identity_manager = $session_identity_manager;
 	}
 
 	/**
@@ -158,7 +158,7 @@ class BlackboxScriptHandler {
 			array( 'in_footer' => true )
 		);
 
-		$wc_identity_id = $this->session_clearance_manager->get_identity_id();
+		$wc_identity_id = $this->session_identity_manager->get_identity_id();
 
 		wp_localize_script(
 			'wc-fraud-protection-blackbox-init',
