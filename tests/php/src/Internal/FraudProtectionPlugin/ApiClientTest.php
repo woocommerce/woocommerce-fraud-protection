@@ -128,6 +128,48 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify() URL-encodes the session ID so a crafted value cannot alter the request URL
+	 */
+	public function test_verify_url_encodes_session_id(): void {
+		$captured_url = null;
+
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args ) use ( &$captured_url ) {
+				$captured_url = $request_args['url'];
+			}
+		);
+
+		// Characters that survive sanitize_text_field() but would malform the URL or pivot the path.
+		$sut->verify( 'a b%#?/../report', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/a%20b%25%23%3F%2F..%2Freport', $captured_url );
+	}
+
+	/**
+	 * @testdox verify() caps an over-length session ID so the request URL stays within transport limits
+	 */
+	public function test_verify_caps_over_length_session_id(): void {
+		$captured_url  = null;
+		$captured_body = null;
+
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body ) {
+				$captured_url  = $request_args['url'];
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$sut->verify( str_repeat( 'a', 5000 ), array( 'source' => 'blocks_checkout' ) );
+
+		// The over-length value is truncated (to MAX_SESSION_ID_LENGTH, 255) in both URL and body.
+		$expected = str_repeat( 'a', 255 );
+		$this->assertStringEndsWith( '/verify/' . $expected, $captured_url );
+		$this->assertSame( $expected, $captured_body['session_id'] );
+	}
+
+	/**
 	 * @testdox verify() strips null and empty-string values from context but preserves top-level fields
 	 */
 	public function test_verify_filters_empty_values_only_in_context(): void {
@@ -324,14 +366,18 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 	/*
 	|--------------------------------------------------------------------------
-	| No-session payload tests
+	| Verify payload tests
 	|--------------------------------------------------------------------------
 	*/
 
 	/**
-	 * @testdox verify() adds visitor_ip and full_headers when session_id is empty
+	 * @testdox verify() adds visitor_ip and full_headers regardless of session_id
+	 *
+	 * @dataProvider verify_session_id_provider
+	 *
+	 * @param string $session_id Session ID passed to verify(), or empty for no-session.
 	 */
-	public function test_verify_adds_visitor_ip_and_full_headers_for_no_session(): void {
+	public function test_verify_adds_visitor_ip_and_full_headers( string $session_id ): void {
 		$captured_body = null;
 
 		$sut = $this->api_client_returning(
@@ -342,7 +388,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		);
 
 		$sut->verify(
-			'',
+			$session_id,
 			array(
 				'session' => array(
 					'wc_identity_id' => 'abc',
@@ -356,39 +402,133 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'abc', $captured_body['context']['session']['wc_identity_id'] );
 		$this->assertSame( 'test@example.com', $captured_body['context']['session']['email'] );
 
-		// Top-level no-session fields present.
+		// Top-level request metadata fields present.
 		$this->assertArrayHasKey( 'visitor_ip', $captured_body );
 		$this->assertArrayHasKey( 'full_headers', $captured_body );
 		$this->assertIsArray( $captured_body['full_headers'] );
 	}
 
 	/**
-	 * @testdox verify() does not restructure payload when session_id is present
+	 * Session IDs for verify() request-metadata payload coverage.
+	 *
+	 * @return array<string, array{string}>
 	 */
-	public function test_verify_keeps_normal_payload_with_session(): void {
+	public function verify_session_id_provider(): array {
+		return array(
+			'no session'   => array( '' ),
+			'with session' => array( 'has-session' ),
+		);
+	}
+
+	/**
+	 * @testdox verify() strips sensitive headers from full_headers case-insensitively and keeps the rest
+	 */
+	public function test_verify_strips_sensitive_headers(): void {
+		$_SERVER['GEOIP_COUNTRY_CODE'] = 'DE';
+
+		try {
+			$captured_body = null;
+
+			$sut = $this->getMockBuilder( ApiClient::class )
+				->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
+				->getMock();
+			$sut->method( 'get_raw_request_headers' )->willReturn(
+				array(
+					'User-Agent'          => 'Mozilla/5.0',
+					'Accept-Language'     => 'en-US',
+					'Cookie'              => 'wp_logged_in=secret',
+					'AUTHORIZATION'       => 'Bearer secret',
+					'Proxy-Authorization' => 'Basic secret',
+					'X-Api-Key'           => 'secret-key',
+					'X-WP-Nonce'          => 'nonce-value',
+				)
+			);
+			$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+				function ( array $request_args, string $body ) use ( &$captured_body ) {
+					$captured_body = json_decode( $body, true );
+					return $this->decision_response( 'allow' );
+				}
+			);
+
+			$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+			$headers = $captured_body['full_headers'];
+
+			// Benign headers and GEOIP server variables pass through.
+			$this->assertSame( 'Mozilla/5.0', $headers['User-Agent'] );
+			$this->assertSame( 'en-US', $headers['Accept-Language'] );
+			$this->assertSame( 'DE', $headers['GEOIP_COUNTRY_CODE'] );
+
+			// Credential-bearing headers are stripped regardless of casing.
+			foreach ( array( 'Cookie', 'AUTHORIZATION', 'Proxy-Authorization', 'X-Api-Key', 'X-WP-Nonce' ) as $stripped ) {
+				$this->assertArrayNotHasKey( $stripped, $headers );
+			}
+		} finally {
+			unset( $_SERVER['GEOIP_COUNTRY_CODE'] );
+		}
+	}
+
+	/**
+	 * @testdox verify() keeps valid HTTP header names verbatim and drops malformed ones without colliding keys
+	 */
+	public function test_verify_drops_malformed_header_names(): void {
 		$captured_body = null;
 
-		$sut = $this->api_client_returning(
-			$this->decision_response( 'allow' ),
+		$sut = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
+			->getMock();
+		$sut->method( 'get_raw_request_headers' )->willReturn(
+			array(
+				'User-Agent'  => 'Mozilla/5.0',
+				"Bad\xFFName" => 'first',
+				"Other\xFEId" => 'second',
+			)
+		);
+		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
 			function ( array $request_args, string $body ) use ( &$captured_body ) {
 				$captured_body = json_decode( $body, true );
+				return $this->decision_response( 'allow' );
 			}
 		);
 
-		$sut->verify(
-			'has-session',
-			array(
-				'session' => array(
-					'wc_identity_id' => 'abc',
-					'email'          => 'test@example.com',
-				),
-				'source'  => 'blocks_checkout',
-			)
+		$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+		$headers = $captured_body['full_headers'];
+
+		// The valid token name survives verbatim.
+		$this->assertSame( 'Mozilla/5.0', $headers['User-Agent'] );
+		// Malformed names are dropped, not folded to a single empty key that collides.
+		$this->assertArrayNotHasKey( '', $headers );
+		$this->assertNotContains( 'first', $headers );
+		$this->assertNotContains( 'second', $headers );
+	}
+
+	/**
+	 * @testdox verify() still builds a valid JSON body when a header value contains invalid UTF-8
+	 */
+	public function test_verify_encodes_non_utf8_header_value(): void {
+		$captured_body = null;
+
+		$sut = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
+			->getMock();
+		$sut->method( 'get_raw_request_headers' )->willReturn(
+			array( 'X-Note' => "K\xFFln" )
+		);
+		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = $body;
+				return $this->decision_response( 'allow' );
+			}
 		);
 
-		// No top-level no-session fields when session_id is present.
-		$this->assertArrayNotHasKey( 'visitor_ip', $captured_body );
-		$this->assertArrayNotHasKey( 'full_headers', $captured_body );
+		$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+		// Invalid bytes don't break encoding: the transport received a valid JSON body
+		// (a failed encode would return a WP_Error before the request is made, leaving this null).
+		$decoded = json_decode( (string) $captured_body, true );
+		$this->assertIsArray( $decoded );
+		$this->assertArrayHasKey( 'X-Note', $decoded['full_headers'] );
 	}
 
 	/*
