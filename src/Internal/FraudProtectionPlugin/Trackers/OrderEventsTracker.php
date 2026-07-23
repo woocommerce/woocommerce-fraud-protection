@@ -52,12 +52,14 @@ class OrderEventsTracker {
 	 * Must be called after the session ID has been persisted to order meta
 	 * (i.e. after `woocommerce_store_api_checkout_order_processed`).
 	 *
-	 * @param \WC_Order         $order   The order to report on.
-	 * @param ReportSource      $source  The source of the event.
-	 * @param ReportContextData $context The normalized event context.
-	 * @param string            $notes   Free-form notes. Must not contain raw gateway or customer data.
+	 * @param \WC_Order           $order       The order to report on.
+	 * @param ReportSource        $source      The source of the event.
+	 * @param string              $report_id   Required idempotency key; a non-empty string of 255 characters or fewer.
+	 * @param ReportContextData   $context     The normalized event context.
+	 * @param ?\DateTimeInterface $occurred_at Event time; defaults to now when null.
+	 * @param string              $notes       Free-form notes. Must not contain raw gateway or customer data.
 	 */
-	public function fraud_protection_report( \WC_Order $order, ReportSource $source, ReportContextData $context, string $notes = '' ): void {
+	public function fraud_protection_report( \WC_Order $order, ReportSource $source, string $report_id, ReportContextData $context, ?\DateTimeInterface $occurred_at = null, string $notes = '' ): void {
 		$session_id = '';
 		try {
 			$session_id = $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY );
@@ -71,14 +73,18 @@ class OrderEventsTracker {
 
 			$context = $context->with_order_defaults( $order->get_id(), $order->get_payment_method() );
 
-			$this->api_client->report(
-				$session_id,
-				array(
-					'source'  => $source->value,
-					'notes'   => sanitize_text_field( $notes ),
-					'context' => $context->to_array(),
-				)
+			// correlation_dispute_id is sent unconditionally; it is null for a non-dispute. The top
+			// level is not pruned, so that null goes out as-is, while its context copy is dropped.
+			$payload = array(
+				'report_id'              => $report_id,
+				'source'                 => $source->value,
+				'notes'                  => sanitize_text_field( $notes ),
+				'occurred_at'            => self::occurred_at_to_iso( $occurred_at ),
+				'correlation_dispute_id' => $context->get_correlation_dispute_id(),
+				'context'                => $context->to_array(),
 			);
+
+			$this->api_client->report( $session_id, $payload );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'error',
@@ -96,5 +102,15 @@ class OrderEventsTracker {
 				true
 			);
 		}
+	}
+
+	/**
+	 * Render the event time to a UTC ISO 8601 (RFC 3339) string, falling back to now.
+	 *
+	 * @param ?\DateTimeInterface $occurred_at Best known event time, or null to use the current time.
+	 * @return string
+	 */
+	private static function occurred_at_to_iso( ?\DateTimeInterface $occurred_at ): string {
+		return gmdate( \DateTimeInterface::RFC3339, $occurred_at?->getTimestamp() ?? time() );
 	}
 }
