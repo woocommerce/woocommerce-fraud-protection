@@ -52,7 +52,7 @@ Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerFo
 // Deliberately not init()'d: a null context must be skipped before report() ever
 // reaches the tracker, so no collaborator is required.
 $reporter = new Automattic\WooCommerce\FraudProtection\FraudProtectionReporter();
-$reporter->report( new WC_Order(), Automattic\WooCommerce\FraudProtection\Schemas\ReportSource::Api, null, 'smoke-test' );
+$reporter->report( new WC_Order(), Automattic\WooCommerce\FraudProtection\Schemas\ReportSource::Api, 'smoke-report-id', null, null, 'smoke-test' );
 
 $skip_logged = false;
 foreach ( $GLOBALS['wfp_smoke_logged'] as $logged_message ) {

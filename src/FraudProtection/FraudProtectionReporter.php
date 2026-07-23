@@ -45,18 +45,35 @@ class FraudProtectionReporter {
 	 * session. Build `$context` with `ReportContextData::from_array()`, which returns null for an
 	 * unmappable event — passing that here is safe and simply skips the report.
 	 *
+	 * `report_id` is required: the report's idempotency key — a non-empty string of 255 characters
+	 * or fewer, minted by the caller and reused when re-sending the same logical report. An invalid
+	 * one skips the report. `occurred_at` is the event time; when null it defaults to now.
+	 *
 	 * Must be called after the session ID has been persisted to order meta
 	 * (i.e. after `woocommerce_store_api_checkout_order_processed`).
 	 *
-	 * @param \WC_Order          $order   The order to report on.
-	 * @param ReportSource       $source  The source of the event.
-	 * @param ?ReportContextData $context The normalized event context, or null to skip.
-	 * @param string             $notes   Free-form notes. Must not contain raw gateway or customer data.
+	 * @param \WC_Order           $order       The order to report on.
+	 * @param ReportSource        $source      The source of the event.
+	 * @param string              $report_id   Required idempotency key; a non-empty string of 255 characters or fewer.
+	 * @param ?ReportContextData  $context     The normalized event context, or null to skip.
+	 * @param ?\DateTimeInterface $occurred_at Event time; defaults to now when null.
+	 * @param string              $notes       Free-form notes. Must not contain raw gateway or customer data.
 	 *
 	 * @return void
 	 */
-	public function report( \WC_Order $order, ReportSource $source, ?ReportContextData $context, string $notes = '' ): void {
+	public function report( \WC_Order $order, ReportSource $source, string $report_id, ?ReportContextData $context, ?\DateTimeInterface $occurred_at = null, string $notes = '' ): void {
 		if ( ! FraudProtectionController::feature_is_enabled() ) {
+			return;
+		}
+
+		$report_id = self::sanitize_report_id( $report_id );
+		if ( is_null( $report_id ) ) {
+			FraudProtectionController::log(
+				'error',
+				'Skipping report: a non-empty report_id of 255 characters or fewer is required.',
+				array(),
+				true
+			);
 			return;
 		}
 
@@ -66,6 +83,26 @@ class FraudProtectionReporter {
 			return;
 		}
 
-		$this->order_events_tracker->fraud_protection_report( $order, $source, $context, $notes );
+		$this->order_events_tracker->fraud_protection_report( $order, $source, $report_id, $context, $occurred_at, $notes );
+	}
+
+	/**
+	 * Validate the required report_id, returning the sanitized value or null when unusable.
+	 *
+	 * The report's idempotency key: a non-empty string of 255 characters or fewer. Sanitized for
+	 * transport, which is deterministic, so re-sending the same raw value yields the same key. An
+	 * unusable value returns null so report() skips instead of sending a request the endpoint would
+	 * reject.
+	 *
+	 * @param string $report_id Raw idempotency key.
+	 * @return ?string The sanitized report_id, or null when empty or too long.
+	 */
+	private static function sanitize_report_id( string $report_id ): ?string {
+		$clean = sanitize_text_field( $report_id );
+		if ( '' === $clean || strlen( $clean ) > 255 ) {
+			return null;
+		}
+
+		return $clean;
 	}
 }
