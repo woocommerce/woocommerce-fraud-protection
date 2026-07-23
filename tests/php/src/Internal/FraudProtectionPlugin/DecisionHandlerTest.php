@@ -208,6 +208,90 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$this->assertLogged( 'warning', 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "totally_invalid"' );
 	}
 
+	/**
+	 * @testdox Exposes the intentional verify_result subset (no session ID) to the decision filter instead of the internal recorder bundle.
+	 */
+	public function test_decision_filter_receives_intentional_verify_result(): void {
+		$session_data = array(
+			'session' => array( 'wc_identity_id' => 'identity-1' ),
+			SessionEventRecorder::VERIFY_RESULT_KEY => array(
+				'session_id'     => 'session-abc',
+				'risk_score'     => 0.42,
+				'payment_method' => 'woocommerce_payments',
+			),
+		);
+
+		$received_by_filter = null;
+		add_filter(
+			'woocommerce_fraud_protection_decision',
+			function ( $decision, $data ) use ( &$received_by_filter ) {
+				$received_by_filter = $data;
+				return $decision;
+			},
+			10,
+			2
+		);
+
+		$this->sut->apply_decision( FraudDecision::Allow, $session_data );
+
+		$this->assertIsArray( $received_by_filter );
+		$this->assertArrayNotHasKey( SessionEventRecorder::VERIFY_RESULT_KEY, $received_by_filter );
+		$this->assertSame(
+			array(
+				'risk_score'     => 0.42,
+				'payment_method' => 'woocommerce_payments',
+			),
+			$received_by_filter['verify_result']
+		);
+		$this->assertSame( array( 'wc_identity_id' => 'identity-1' ), $received_by_filter['session'], 'The rest of the session data should pass through unchanged' );
+	}
+
+	/**
+	 * @testdox Exposes a null risk score and empty payment method to the decision filter when the verify produced none.
+	 */
+	public function test_decision_filter_receives_empty_verify_result_when_bundle_missing(): void {
+		$received_by_filter = null;
+		add_filter(
+			'woocommerce_fraud_protection_decision',
+			function ( $decision, $data ) use ( &$received_by_filter ) {
+				$received_by_filter = $data;
+				return $decision;
+			},
+			10,
+			2
+		);
+
+		$this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
+
+		$this->assertSame(
+			array(
+				'risk_score'     => null,
+				'payment_method' => '',
+			),
+			$received_by_filter['verify_result']
+		);
+	}
+
+	/**
+	 * @testdox Passes the original session data, internal recorder bundle included, to the recorder.
+	 */
+	public function test_recorder_receives_original_session_data(): void {
+		$session_data = array(
+			SessionEventRecorder::VERIFY_RESULT_KEY => array(
+				'session_id'     => 'session-abc',
+				'risk_score'     => 0.42,
+				'payment_method' => 'woocommerce_payments',
+			),
+		);
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( FraudDecision::Allow, FraudDecision::Allow, SessionTrigger::Blackbox, $session_data );
+
+		$this->sut->apply_decision( FraudDecision::Allow, $session_data );
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Learning Mode Tests

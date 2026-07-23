@@ -94,6 +94,17 @@ class DecisionHandler {
 
 		$original_decision = $decision;
 
+		// The filter payload is deliberate, not the raw internal array: the recorder
+		// bundle is stripped and replaced with the intentional `verify_result` subset
+		// (no session ID) documented on the filter below.
+		$verify_result       = is_array( $session_data[ SessionEventRecorder::VERIFY_RESULT_KEY ] ?? null ) ? $session_data[ SessionEventRecorder::VERIFY_RESULT_KEY ] : array();
+		$filter_session_data = $session_data;
+		unset( $filter_session_data[ SessionEventRecorder::VERIFY_RESULT_KEY ] );
+		$filter_session_data['verify_result'] = array(
+			'risk_score'     => is_numeric( $verify_result['risk_score'] ?? null ) ? (float) $verify_result['risk_score'] : null,
+			'payment_method' => (string) ( $verify_result['payment_method'] ?? '' ),
+		);
+
 		/**
 		 * Filters the fraud protection decision before it is applied.
 		 *
@@ -107,17 +118,23 @@ class DecisionHandler {
 		 * (`FraudDecision::Allow` or `FraudDecision::Block`). Any other value is
 		 * rejected and the original decision is used.
 		 *
+		 * The session data includes a `verify_result` key with details of the
+		 * verify response: `risk_score` (float|null) and `payment_method`
+		 * (string). The risk score is informational only: it may be
+		 * recalibrated server-side at any time, so do not build threshold
+		 * rules on top of it.
+		 *
 		 * @since 0.1.0
 		 *
 		 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
-		 * @param array<string, mixed> $session_data The session data that was analyzed.
+		 * @param array<string, mixed> $session_data The session data that was analyzed, including the `verify_result` details.
 		 */
 		/**
 		 * A third-party filter callback may return any type; it is validated below.
 		 *
 		 * @var mixed $filtered
 		 */
-		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision, $session_data );
+		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision, $filter_session_data );
 
 		// Validate filtered decision (third-party filters may return any value).
 		if ( $filtered instanceof FraudDecision && in_array( $filtered, FraudDecision::ACTIONABLE, true ) ) {
