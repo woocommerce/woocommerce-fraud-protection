@@ -238,8 +238,10 @@ class SessionVerifier {
 			$result   = $this->api_client->verify( $session_id, $payload );
 			$decision = $this->decision_handler->apply_decision( $result->decision, $payload );
 
-			// No collect session: persist the ID Blackbox generated so /report can attach the outcome.
-			$effective_session_id = '' === $session_id ? $result->session_id : $session_id;
+			// Persist the session ID that /report will attach the outcome to: prefer the ID
+			// the verify response returned (it may differ from the one sent), falling back
+			// to the request ID when the response omits one.
+			$effective_session_id = '' !== $result->session_id ? $result->session_id : $session_id;
 			$this->persist_session_id( $effective_session_id, $order_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
