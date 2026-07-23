@@ -443,7 +443,11 @@ class ApiClient {
 		$headers     = array();
 		if ( is_array( $raw_headers ) ) {
 			foreach ( $raw_headers as $name => $value ) {
-				$headers[ \sanitize_text_field( $name ) ] = \wp_strip_all_tags( $value );
+				// Header names are HTTP tokens (RFC 9110). Keep a conforming name verbatim and skip a malformed one.
+				if ( ! is_string( $name ) || 1 !== preg_match( '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/', $name ) ) {
+					continue;
+				}
+				$headers[ $name ] = $value;
 			}
 		}
 

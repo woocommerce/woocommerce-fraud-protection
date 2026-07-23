@@ -468,6 +468,69 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		}
 	}
 
+	/**
+	 * @testdox verify() keeps valid HTTP header names verbatim and drops malformed ones without colliding keys
+	 */
+	public function test_verify_drops_malformed_header_names(): void {
+		$captured_body = null;
+
+		$sut = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
+			->getMock();
+		$sut->method( 'get_raw_request_headers' )->willReturn(
+			array(
+				'User-Agent'  => 'Mozilla/5.0',
+				"Bad\xFFName" => 'first',
+				"Other\xFEId" => 'second',
+			)
+		);
+		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+				return $this->decision_response( 'allow' );
+			}
+		);
+
+		$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+		$headers = $captured_body['full_headers'];
+
+		// The valid token name survives verbatim.
+		$this->assertSame( 'Mozilla/5.0', $headers['User-Agent'] );
+		// Malformed names are dropped, not folded to a single empty key that collides.
+		$this->assertArrayNotHasKey( '', $headers );
+		$this->assertNotContains( 'first', $headers );
+		$this->assertNotContains( 'second', $headers );
+	}
+
+	/**
+	 * @testdox verify() still builds a valid JSON body when a header value contains invalid UTF-8
+	 */
+	public function test_verify_encodes_non_utf8_header_value(): void {
+		$captured_body = null;
+
+		$sut = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
+			->getMock();
+		$sut->method( 'get_raw_request_headers' )->willReturn(
+			array( 'X-Note' => "K\xFFln" )
+		);
+		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = $body;
+				return $this->decision_response( 'allow' );
+			}
+		);
+
+		$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+		// Invalid bytes don't break encoding: the transport received a valid JSON body
+		// (a failed encode would return a WP_Error before the request is made, leaving this null).
+		$decoded = json_decode( (string) $captured_body, true );
+		$this->assertIsArray( $decoded );
+		$this->assertArrayHasKey( 'X-Note', $decoded['full_headers'] );
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Session ID capture tests
