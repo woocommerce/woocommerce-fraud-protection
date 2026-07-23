@@ -157,7 +157,7 @@ class ApiClient {
 	 * @param array<string, mixed>|\WP_Error $response   API response or WP_Error.
 	 * @param array<string, mixed>           $event_data Event data for logging.
 	 * @param string                         $session_id Session ID associated with the request, included in log context for cross-system tracing.
-	 * @return VerifyResult The decision plus any Blackbox session ID returned in the response.
+	 * @return VerifyResult The decision plus any Blackbox session ID returned in the response, or the fail-open result when no verdict could be extracted.
 	 */
 	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
@@ -180,7 +180,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( FraudDecision::Allow, '' );
+			return VerifyResult::fail_open();
 		}
 
 		$raw = $this->extract_decision( $response );
@@ -198,7 +198,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( FraudDecision::Allow, '' );
+			return VerifyResult::fail_open();
 		}
 
 		// Any valid FraudDecision is accepted here, including the not-yet-actionable
@@ -223,7 +223,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( FraudDecision::Allow, '' );
+			return VerifyResult::fail_open();
 		}
 
 		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();

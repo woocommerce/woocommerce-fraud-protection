@@ -199,6 +199,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertFalse( $result->fail_open, 'A parsed verdict is not a fail-open result' );
 	}
 
 	/**
@@ -215,6 +216,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
@@ -230,6 +232,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
 
@@ -249,6 +252,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
 
@@ -268,6 +272,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
@@ -288,6 +293,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
 
@@ -302,6 +308,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 

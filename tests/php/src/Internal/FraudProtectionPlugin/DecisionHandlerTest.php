@@ -294,4 +294,16 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
 	}
+
+	/**
+	 * @testdox Forwards the given trigger to the recorder (verify_error for fail-open verifies).
+	 */
+	public function test_records_decision_with_the_given_trigger(): void {
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( FraudDecision::Allow, FraudDecision::Allow, SessionTrigger::VerifyError, $this->anything() );
+
+		$this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ), SessionTrigger::VerifyError );
+	}
 }

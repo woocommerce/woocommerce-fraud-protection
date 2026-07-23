@@ -87,16 +87,26 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @return SessionVerifier
 	 */
 	private function a_session_verifier_receiving( array $response_data ): SessionVerifier {
-		$api_client = $this->getMockBuilder( ApiClient::class )
-			->onlyMethods( array( 'jetpack_remote_request' ) )
-			->getMock();
-
-		$api_client->method( 'jetpack_remote_request' )->willReturn(
+		return $this->a_session_verifier_with_transport(
 			array(
 				'response' => array( 'code' => 200 ),
 				'body'     => wp_json_encode( array( 'data' => $response_data ) ),
 			)
 		);
+	}
+
+	/**
+	 * A SessionVerifier whose ApiClient transport returns the given raw result.
+	 *
+	 * @param array|\WP_Error $transport_result The value the stubbed transport returns.
+	 * @return SessionVerifier
+	 */
+	private function a_session_verifier_with_transport( $transport_result ): SessionVerifier {
+		$api_client = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request' ) )
+			->getMock();
+
+		$api_client->method( 'jetpack_remote_request' )->willReturn( $transport_result );
 
 		$container = wc_get_container();
 		$verifier  = new SessionVerifier();
@@ -170,6 +180,24 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'allow', $row['decision'] );
 		$this->assertSame( 'allowed', $row['final_status'] );
 		$this->assertSame( 0.02, (float) $row['risk_score'] );
+	}
+
+	/**
+	 * @testdox A verify that fails open on a transport error is recorded under the verify_error trigger.
+	 */
+	public function test_failed_verify_is_recorded_with_verify_error_trigger(): void {
+		$verifier = $this->a_session_verifier_with_transport( new \WP_Error( 'http_error', 'Connection timeout' ) );
+
+		$decision = $verifier->verify_session( 'integration-session-5', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Allow, $decision, 'A failed verify must fail open to allow' );
+
+		$row = $this->latest_row_for( 'integration-session-5' );
+		$this->assertNotNull( $row, 'Fail-open verifies must be recorded so unverified sessions stay visible' );
+		$this->assertSame( 'allow', $row['decision'] );
+		$this->assertSame( 'allowed', $row['final_status'] );
+		$this->assertSame( 'verify_error', $row['trigger_type'], 'The synthetic allow must be distinguishable from a genuine Blackbox allow' );
+		$this->assertNull( $row['risk_score'] );
 	}
 
 	/**

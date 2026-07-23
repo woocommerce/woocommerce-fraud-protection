@@ -17,16 +17,18 @@ defined( 'ABSPATH' ) || exit;
 class VerifyResult {
 
 	/**
-	 * Private constructor — use the create() factory.
+	 * Private constructor — use the create() or fail_open() factories.
 	 *
 	 * @param FraudDecision $decision   The fraud decision.
 	 * @param string        $session_id The Blackbox session ID, or empty string if none.
 	 * @param ?float        $risk_score The Blackbox risk score, or null if none.
+	 * @param bool          $fail_open  Whether the decision is a synthetic allow produced by failing open.
 	 */
 	private function __construct(
 		public readonly FraudDecision $decision,
 		public readonly string $session_id,
-		public readonly ?float $risk_score = null
+		public readonly ?float $risk_score = null,
+		public readonly bool $fail_open = false
 	) {}
 
 	/**
@@ -42,5 +44,16 @@ class VerifyResult {
 	 */
 	public static function create( FraudDecision $decision, string $session_id, ?float $risk_score = null ): self {
 		return new self( $decision, \sanitize_text_field( $session_id ), $risk_score );
+	}
+
+	/**
+	 * Build the fail-open VerifyResult: a synthetic allow produced when
+	 * verification could not obtain a real verdict (transport error,
+	 * unparseable response, unknown decision value).
+	 *
+	 * @return self
+	 */
+	public static function fail_open(): self {
+		return new self( FraudDecision::Allow, '', null, true );
 	}
 }

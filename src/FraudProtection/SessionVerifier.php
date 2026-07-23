@@ -12,6 +12,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 
@@ -249,7 +250,12 @@ class SessionVerifier {
 				'payment_method' => (string) ( $request_data['payment_method'] ?? '' ),
 			);
 
-			$decision = $this->decision_handler->apply_decision( $result->decision, $payload );
+			// A fail-open verify produced no real verdict: record it under the
+			// verify_error trigger so the synthetic allow stays distinguishable
+			// from a genuine Blackbox allow in the sessions log.
+			$trigger = $result->fail_open ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
+
+			$decision = $this->decision_handler->apply_decision( $result->decision, $payload, $trigger );
 
 			$this->persist_session_id( $effective_session_id, $order_id );
 		} catch ( \Throwable $e ) {

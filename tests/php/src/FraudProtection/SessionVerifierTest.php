@@ -13,6 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -161,7 +162,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( FraudDecision::Allow, $expected_decision_payload )
+			->with( FraudDecision::Allow, $expected_decision_payload, SessionTrigger::Blackbox )
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( $session_id, 'blocks_checkout', $order_id, $request_data );
@@ -187,6 +188,29 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( 'session-123', 'blocks_checkout', 99 );
+
+		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
+	 * @testdox verify_session() applies a fail-open verify result under the verify_error trigger.
+	 */
+	public function test_verify_session_uses_verify_error_trigger_for_fail_open_verify(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::fail_open() );
+
+		$this->decision_handler
+			->expects( $this->once() )
+			->method( 'apply_decision' )
+			->with( FraudDecision::Allow, $this->anything(), SessionTrigger::VerifyError )
+			->willReturn( FraudDecision::Allow );
+
+		$result = $this->sut->verify_session( 'session-123', 'blocks_checkout', 0 );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}

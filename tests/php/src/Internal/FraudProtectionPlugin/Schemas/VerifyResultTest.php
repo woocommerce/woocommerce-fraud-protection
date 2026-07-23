@@ -58,4 +58,25 @@ class VerifyResultTest extends FraudProtectionUnitTestCase {
 		$without_score = VerifyResult::create( FraudDecision::Allow, 'sid' );
 		$this->assertNull( $without_score->risk_score );
 	}
+
+	/**
+	 * @testdox create() produces a result not flagged as fail-open
+	 */
+	public function test_create_is_not_fail_open(): void {
+		$result = VerifyResult::create( FraudDecision::Allow, 'sid' );
+
+		$this->assertFalse( $result->fail_open );
+	}
+
+	/**
+	 * @testdox fail_open() produces a synthetic allow flagged as fail-open
+	 */
+	public function test_fail_open_produces_flagged_synthetic_allow(): void {
+		$result = VerifyResult::fail_open();
+
+		$this->assertTrue( $result->fail_open );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
+		$this->assertNull( $result->risk_score );
+	}
 }

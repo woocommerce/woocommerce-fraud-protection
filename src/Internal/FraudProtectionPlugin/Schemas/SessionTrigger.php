@@ -20,4 +20,11 @@ enum SessionTrigger: string {
 
 	/** The decision came from the Blackbox verify API. */
 	case Blackbox = 'blackbox';
+
+	/**
+	 * Verification failed to produce a verdict (transport error, unparseable
+	 * response, unknown decision value) and the plugin failed open: the
+	 * recorded allow decision is synthetic, not a Blackbox verdict.
+	 */
+	case VerifyError = 'verify_error';
 }

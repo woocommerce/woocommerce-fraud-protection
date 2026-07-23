@@ -68,9 +68,10 @@ class DecisionHandler {
 	 *
 	 * @param FraudDecision        $decision     The decision from the API.
 	 * @param array<string, mixed> $session_data The session data that was sent to the API, extended with the verify result.
+	 * @param SessionTrigger       $trigger      The mechanism that produced the decision, recorded into the sessions log.
 	 * @return FraudDecision The final applied decision after any filter overrides.
 	 */
-	public function apply_decision( FraudDecision $decision, array $session_data ): FraudDecision {
+	public function apply_decision( FraudDecision $decision, array $session_data, SessionTrigger $trigger = SessionTrigger::Blackbox ): FraudDecision {
 		$received_decision = $decision;
 		$session           = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
 		$log_context       = array(
@@ -192,7 +193,7 @@ class DecisionHandler {
 
 		// Record the received decision (not the enforcement outcome), so suppressed
 		// blocks and challenges are recorded faithfully. The recorder is fail-open.
-		$this->event_recorder->record_decision( $received_decision, $decision, SessionTrigger::Blackbox, $session_data );
+		$this->event_recorder->record_decision( $received_decision, $decision, $trigger, $session_data );
 
 		return $decision;
 	}

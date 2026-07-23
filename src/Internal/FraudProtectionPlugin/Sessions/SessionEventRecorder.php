@@ -24,8 +24,12 @@ defined( 'ABSPATH' ) || exit;
  * suppressed (learning mode, filter overrides). Every parsed decision is
  * recorded, allowed sessions included, so merchants can act on any session
  * from its row (e.g. add the shopper to the positive or negative list).
- * Paths that produce no parsed decision (skip filter, transport failures)
- * record nothing.
+ * Verifies that failed to produce a real verdict (transport errors,
+ * unparseable responses, unknown decision values) fail open to a synthetic
+ * allow and are recorded under the {@see SessionTrigger::VerifyError}
+ * trigger, keeping unverified sessions distinguishable from genuine allows.
+ * Paths where verification is skipped entirely (the skip filter) record
+ * nothing.
  *
  * Fail-open: recording failures are logged and never affect checkout.
  */
