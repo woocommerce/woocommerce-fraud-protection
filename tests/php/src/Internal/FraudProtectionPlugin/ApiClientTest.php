@@ -147,6 +147,29 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify() caps an over-length session ID so the request URL stays within transport limits
+	 */
+	public function test_verify_caps_over_length_session_id(): void {
+		$captured_url  = null;
+		$captured_body = null;
+
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body ) {
+				$captured_url  = $request_args['url'];
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$sut->verify( str_repeat( 'a', 5000 ), array( 'source' => 'blocks_checkout' ) );
+
+		// The over-length value is truncated (to MAX_SESSION_ID_LENGTH, 255) in both URL and body.
+		$expected = str_repeat( 'a', 255 );
+		$this->assertStringEndsWith( '/verify/' . $expected, $captured_url );
+		$this->assertSame( $expected, $captured_body['session_id'] );
+	}
+
+	/**
 	 * @testdox verify() strips null and empty-string values from context but preserves top-level fields
 	 */
 	public function test_verify_filters_empty_values_only_in_context(): void {

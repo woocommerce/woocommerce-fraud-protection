@@ -52,6 +52,15 @@ class ApiClient {
 	private const REPORT_ENDPOINT = '/report';
 
 	/**
+	 * Upper bound on the session ID length used when building a request.
+	 *
+	 * Bounds the request URL size for an arbitrary client-supplied ID so an
+	 * unexpectedly long value cannot push the URL past transport limits. Set well
+	 * above any legitimate session ID length.
+	 */
+	private const MAX_SESSION_ID_LENGTH = 255;
+
+	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
 	 *
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,
@@ -253,6 +262,10 @@ class ApiClient {
 	 * @return array<string, mixed>|\WP_Error Parsed JSON response or WP_Error on failure.
 	 */
 	private function make_request( string $method, string $path, string $session_id, array $payload ): array|\WP_Error {
+		// Bound the client-supplied session ID before it goes into the URL and body so an
+		// unexpectedly long value cannot push the request URL past transport limits.
+		$session_id = substr( $session_id, 0, self::MAX_SESSION_ID_LENGTH );
+
 		$body = \wp_json_encode(
 			array_merge(
 				$payload,
