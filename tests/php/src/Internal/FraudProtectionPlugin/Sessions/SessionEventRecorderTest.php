@@ -183,6 +183,20 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should cap text fields by characters, not bytes, so a multibyte value is never split mid-character.
+	 */
+	public function test_caps_multibyte_fields_by_characters(): void {
+		$payload = $this->a_session_data_payload();
+
+		$payload['customer']['billing_address']['first_name'] = str_repeat( 'é', 300 );
+		$payload['customer']['billing_address']['last_name']  = '';
+
+		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Allow, $payload );
+
+		$this->assertSame( str_repeat( 'é', 255 ), $captured['billing_name'], 'The cap must keep 255 whole characters, not 255 bytes' );
+	}
+
+	/**
 	 * @testdox Should log a warning and not throw when the store reports a failure.
 	 */
 	public function test_logs_warning_when_store_fails(): void {

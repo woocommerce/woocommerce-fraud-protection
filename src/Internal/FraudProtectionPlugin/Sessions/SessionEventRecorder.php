@@ -149,23 +149,25 @@ class SessionEventRecorder {
 
 		$risk_score = $verify_result['risk_score'] ?? null;
 
+		// Caps use mb_substr: the column limits are in characters, and a byte-based
+		// substr could split a multibyte character and produce invalid UTF-8.
 		return array(
-			'session_id'       => substr( (string) ( $verify_result['session_id'] ?? '' ), 0, 64 ),
-			'source'           => substr( (string) ( $session_data['source'] ?? '' ), 0, 32 ),
+			'session_id'       => mb_substr( (string) ( $verify_result['session_id'] ?? '' ), 0, 64 ),
+			'source'           => mb_substr( (string) ( $session_data['source'] ?? '' ), 0, 32 ),
 			'decision'         => $received_decision->value,
 			'final_status'     => $final_status->value,
 			'trigger_type'     => $trigger->value,
 			'risk_score'       => is_numeric( $risk_score ) ? (float) $risk_score : null,
-			'email'            => substr( strtolower( trim( $email ) ), 0, 254 ),
-			'ip'               => substr( $ip, 0, 45 ),
-			'ip_country'       => substr( $ip_country, 0, 2 ),
-			'billing_country'  => substr( (string) ( $billing['country'] ?? '' ), 0, 2 ),
-			'billing_state'    => substr( (string) ( $billing['state'] ?? '' ), 0, 100 ),
-			'billing_city'     => substr( (string) ( $billing['city'] ?? '' ), 0, 100 ),
-			'billing_postcode' => substr( (string) ( $billing['postcode'] ?? '' ), 0, 20 ),
-			'billing_name'     => substr( $billing_name, 0, 255 ),
+			'email'            => mb_substr( strtolower( trim( $email ) ), 0, 254 ),
+			'ip'               => mb_substr( $ip, 0, 45 ),
+			'ip_country'       => mb_substr( $ip_country, 0, 2 ),
+			'billing_country'  => mb_substr( (string) ( $billing['country'] ?? '' ), 0, 2 ),
+			'billing_state'    => mb_substr( (string) ( $billing['state'] ?? '' ), 0, 100 ),
+			'billing_city'     => mb_substr( (string) ( $billing['city'] ?? '' ), 0, 100 ),
+			'billing_postcode' => mb_substr( (string) ( $billing['postcode'] ?? '' ), 0, 20 ),
+			'billing_name'     => mb_substr( $billing_name, 0, 255 ),
 			'order_id'         => (int) ( $order['order_id'] ?? 0 ),
-			'payment_method'   => substr( (string) ( $verify_result['payment_method'] ?? '' ), 0, 64 ),
+			'payment_method'   => mb_substr( (string) ( $verify_result['payment_method'] ?? '' ), 0, 64 ),
 		);
 	}
 }
