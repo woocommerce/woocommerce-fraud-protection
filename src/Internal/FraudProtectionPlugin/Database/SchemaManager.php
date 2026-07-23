@@ -155,6 +155,11 @@ class SchemaManager {
 	 * object, `LONGTEXT` per WooCommerce core's convention for JSON blobs).
 	 * Nothing writes it yet: the collection mechanism will be added later.
 	 *
+	 * Indexes on text columns are capped at 191 chars (WooCommerce core's
+	 * `$max_index_length`): under utf8mb4 that is 764 bytes, within the
+	 * 767-byte InnoDB index limit of the oldest MySQL versions WooCommerce
+	 * supports.
+	 *
 	 * @return string
 	 */
 	public function get_sessions_table_schema(): string {
@@ -184,7 +189,7 @@ class SchemaManager {
 	reported_at DATETIME NULL,
 	PRIMARY KEY  (id),
 	KEY session_id (session_id),
-	KEY email (email),
+	KEY email (email(191)),
 	KEY recorded_at (recorded_at)
 ) {$collate};";
 	}
