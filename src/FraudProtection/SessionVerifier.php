@@ -239,6 +239,8 @@ class SessionVerifier {
 
 			$decision = $this->decision_handler->apply_decision( $result, $payload );
 
+			// The result carries the effective session ID (response-preferred,
+			// resolved by ApiClient): the one /report will attach the outcome to.
 			$this->persist_session_id( $result->session_id, $order_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(

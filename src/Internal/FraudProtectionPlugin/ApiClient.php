@@ -52,6 +52,15 @@ class ApiClient {
 	private const REPORT_ENDPOINT = '/report';
 
 	/**
+	 * Upper bound on the session ID length used when building a request.
+	 *
+	 * Bounds the request URL size for an arbitrary client-supplied ID so an
+	 * unexpectedly long value cannot push the URL past transport limits. Set well
+	 * above any legitimate session ID length.
+	 */
+	private const MAX_SESSION_ID_LENGTH = 255;
+
+	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
 	 *
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,
@@ -59,21 +68,17 @@ class ApiClient {
 	 *
 	 * @param string               $session_id Session ID to verify.
 	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
-	 * @return VerifyResult The decision, the effective session ID (the requested one, or the server-generated one on the no-session path), and the risk score.
+	 * @return VerifyResult The decision, the effective session ID (the response's ID, generated server-side on the no-session or degraded path, or the requested one when the response omits it), and the risk score.
 	 */
 	public function verify( string $session_id, array $context ): VerifyResult {
-		$payload = array( 'context' => $this->filter_empty_values( $context ) );
+		$payload = array(
+			'context'      => $this->filter_empty_values( $context ),
+			'visitor_ip'   => Schemas\SessionInfo::get_ip_address(),
+			'full_headers' => $this->get_request_headers(),
+		);
 
-		// No-session case: send visitor_ip and full_headers at top level.
-		if ( '' === $session_id ) {
-			$payload['visitor_ip']   = Schemas\SessionInfo::get_ip_address();
-			$payload['full_headers'] = self::get_request_headers();
-		}
-
-		$log_payload = $payload;
-		if ( isset( $log_payload['full_headers'] ) ) {
-			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
-		}
+		$log_payload                 = $payload;
+		$log_payload['full_headers'] = sprintf( '(%d headers)', count( $payload['full_headers'] ) );
 
 		FraudProtectionController::log(
 			'info',
@@ -238,10 +243,16 @@ class ApiClient {
 			array( 'response' => $response )
 		);
 
+		$response_session_id = $this->extract_session_id( $response );
+
 		return VerifyResult::create(
 			$decision,
-			// No collect session: use the ID Blackbox generated so /report can attach the outcome.
-			'' === $session_id ? $this->extract_session_id( $response ) : $session_id,
+			// Prefer the ID the response returned over the requested one: Blackbox
+			// generates a new session on the no-session path, and may do the same
+			// when degrading a sessionful verify over an invalid ID. /report must
+			// attach outcomes to the ID Blackbox knows, so that one wins; fall back
+			// to the request ID when the response omits one.
+			'' !== $response_session_id ? $response_session_id : $session_id,
 			$this->extract_risk_score( $response )
 		);
 	}
@@ -261,6 +272,10 @@ class ApiClient {
 	 * @return array<string, mixed>|\WP_Error Parsed JSON response or WP_Error on failure.
 	 */
 	private function make_request( string $method, string $path, string $session_id, array $payload ): array|\WP_Error {
+		// Bound the client-supplied session ID before it goes into the URL and body so an
+		// unexpectedly long value cannot push the request URL past transport limits.
+		$session_id = substr( $session_id, 0, self::MAX_SESSION_ID_LENGTH );
+
 		$body = \wp_json_encode(
 			array_merge(
 				$payload,
@@ -279,7 +294,8 @@ class ApiClient {
 		}
 
 		$request_args = array(
-			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . $session_id,
+			// The session ID is client-supplied: encode it so it cannot malform or redirect the request URL.
+			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . rawurlencode( $session_id ),
 			'method'        => $method,
 			'timeout'       => self::DEFAULT_TIMEOUT,
 			'headers'       => array( 'Content-Type' => 'application/json' ),
@@ -425,19 +441,23 @@ class ApiClient {
 	}
 
 	/**
-	 * Get all HTTP request headers for the no-session case.
+	 * Get all HTTP request headers to send with every verify request.
 	 *
 	 * Uses getallheaders() when available, augmented with GEOIP and
 	 * crawler server variables.
 	 *
 	 * @return array<string, ?string> Header name => value map.
 	 */
-	private static function get_request_headers(): array {
-		$raw_headers = function_exists( 'getallheaders' ) ? getallheaders() : false;
+	private function get_request_headers(): array {
+		$raw_headers = $this->get_raw_request_headers();
 		$headers     = array();
 		if ( is_array( $raw_headers ) ) {
 			foreach ( $raw_headers as $name => $value ) {
-				$headers[ \sanitize_text_field( $name ) ] = \wp_strip_all_tags( $value );
+				// Header names are HTTP tokens (RFC 9110). Keep a conforming name verbatim and skip a malformed one.
+				if ( ! is_string( $name ) || 1 !== preg_match( '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/', $name ) ) {
+					continue;
+				}
+				$headers[ $name ] = $value;
 			}
 		}
 
@@ -458,7 +478,17 @@ class ApiClient {
 		}
 
 		// Strip sensitive headers (case-insensitive — header names vary by server).
-		$sensitive = array( 'cookie', 'authorization', 'x-wp-nonce', 'x-woo-session', 'nonce' );
+		$sensitive = array(
+			'cookie',
+			'authorization',
+			'proxy-authorization',
+			'authentication',
+			'x-api-key',
+			'www-authenticate',
+			'x-wp-nonce',
+			'x-woo-session',
+			'nonce',
+		);
 		foreach ( array_keys( $headers ) as $name ) {
 			if ( in_array( strtolower( $name ), $sensitive, true ) ) {
 				unset( $headers[ $name ] );
@@ -466,6 +496,18 @@ class ApiClient {
 		}
 
 		return $headers;
+	}
+
+	/**
+	 * Read the raw request headers from the SAPI.
+	 *
+	 * Isolated in its own `protected` method so tests can override it (see
+	 * {@see ApiClientTest}); getallheaders() is unavailable under CLI.
+	 *
+	 * @return array<string, string>|false Raw header map, or false when unavailable.
+	 */
+	protected function get_raw_request_headers(): array|false {
+		return function_exists( 'getallheaders' ) ? getallheaders() : false;
 	}
 
 	/**

@@ -14,9 +14,10 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Immutable result of a Blackbox `verify` call: decision, session ID, and risk score.
  *
- * The session ID is the *effective* one for the verify: the ID the request was
- * made with, or the server-generated one on the no-session path. It is the ID
- * to persist and record; ApiClient resolves request-vs-response when building
+ * The session ID is the *effective* one for the verify: the ID the response
+ * returned (generated server-side on the no-session and degraded paths), or
+ * the ID the request was made with when the response omits one. It is the ID
+ * to persist and record; ApiClient resolves response-vs-request when building
  * the result.
  */
 class VerifyResult {

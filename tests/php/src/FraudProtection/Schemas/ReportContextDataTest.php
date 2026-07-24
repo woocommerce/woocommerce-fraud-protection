@@ -29,7 +29,6 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 				'liability_shift'            => 'shifted',
 				'amount_minor_units'         => 9900,
 				'amount_currency'            => 'USD',
-				'occurred_at'                => new \DateTimeImmutable( '2026-06-03T12:00:00Z' ),
 				'gateway'                    => 'woocommerce_payments',
 				'correlation_order_id'       => 12345,
 				'correlation_transaction_id' => 'ch_3N',
@@ -38,6 +37,7 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertInstanceOf( ReportContextData::class, $context );
+		// report_id and occurred_at are no longer context fields; correlation_dispute_id stays.
 		$this->assertSame(
 			array(
 				'schema_version'                     => 1,
@@ -47,7 +47,6 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 				'liability_shift'                    => 'shifted',
 				'amount_minor_units'                 => 9900,
 				'amount_currency'                    => 'USD',
-				'occurred_at'                        => '2026-06-03T12:00:00+00:00',
 				'gateway'                            => 'woocommerce_payments',
 				'correlation_order_id'               => 12345,
 				'correlation_transaction_id'         => 'ch_3N',
@@ -59,6 +58,9 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 			),
 			$context->to_array()
 		);
+		$this->assertSame( 'dp_1N', $context->get_correlation_dispute_id() );
+		$this->assertArrayNotHasKey( 'report_id', $context->to_array() );
+		$this->assertArrayNotHasKey( 'occurred_at', $context->to_array() );
 	}
 
 	/**
@@ -89,7 +91,6 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 			'liability_shift',
 			'amount_minor_units',
 			'amount_currency',
-			'occurred_at',
 			'gateway',
 			'correlation_order_id',
 			'correlation_transaction_id',
@@ -104,6 +105,9 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 			array_diff( array_keys( $context->to_array() ), $allowed ),
 			'The wire must carry only normalized fact fields; no interpreted output may leak.'
 		);
+		// report_id and occurred_at are top-level report() parameters, not context fields.
+		$this->assertArrayNotHasKey( 'report_id', $context->to_array() );
+		$this->assertArrayNotHasKey( 'occurred_at', $context->to_array() );
 	}
 
 	/**
@@ -464,7 +468,8 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 		$wire = $context->to_array();
 
 		$this->assertSame( 'stripe', $wire['gateway'] );
-		$this->assertArrayHasKey( 'occurred_at', $wire );
+		// occurred_at is a top-level report() parameter now, not part of the context shape.
+		$this->assertArrayNotHasKey( 'occurred_at', $wire );
 		// Optionals are present as null, not omitted — the verify-side convention.
 		$this->assertNull( $wire['reason'] );
 		$this->assertNull( $wire['liability_shift'] );
@@ -472,6 +477,9 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( $wire['amount_currency'] );
 		$this->assertNull( $wire['correlation_order_id'] );
 		$this->assertNull( $wire['instrument'] );
+		// A non-dispute event carries no dispute correlation id, present as null in the fixed shape.
+		$this->assertNull( $wire['correlation_dispute_id'] );
+		$this->assertNull( $context->get_correlation_dispute_id() );
 	}
 
 	/**
@@ -568,64 +576,6 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox occurred_at takes a DateTime rendered to UTC at to_array; a non-DateTime falls back to now.
-	 */
-	public function test_occurred_at_takes_datetime_and_falls_back(): void {
-		// A DateTime in a non-UTC zone renders as the equivalent UTC instant.
-		$with_offset = ReportContextData::from_array(
-			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'occurred_at' => new \DateTimeImmutable( '2026-06-03T12:00:00+02:00' ),
-			)
-		);
-		$this->assertInstanceOf( ReportContextData::class, $with_offset );
-		$this->assertSame( '2026-06-03T10:00:00+00:00', $with_offset->to_array()['occurred_at'] );
-
-		// A mutable DateTime is accepted and snapshotted: mutating the source afterward must not change the DTO.
-		$source  = new \DateTime( '2026-06-03T12:00:00Z' );
-		$mutable = ReportContextData::from_array(
-			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'occurred_at' => $source,
-			)
-		);
-		$this->assertInstanceOf( ReportContextData::class, $mutable );
-		$source->modify( '+10 days' );
-		$this->assertSame( '2026-06-03T12:00:00+00:00', $mutable->to_array()['occurred_at'] );
-
-		// A missing value falls back to now (UTC ISO 8601), silently.
-		$without = ReportContextData::from_array(
-			array(
-				'type'   => 'payment',
-				'result' => 'captured',
-			)
-		);
-		$this->assertInstanceOf( ReportContextData::class, $without );
-		$this->assertMatchesRegularExpression(
-			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/',
-			$without->to_array()['occurred_at'],
-			'A missing occurred_at should fall back to a UTC ISO 8601 timestamp'
-		);
-
-		// A non-DateTime value (e.g. a string) is not trusted: it falls back to now and is logged.
-		$non_datetime = ReportContextData::from_array(
-			array(
-				'type'        => 'payment',
-				'result'      => 'captured',
-				'occurred_at' => '2026-06-03T12:00:00Z',
-			)
-		);
-		$this->assertInstanceOf( ReportContextData::class, $non_datetime );
-		$this->assertMatchesRegularExpression(
-			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/',
-			$non_datetime->to_array()['occurred_at']
-		);
-		$this->assertLogged( 'warning', 'ReportContextData field "occurred_at" was not a DateTime; using the current time.' );
-	}
-
-	/**
 	 * @testdox with_order_defaults() fills only the empty gateway and missing order ID.
 	 */
 	public function test_with_order_defaults_fills_only_missing(): void {
@@ -678,6 +628,7 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'dp_9', $wire['correlation_dispute_id'] );
 		$this->assertNull( $wire['correlation_transaction_id'], 'empty string ID is null' );
 		$this->assertNull( $wire['correlation_network_transaction_id'], 'null ID is null' );
+		$this->assertSame( 'dp_9', $context->get_correlation_dispute_id() );
 	}
 
 	/**

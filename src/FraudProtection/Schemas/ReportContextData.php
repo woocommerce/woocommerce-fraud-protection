@@ -46,7 +46,6 @@ class ReportContextData {
 	 * @param ?LiabilityShift                         $liability_shift                    3DS/SCA liability outcome, or null when undeterminable.
 	 * @param ?int                                    $amount_minor_units                 Amount in minor units, or null when no amount is known.
 	 * @param ?string                                 $amount_currency                    ISO-4217 currency code, or null when no amount is known.
-	 * @param \DateTimeImmutable                      $occurred_at                        Best known event time. Rendered to UTC ISO 8601 at serialization. Always set.
 	 * @param string                                  $gateway                            WooCommerce gateway ID. May be empty until enriched from the order.
 	 * @param ?int                                    $correlation_order_id               Correlation: Woo order ID, or null.
 	 * @param ?string                                 $correlation_transaction_id         Correlation: provider transaction/charge ID, or null.
@@ -63,7 +62,6 @@ class ReportContextData {
 		private readonly ?LiabilityShift $liability_shift,
 		private readonly ?int $amount_minor_units,
 		private readonly ?string $amount_currency,
-		private readonly \DateTimeImmutable $occurred_at,
 		private string $gateway,
 		private ?int $correlation_order_id,
 		private readonly ?string $correlation_transaction_id,
@@ -77,11 +75,13 @@ class ReportContextData {
 	/**
 	 * Build a context from an array of report field values.
 	 *
-	 * Most fields are scalars; `occurred_at` is a `DateTimeInterface` and `instrument` a nested
-	 * array. Sanitizes enums and resolves `reason`. Returns null — and logs — only when `type`
-	 * or `result` cannot be mapped. `reason` is optional everywhere (sent when mapped, omitted
-	 * otherwise); a non-empty value that fails to map is logged. `instrument` and `liability_shift`
-	 * are optional context.
+	 * Most fields are scalars and `instrument` is a nested array. Sanitizes enums and resolves
+	 * `reason`. Returns null — and logs — only when `type` or `result` cannot be mapped. `reason`
+	 * is optional everywhere (sent when mapped, omitted otherwise); a non-empty value that fails to
+	 * map is logged. `instrument` and `liability_shift` are optional context.
+	 *
+	 * `report_id` and `occurred_at` are no longer context fields; they are top-level parameters of
+	 * `FraudProtectionReporter::report()` instead.
 	 *
 	 * @param array<string, mixed> $data Report field values keyed by field name.
 	 * @return ?self The context, or null when it cannot be reported.
@@ -119,7 +119,6 @@ class ReportContextData {
 			self::sanitize_enum( $data, 'liability_shift', LiabilityShift::cases() ),
 			self::sanitize_non_negative_int( $data, 'amount_minor_units' ),
 			self::sanitize_string_field( $data, 'amount_currency' ),
-			self::sanitize_date( $data, 'occurred_at' ),
 			self::sanitize_string_field( $data, 'gateway' ) ?? '',
 			self::sanitize_positive_int( $data, 'correlation_order_id' ),
 			self::sanitize_string_field( $data, 'correlation_transaction_id' ),
@@ -156,13 +155,21 @@ class ReportContextData {
 	}
 
 	/**
+	 * The correlated provider dispute ID, or null when the event is not a dispute.
+	 *
+	 * @return ?string
+	 */
+	public function get_correlation_dispute_id(): ?string {
+		return $this->correlation_dispute_id;
+	}
+
+	/**
 	 * Serialize to the API `context` shape: a fixed, flat field set with null for any value
 	 * that did not resolve — the verify-side convention, so Blackbox parses one stable shape.
 	 *
 	 * The property names are the wire keys, so the body derives from the object's own properties;
 	 * `schema_version` (a constant), the enum fields (`type`, `result`, `reason`, `liability_shift`,
-	 * rendered to their backing values), `occurred_at` (a DateTime rendered to UTC ISO 8601) and
-	 * `instrument` (nested) are special-cased.
+	 * rendered to their backing values) and `instrument` (nested) are special-cased.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -172,7 +179,6 @@ class ReportContextData {
 		$context['result']          = $this->result->value;
 		$context['reason']          = $this->reason?->value;
 		$context['liability_shift'] = $this->liability_shift?->value;
-		$context['occurred_at']     = gmdate( \DateTimeInterface::RFC3339, $this->occurred_at->getTimestamp() );
 		$context['instrument']      = $this->instrument?->to_array();
 
 		return $context;
