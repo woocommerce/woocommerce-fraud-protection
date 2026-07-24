@@ -241,6 +241,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertFalse( $result->fail_open, 'A parsed verdict is not a fail-open result' );
 	}
 
 	/**
@@ -257,6 +258,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
@@ -271,7 +273,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertSame( '', $result->session_id );
+		$this->assertSame( 'test-session-id', $result->session_id, 'The fail-open result should carry the session ID the request was made with' );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
 
@@ -291,6 +294,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
 
@@ -310,6 +314,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
@@ -329,7 +334,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertSame( '', $result->session_id );
+		$this->assertSame( 'test-session-id', $result->session_id, 'The fail-open result should carry the session ID the request was made with' );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
 
@@ -344,24 +350,25 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 
 	/**
-	 * Test verify fails open on a known-but-non-actionable decision.
+	 * Test verify passes through a known-but-non-actionable decision.
 	 *
-	 * `challenge` is a valid FraudDecision case but is not in FraudDecision::ACTIONABLE, so it must
-	 * be rejected on the same fail-open path as an unrecognized value.
+	 * `challenge` is a valid FraudDecision case that is not in FraudDecision::ACTIONABLE.
+	 * It survives parsing so the session event recorder can see the received decision;
+	 * DecisionHandler is responsible for coercing it to allow.
 	 *
-	 * @testdox verify() fails open with allow when decision is challenge (non-actionable)
+	 * @testdox verify() returns the challenge decision unchanged (coercion happens in DecisionHandler)
 	 */
-	public function test_verify_fails_open_on_non_actionable_decision(): void {
+	public function test_verify_passes_through_non_actionable_decision(): void {
 		$sut = $this->api_client_returning( $this->decision_response( 'challenge' ) );
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertLogged( 'error', 'Invalid decision value "challenge"' );
+		$this->assertSame( FraudDecision::Challenge, $result->decision );
 	}
 
 	/*
@@ -575,6 +582,40 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
 		$this->assertNull( $result->risk_score );
+	}
+
+	/**
+	 * @testdox verify() prefers the session ID the response returned over the requested one (degraded verify)
+	 */
+	public function test_verify_prefers_response_session_id(): void {
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode(
+					array(
+						'data' => array(
+							'session_id' => 'server-generated-id',
+							'decision'   => 'allow',
+						),
+					)
+				),
+			)
+		);
+
+		$result = $sut->verify( 'requested-id', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( 'server-generated-id', $result->session_id, 'A degraded sessionful verify may create a new session; /report must attach outcomes to the ID Blackbox knows' );
+	}
+
+	/**
+	 * @testdox verify() falls back to the requested session ID when the response omits one (normal sessionful path)
+	 */
+	public function test_verify_falls_back_to_requested_session_id(): void {
+		$sut = $this->api_client_returning( $this->decision_response( 'allow' ) );
+
+		$result = $sut->verify( 'requested-id', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( 'requested-id', $result->session_id );
 	}
 
 	/*

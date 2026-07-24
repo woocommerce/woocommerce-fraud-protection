@@ -8,6 +8,8 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -17,44 +19,68 @@ defined( 'ABSPATH' ) || exit;
  * This class is responsible for:
  * - Validating decisions and applying extension override filters for whitelisting
  * - Applying learning mode
+ * - Recording actionable verdicts into the sessions log via SessionEventRecorder
  *
  * Stateless by design: the returned decision applies only to the current
  * checkout/payment attempt, and enforcement is up to the caller (e.g. throwing
- * a RouteException or adding a checkout error). Nothing is persisted, so every
- * new attempt is verified from scratch — a block does not follow the shopper,
- * and the `woocommerce_fraud_protection_decision` filter can override the
- * verdict on any subsequent attempt.
+ * a RouteException or adding a checkout error). No blocking state is persisted,
+ * so every new attempt is verified from scratch — a block does not follow the
+ * shopper, and the `woocommerce_fraud_protection_decision` filter can override
+ * the verdict on any subsequent attempt. The sessions log is a write-only
+ * record; it never feeds back into decisions.
  */
 class DecisionHandler {
 
 	/**
+	 * Session event recorder instance.
+	 *
+	 * @var SessionEventRecorder
+	 */
+	private SessionEventRecorder $event_recorder;
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param SessionEventRecorder $event_recorder The session event recorder instance.
+	 */
+	final public function init( SessionEventRecorder $event_recorder ): void {
+		$this->event_recorder = $event_recorder;
+	}
+
+	/**
 	 * Apply a fraud protection decision.
 	 *
-	 * This method processes a decision from the API, applies any override
+	 * This method processes a verify result from the API, applies any override
 	 * filters, validates the result, and returns the final decision for the
 	 * caller to enforce on the current attempt.
 	 *
-	 * The input decision is expected to be pre-validated by ApiClient.
+	 * The result decision is any valid FraudDecision parsed by ApiClient;
+	 * non-actionable decisions (Challenge) are coerced to Allow here.
 	 *
 	 * The decision flow:
-	 * 1. Apply the `woocommerce_fraud_protection_decision` filter for overrides
-	 * 2. Validate the filtered decision (third-party filters may return invalid values)
-	 * 3. Apply learning mode (suppresses Block decisions while active)
+	 * 1. Coerce non-actionable decisions to Allow
+	 * 2. Apply the `woocommerce_fraud_protection_decision` filter for overrides
+	 * 3. Validate the filtered decision (third-party filters may return invalid values)
+	 * 4. Apply learning mode (suppresses Block decisions while active)
+	 * 5. Record the received decision into the sessions log (fail-open)
 	 *
-	 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
+	 * @param VerifyResult         $result       The verify result from the API.
 	 * @param array<string, mixed> $session_data The session data that was sent to the API.
 	 * @return FraudDecision The final applied decision after any filter overrides.
 	 */
-	public function apply_decision( FraudDecision $decision, array $session_data ): FraudDecision {
+	public function apply_decision( VerifyResult $result, array $session_data ): FraudDecision {
+		$decision    = $result->decision;
 		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
 		$log_context = array(
 			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
 
-		// The parameter type permits FraudDecision::Challenge, which is not actionable and not yet
+		// The result may carry FraudDecision::Challenge, which is not actionable and not yet
 		// supported. Fail open on any non-actionable decision so only actionable decisions are
-		// returned to the caller.
+		// returned to the caller. The decision as received ($result->decision) is still recorded below.
 		if ( ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			FraudProtectionController::log(
 				'warning',
@@ -66,6 +92,14 @@ class DecisionHandler {
 		}
 
 		$original_decision = $decision;
+
+		// The filter payload extends the session data with the intentional
+		// `verify_result` subset (no session ID) documented on the filter below.
+		$filter_session_data                  = $session_data;
+		$filter_session_data['verify_result'] = array(
+			'risk_score'     => $result->risk_score,
+			'payment_method' => (string) ( $session_data['payment']['gateway'] ?? '' ),
+		);
 
 		/**
 		 * Filters the fraud protection decision before it is applied.
@@ -80,17 +114,23 @@ class DecisionHandler {
 		 * (`FraudDecision::Allow` or `FraudDecision::Block`). Any other value is
 		 * rejected and the original decision is used.
 		 *
+		 * The session data includes a `verify_result` key with details of the
+		 * verify response: `risk_score` (float|null) and `payment_method`
+		 * (string). The risk score is informational only: it may be
+		 * recalibrated server-side at any time, so do not build threshold
+		 * rules on top of it.
+		 *
 		 * @since 0.1.0
 		 *
 		 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
-		 * @param array<string, mixed> $session_data The session data that was analyzed.
+		 * @param array<string, mixed> $session_data The session data that was analyzed, including the `verify_result` details.
 		 */
 		/**
 		 * A third-party filter callback may return any type; it is validated below.
 		 *
 		 * @var mixed $filtered
 		 */
-		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision, $session_data );
+		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision, $filter_session_data );
 
 		// Validate filtered decision (third-party filters may return any value).
 		if ( $filtered instanceof FraudDecision && in_array( $filtered, FraudDecision::ACTIONABLE, true ) ) {
@@ -163,6 +203,10 @@ class DecisionHandler {
 			);
 			$decision = FraudDecision::Allow;
 		}
+
+		// Record the received decision (not the enforcement outcome), so suppressed
+		// blocks and challenges are recorded faithfully. The recorder is fail-open.
+		$this->event_recorder->record_decision( $result, $decision, $session_data );
 
 		return $decision;
 	}

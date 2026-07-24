@@ -58,4 +58,34 @@ class VerifyResultTest extends FraudProtectionUnitTestCase {
 		$without_score = VerifyResult::create( FraudDecision::Allow, 'sid' );
 		$this->assertNull( $without_score->risk_score );
 	}
+
+	/**
+	 * @testdox create() produces a result not flagged as fail-open
+	 */
+	public function test_create_is_not_fail_open(): void {
+		$result = VerifyResult::create( FraudDecision::Allow, 'sid' );
+
+		$this->assertFalse( $result->fail_open );
+	}
+
+	/**
+	 * @testdox fail_open() produces a synthetic allow flagged as fail-open, carrying the request session ID
+	 */
+	public function test_fail_open_produces_flagged_synthetic_allow(): void {
+		$result = VerifyResult::fail_open( 'request-session-id' );
+
+		$this->assertTrue( $result->fail_open );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( 'request-session-id', $result->session_id );
+		$this->assertNull( $result->risk_score );
+	}
+
+	/**
+	 * @testdox fail_open() sanitizes the session ID, which originates from the request payload
+	 */
+	public function test_fail_open_sanitizes_session_id(): void {
+		$result = VerifyResult::fail_open( ' <b>abc</b>123 ' );
+
+		$this->assertSame( 'abc123', $result->session_id );
+	}
 }

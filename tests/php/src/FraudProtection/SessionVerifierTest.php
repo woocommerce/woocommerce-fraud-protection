@@ -138,16 +138,20 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
+		$verify_result = VerifyResult::create( FraudDecision::Allow, $session_id );
+
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
 			->with( $session_id, $expected_payload )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+			->willReturn( $verify_result );
 
+		// The decision handler receives the verify result and the same payload
+		// that was sent to the API, unchanged.
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( FraudDecision::Allow, $expected_payload )
+			->with( $verify_result, $expected_payload )
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( $session_id, 'blocks_checkout', $order_id, $request_data );
@@ -173,6 +177,31 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( 'session-123', 'blocks_checkout', 99 );
+
+		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
+	 * @testdox verify_session() passes a fail-open verify result through to apply_decision() unchanged.
+	 */
+	public function test_verify_session_passes_fail_open_result_to_decision_handler(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$verify_result = VerifyResult::fail_open( 'session-123' );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( $verify_result );
+
+		$this->decision_handler
+			->expects( $this->once() )
+			->method( 'apply_decision' )
+			->with( $verify_result, $this->anything() )
+			->willReturn( FraudDecision::Allow );
+
+		$result = $this->sut->verify_session( 'session-123', 'blocks_checkout', 0 );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}
@@ -537,28 +566,6 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() keeps the request session ID when the verify response omits one (normal sessionful path).
-	 */
-	public function test_verify_session_keeps_request_id_when_response_session_id_empty(): void {
-		$order = \WC_Helper_Order::create_order();
-
-		$this->stub_verification_with_returned_id( '' );
-
-		$this->sut->verify_session( 'collect-abc', 'blocks_checkout', $order->get_id() );
-
-		$saved_order = wc_get_order( $order->get_id() );
-		$this->assertInstanceOf( \WC_Order::class, $saved_order );
-		$this->assertSame(
-			'collect-abc',
-			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
-		);
-		$this->assertSame(
-			'collect-abc',
-			WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
-		);
-	}
-
-	/**
 	 * @testdox verify_session() does not attach a prior checkout's session ID to a new order when the current verify has none.
 	 */
 	public function test_verify_session_does_not_attach_stale_session_id_to_new_order(): void {
@@ -625,6 +632,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Stub a successful verification pipeline (data collector, API, decision handler).
+	 *
+	 * The API client stub echoes the requested session ID back in the result,
+	 * mirroring the real client's contract (the result carries the effective
+	 * session ID: the requested one, or the server-generated one on the
+	 * no-session path).
 	 */
 	private function stub_successful_verification(): void {
 		$this->data_collector
@@ -633,7 +645,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->api_client
 			->method( 'verify' )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+			->willReturnCallback(
+				function ( string $session_id ) {
+					return VerifyResult::create( FraudDecision::Allow, $session_id );
+				}
+			);
 
 		$this->decision_handler
 			->method( 'apply_decision' )
@@ -641,9 +657,9 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Stub a verification pipeline where the API returns a specific session ID.
+	 * Stub a verification pipeline whose verify result carries a specific session ID.
 	 *
-	 * @param string        $returned_session_id The session ID Blackbox returns in the verify response.
+	 * @param string        $returned_session_id The effective session ID carried in the verify result.
 	 * @param FraudDecision $decision            The decision returned by both verify() and apply_decision().
 	 */
 	private function stub_verification_with_returned_id( string $returned_session_id, FraudDecision $decision = FraudDecision::Allow ): void {

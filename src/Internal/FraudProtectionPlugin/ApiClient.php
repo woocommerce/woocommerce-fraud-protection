@@ -68,7 +68,7 @@ class ApiClient {
 	 *
 	 * @param string               $session_id Session ID to verify.
 	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
-	 * @return VerifyResult The decision, the Blackbox session ID (generated server-side on the no-session or degraded path), and the risk score.
+	 * @return VerifyResult The decision, the effective session ID (the response's ID, generated server-side on the no-session or degraded path, or the requested one when the response omits it), and the risk score.
 	 */
 	public function verify( string $session_id, array $context ): VerifyResult {
 		$payload = array(
@@ -161,8 +161,8 @@ class ApiClient {
 	 *
 	 * @param array<string, mixed>|\WP_Error $response   API response or WP_Error.
 	 * @param array<string, mixed>           $event_data Event data for logging.
-	 * @param string                         $session_id Session ID associated with the request, included in log context for cross-system tracing.
-	 * @return VerifyResult The decision plus any Blackbox session ID returned in the response.
+	 * @param string                         $session_id Session ID associated with the request, carried into the result and included in log context for cross-system tracing.
+	 * @return VerifyResult The decision plus the effective session ID, or the fail-open result when no verdict could be extracted.
 	 */
 	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
@@ -185,7 +185,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( FraudDecision::Allow, '' );
+			return VerifyResult::fail_open( $session_id );
 		}
 
 		$raw = $this->extract_decision( $response );
@@ -203,12 +203,15 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( FraudDecision::Allow, '' );
+			return VerifyResult::fail_open( $session_id );
 		}
 
+		// Any valid FraudDecision is accepted here, including the not-yet-actionable
+		// Challenge: DecisionHandler coerces non-actionable decisions to Allow, and the
+		// decision as received is what the session event recorder needs to see.
 		$decision = FraudDecision::tryFrom( $raw );
 
-		if ( is_null( $decision ) || ! in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
+		if ( is_null( $decision ) ) {
 			FraudProtectionController::log(
 				'error',
 				sprintf(
@@ -225,7 +228,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::create( FraudDecision::Allow, '' );
+			return VerifyResult::fail_open( $session_id );
 		}
 
 		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
@@ -240,9 +243,16 @@ class ApiClient {
 			array( 'response' => $response )
 		);
 
+		$response_session_id = $this->extract_session_id( $response );
+
 		return VerifyResult::create(
 			$decision,
-			$this->extract_session_id( $response ),
+			// Prefer the ID the response returned over the requested one: Blackbox
+			// generates a new session on the no-session path, and may do the same
+			// when degrading a sessionful verify over an invalid ID. /report must
+			// attach outcomes to the ID Blackbox knows, so that one wins; fall back
+			// to the request ID when the response omits one.
+			'' !== $response_session_id ? $response_session_id : $session_id,
 			$this->extract_risk_score( $response )
 		);
 	}

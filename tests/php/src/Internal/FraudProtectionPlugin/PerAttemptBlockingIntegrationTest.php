@@ -15,6 +15,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 
 /**
@@ -61,11 +62,14 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 			->onlyMethods( array( 'jetpack_remote_request' ) )
 			->getMock();
 
+		$decision_handler = new DecisionHandler();
+		$decision_handler->init( $this->createMock( SessionEventRecorder::class ) );
+
 		$session_verifier = new SessionVerifier();
 		$session_verifier->init(
 			wc_get_container()->get( SessionDataCollector::class ),
 			$this->api_client,
-			new DecisionHandler(),
+			$decision_handler,
 			wc_get_container()->get( PaymentDataResolver::class )
 		);
 

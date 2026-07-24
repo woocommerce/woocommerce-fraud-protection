@@ -9,6 +9,8 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -31,6 +33,13 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	private $original_session;
 
 	/**
+	 * Mock session event recorder.
+	 *
+	 * @var SessionEventRecorder&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $event_recorder;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -38,7 +47,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->original_session = WC()->session;
 
-		$this->sut = new DecisionHandler();
+		$this->event_recorder = $this->createMock( SessionEventRecorder::class );
+		$this->sut            = new DecisionHandler();
+		$this->sut->init( $this->event_recorder );
 	}
 
 	/**
@@ -57,7 +68,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should return the allow decision unchanged.
 	 */
 	public function test_apply_allow_decision(): void {
-		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}
@@ -70,7 +81,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function test_apply_block_decision(): void {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
-		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
 	}
@@ -88,8 +99,8 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function test_block_decision_is_not_sticky_across_attempts(): void {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
-		$first_result  = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
-		$second_result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
+		$first_result  = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$second_result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $first_result );
 		$this->assertSame( FraudDecision::Allow, $second_result );
@@ -114,7 +125,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$cart_count = WC()->cart->get_cart_contents_count();
 		$this->assertGreaterThan( 0, $cart_count );
 
-		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertSame( $cart_count, WC()->cart->get_cart_contents_count(), 'Cart should not be emptied on block' );
@@ -130,7 +141,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should coerce a non-actionable decision (challenge) to allow.
 	 */
 	public function test_non_actionable_decision_defaults_to_allow(): void {
-		$result = $this->sut->apply_decision( FraudDecision::Challenge, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Challenge, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'warning', 'Non-actionable decision "challenge" received' );
@@ -149,7 +160,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_decision`' );
@@ -170,7 +181,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_decision`' );
@@ -191,10 +202,87 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertLogged( 'warning', 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "totally_invalid"' );
+	}
+
+	/**
+	 * @testdox Exposes the intentional verify_result subset (no session ID) to the decision filter.
+	 */
+	public function test_decision_filter_receives_intentional_verify_result(): void {
+		$session_data = array(
+			'session' => array( 'wc_identity_id' => 'identity-1' ),
+			'payment' => array( 'gateway' => 'woocommerce_payments' ),
+		);
+
+		$received_by_filter = null;
+		add_filter(
+			'woocommerce_fraud_protection_decision',
+			function ( $decision, $data ) use ( &$received_by_filter ) {
+				$received_by_filter = $data;
+				return $decision;
+			},
+			10,
+			2
+		);
+
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'session-abc', 0.42 ), $session_data );
+
+		$this->assertIsArray( $received_by_filter );
+		$this->assertSame(
+			array(
+				'risk_score'     => 0.42,
+				'payment_method' => 'woocommerce_payments',
+			),
+			$received_by_filter['verify_result'],
+			'The verify_result subset should carry exactly the risk score and payment method, no session ID'
+		);
+		$this->assertSame( array( 'wc_identity_id' => 'identity-1' ), $received_by_filter['session'], 'The rest of the session data should pass through unchanged' );
+	}
+
+	/**
+	 * @testdox Exposes a null risk score and empty payment method to the decision filter when the verify produced none.
+	 */
+	public function test_decision_filter_receives_empty_verify_result_when_data_missing(): void {
+		$received_by_filter = null;
+		add_filter(
+			'woocommerce_fraud_protection_decision',
+			function ( $decision, $data ) use ( &$received_by_filter ) {
+				$received_by_filter = $data;
+				return $decision;
+			},
+			10,
+			2
+		);
+
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertSame(
+			array(
+				'risk_score'     => null,
+				'payment_method' => '',
+			),
+			$received_by_filter['verify_result']
+		);
+	}
+
+	/**
+	 * @testdox Passes the verify result and the original session data, without the filter-only verify_result key, to the recorder.
+	 */
+	public function test_recorder_receives_result_and_original_session_data(): void {
+		$session_data = array(
+			'payment' => array( 'gateway' => 'woocommerce_payments' ),
+		);
+		$result       = VerifyResult::create( FraudDecision::Allow, 'session-abc', 0.42 );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $result, FraudDecision::Allow, $session_data );
+
+		$this->sut->apply_decision( $result, $session_data );
 	}
 
 	/*
@@ -207,7 +295,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Learning mode suppresses block decision from API.
 	 */
 	public function test_learning_mode_suppresses_block(): void {
-		$result = $this->sut->apply_decision( FraudDecision::Block, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
@@ -224,9 +312,85 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( FraudDecision::Allow, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
+	}
+
+	/**
+	 * @testdox Records the received block decision with the applied allow when learning mode suppresses it.
+	 */
+	public function test_records_suppressed_block_decision(): void {
+		$result = VerifyResult::create( FraudDecision::Block, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $result, FraudDecision::Allow, $this->anything() );
+
+		$this->sut->apply_decision( $result, array( 'session_id' => 'test' ) );
+	}
+
+	/**
+	 * @testdox Records the block decision as both received and applied when enforcement is active.
+	 */
+	public function test_records_enforced_block_decision(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		$verify_result = VerifyResult::create( FraudDecision::Block, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, FraudDecision::Block, $this->anything() );
+
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Block, $result );
+	}
+
+	/**
+	 * @testdox Records the received challenge decision with the applied allow while returning allow.
+	 */
+	public function test_records_challenge_decision_and_returns_allow(): void {
+		$verify_result = VerifyResult::create( FraudDecision::Challenge, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, FraudDecision::Allow, $this->anything() );
+
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
+	 * @testdox Records the allow decision as both received and applied.
+	 */
+	public function test_records_allow_decision(): void {
+		$verify_result = VerifyResult::create( FraudDecision::Allow, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, FraudDecision::Allow, $this->anything() );
+
+		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+	}
+
+	/**
+	 * @testdox Forwards a fail-open verify result to the recorder unchanged, so it can derive the verify_error trigger.
+	 */
+	public function test_forwards_fail_open_result_to_the_recorder(): void {
+		$verify_result = VerifyResult::fail_open( 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, FraudDecision::Allow, $this->anything() );
+
+		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
 	}
 }
