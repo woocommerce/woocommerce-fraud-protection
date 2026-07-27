@@ -269,6 +269,22 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should report success for an update that changes nothing, not mistake it for a deleted rule.
+	 */
+	public function test_update_with_no_effective_change_still_returns_the_rule(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'someone@example.com' ) );
+
+		// Two identical updates within the same second: the second changes no
+		// column values, so MySQL reports zero affected rows. It must still
+		// report the live rule, not null.
+		$this->sut->update_rule( $rule->id, FraudDecision::Allow );
+		$updated = $this->sut->update_rule( $rule->id, FraudDecision::Allow );
+
+		$this->assertNotNull( $updated, 'A no-op update of a live rule must not read as not-found' );
+		$this->assertSame( FraudDecision::Allow, $updated->action );
+	}
+
+	/**
 	 * @testdox Should report a soft-deleted or unknown rule as not found on update.
 	 */
 	public function test_update_reports_missing_rules_as_null(): void {

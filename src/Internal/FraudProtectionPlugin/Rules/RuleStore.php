@@ -196,7 +196,13 @@ class RuleStore {
 			throw new \RuntimeException( 'Failed to update the rule: ' . esc_html( $wpdb->last_error ) );
 		}
 
-		return $this->get_rule( $id );
+		// The write predicate excludes rows soft-deleted after the read above,
+		// but its affected-rows count cannot distinguish that from a no-op
+		// update (mysqli reports rows changed, not rows matched), so the row's
+		// current status is what tells whether the update applied.
+		$rule = $this->get_rule( $id );
+
+		return ! is_null( $rule ) && RuleStatus::Deleted !== $rule->status ? $rule : null;
 	}
 
 	/**
@@ -210,11 +216,6 @@ class RuleStore {
 	 * @return bool True when the rule was deleted, false when no live rule has the given id.
 	 */
 	public function delete_rule( int $id ): bool {
-		$rule = $this->get_rule( $id );
-		if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status ) {
-			return false;
-		}
-
 		$user_id = get_current_user_id();
 		$changes = array(
 			'status'         => RuleStatus::Deleted->value,
@@ -223,7 +224,13 @@ class RuleStore {
 			'updated_by'     => $user_id > 0 ? $user_id : null,
 		);
 
-		return false !== $this->run_write_query( $this->build_update_sql( $changes, $id ) );
+		// No read-then-write: the write predicate only matches live rules, and
+		// deleting a live rule always changes its status, so the affected-rows
+		// count alone reports whether a live rule existed — concurrent double
+		// deletes cannot both report success.
+		$affected = $this->run_write_query( $this->build_update_sql( $changes, $id ) );
+
+		return false !== $affected && $affected > 0;
 	}
 
 	/**
@@ -371,7 +378,12 @@ class RuleStore {
 	}
 
 	/**
-	 * Build a prepared UPDATE statement for a rules table row.
+	 * Build a prepared UPDATE statement for a live (non-deleted) rules table row.
+	 *
+	 * The `status != deleted` predicate makes the soft-delete precondition
+	 * atomic: a row soft-deleted by a concurrent request is simply not
+	 * matched, so no write can mutate, reactivate, or re-delete a deleted
+	 * rule regardless of what a caller's earlier read saw.
 	 *
 	 * @param array<string, mixed> $changes Column values to set; null values set SQL NULL.
 	 * @param int                  $id      The rule id.
@@ -395,7 +407,8 @@ class RuleStore {
 		}
 
 		$values[] = $id;
-		$sql      = 'UPDATE ' . $this->schema_manager->get_rules_table_name() . ' SET ' . implode( ', ', $assignments ) . ' WHERE id = %d';
+		$values[] = RuleStatus::Deleted->value;
+		$sql      = 'UPDATE ' . $this->schema_manager->get_rules_table_name() . ' SET ' . implode( ', ', $assignments ) . ' WHERE id = %d AND status != %s';
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		return $wpdb->prepare( $sql, $values );
