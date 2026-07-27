@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\QuantityValue;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -18,6 +19,8 @@ defined( 'ABSPATH' ) || exit;
  * This class provides methods to track cart events (add, update, remove, restore)
  * for fraud protection. Event-specific data is passed
  * to the SessionDataCollector which handles session data storage internally.
+ *
+ * Quantities are reported as WooCommerce supplies them, in whatever type it supplies them.
  */
 class CartEventTracker {
 
@@ -85,8 +88,8 @@ class CartEventTracker {
 	 * No native parameter types: a mistyped hook argument would throw at
 	 * parameter binding, before the fail-open guard can catch it.
 	 *
-	 * @param int       $product_id Product ID.
-	 * @param int|float $quantity   Quantity added.
+	 * @param int   $product_id Product ID.
+	 * @param mixed $quantity   Quantity added, relayed verbatim.
 	 * @return void
 	 */
 	public function track_cart_item_added( $product_id, $quantity ): void {
@@ -123,17 +126,25 @@ class CartEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param string    $cart_item_key Cart item key.
-	 * @param int|float $quantity      New quantity.
-	 * @param int|float $old_quantity  Old quantity.
-	 * @param object    $cart          Cart object.
+	 * @param string $cart_item_key Cart item key.
+	 * @param mixed  $quantity      New quantity, relayed verbatim.
+	 * @param mixed  $old_quantity  Old quantity, relayed verbatim.
+	 * @param object $cart          Cart object.
 	 * @return void
 	 */
 	public function track_cart_item_updated( $cart_item_key, $quantity, $old_quantity, $cart ): void {
 		try {
 			$cart_item = $cart->cart_contents[ $cart_item_key ] ?? null;
 
-			if ( (float) $quantity === (float) $old_quantity || ! $cart_item ) {
+			// Compare numeric values when possible; otherwise preserve type changes.
+			$quantity_number     = QuantityValue::as_finite_float( $quantity );
+			$old_quantity_number = QuantityValue::as_finite_float( $old_quantity );
+
+			$unchanged = ( null !== $quantity_number && null !== $old_quantity_number )
+				? $quantity_number === $old_quantity_number
+				: $quantity === $old_quantity;
+
+			if ( $unchanged || ! $cart_item ) {
 				return;
 			}
 
@@ -234,13 +245,13 @@ class CartEventTracker {
 	 * and current cart state. This data will be merged with comprehensive
 	 * session data during event dispatching.
 	 *
-	 * @param string    $action       Action type (item_added, item_updated, item_removed, item_restored).
-	 * @param int       $product_id   Product ID.
-	 * @param int|float $quantity     Quantity.
-	 * @param int       $variation_id Variation ID.
+	 * @param string $action       Action type (item_added, item_updated, item_removed, item_restored).
+	 * @param int    $product_id   Product ID.
+	 * @param mixed  $quantity     Quantity, relayed verbatim.
+	 * @param int    $variation_id Variation ID.
 	 * @return array Cart event data.
 	 */
-	private function build_cart_event_data( string $action, int $product_id, int|float $quantity, int $variation_id ): array {
+	private function build_cart_event_data( string $action, int $product_id, mixed $quantity, int $variation_id ): array {
 		$cart_item_count = 0;
 
 		// Get current cart item count if cart is available.
