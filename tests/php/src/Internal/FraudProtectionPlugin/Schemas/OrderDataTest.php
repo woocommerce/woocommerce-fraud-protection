@@ -159,6 +159,24 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox from_cart() keeps items with string quantities, recorded as supplied.
+	 */
+	public function test_from_cart_keeps_string_quantity_item(): void {
+		$product = \WC_Helper_Product::create_simple_product();
+
+		$cart_item_key = WC()->cart->add_to_cart( $product->get_id(), 1 );
+		$this->assertIsString( $cart_item_key );
+
+		WC()->cart->calculate_totals();
+		WC()->cart->cart_contents[ $cart_item_key ]['quantity'] = '2';
+
+		$arr = OrderData::from_cart( 0, WC()->cart, WC()->customer )->to_array();
+
+		$this->assertCount( 1, $arr['items'] );
+		$this->assertSame( '2', $arr['items'][0]['quantity'] );
+	}
+
+	/**
 	 * @testdox from_cart() drops a throwing item, keeps the rest, and logs a warning.
 	 */
 	public function test_from_cart_drops_and_logs_throwing_item(): void {

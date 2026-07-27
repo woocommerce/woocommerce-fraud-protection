@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\QuantityValue;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -17,28 +19,28 @@ class CartItem {
 	/**
 	 * Private constructor — use factory methods.
 	 *
-	 * @param int       $product_id           WooCommerce product ID.
-	 * @param ?string   $name                 Product name.
-	 * @param ?string   $category             Comma-separated category names.
-	 * @param ?string   $sku                  Product SKU.
-	 * @param int|float $quantity             Quantity in cart.
-	 * @param float     $unit_price           Per-unit price.
-	 * @param float     $unit_tax_amount      Per-unit tax amount.
-	 * @param float     $unit_discount_amount Per-unit discount amount.
-	 * @param ?string   $product_type         WooCommerce product type.
-	 * @param bool      $is_virtual           Whether the product is virtual.
-	 * @param bool      $is_downloadable      Whether the product is downloadable.
-	 * @param array     $attributes           Product attributes.
+	 * @param int     $product_id           WooCommerce product ID.
+	 * @param ?string $name                 Product name.
+	 * @param ?string $category             Comma-separated category names.
+	 * @param ?string $sku                  Product SKU.
+	 * @param mixed   $quantity             Quantity in cart, relayed verbatim.
+	 * @param float   $unit_price           Per-unit price.
+	 * @param ?float  $unit_tax_amount      Per-unit tax amount; null when underivable.
+	 * @param ?float  $unit_discount_amount Per-unit discount amount; null when underivable.
+	 * @param ?string $product_type         WooCommerce product type.
+	 * @param bool    $is_virtual           Whether the product is virtual.
+	 * @param bool    $is_downloadable      Whether the product is downloadable.
+	 * @param array   $attributes           Product attributes.
 	 */
 	private function __construct(
 		private readonly int $product_id,
 		private readonly ?string $name,
 		private readonly ?string $category,
 		private readonly ?string $sku,
-		private readonly int|float $quantity,
+		private readonly mixed $quantity,
 		private readonly float $unit_price,
-		private readonly float $unit_tax_amount,
-		private readonly float $unit_discount_amount,
+		private readonly ?float $unit_tax_amount,
+		private readonly ?float $unit_discount_amount,
 		private readonly ?string $product_type,
 		private readonly bool $is_virtual,
 		private readonly bool $is_downloadable,
@@ -53,14 +55,17 @@ class CartItem {
 	 * @return self
 	 */
 	public static function from_cart_entry( array $cart_item, \WC_Product $product ): self {
-		$quantity = $cart_item['quantity'] ?? 1;
+		// Relay the raw value verbatim; parse a finite float only for the local calculations.
+		$quantity        = $cart_item['quantity'] ?? 1;
+		$quantity_number = QuantityValue::as_finite_float( $quantity );
 
-		$unit_price = (float) $product->get_price();
-		$line_tax   = $cart_item['line_tax'] ?? 0;
-		$unit_tax   = $quantity > 0 ? ( (float) $line_tax / $quantity ) : 0;
-		$line_disc  = ( $cart_item['line_subtotal'] ?? 0 ) - ( $cart_item['line_total'] ?? 0 );
-		$unit_disc  = $quantity > 0 ? ( (float) $line_disc / $quantity ) : 0;
-		$category   = self::get_product_category_names( $product );
+		$unit_price    = (float) $product->get_price();
+		$line_tax      = $cart_item['line_tax'] ?? 0;
+		$line_discount = ( $cart_item['line_subtotal'] ?? 0 ) - ( $cart_item['line_total'] ?? 0 );
+		$unit_tax      = self::per_unit_amount( $line_tax, $quantity_number );
+		$unit_discount = self::per_unit_amount( $line_discount, $quantity_number );
+
+		$category = self::get_product_category_names( $product );
 
 		return new self(
 			$product->get_id(),
@@ -70,12 +75,31 @@ class CartItem {
 			$quantity,
 			$unit_price,
 			$unit_tax,
-			$unit_disc,
+			$unit_discount,
 			$product->get_type() ? $product->get_type() : null,
 			$product->is_virtual(),
 			$product->is_downloadable(),
 			$product->get_attributes() ? $product->get_attributes() : array(),
 		);
+	}
+
+	/**
+	 * Calculate a per-unit amount from a line total.
+	 *
+	 * Both checks concern the divisor. Without a numeric reading of the quantity there is
+	 * nothing to divide by, so no amount is derived. A zero or negative quantity keeps the
+	 * historical zero amounts rather than dividing.
+	 *
+	 * @param mixed      $line_amount Total amount for the line.
+	 * @param float|null $quantity    Parsed quantity.
+	 * @return float|null
+	 */
+	private static function per_unit_amount( mixed $line_amount, ?float $quantity ): ?float {
+		if ( null === $quantity ) {
+			return null;
+		}
+
+		return $quantity > 0 ? (float) $line_amount / $quantity : 0.0;
 	}
 
 	/**

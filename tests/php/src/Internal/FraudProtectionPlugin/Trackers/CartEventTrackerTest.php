@@ -419,31 +419,6 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox track_cart_item_updated() logs a forwarded failure for a string quantity instead of tracking it.
-	 */
-	public function test_track_cart_item_updated_catches_string_quantity(): void {
-		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 2 );
-		$this->assertIsString( $cart_item_key );
-
-		$this->mock_collector
-			->expects( $this->never() )
-			->method( 'collect' );
-
-		$this->sut->track_cart_item_updated( $cart_item_key, '3.5', 2, WC()->cart );
-
-		$this->assertLogged(
-			'error',
-			'Cart event tracker callback failed',
-			array(
-				'event_source'    => 'cart_event_tracker',
-				'hook'            => 'internal_woocommerce_cart_item_updated_from_user_request',
-				'exception_class' => \TypeError::class,
-			),
-			true
-		);
-	}
-
-	/**
 	 * Data provider: one invoker per tracker hook callback.
 	 *
 	 * @return array<string, array{string, \Closure}>
@@ -515,32 +490,6 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox track_cart_item_restored() catches a non-numeric quantity and logs the failure.
-	 */
-	public function test_track_cart_item_restored_catches_non_numeric_quantity(): void {
-		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), 1 );
-		$this->assertIsString( $cart_item_key );
-
-		$this->mock_collector
-			->expects( $this->never() )
-			->method( 'collect' );
-
-		WC()->cart->cart_contents[ $cart_item_key ]['quantity'] = 'not-a-number';
-
-		$this->sut->track_cart_item_restored( $cart_item_key, WC()->cart );
-
-		$this->assertLogged(
-			'error',
-			'Cart event tracker callback failed',
-			array(
-				'event_source' => 'cart_event_tracker',
-				'hook'         => 'woocommerce_cart_item_restored',
-			),
-			true
-		);
-	}
-
-	/**
 	 * Cleanup after test.
 	 */
 	public function tearDown(): void {
@@ -557,5 +506,223 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 		remove_all_actions( 'internal_woocommerce_cart_item_removed_from_user_request' );
 		remove_all_actions( 'woocommerce_cart_item_restored' );
 		remove_all_actions( 'template_redirect' );
+	}
+
+	/**
+	 * @testdox track_cart_item_added() relays the quantity WooCommerce supplied.
+	 *
+	 * @dataProvider provide_relayed_quantities
+	 *
+	 * @param mixed $quantity Quantity as WooCommerce supplies it to the callback.
+	 * @param mixed $expected Quantity expected on the event.
+	 */
+	public function test_track_cart_item_added_relays_quantity( mixed $quantity, mixed $expected ): void {
+		$this->expect_collected_quantity( 'cart_item_added', $expected );
+
+		$this->sut->track_cart_item_added( $this->test_product->get_id(), $quantity );
+	}
+
+	/**
+	 * @testdox track_cart_item_removed() relays the quantity held in the removed cart contents.
+	 *
+	 * @dataProvider provide_relayed_quantities
+	 *
+	 * @param mixed $quantity Quantity stored on the cart item before removal.
+	 * @param mixed $expected Quantity expected on the event.
+	 */
+	public function test_track_cart_item_removed_relays_quantity( mixed $quantity, mixed $expected ): void {
+		$cart_item_key = $this->add_test_product_to_cart();
+
+		$this->expect_collected_quantity( 'cart_item_removed', $expected );
+
+		WC()->cart->cart_contents[ $cart_item_key ]['quantity'] = $quantity;
+		WC()->cart->remove_cart_item( $cart_item_key );
+
+		$this->sut->track_cart_item_removed( $cart_item_key, WC()->cart );
+	}
+
+	/**
+	 * @testdox track_cart_item_restored() relays the quantity held in the cart contents.
+	 *
+	 * Driven through a stub cart rather than WC()->cart. The callback reads the quantity from the
+	 * live cart contents, and a non-numeric one there makes WooCommerce's own sum emit a warning
+	 * on PHP 8.3+, which PHPUnit converts into an exception the callback's guard then catches.
+	 * The matrix would fail on those versions against the harness rather than exercise the
+	 * callback, so the stub keeps it testing the thing it names.
+	 *
+	 * @dataProvider provide_relayed_quantities
+	 *
+	 * @param mixed $quantity Quantity stored on the restored cart item.
+	 * @param mixed $expected Quantity expected on the event.
+	 */
+	public function test_track_cart_item_restored_relays_quantity( mixed $quantity, mixed $expected ): void {
+		$stub_cart                = new \stdClass();
+		$stub_cart->cart_contents = array(
+			'stub_key' => array(
+				'product_id'   => $this->test_product->get_id(),
+				'variation_id' => 0,
+				'quantity'     => $quantity,
+			),
+		);
+
+		$this->expect_collected_quantity( 'cart_item_restored', $expected );
+
+		$this->sut->track_cart_item_restored( 'stub_key', $stub_cart );
+	}
+
+	/**
+	 * Data provider for the three single-quantity relay tests.
+	 *
+	 * Shared deliberately: the contract is the same on every callback, and a value reported by
+	 * one but not another would be a bug. Running the same matrix through each is what makes
+	 * that assertion.
+	 *
+	 * @return array<string, array{0: mixed, 1: mixed}>
+	 */
+	public function provide_relayed_quantities(): array {
+		return array(
+			// Reported exactly as supplied — the reason this change exists.
+			'numeric string'            => array( '2', '2' ),
+			'fractional numeric string' => array( '1.5', '1.5' ),
+			'non-numeric string'        => array( 'not-a-number', 'not-a-number' ),
+			'exponent overflow string'  => array( '1e400', '1e400' ),
+
+			// Reported as supplied, whatever the type. This layer does not rewrite the value.
+			'non-finite float'          => array( INF, INF ),
+			'array'                     => array( array( 1 ), array( 1 ) ),
+		);
+	}
+
+	/**
+	 * @testdox track_cart_item_updated() relays both the new and the old quantity.
+	 *
+	 * @dataProvider provide_updated_quantities
+	 *
+	 * @param mixed $quantity     New quantity as supplied.
+	 * @param mixed $old_quantity Previous quantity as supplied.
+	 * @param mixed $expected     New quantity expected on the event.
+	 * @param mixed $expected_old Previous quantity expected on the event.
+	 */
+	public function test_track_cart_item_updated_relays_quantities( mixed $quantity, mixed $old_quantity, mixed $expected, mixed $expected_old ): void {
+		$cart_item_key = $this->add_test_product_to_cart( 2 );
+
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( 'cart_item_updated' ),
+				$this->callback(
+					function ( $event_data ) use ( $expected, $expected_old ) {
+						$this->assertSame( $expected, $event_data['quantity'], 'quantity' );
+						$this->assertSame( $expected_old, $event_data['old_quantity'], 'old_quantity' );
+						return true;
+					}
+				)
+			);
+
+		$this->sut->track_cart_item_updated( $cart_item_key, $quantity, $old_quantity, WC()->cart );
+	}
+
+	/**
+	 * Data provider for {@see test_track_cart_item_updated_relays_quantities()}.
+	 *
+	 * @return array<string, array{0: mixed, 1: mixed, 2: mixed, 3: mixed}>
+	 */
+	public function provide_updated_quantities(): array {
+		return array(
+			'numeric string quantity'     => array( '3.5', 2, '3.5', 2 ),
+			'numeric string old quantity' => array( 3, '2', 3, '2' ),
+			'non-numeric old quantity'    => array( 3, 'junk', 3, 'junk' ),
+			'non-finite old quantity'     => array( 3, INF, 3, INF ),
+		);
+	}
+
+	/**
+	 * @testdox track_cart_item_updated() emits an event only when the quantity really changed.
+	 *
+	 * The comparison uses parsed numbers when both sides are numeric and strict raw equality
+	 * otherwise, so that '2' and 2 are the same update while two different non-numeric values
+	 * are not. Pinned as a matrix because every case is one call with a different pair.
+	 *
+	 * @dataProvider provide_quantity_transitions
+	 *
+	 * @param mixed $quantity     New quantity.
+	 * @param mixed $old_quantity Previous quantity.
+	 * @param bool  $should_emit  Whether an event is expected.
+	 */
+	public function test_track_cart_item_updated_emits_only_on_a_real_change( mixed $quantity, mixed $old_quantity, bool $should_emit ): void {
+		$spy           = $this->spy_on_controller_logging();
+		$cart_item_key = $this->add_test_product_to_cart( 2 );
+
+		$this->mock_collector
+			->expects( $should_emit ? $this->once() : $this->never() )
+			->method( 'collect' );
+
+		$this->sut->track_cart_item_updated( $cart_item_key, $quantity, $old_quantity, WC()->cart );
+
+		// A skipped event and an aborted one are indistinguishable from the collector alone:
+		// the callback catches its own failures, so a pair that started throwing would still
+		// satisfy never(). The absence of a logged failure is what separates them.
+		$this->assertSame(
+			array(),
+			array_values(
+				array_filter(
+					$spy->entries,
+					static function ( array $entry ): bool {
+						return false !== strpos( $entry['message'], 'Cart event tracker callback failed' );
+					}
+				)
+			),
+			'the callback must reach its decision, not abort on the way'
+		);
+	}
+
+	/**
+	 * Data provider for {@see test_track_cart_item_updated_emits_only_on_a_real_change()}.
+	 *
+	 * @return array<string, array{0: mixed, 1: mixed, 2: bool}>
+	 */
+	public function provide_quantity_transitions(): array {
+		return array(
+			'numerically equal string and int' => array( '2', 2, false ),
+			'identical non-numeric values'     => array( 'junk', 'junk', false ),
+			'two different non-numeric values' => array( 'junk-b', 'junk-a', true ),
+			'boolean true to integer one'      => array( 1, true, true ),
+			'a genuine numeric change'         => array( 3, 2, true ),
+		);
+	}
+
+	/**
+	 * Expect exactly one collected event carrying the given quantity.
+	 *
+	 * @param string $event_type Expected event type.
+	 * @param mixed  $expected   Expected quantity on the event data.
+	 */
+	private function expect_collected_quantity( string $event_type, mixed $expected ): void {
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( $event_type ),
+				$this->callback(
+					function ( $event_data ) use ( $expected ) {
+						$this->assertSame( $expected, $event_data['quantity'] );
+						return true;
+					}
+				)
+			);
+	}
+
+	/**
+	 * Put the shared test product in the cart and return its key.
+	 *
+	 * @param int $quantity Quantity to add.
+	 * @return string The cart item key.
+	 */
+	private function add_test_product_to_cart( int $quantity = 1 ): string {
+		$cart_item_key = WC()->cart->add_to_cart( $this->test_product->get_id(), $quantity );
+		$this->assertIsString( $cart_item_key );
+
+		return $cart_item_key;
 	}
 }
