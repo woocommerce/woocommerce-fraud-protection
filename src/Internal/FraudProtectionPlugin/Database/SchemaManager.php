@@ -36,7 +36,7 @@ class SchemaManager {
 	 * including fixes to the schema string itself: the bump is what resets
 	 * the retry state on sites where a previous installation gave up.
 	 */
-	public const SCHEMA_VERSION = 1;
+	public const SCHEMA_VERSION = 2;
 
 	/**
 	 * Option holding the schema installation retry state: an array with
@@ -108,6 +108,15 @@ class SchemaManager {
 	}
 
 	/**
+	 * Get the name of the merchant rules table, including the site prefix.
+	 *
+	 * @return string
+	 */
+	public function get_rules_table_name(): string {
+		return $this->legacy_proxy->get_global( 'wpdb' )->prefix . 'wc_fraud_protection_rules';
+	}
+
+	/**
 	 * Whether the installed schema version matches the one this build needs.
 	 *
 	 * While this is false (installation pending, failing, or given up),
@@ -158,26 +167,29 @@ class SchemaManager {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
 			$this->legacy_proxy->call_function( 'dbDelta', $this->get_sessions_table_schema() );
+			$this->legacy_proxy->call_function( 'dbDelta', $this->get_rules_table_schema() );
 
-			$wpdb  = $this->legacy_proxy->get_global( 'wpdb' );
-			$table = $this->get_sessions_table_name();
+			$wpdb   = $this->legacy_proxy->get_global( 'wpdb' );
+			$tables = array( $this->get_sessions_table_name(), $this->get_rules_table_name() );
 
-			// dbDelta swallows individual query errors, so confirm the table exists
+			// dbDelta swallows individual query errors, so confirm the tables exist
 			// before recording the schema version as installed.
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
-				$this->record_failed_attempt( $state, (string) $wpdb->last_error );
-				FraudProtectionController::log(
-					'error',
-					'Sessions table creation failed: table does not exist after dbDelta.',
-					array(
-						'event_source' => 'schema_manager',
-						'db_error'     => $wpdb->last_error,
-						'attempts'     => $state['attempts'],
-					),
-					true
-				);
-				return;
+			foreach ( $tables as $table ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
+					$this->record_failed_attempt( $state, (string) $wpdb->last_error );
+					FraudProtectionController::log(
+						'error',
+						sprintf( 'Table creation failed: %s does not exist after dbDelta.', $table ),
+						array(
+							'event_source' => 'schema_manager',
+							'db_error'     => $wpdb->last_error,
+							'attempts'     => $state['attempts'],
+						),
+						true
+					);
+					return;
+				}
 			}
 
 			update_option( self::DB_VERSION_OPTION, self::SCHEMA_VERSION );
@@ -257,6 +269,12 @@ class SchemaManager {
 	 * object, `LONGTEXT` per WooCommerce core's convention for JSON blobs).
 	 * Nothing writes it yet: the collection mechanism will be added later.
 	 *
+	 * `matched_rule_id` is the id of the merchant rule that decided the
+	 * outcome, for both allow and block results, or `NULL` when no rule
+	 * matched. Indexed to support a "sessions affected by this rule" filter.
+	 * Rule deletion is a soft delete, so the id never dangles and no
+	 * referential integrity is needed.
+	 *
 	 * Indexes on text columns are capped at 191 chars (WooCommerce core's
 	 * `$max_index_length`): under utf8mb4 that is 764 bytes, within the
 	 * 767-byte InnoDB index limit of the oldest MySQL versions WooCommerce
@@ -287,12 +305,63 @@ class SchemaManager {
 	billing_name VARCHAR(255) NOT NULL DEFAULT '',
 	order_id BIGINT UNSIGNED NULL,
 	payment_method VARCHAR(64) NOT NULL DEFAULT '',
+	matched_rule_id BIGINT UNSIGNED NULL,
 	metadata LONGTEXT NULL,
 	reported_at DATETIME NULL,
 	PRIMARY KEY  (id),
 	KEY session_id (session_id),
 	KEY email (email(191)),
-	KEY recorded_at (recorded_at)
+	KEY recorded_at (recorded_at),
+	KEY matched_rule_id (matched_rule_id)
+) {$collate};";
+	}
+
+	/**
+	 * Get the dbDelta schema for the merchant rules table. One row
+	 * per merchant rule (the positive and negative lists combined).
+	 *
+	 * `action` and `status` hold the backing values of the `FraudDecision` and
+	 * `RuleStatus` enums, `conditions` is the JSON condition document
+	 * (validated at write time, evaluated in PHP, never queried in SQL) and
+	 * `condition_hash` is the SHA-256 of its normalized form, unique so
+	 * duplicate rules are rejected at insert time. The hash is nullable only
+	 * for soft-deleted rows: it is set to `NULL` on deletion (MySQL unique
+	 * keys admit multiple `NULL`s) so uniqueness constrains live rules only.
+	 *
+	 * `position` is the evaluation order (lower first) and deliberately has
+	 * no database default: an insert that forgets to set it must fail loudly
+	 * rather than silently land at top priority.
+	 *
+	 * `action_meta` (future outcome parameters), `source_meta` (creation-time
+	 * context captured when the rule is created from a session row) and
+	 * `source_session_id` (the Blackbox session the rule was created from)
+	 * are nullable; sessions are pruned while rules never expire, so
+	 * `source_meta` preserves the rule's provenance after the source session
+	 * row is gone.
+	 *
+	 * @return string
+	 */
+	public function get_rules_table_schema(): string {
+		$table   = $this->get_rules_table_name();
+		$collate = $this->legacy_proxy->get_global( 'wpdb' )->get_charset_collate();
+
+		return "CREATE TABLE {$table} (
+	id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	action VARCHAR(16) NOT NULL,
+	status VARCHAR(16) NOT NULL DEFAULT 'active',
+	position INT NOT NULL,
+	conditions LONGTEXT NOT NULL,
+	condition_hash CHAR(64) NULL,
+	action_meta LONGTEXT NULL,
+	source_meta LONGTEXT NULL,
+	created_at DATETIME NOT NULL,
+	created_by BIGINT UNSIGNED NULL,
+	updated_at DATETIME NULL,
+	updated_by BIGINT UNSIGNED NULL,
+	source_session_id VARCHAR(64) NULL,
+	PRIMARY KEY  (id),
+	UNIQUE KEY condition_hash (condition_hash),
+	KEY status_position (status, position)
 ) {$collate};";
 	}
 }

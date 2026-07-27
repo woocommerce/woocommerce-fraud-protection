@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
@@ -109,12 +110,13 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Record a verify result and return the event row captured by the store mock.
 	 *
-	 * @param VerifyResult  $result  The verify result to record.
-	 * @param FraudDecision $applied The decision actually applied.
-	 * @param ?array        $payload The session data payload (defaults to {@see a_session_data_payload()}).
+	 * @param VerifyResult  $result       The verify result to record.
+	 * @param FraudDecision $applied      The decision actually applied.
+	 * @param ?array        $payload      The session data payload (defaults to {@see a_session_data_payload()}).
+	 * @param ?Rule         $matched_rule The merchant rule that decided the outcome, if any.
 	 * @return ?array The captured event row.
 	 */
-	private function record_result_and_capture( VerifyResult $result, FraudDecision $applied, ?array $payload = null ): ?array {
+	private function record_result_and_capture( VerifyResult $result, FraudDecision $applied, ?array $payload = null, ?Rule $matched_rule = null ): ?array {
 		$captured = null;
 		$this->event_store
 			->method( 'record_event' )
@@ -125,9 +127,28 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 				}
 			);
 
-		$this->sut->record_decision( $result, $applied, $payload ?? $this->a_session_data_payload() );
+		$this->sut->record_decision( $result, $applied, $payload ?? $this->a_session_data_payload(), $matched_rule );
 
 		return $captured;
+	}
+
+	/**
+	 * A rule with the given action, as the evaluator would return it.
+	 *
+	 * @param FraudDecision $action The rule action.
+	 * @return Rule
+	 */
+	private function a_matching_rule( FraudDecision $action ): Rule {
+		return Rule::from_row(
+			array(
+				'id'         => 42,
+				'action'     => $action->value,
+				'status'     => 'active',
+				'position'   => 1,
+				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'created_at' => '2026-07-27 00:00:00',
+			)
+		);
 	}
 
 	/**
@@ -226,6 +247,64 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'verify_error', $captured['trigger_type'] );
 		$this->assertSame( 'session-xyz', $captured['session_id'], 'The session ID the request was made with should be recorded' );
 		$this->assertNull( $captured['risk_score'] );
+	}
+
+	/**
+	 * @testdox Should record a matching allow rule under the allow_rule trigger with the rule id, keeping the received decision.
+	 */
+	public function test_records_allow_rule_trigger_for_matching_allow_rule(): void {
+		$captured = $this->record_result_and_capture(
+			$this->a_verify_result( FraudDecision::Block ),
+			FraudDecision::Allow,
+			null,
+			$this->a_matching_rule( FraudDecision::Allow )
+		);
+
+		$this->assertSame( 'block', $captured['decision'], 'The Blackbox verdict must be recorded as received' );
+		$this->assertSame( 'allowed', $captured['final_status'] );
+		$this->assertSame( 'allow_rule', $captured['trigger_type'] );
+		$this->assertSame( 42, $captured['matched_rule_id'] );
+	}
+
+	/**
+	 * @testdox Should record a matching block rule under the block_rule trigger with the rule id.
+	 */
+	public function test_records_block_rule_trigger_for_matching_block_rule(): void {
+		$captured = $this->record_result_and_capture(
+			$this->a_verify_result( FraudDecision::Allow ),
+			FraudDecision::Block,
+			null,
+			$this->a_matching_rule( FraudDecision::Block )
+		);
+
+		$this->assertSame( 'allow', $captured['decision'] );
+		$this->assertSame( 'blocked', $captured['final_status'] );
+		$this->assertSame( 'block_rule', $captured['trigger_type'] );
+		$this->assertSame( 42, $captured['matched_rule_id'] );
+	}
+
+	/**
+	 * @testdox Should let a matched rule trigger take precedence over verify_error when the verify failed open.
+	 */
+	public function test_matched_rule_trigger_takes_precedence_over_verify_error(): void {
+		$captured = $this->record_result_and_capture(
+			VerifyResult::fail_open( 'session-xyz' ),
+			FraudDecision::Block,
+			null,
+			$this->a_matching_rule( FraudDecision::Block )
+		);
+
+		$this->assertSame( 'block_rule', $captured['trigger_type'], 'The rule decided the outcome, whatever the verify did' );
+		$this->assertSame( 42, $captured['matched_rule_id'] );
+	}
+
+	/**
+	 * @testdox Should record a null matched rule id when no rule decided the outcome.
+	 */
+	public function test_records_null_matched_rule_id_without_a_rule(): void {
+		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Allow );
+
+		$this->assertNull( $captured['matched_rule_id'] );
 	}
 
 	/**

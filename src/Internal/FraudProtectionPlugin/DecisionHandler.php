@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 
@@ -17,6 +18,7 @@ defined( 'ABSPATH' ) || exit;
  * Handles fraud protection decision application.
  *
  * This class is responsible for:
+ * - Evaluating the merchant ruleset (the positive/negative lists) against the session
  * - Validating decisions and applying extension override filters for whitelisting
  * - Applying learning mode
  * - Recording actionable verdicts into the sessions log via SessionEventRecorder
@@ -27,7 +29,8 @@ defined( 'ABSPATH' ) || exit;
  * so every new attempt is verified from scratch — a block does not follow the
  * shopper, and the `woocommerce_fraud_protection_decision` filter can override
  * the verdict on any subsequent attempt. The sessions log is a write-only
- * record; it never feeds back into decisions.
+ * record; it never feeds back into decisions (merchant rules, which do feed
+ * decisions, live in their own table).
  */
 class DecisionHandler {
 
@@ -39,14 +42,23 @@ class DecisionHandler {
 	private SessionEventRecorder $event_recorder;
 
 	/**
+	 * Rule evaluator instance.
+	 *
+	 * @var RuleEvaluator
+	 */
+	private RuleEvaluator $rule_evaluator;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionEventRecorder $event_recorder The session event recorder instance.
+	 * @param RuleEvaluator        $rule_evaluator The rule evaluator instance.
 	 */
-	final public function init( SessionEventRecorder $event_recorder ): void {
+	final public function init( SessionEventRecorder $event_recorder, RuleEvaluator $rule_evaluator ): void {
 		$this->event_recorder = $event_recorder;
+		$this->rule_evaluator = $rule_evaluator;
 	}
 
 	/**
@@ -60,11 +72,15 @@ class DecisionHandler {
 	 * non-actionable decisions (Challenge) are coerced to Allow here.
 	 *
 	 * The decision flow:
-	 * 1. Coerce non-actionable decisions to Allow
-	 * 2. Apply the `woocommerce_fraud_protection_decision` filter for overrides
-	 * 3. Validate the filtered decision (third-party filters may return invalid values)
-	 * 4. Apply learning mode (suppresses Block decisions while active)
-	 * 5. Record the received decision into the sessions log (fail-open)
+	 * 1. Evaluate the merchant ruleset: a matching active rule decides the
+	 *    outcome directly - it takes precedence over the Blackbox verdict and
+	 *    bypasses the decision filter and the learning mode gate below. In
+	 *    particular, a merchant block rule enforces even in learning mode.
+	 * 2. Coerce non-actionable decisions to Allow
+	 * 3. Apply the `woocommerce_fraud_protection_decision` filter for overrides
+	 * 4. Validate the filtered decision (third-party filters may return invalid values)
+	 * 5. Apply learning mode (suppresses Block decisions while active)
+	 * 6. Record the received decision into the sessions log (fail-open)
 	 *
 	 * @param VerifyResult         $result       The verify result from the API.
 	 * @param array<string, mixed> $session_data The session data that was sent to the API.
@@ -77,6 +93,25 @@ class DecisionHandler {
 			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
+
+		$matched_rule = $this->rule_evaluator->evaluate_for_session( $session_data );
+		if ( ! is_null( $matched_rule ) ) {
+			FraudProtectionController::log(
+				'info',
+				sprintf( 'Merchant rule %d decided the session: "%s" (received decision was "%s").', $matched_rule->id, $matched_rule->action->value, $decision->value ),
+				array_merge(
+					$log_context,
+					array(
+						'matched_rule_id'   => $matched_rule->id,
+						'final_decision'    => $matched_rule->action->value,
+						'decision_received' => $decision->value,
+					)
+				)
+			);
+			$this->event_recorder->record_decision( $result, $matched_rule->action, $session_data, $matched_rule );
+
+			return $matched_rule->action;
+		}
 
 		// The result may carry FraudDecision::Challenge, which is not actionable and not yet
 		// supported. Fail open on any non-actionable decision so only actionable decisions are

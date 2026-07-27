@@ -47,13 +47,16 @@ class SessionEventStore {
 	 *
 	 * @param array<string, mixed> $event The event data to record: session_id, source, decision, final_status,
 	 *                                    trigger_type, risk_score (nullable float), email, ip, ip_country,
-	 *                                    billing_country/state/city/postcode/name, order_id and payment_method.
+	 *                                    billing_country/state/city/postcode/name, order_id, payment_method
+	 *                                    and matched_rule_id (nullable int).
 	 * @return bool True on success, false on database failure.
 	 */
 	public function record_event( array $event ): bool {
 		global $wpdb;
 
 		$table = $this->schema_manager->get_sessions_table_name();
+
+		$matched_rule_id = (int) ( $event['matched_rule_id'] ?? 0 );
 
 		$columns = array(
 			'session_id'       => '' === $event['session_id'] ? null : $event['session_id'],
@@ -73,6 +76,7 @@ class SessionEventStore {
 			'billing_name'     => $event['billing_name'],
 			'order_id'         => 0 === $event['order_id'] ? null : $event['order_id'],
 			'payment_method'   => $event['payment_method'],
+			'matched_rule_id'  => 0 === $matched_rule_id ? null : $matched_rule_id,
 		);
 
 		$placeholders = array();

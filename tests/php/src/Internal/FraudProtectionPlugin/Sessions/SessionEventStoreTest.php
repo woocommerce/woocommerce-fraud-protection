@@ -178,6 +178,17 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should record the matched rule id, and null when the event carries none.
+	 */
+	public function test_records_matched_rule_id(): void {
+		$this->sut->record_event( $this->an_event( array( 'matched_rule_id' => 42 ) ) );
+		$this->assertSame( '42', (string) $this->latest_row_for( 'session-abc' )['matched_rule_id'] );
+
+		$this->sut->record_event( $this->an_event() );
+		$this->assertNull( $this->latest_row_for( 'session-abc' )['matched_rule_id'], 'An event without a matched rule must record NULL' );
+	}
+
+	/**
 	 * @testdox Should insert separate rows for events with no session ID.
 	 */
 	public function test_events_without_session_id_insert_separate_rows(): void {

@@ -9,6 +9,8 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -40,6 +42,13 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	private $event_recorder;
 
 	/**
+	 * Mock rule evaluator, reporting no rule match by default.
+	 *
+	 * @var RuleEvaluator&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $rule_evaluator;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -48,8 +57,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$this->original_session = WC()->session;
 
 		$this->event_recorder = $this->createMock( SessionEventRecorder::class );
+		$this->rule_evaluator = $this->createMock( RuleEvaluator::class );
 		$this->sut            = new DecisionHandler();
-		$this->sut->init( $this->event_recorder );
+		$this->sut->init( $this->event_recorder, $this->rule_evaluator );
 	}
 
 	/**
@@ -390,6 +400,110 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Allow, $this->anything() );
+
+		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| Merchant Rules Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * A rule with the given action, as the evaluator would return it.
+	 *
+	 * @param FraudDecision $action The rule action.
+	 * @return Rule
+	 */
+	private function a_matching_rule( FraudDecision $action ): Rule {
+		return Rule::from_row(
+			array(
+				'id'         => 7,
+				'action'     => $action->value,
+				'status'     => 'active',
+				'position'   => 1,
+				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'created_at' => '2026-07-27 00:00:00',
+			)
+		);
+	}
+
+	/**
+	 * @testdox A matching merchant block rule enforces even in learning mode.
+	 */
+	public function test_matching_block_rule_enforces_in_learning_mode(): void {
+		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Block ) );
+
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Block, $result, 'The merchant block rule must enforce even while learning mode (default) is on' );
+		$this->assertLogged( 'info', 'Merchant rule 7 decided the session: "block"' );
+	}
+
+	/**
+	 * @testdox A matching merchant allow rule overrides a Blackbox block verdict.
+	 */
+	public function test_matching_allow_rule_overrides_block_verdict(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Allow ) );
+
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
+	 * @testdox A matching rule bypasses the decision filter entirely.
+	 */
+	public function test_matching_rule_bypasses_decision_filter(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		$filter_called = false;
+		add_filter(
+			'woocommerce_fraud_protection_decision',
+			function ( $decision ) use ( &$filter_called ) {
+				$filter_called = true;
+				return FraudDecision::Block;
+			}
+		);
+
+		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Allow ) );
+
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result, 'The rule action must be final' );
+		$this->assertFalse( $filter_called, 'The decision filter must not run when a merchant rule decided the session' );
+	}
+
+	/**
+	 * @testdox Records the received decision with the rule action and the matched rule when a rule decides.
+	 */
+	public function test_records_matched_rule(): void {
+		$rule = $this->a_matching_rule( FraudDecision::Block );
+		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $rule );
+
+		$verify_result = VerifyResult::create( FraudDecision::Allow, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, FraudDecision::Block, $this->anything(), $rule );
+
+		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+	}
+
+	/**
+	 * @testdox Records no matched rule when no rule decided the session.
+	 */
+	public function test_records_null_matched_rule_when_no_rule_matches(): void {
+		$verify_result = VerifyResult::create( FraudDecision::Allow, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, FraudDecision::Allow, $this->anything(), null );
 
 		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
 	}

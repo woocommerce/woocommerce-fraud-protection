@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
@@ -63,7 +64,7 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 			->getMock();
 
 		$decision_handler = new DecisionHandler();
-		$decision_handler->init( $this->createMock( SessionEventRecorder::class ) );
+		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $this->createMock( RuleEvaluator::class ) );
 
 		$session_verifier = new SessionVerifier();
 		$session_verifier->init(
