@@ -105,6 +105,10 @@ class RuleConditions {
 			case self::FIELD_EMAIL:
 				// Lowercased so differently-cased variants of the same address compare equal.
 				$value = strtolower( $value );
+				// The shape check is deliberately looser than FILTER_VALIDATE_EMAIL or
+				// is_email(): the value is a matching key against recorder-stored emails,
+				// not a mailbox to validate; also strict validators reject real (e.g.
+				// internationalized) addresses.
 				if ( mb_strlen( $value ) > self::MAX_EMAIL_LENGTH || 1 !== preg_match( '/^\S+@\S+$/', $value ) ) {
 					return null;
 				}
