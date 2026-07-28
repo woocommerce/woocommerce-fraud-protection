@@ -265,6 +265,13 @@ class ApiClient {
 	 * on success; any transport, status, or parsing failure becomes a WP_Error so
 	 * the caller can fail open.
 	 *
+	 * The payload is reduced to encodable values immediately before encoding, so a value the
+	 * encoder cannot carry costs its own field rather than the whole request body.
+	 * {@see EncodablePayload} decides what survives by allowlisting types known to encode rather
+	 * than by naming the ones that do not, so a shape nobody anticipated is rejected instead of
+	 * sailing through. The encode-failure branch below remains the last resort for what no
+	 * per-value rule can fix, such as a document nested past the encoder's depth budget.
+	 *
 	 * @param string               $method     HTTP method (GET, POST, etc.).
 	 * @param string               $path       Endpoint path (relative to Blackbox API base URL).
 	 * @param string               $session_id Session ID for the request.
@@ -276,14 +283,34 @@ class ApiClient {
 		// unexpectedly long value cannot push the request URL past transport limits.
 		$session_id = substr( $session_id, 0, self::MAX_SESSION_ID_LENGTH );
 
-		$body = \wp_json_encode(
-			array_merge(
-				$payload,
-				array(
-					'session_id' => $session_id,
-				)
+		$rejected = array();
+		$body     = \wp_json_encode(
+			EncodablePayload::for_wire(
+				array_merge(
+					$payload,
+					array(
+						'session_id' => $session_id,
+					)
+				),
+				$rejected
 			)
 		);
+
+		// Logged once per request rather than once per field, so a payload full of rejected
+		// values cannot flood the log. Paths only, never values. The diagnostic is local; the
+		// request itself carries no marker for a reduced field, which would need a wire field
+		// agreed with the service first.
+		if ( array() !== $rejected ) {
+			FraudProtectionController::log(
+				'warning',
+				'Dropped unencodable values from the request payload',
+				array(
+					'session_id' => $session_id,
+					'path'       => $path,
+					'fields'     => $rejected,
+				)
+			);
+		}
 
 		if ( false === $body ) {
 			return new \WP_Error(

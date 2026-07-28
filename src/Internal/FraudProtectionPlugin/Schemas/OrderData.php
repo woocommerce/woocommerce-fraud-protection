@@ -19,14 +19,19 @@ class OrderData {
 	/**
 	 * Private constructor — use factory methods.
 	 *
+	 * The money totals are nullable because they are derived from the cart, and WooCommerce
+	 * does not guarantee a derived total is a finite number. When it is not, there is no honest
+	 * number to put in its place: null omits the field (see ApiClient::filter_empty_values())
+	 * rather than asserting a zero total.
+	 *
 	 * @param int        $order_id          Order ID (0 when not yet created).
 	 * @param int|string $customer_id       Customer ID or 'guest'.
-	 * @param float      $total             Order total.
-	 * @param float      $items_total       Items subtotal.
-	 * @param float      $shipping_total    Shipping total.
-	 * @param float      $tax_total         Tax total.
+	 * @param ?float     $total             Order total.
+	 * @param ?float     $items_total       Items subtotal.
+	 * @param ?float     $shipping_total    Shipping total.
+	 * @param ?float     $tax_total         Tax total.
 	 * @param ?float     $shipping_tax_rate Shipping tax rate.
-	 * @param float      $discount_total    Discount total.
+	 * @param ?float     $discount_total    Discount total.
 	 * @param ?string    $currency          Currency code (defaults to store currency).
 	 * @param ?string    $cart_hash         Cart hash.
 	 * @param CartItem[] $items             Cart items.
@@ -34,12 +39,12 @@ class OrderData {
 	private function __construct(
 		private readonly int $order_id = 0,
 		private readonly int|string $customer_id = 'guest',
-		private readonly float $total = 0,
-		private readonly float $items_total = 0,
-		private readonly float $shipping_total = 0,
-		private readonly float $tax_total = 0,
+		private readonly ?float $total = 0,
+		private readonly ?float $items_total = 0,
+		private readonly ?float $shipping_total = 0,
+		private readonly ?float $tax_total = 0,
 		private readonly ?float $shipping_tax_rate = null,
-		private readonly float $discount_total = 0,
+		private readonly ?float $discount_total = 0,
 		private readonly ?string $currency = null,
 		private readonly ?string $cart_hash = null,
 		private readonly array $items = array()
@@ -56,18 +61,24 @@ class OrderData {
 	public static function from_cart( int $order_id, \WC_Cart $cart, \WC_Customer $customer ): self {
 		$customer_id = $customer->get_id() ? $customer->get_id() : 'guest';
 
-		$items_total    = (float) $cart->get_subtotal();
-		$shipping_total = (float) $cart->get_shipping_total();
-		$tax_total      = (float) $cart->get_cart_contents_tax();
-		$discount_total = (float) $cart->get_discount_total();
+		// Every total is derived from cart contents, and none is guaranteed finite. Half the
+		// setters store their value raw (set_cart_contents_tax, set_discount_total,
+		// set_shipping_tax), so a non-finite float arrives as a float; the other half
+		// (set_subtotal, set_shipping_total, set_total) flatten it into a string via
+		// wc_format_decimal(). Which half a field falls in is an implementation detail, not a
+		// contract, so all are guarded the same way.
+		$items_total    = self::finite_or_null( $cart->get_subtotal() );
+		$shipping_total = self::finite_or_null( $cart->get_shipping_total() );
+		$tax_total      = self::finite_or_null( $cart->get_cart_contents_tax() );
+		$discount_total = self::finite_or_null( $cart->get_discount_total() );
 		$cart_hash      = $cart->get_cart_hash();
-		$total          = (float) $cart->get_total( 'edit' );
+		$total          = self::finite_or_null( $cart->get_total( 'edit' ) );
 		$currency       = \WC()->call_function( 'get_woocommerce_currency' );
 
 		// Calculate shipping_tax_rate.
-		$shipping_tax      = (float) $cart->get_shipping_tax();
-		$shipping_tax_rate = ( $shipping_total > 0 && $shipping_tax > 0 )
-			? $shipping_tax / $shipping_total
+		$shipping_tax      = self::finite_or_null( $cart->get_shipping_tax() );
+		$shipping_tax_rate = ( null !== $shipping_total && null !== $shipping_tax && $shipping_total > 0 && $shipping_tax > 0 )
+			? self::finite_or_null( $shipping_tax / $shipping_total )
 			: null;
 
 		// Build cart items — per-item try/catch so one bad item doesn't lose the rest.
@@ -108,6 +119,34 @@ class OrderData {
 			$cart_hash,
 			$items,
 		);
+	}
+
+	/**
+	 * Interpret a WooCommerce money value as a finite float.
+	 *
+	 * WooCommerce returns totals as numeric strings or floats, and guarantees neither a numeric
+	 * shape nor finiteness. This field is a number on the wire: when the raw value has no finite
+	 * numeric reading, the total is omitted rather than fabricated.
+	 *
+	 * The encoding boundary does not make this redundant. Half of these totals reach us through
+	 * `wc_format_decimal()`, which renders a non-finite float as the *string* `'INF'` or `'inf'`;
+	 * a string encodes perfectly well, so {@see EncodablePayload} keeps it — correctly, since it
+	 * cannot tell a sentinel from a legitimate value. The other half arrive as a raw float, which
+	 * the boundary would reject on its own. Either way only this method knows the field is meant
+	 * to be a number, so only it can tell a total the plugin declined to state from one the
+	 * encoder happened to drop.
+	 *
+	 * @param mixed $value Raw total from WC_Cart.
+	 * @return float|null The value as a finite float, or null when it has none.
+	 */
+	private static function finite_or_null( mixed $value ): ?float {
+		if ( ! is_numeric( $value ) ) {
+			return null;
+		}
+
+		$number = (float) $value;
+
+		return is_finite( $number ) ? $number : null;
 	}
 
 	/**

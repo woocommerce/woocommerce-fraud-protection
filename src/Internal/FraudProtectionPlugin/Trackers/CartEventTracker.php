@@ -21,6 +21,8 @@ defined( 'ABSPATH' ) || exit;
  * to the SessionDataCollector which handles session data storage internally.
  *
  * Quantities are reported as WooCommerce supplies them, in whatever type it supplies them.
+ * The derived cart item count is the plugin's own number rather than a relayed one, and is
+ * reported only when it is finite.
  */
 class CartEventTracker {
 
@@ -245,6 +247,10 @@ class CartEventTracker {
 	 * and current cart state. This data will be merged with comprehensive
 	 * session data during event dispatching.
 	 *
+	 * The two quantity fields follow different policies on purpose. The quantity is reported as
+	 * supplied, whatever its type; the derived count is reported only when finite — see
+	 * finite_count() for why.
+	 *
 	 * @param string $action       Action type (item_added, item_updated, item_removed, item_restored).
 	 * @param int    $product_id   Product ID.
 	 * @param mixed  $quantity     Quantity, relayed verbatim.
@@ -264,8 +270,58 @@ class CartEventTracker {
 			'product_id'      => $product_id,
 			'quantity'        => $quantity,
 			'variation_id'    => $variation_id,
-			'cart_item_count' => $cart_item_count,
+			'cart_item_count' => self::finite_count( $cart_item_count ),
 		);
+	}
+
+	/**
+	 * Keep a derived cart count only when it is a finite number.
+	 *
+	 * Unlike the quantity beside it, the count is not supplied by anyone — the plugin derives it,
+	 * so there is nothing to relay verbatim: it is either a number the payload can state or it is
+	 * unknown. Substituting 0 would be worse than omitting, since 0 is this method's own "cart
+	 * unavailable" value and would assert an empty cart at exactly the moment the real count is
+	 * unknown.
+	 *
+	 * This is not made redundant by the encoding boundary. WooCommerce sums the count through the
+	 * `woocommerce_cart_contents_count` filter, and a filter returning the *string* `'INF'` would
+	 * sail through {@see EncodablePayload}, which keeps every string on purpose. Enforcing the
+	 * field's own numeric shape is this method's job; the boundary only guarantees the request
+	 * survives.
+	 *
+	 * A count WooCommerce states as a numeric string is still a count, so it is read the same way
+	 * {@see OrderData::from_cart()} reads a money total: by numeric value rather than by PHP type.
+	 * Rejecting `'3'` would lose a usable number without preventing any fabrication.
+	 *
+	 * @param mixed $value Raw count.
+	 * @return int|float|null The count when it has a finite numeric reading, null otherwise.
+	 */
+	private static function finite_count( mixed $value ): int|float|null {
+		if ( is_int( $value ) ) {
+			return $value;
+		}
+
+		if ( ! is_numeric( $value ) ) {
+			return null;
+		}
+
+		$number = (float) $value;
+
+		if ( ! is_finite( $number ) ) {
+			return null;
+		}
+
+		// A whole count is reported as a whole number whichever way it arrived, so '3' and 3 do
+		// not reach the payload as different types. Only when the cast is lossless, though: the
+		// comparison happens in float, where PHP_INT_MAX rounds up to 2^63 — one past the real
+		// maximum — so an inclusive bound would admit 2^63 and cast it to a large negative,
+		// reporting a count that is not merely wrong but the wrong sign. (float) PHP_INT_MIN is
+		// exactly representable, so the lower bound is inclusive and the upper is not.
+		$is_lossless_int = floor( $number ) === $number
+			&& $number >= (float) PHP_INT_MIN
+			&& $number < (float) PHP_INT_MAX;
+
+		return $is_lossless_int ? (int) $number : $number;
 	}
 
 	/**

@@ -755,4 +755,185 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $result );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
+
+	/**
+	 * @testdox verify() drops an unencodable value and still reaches the transport
+	 *
+	 * One case per shape the allowlist rejects. Each costs its own field: the body still encodes,
+	 * the transport is still called, and the verdict comes back as normal.
+	 *
+	 * @dataProvider unencodable_quantity_provider
+	 *
+	 * @param mixed $quantity          Value carrying something the encoder cannot represent.
+	 * @param mixed $expected_quantity What survives on the wire, or '<absent>' when the key is dropped.
+	 */
+	public function test_verify_drops_unencodable_values_and_still_calls_transport( mixed $quantity, mixed $expected_quantity ): void {
+		$captured_body = null;
+		$sut           = $this->api_client_returning(
+			$this->decision_response( 'block' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$result = $sut->verify(
+			'test-session-id',
+			array(
+				'events' => array(
+					array(
+						'action'   => 'item_added',
+						'quantity' => $quantity,
+					),
+				),
+			)
+		);
+
+		$this->assertIsArray( $captured_body, 'The transport must be reached with an encodable body' );
+		$this->assertSame( FraudDecision::Block, $result->decision, 'The real verdict must be honoured' );
+		$this->assertFalse( $result->fail_open, 'Verification must not fail open' );
+
+		$event = $captured_body['context']['events'][0];
+		$this->assertSame( 'item_added', $event['action'], 'The surrounding event must survive' );
+		$this->assertSame( $expected_quantity, $event['quantity'] ?? '<absent>', 'The unencodable value must not survive' );
+	}
+
+	/**
+	 * @return array<string, array{mixed, mixed}>
+	 */
+	public function unencodable_quantity_provider(): array {
+		return array(
+			// A scalar is dropped outright; a nested one leaves its container behind.
+			'positive infinity'        => array( INF, '<absent>' ),
+			'negative infinity'        => array( -INF, '<absent>' ),
+			'not a number'             => array( NAN, '<absent>' ),
+			'nested positive infinity' => array( array( INF ), array() ),
+			'object carrying INF'      => array( new NonFiniteBearer(), '<absent>' ),
+			// The type the previous, enumerate-the-bad-shapes guard let through.
+			'resource'                 => array( STDERR, '<absent>' ),
+		);
+	}
+
+	/**
+	 * @testdox verify() relays every encodable type untouched, including strings JSON must repair
+	 *
+	 * The allowlist keeps by type, so it has to be shown keeping things — a guard that dropped
+	 * everything would pass the test above. Invalid UTF-8 matters most: json_encode() rejects it
+	 * outright, and only wp_json_encode()'s repair pass saves it, so testing each string here
+	 * would destroy data WordPress was going to salvage.
+	 *
+	 * @dataProvider encodable_quantity_provider
+	 *
+	 * @param mixed $quantity Value that must survive.
+	 * @param mixed $expected What the wire should carry.
+	 */
+	public function test_verify_relays_encodable_values_untouched( mixed $quantity, mixed $expected ): void {
+		$captured_body = null;
+		$sut           = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$sut->verify( 'test-session-id', array( 'events' => array( array( 'quantity' => $quantity ) ) ) );
+
+		$this->assertIsArray( $captured_body, 'The transport must be reached' );
+		$this->assertSame( $expected, $captured_body['context']['events'][0]['quantity'] ?? '<absent>' );
+	}
+
+	/**
+	 * @return array<string, array{mixed, mixed}>
+	 */
+	public function encodable_quantity_provider(): array {
+		return array(
+			'int'                  => array( 2, 2 ),
+			'finite float'         => array( 2.5, 2.5 ),
+			'numeric string'       => array( '2', '2' ),
+			'non-numeric string'   => array( 'not-a-number', 'not-a-number' ),
+			'bool'                 => array( true, true ),
+			'zero'                 => array( 0, 0 ),
+			'array of safe values' => array( array( 1, '2' ), array( 1, '2' ) ),
+			// Repaired by wp_json_encode(), not dropped: "\xB1\x31" reaches the wire as "?1".
+			'invalid UTF-8 string' => array( "\xB1\x31", '?1' ),
+		);
+	}
+
+	/**
+	 * @testdox verify() logs the dropped fields once per request, by path and never by value
+	 */
+	public function test_verify_logs_dropped_fields_once(): void {
+		$spy = $this->spy_on_controller_logging();
+		$sut = $this->api_client_returning( $this->decision_response( 'allow' ) );
+
+		$sut->verify(
+			'test-session-id',
+			array(
+				'order'  => array( 'tax_total' => INF ),
+				'events' => array( array( 'cart_item_count' => INF ) ),
+			)
+		);
+
+		$this->assertLogged(
+			'warning',
+			'Dropped unencodable values from the request payload',
+			array(
+				'session_id' => 'test-session-id',
+				'path'       => '/verify',
+				'fields'     => array( 'context.order.tax_total', 'context.events.0.cart_item_count' ),
+			)
+		);
+
+		// Two fields dropped, one log entry: the anti-flooding property, not just the message.
+		$matching = array_filter(
+			$spy->entries,
+			static function ( array $entry ): bool {
+				return false !== strpos( $entry['message'], 'Dropped unencodable values' );
+			}
+		);
+		$this->assertCount( 1, $matching, 'The drop must be logged once per request, not once per field' );
+	}
+
+	/**
+	 * @testdox verify() still fails open before transport when the payload cannot be encoded at all
+	 *
+	 * The allowlist works per value, so it cannot fix a failure that belongs to the document as a
+	 * whole. Nesting past the encoder's depth budget is the remaining case, and the encode-failure
+	 * branch must still catch it rather than sending a half-formed body.
+	 */
+	public function test_verify_fails_open_before_transport_when_payload_cannot_be_encoded(): void {
+		$transport_called = false;
+		$sut              = $this->api_client_returning(
+			$this->decision_response( 'block' ),
+			function () use ( &$transport_called ) {
+				$transport_called = true;
+			}
+		);
+
+		$too_deep = 1;
+		for ( $i = 0; $i < 600; $i++ ) {
+			$too_deep = array( $too_deep );
+		}
+
+		$result = $sut->verify( 'test-session-id', array( 'events' => array( array( 'quantity' => $too_deep ) ) ) );
+
+		$this->assertFalse( $transport_called, 'An unencodable payload must not be sent' );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertLogged( 'error', 'Failed to encode payload' );
+	}
+}
+
+/**
+ * An object exposing a non-finite float, as a third-party attribute object could.
+ *
+ * The payload already carries objects (order.items[].attributes), so the allowlist has to cover
+ * object nodes as well as arrays.
+ */
+class NonFiniteBearer {
+
+	/**
+	 * A value the JSON encoder cannot represent.
+	 *
+	 * @var float
+	 */
+	public $ratio = INF;
 }

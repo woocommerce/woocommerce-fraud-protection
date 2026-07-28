@@ -307,6 +307,14 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	public function write_log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
 		$message = self::prefix_message_with_identity( $message );
 
+		// WooCommerce serializes the context into the log line with wp_json_encode() and
+		// interpolates the result (LogHandlerFileV2::format_entry()). A single value the encoder
+		// cannot carry makes that return false, which interpolates as an empty string and takes
+		// the *entire* context with it — the one entry that would have explained the problem
+		// arrives with nothing in it. Rejected values become a readable marker rather than
+		// vanishing, because an absent key reads to a human as a field that was never set.
+		$context = EncodablePayload::for_log( $context );
+
 		if ( function_exists( 'wc_get_logger' ) ) {
 			wc_get_logger()->log(
 				$level,
