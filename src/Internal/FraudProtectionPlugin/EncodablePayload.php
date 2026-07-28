@@ -17,10 +17,12 @@ defined( 'ABSPATH' ) || exit;
  * log handler interpolates a failed context encode as an empty string. Reducing the payload first
  * means such a value costs its own field instead of the document around it.
  *
- * This works as an allowlist rather than a list of known-bad types, and that is the point: a
- * reject-list covers only the shapes someone thought to name, so the type nobody anticipated
- * sails through it. Here a value travels only if its type is known to survive the encoder, and
- * everything else is rejected by construction.
+ * That holds at the encoder, and only there. `serialize()` runs upstream of it on the collector's
+ * path and is stricter than the encoder these rules model, so it can still refuse a value this
+ * walk permits — before the walk ever sees it.
+ *
+ * It is an allowlist rather than a list of known-bad types, deliberately: a reject-list covers
+ * only the shapes someone thought to name, so an unanticipated type sails through it.
  *
  * The rules:
  *
@@ -36,9 +38,11 @@ defined( 'ABSPATH' ) || exit;
  *
  * **Strings are never tested, deliberately.** Invalid UTF-8 also makes `json_encode()` fail, but
  * `wp_json_encode()` retries through `_wp_json_sanity_check()`, which repairs the string and
- * succeeds — `"\xB1\x31"` reaches the wire as `"?1"`. Testing each string here would pre-empt that
- * repair and discard data WordPress was going to salvage. The rule is "reject what cannot be
- * encoded *and* cannot be repaired", not "reject what cannot be encoded".
+ * succeeds. Testing each string here would pre-empt that repair and discard data WordPress was
+ * going to salvage. The rule is "reject what cannot be encoded *and* cannot be repaired".
+ * The repair needs `mb_convert_encoding()`; without mbstring on a site whose charset is not
+ * UTF-8 it is a no-op and the document still fails. That is a host limitation, not a value this
+ * class could have rejected.
  *
  * Known limits, all shared with `ApiClient::filter_empty_values()` and none introduced here.
  * Nesting deeper than the encoder's 512-level budget still fails, because the depth is a property
@@ -47,20 +51,17 @@ defined( 'ABSPATH' ) || exit;
  * list leaves a gap in the keys, so the field encodes as an object rather than an array — no
  * payload field is a list of scalars today, but one would need reindexing.
  *
- * An object is refused outright, at any depth, when testing it would run its own code: when it
- * is `Traversable`, `JsonSerializable`, or carries a hook on a public property. All three are
- * user code the encoder itself dispatches, and none is guaranteed to
- * answer the same way twice — a serializer or a hook that consumes something answers once and
- * throws afterwards, on the real encode, where nothing catches it. So asking whether such a value
- * can travel is what stops it travelling, and it takes the document with it. `WC_Shipping_Rate`
- * is a concrete example: it implements `JsonSerializable`, so it is dropped whole even though its
- * serializer happens to be repeatable. Refusing is accepted because the guard cannot tell a
- * repeatable one from a single-use one without running it, and running it is the risk.
+ * An object is refused outright, at any depth, when testing it would run its own code: when it is
+ * `Traversable`, `JsonSerializable`, or carries a hook on a public property. All three are user
+ * code the encoder dispatches, and none is guaranteed to answer the same way twice — one that
+ * consumes something answers once and throws afterwards, on the real encode, where nothing
+ * catches it. Asking whether such a value can travel is then what stops it travelling. This costs
+ * repeatable serializers too (`WC_Shipping_Rate` is dropped whole), because telling a repeatable
+ * one from a single-use one means running it.
  *
- * What remains is read by plain property access. The one gap is a lazy object: `get_object_vars()`
- * materializes an uninitialized one, running its initializer — but exactly once, here, rather than
- * a second time on the encode, so it is not a repeatability hazard the way a hook is. No payload
- * field uses any of these types today.
+ * What remains is read by plain property access. One gap: `get_object_vars()` materializes a lazy
+ * object, running its initializer — once, here, rather than again on the encode. No payload field
+ * uses any of these types today.
  */
 final class EncodablePayload {
 

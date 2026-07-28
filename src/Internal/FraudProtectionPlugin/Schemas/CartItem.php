@@ -16,6 +16,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class CartItem {
 
+	use ReadsFiniteNumbers;
+
 	/**
 	 * Private constructor — use factory methods.
 	 *
@@ -59,7 +61,7 @@ class CartItem {
 		$quantity        = $cart_item['quantity'] ?? 1;
 		$quantity_number = QuantityValue::as_finite_float( $quantity );
 
-		$unit_price    = self::finite_amount( $product->get_price() );
+		$unit_price    = self::finite_number( $product->get_price() );
 		$line_tax      = $cart_item['line_tax'] ?? 0;
 		$line_discount = self::line_discount( $cart_item );
 		$unit_tax      = self::per_unit_amount( $line_tax, $quantity_number );
@@ -81,27 +83,6 @@ class CartItem {
 			$product->is_downloadable(),
 			$product->get_attributes() ? $product->get_attributes() : array(),
 		);
-	}
-
-	/**
-	 * Read a money amount as a finite number, or report none.
-	 *
-	 * Every amount on this record is a number to whoever reads the payload, so an amount with no
-	 * finite numeric reading is reported as absent rather than cast. Casting is what makes this
-	 * worth a method: `(float) 'INF'` is `0.0`, a confident zero standing in for a number nobody
-	 * has.
-	 *
-	 * @param mixed $value Raw amount.
-	 * @return float|null
-	 */
-	private static function finite_amount( mixed $value ): ?float {
-		if ( ! is_numeric( $value ) ) {
-			return null;
-		}
-
-		$number = (float) $value;
-
-		return is_finite( $number ) ? $number : null;
 	}
 
 	/**
@@ -130,20 +111,15 @@ class CartItem {
 	/**
 	 * Calculate a per-unit amount from a line total.
 	 *
-	 * Four checks in order: the quantity, the dividend, the quantity's sign, then the result.
+	 * Four checks, and the order matters. The quantity first: with no numeric reading of it there
+	 * is nothing to divide by. The dividend next — a line amount is only guaranteed to be a number
+	 * while it stays inside core, and a cart filter can leave a string that casts to a meaningless
+	 * 0.0. Then the quantity's sign, which keeps the historical zero amounts rather than dividing.
+	 * The result last, because two usable operands can still divide into one that is not, and none
+	 * of the checks above sees that.
 	 *
-	 * The quantity comes first — without a numeric reading of it there is nothing to divide by,
-	 * so no amount is derived. The dividend next, because a line amount is only guaranteed to be
-	 * a number while it stays inside core, and a cart filter can leave a string that casts to a
-	 * meaningless 0.0. Then the quantity's sign: zero or negative keeps the historical zero
-	 * amounts rather than dividing.
-	 *
-	 * The result is checked last, because two usable operands can still divide into one that is
-	 * not: a denormal quantity overflows the quotient even though the dividend is an ordinary
-	 * amount and the divisor is finite and positive. None of the checks above sees that.
-	 *
-	 * These amounts are the plugin's own arithmetic rather than relayed values, so wherever the
-	 * division has no usable result the honest report is no amount at all.
+	 * This is the plugin's own arithmetic, not a relayed value, so no usable result means no
+	 * amount reported.
 	 *
 	 * @param mixed      $line_amount Total amount for the line.
 	 * @param float|null $quantity    Parsed quantity.
@@ -154,7 +130,7 @@ class CartItem {
 			return null;
 		}
 
-		if ( null === self::finite_amount( $line_amount ) ) {
+		if ( null === self::finite_number( $line_amount ) ) {
 			return null;
 		}
 

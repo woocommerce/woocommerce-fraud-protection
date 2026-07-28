@@ -277,21 +277,15 @@ class CartEventTracker {
 	/**
 	 * Keep a derived cart count only when it is a finite number.
 	 *
-	 * Unlike the quantity beside it, the count is not supplied by anyone — the plugin derives it,
-	 * so there is nothing to relay verbatim: it is either a number the payload can state or it is
-	 * unknown. Substituting 0 would be worse than omitting, since 0 is this method's own "cart
-	 * unavailable" value and would assert an empty cart at exactly the moment the real count is
-	 * unknown.
+	 * Unlike the quantity beside it, the count is derived rather than relayed: it is either a
+	 * number the payload can state or it is unknown. Do not substitute 0 — that is this method's
+	 * own "cart unavailable" value, and would assert an empty cart just when the count is unknown.
 	 *
-	 * This is not made redundant by the encoding boundary. WooCommerce sums the count through the
-	 * `woocommerce_cart_contents_count` filter, and a filter returning the *string* `'INF'` would
-	 * sail through {@see EncodablePayload}, which keeps every string on purpose. Enforcing the
-	 * field's own numeric shape is this method's job; the boundary only guarantees the request
-	 * survives.
+	 * The encoding boundary does not make this redundant. WooCommerce sums the count through the
+	 * `woocommerce_cart_contents_count` filter, and a filter returning the *string* `'INF'` sails
+	 * through {@see EncodablePayload}, which keeps every string on purpose.
 	 *
-	 * A count WooCommerce states as a numeric string is still a count, so it is read the same way
-	 * {@see OrderData::from_cart()} reads a money total: by numeric value rather than by PHP type.
-	 * Rejecting `'3'` would lose a usable number without preventing any fabrication.
+	 * Read by numeric value rather than by PHP type, so a count stated as `'3'` is still a count.
 	 *
 	 * @param mixed $value Raw count.
 	 * @return int|float|null The count when it has a finite numeric reading, null otherwise.
@@ -311,12 +305,10 @@ class CartEventTracker {
 			return null;
 		}
 
-		// A whole count is reported as a whole number whichever way it arrived, so '3' and 3 do
-		// not reach the payload as different types. Only when the cast is lossless, though: the
-		// comparison happens in float, where PHP_INT_MAX rounds up to 2^63 — one past the real
-		// maximum — so an inclusive bound would admit 2^63 and cast it to a large negative,
-		// reporting a count that is not merely wrong but the wrong sign. (float) PHP_INT_MIN is
-		// exactly representable, so the lower bound is inclusive and the upper is not.
+		// A whole count reports as a whole number however it arrived, but only when the cast is
+		// lossless. The comparison happens in float, where PHP_INT_MAX rounds up to 2^63, so an
+		// inclusive upper bound would admit 2^63 and cast it back with the wrong sign.
+		// (float) PHP_INT_MIN is exact, so the lower bound is inclusive and the upper is not.
 		$is_lossless_int = floor( $number ) === $number
 			&& $number >= (float) PHP_INT_MIN
 			&& $number < (float) PHP_INT_MAX;

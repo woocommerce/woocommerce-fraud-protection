@@ -16,6 +16,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class OrderData {
 
+	use ReadsFiniteNumbers;
+
 	/**
 	 * Private constructor — use factory methods.
 	 *
@@ -67,18 +69,18 @@ class OrderData {
 		// (set_subtotal, set_shipping_total, set_total) flatten it into a string via
 		// wc_format_decimal(). Which half a field falls in is an implementation detail, not a
 		// contract, so all are guarded the same way.
-		$items_total    = self::finite_or_null( $cart->get_subtotal() );
-		$shipping_total = self::finite_or_null( $cart->get_shipping_total() );
-		$tax_total      = self::finite_or_null( $cart->get_cart_contents_tax() );
-		$discount_total = self::finite_or_null( $cart->get_discount_total() );
+		$items_total    = self::finite_number( $cart->get_subtotal() );
+		$shipping_total = self::finite_number( $cart->get_shipping_total() );
+		$tax_total      = self::finite_number( $cart->get_cart_contents_tax() );
+		$discount_total = self::finite_number( $cart->get_discount_total() );
 		$cart_hash      = $cart->get_cart_hash();
-		$total          = self::finite_or_null( $cart->get_total( 'edit' ) );
+		$total          = self::finite_number( $cart->get_total( 'edit' ) );
 		$currency       = \WC()->call_function( 'get_woocommerce_currency' );
 
 		// Calculate shipping_tax_rate.
-		$shipping_tax      = self::finite_or_null( $cart->get_shipping_tax() );
+		$shipping_tax      = self::finite_number( $cart->get_shipping_tax() );
 		$shipping_tax_rate = ( null !== $shipping_total && null !== $shipping_tax && $shipping_total > 0 && $shipping_tax > 0 )
-			? self::finite_or_null( $shipping_tax / $shipping_total )
+			? self::finite_number( $shipping_tax / $shipping_total )
 			: null;
 
 		// Build cart items — per-item try/catch so one bad item doesn't lose the rest.
@@ -119,34 +121,6 @@ class OrderData {
 			$cart_hash,
 			$items,
 		);
-	}
-
-	/**
-	 * Interpret a WooCommerce money value as a finite float.
-	 *
-	 * WooCommerce returns totals as numeric strings or floats, and guarantees neither a numeric
-	 * shape nor finiteness. This field is a number on the wire: when the raw value has no finite
-	 * numeric reading, the total is omitted rather than fabricated.
-	 *
-	 * The encoding boundary does not make this redundant. Half of these totals reach us through
-	 * `wc_format_decimal()`, which renders a non-finite float as the *string* `'INF'` or `'inf'`;
-	 * a string encodes perfectly well, so {@see EncodablePayload} keeps it — correctly, since it
-	 * cannot tell a sentinel from a legitimate value. The other half arrive as a raw float, which
-	 * the boundary would reject on its own. Either way only this method knows the field is meant
-	 * to be a number, so only it can tell a total the plugin declined to state from one the
-	 * encoder happened to drop.
-	 *
-	 * @param mixed $value Raw total from WC_Cart.
-	 * @return float|null The value as a finite float, or null when it has none.
-	 */
-	private static function finite_or_null( mixed $value ): ?float {
-		if ( ! is_numeric( $value ) ) {
-			return null;
-		}
-
-		$number = (float) $value;
-
-		return is_finite( $number ) ? $number : null;
 	}
 
 	/**
