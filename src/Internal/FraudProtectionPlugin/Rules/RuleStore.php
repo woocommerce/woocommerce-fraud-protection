@@ -103,7 +103,7 @@ class RuleStore {
 		$hash        = RuleConditions::hash( $normalized );
 		$existing_id = $this->find_rule_id_by_hash( $hash );
 		if ( ! is_null( $existing_id ) ) {
-			throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
+			throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
 		}
 
 		$user_id = get_current_user_id();
@@ -125,7 +125,7 @@ class RuleStore {
 			// re-check so a lost race reports as a duplicate, not a failure.
 			$existing_id = $this->find_rule_id_by_hash( $hash );
 			if ( ! is_null( $existing_id ) ) {
-				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
+				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
 			}
 			throw new \RuntimeException( 'Failed to insert the rule: ' . esc_html( $wpdb->last_error ) );
 		}
@@ -198,7 +198,7 @@ class RuleStore {
 			$new_hash    = RuleConditions::hash( $normalized );
 			$existing_id = $this->find_rule_id_by_hash( $new_hash );
 			if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
-				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
+				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
 			}
 
 			$changes['conditions']     = (string) wp_json_encode( $normalized );
@@ -212,7 +212,7 @@ class RuleStore {
 			if ( ! is_null( $new_hash ) ) {
 				$existing_id = $this->find_rule_id_by_hash( $new_hash );
 				if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
-					throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
+					throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
 				}
 			}
 			throw new \RuntimeException( 'Failed to update the rule: ' . esc_html( $wpdb->last_error ) );
