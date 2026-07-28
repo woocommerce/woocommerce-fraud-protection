@@ -28,7 +28,7 @@ class LogContextSanitizerTest extends FraudProtectionUnitTestCase {
 			'identity_id'       => 'customer_abc-30char-hash',
 			'order_id'          => 4242,
 			'event_source'      => 'blocks_checkout',
-			'filter'            => 'woocommerce_fraud_protection_decision',
+			'filter'            => 'woocommerce_fraud_protection_automated_decision',
 			'hook'              => 'session_verify',
 			'api_endpoint'      => '/verify',
 			'decision_received' => 'maybe',

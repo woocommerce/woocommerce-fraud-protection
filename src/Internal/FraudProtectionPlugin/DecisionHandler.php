@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
  * Handles fraud protection decision application.
  *
  * This class is responsible for:
- * - Evaluating the merchant ruleset (the positive/negative lists) against the session
+ * - Evaluating the merchant ruleset against the session
  * - Validating decisions and applying extension override filters for whitelisting
  * - Applying learning mode
  * - Recording actionable verdicts into the sessions log via SessionEventRecorder
@@ -27,10 +27,13 @@ defined( 'ABSPATH' ) || exit;
  * checkout/payment attempt, and enforcement is up to the caller (e.g. throwing
  * a RouteException or adding a checkout error). No blocking state is persisted,
  * so every new attempt is verified from scratch — a block does not follow the
- * shopper, and the `woocommerce_fraud_protection_decision` filter can override
- * the verdict on any subsequent attempt. The sessions log is a write-only
- * record; it never feeds back into decisions (merchant rules, which do feed
- * decisions, live in their own table).
+ * shopper. For automated blocks the
+ * `woocommerce_fraud_protection_automated_decision` filter can override the
+ * verdict on any subsequent attempt; for rule-decided blocks the recovery path
+ * is the merchant editing or deleting the rule (the filter does not apply to
+ * them). The sessions log is a write-only record; it never feeds back into
+ * decisions (merchant rules, which do feed decisions, live in their own
+ * table).
  */
 class DecisionHandler {
 
@@ -76,8 +79,10 @@ class DecisionHandler {
 	 *    outcome directly - it takes precedence over the Blackbox verdict and
 	 *    bypasses the decision filter and the learning mode gate below. In
 	 *    particular, a merchant block rule enforces even in learning mode.
+	 *    The `woocommerce_fraud_protection_rule_applied` action announces the
+	 *    outcome to extensions.
 	 * 2. Coerce non-actionable decisions to Allow
-	 * 3. Apply the `woocommerce_fraud_protection_decision` filter for overrides
+	 * 3. Apply the `woocommerce_fraud_protection_automated_decision` filter for overrides
 	 * 4. Validate the filtered decision (third-party filters may return invalid values)
 	 * 5. Apply learning mode (suppresses Block decisions while active)
 	 * 6. Record the received decision into the sessions log (fail-open)
@@ -110,6 +115,35 @@ class DecisionHandler {
 			);
 			$this->event_recorder->record_decision( $result, $matched_rule->action, $session_data, $matched_rule );
 
+			try {
+				/**
+				 * Fires when a merchant rule has decided the session outcome.
+				 *
+				 * @since 0.1.0
+				 *
+				 * @param int                  $rule_id           The id of the rule that decided the session.
+				 * @param FraudDecision        $applied_decision  The enforced decision (the rule's action).
+				 * @param FraudDecision        $received_decision The automated decision received from the API, superseded by the rule.
+				 * @param array<string, mixed> $session_data      The session data that was analyzed.
+				 */
+				do_action( 'woocommerce_fraud_protection_rule_applied', $matched_rule->id, $matched_rule->action, $decision, $session_data );
+			} catch ( \Throwable $e ) {
+				FraudProtectionController::log(
+					'warning',
+					'A callback hooked to `woocommerce_fraud_protection_rule_applied` threw an exception.',
+					array_merge(
+						$log_context,
+						array(
+							'hook'              => 'woocommerce_fraud_protection_rule_applied',
+							'exception'         => $e,
+							'exception_class'   => $e::class,
+							'exception_message' => $e->getMessage(),
+						)
+					),
+					true
+				);
+			}
+
 			return $matched_rule->action;
 		}
 
@@ -137,10 +171,13 @@ class DecisionHandler {
 		);
 
 		/**
-		 * Filters the fraud protection decision before it is applied.
+		 * Filters the automated fraud protection decision before it is applied.
 		 *
-		 * This filter allows extensions to override fraud protection decisions
-		 * to implement custom whitelisting logic. Common use cases:
+		 * This filter allows extensions to override automated fraud protection
+		 * decisions to implement custom whitelisting logic. It does not apply
+		 * to sessions decided by a merchant rule: an explicit rule set by the
+		 * merchant takes precedence over extension code (see the
+		 * `woocommerce_fraud_protection_rule_applied` action). Common use cases:
 		 * - Whitelist specific users (e.g., admins, trusted customers)
 		 * - Whitelist specific conditions (e.g., certain IP ranges, logged-in users)
 		 * - Integrate with external fraud detection services
@@ -165,7 +202,7 @@ class DecisionHandler {
 		 *
 		 * @var mixed $filtered
 		 */
-		$filtered = apply_filters( 'woocommerce_fraud_protection_decision', $decision, $filter_session_data );
+		$filtered = apply_filters( 'woocommerce_fraud_protection_automated_decision', $decision, $filter_session_data );
 
 		// Validate filtered decision (third-party filters may return any value).
 		if ( $filtered instanceof FraudDecision && in_array( $filtered, FraudDecision::ACTIONABLE, true ) ) {
@@ -181,11 +218,11 @@ class DecisionHandler {
 
 			FraudProtectionController::log(
 				'warning',
-				sprintf( 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "%s". Using original decision "%s".', $filtered_value, $original_decision->value ),
+				sprintf( 'Filter `woocommerce_fraud_protection_automated_decision` returned invalid decision "%s". Using original decision "%s".', $filtered_value, $original_decision->value ),
 				array_merge(
 					$log_context,
 					array(
-						'filter'            => 'woocommerce_fraud_protection_decision',
+						'filter'            => 'woocommerce_fraud_protection_automated_decision',
 						'decision_received' => $filtered_value,
 						'argument_type'     => gettype( $filtered ),
 						'original_decision' => $original_decision->value,
@@ -201,7 +238,7 @@ class DecisionHandler {
 		if ( $decision !== $original_decision ) {
 			FraudProtectionController::log(
 				'info',
-				sprintf( 'Decision overridden by filter `woocommerce_fraud_protection_decision`: "%s" -> "%s"', $original_decision->value, $decision->value ),
+				sprintf( 'Decision overridden by filter `woocommerce_fraud_protection_automated_decision`: "%s" -> "%s"', $original_decision->value, $decision->value ),
 				array_merge(
 					$log_context,
 					array(
@@ -217,7 +254,7 @@ class DecisionHandler {
 		 *
 		 * When learning mode is enabled (default), block decisions are suppressed
 		 * and treated as "allow", regardless of whether the decision came from the
-		 * API or was set by the `woocommerce_fraud_protection_decision` filter.
+		 * API or was set by the `woocommerce_fraud_protection_automated_decision` filter.
 		 * This allows the plugin to observe fraud signals without affecting real
 		 * transactions.
 		 *

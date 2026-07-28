@@ -67,8 +67,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		WC()->session = $this->original_session;
-		remove_all_filters( 'woocommerce_fraud_protection_decision' );
+		remove_all_filters( 'woocommerce_fraud_protection_automated_decision' );
 		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
+		remove_all_actions( 'woocommerce_fraud_protection_rule_applied' );
 		parent::tearDown();
 	}
 
@@ -101,7 +102,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 *
 	 * Regression test: a block verdict must apply only to the attempt that
 	 * produced it. A subsequent verify returning allow must be honored, so
-	 * false positives can retry and the `woocommerce_fraud_protection_decision`
+	 * false positives can retry and the `woocommerce_fraud_protection_automated_decision`
 	 * whitelist filter remains a working recovery path.
 	 *
 	 * @testdox Should honor an allow decision on the attempt following a block.
@@ -164,7 +165,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_filter_can_override_block_to_allow(): void {
 		add_filter(
-			'woocommerce_fraud_protection_decision',
+			'woocommerce_fraud_protection_automated_decision',
 			function () {
 				return FraudDecision::Allow;
 			}
@@ -173,7 +174,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_decision`' );
+		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_automated_decision`' );
 	}
 
 	/**
@@ -185,7 +186,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
 		add_filter(
-			'woocommerce_fraud_protection_decision',
+			'woocommerce_fraud_protection_automated_decision',
 			function () {
 				return FraudDecision::Block;
 			}
@@ -194,7 +195,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
-		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_decision`' );
+		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_automated_decision`' );
 	}
 
 	/**
@@ -206,7 +207,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
 		add_filter(
-			'woocommerce_fraud_protection_decision',
+			'woocommerce_fraud_protection_automated_decision',
 			function () {
 				return 'totally_invalid';
 			}
@@ -215,7 +216,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result );
-		$this->assertLogged( 'warning', 'Filter `woocommerce_fraud_protection_decision` returned invalid decision "totally_invalid"' );
+		$this->assertLogged( 'warning', 'Filter `woocommerce_fraud_protection_automated_decision` returned invalid decision "totally_invalid"' );
 	}
 
 	/**
@@ -229,7 +230,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$received_by_filter = null;
 		add_filter(
-			'woocommerce_fraud_protection_decision',
+			'woocommerce_fraud_protection_automated_decision',
 			function ( $decision, $data ) use ( &$received_by_filter ) {
 				$received_by_filter = $data;
 				return $decision;
@@ -258,7 +259,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function test_decision_filter_receives_empty_verify_result_when_data_missing(): void {
 		$received_by_filter = null;
 		add_filter(
-			'woocommerce_fraud_protection_decision',
+			'woocommerce_fraud_protection_automated_decision',
 			function ( $decision, $data ) use ( &$received_by_filter ) {
 				$received_by_filter = $data;
 				return $decision;
@@ -316,7 +317,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_learning_mode_suppresses_filter_override_to_block(): void {
 		add_filter(
-			'woocommerce_fraud_protection_decision',
+			'woocommerce_fraud_protection_automated_decision',
 			function () {
 				return FraudDecision::Block;
 			}
@@ -462,7 +463,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$filter_called = false;
 		add_filter(
-			'woocommerce_fraud_protection_decision',
+			'woocommerce_fraud_protection_automated_decision',
 			function ( $decision ) use ( &$filter_called ) {
 				$filter_called = true;
 				return FraudDecision::Block;
@@ -506,5 +507,62 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->with( $verify_result, FraudDecision::Allow, $this->anything(), null );
 
 		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+	}
+
+	/**
+	 * @testdox Fires the rule_applied action with the rule id and the applied and received decisions when a rule decides.
+	 */
+	public function test_rule_applied_action_fires_with_rule_details(): void {
+		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Block ) );
+
+		$action_args = null;
+		add_action(
+			'woocommerce_fraud_protection_rule_applied',
+			function ( ...$args ) use ( &$action_args ) {
+				$action_args = $args;
+			},
+			10,
+			4
+		);
+
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertSame( array( 7, FraudDecision::Block, FraudDecision::Allow, array( 'session_id' => 'test' ) ), $action_args );
+	}
+
+	/**
+	 * @testdox Does not fire the rule_applied action when no rule decided the session.
+	 */
+	public function test_rule_applied_action_does_not_fire_without_rule_match(): void {
+		$action_fired = false;
+		add_action(
+			'woocommerce_fraud_protection_rule_applied',
+			function () use ( &$action_fired ) {
+				$action_fired = true;
+			}
+		);
+
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertFalse( $action_fired, 'The action must only fire for rule-decided sessions' );
+	}
+
+	/**
+	 * @testdox A throwing rule_applied listener does not change the rule outcome.
+	 */
+	public function test_throwing_rule_applied_listener_does_not_change_the_outcome(): void {
+		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Block ) );
+
+		add_action(
+			'woocommerce_fraud_protection_rule_applied',
+			function () {
+				throw new \RuntimeException( 'Broken listener' );
+			}
+		);
+
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Block, $result, 'The rule decision must survive a throwing listener' );
+		$this->assertLogged( 'warning', 'A callback hooked to `woocommerce_fraud_protection_rule_applied` threw an exception.' );
 	}
 }
