@@ -24,7 +24,7 @@ class CartItem {
 	 * @param ?string $category             Comma-separated category names.
 	 * @param ?string $sku                  Product SKU.
 	 * @param mixed   $quantity             Quantity in cart, relayed verbatim.
-	 * @param float   $unit_price           Per-unit price.
+	 * @param ?float  $unit_price           Per-unit price; null when it has no numeric reading.
 	 * @param ?float  $unit_tax_amount      Per-unit tax amount; null when underivable.
 	 * @param ?float  $unit_discount_amount Per-unit discount amount; null when underivable.
 	 * @param ?string $product_type         WooCommerce product type.
@@ -38,7 +38,7 @@ class CartItem {
 		private readonly ?string $category,
 		private readonly ?string $sku,
 		private readonly mixed $quantity,
-		private readonly float $unit_price,
+		private readonly ?float $unit_price,
 		private readonly ?float $unit_tax_amount,
 		private readonly ?float $unit_discount_amount,
 		private readonly ?string $product_type,
@@ -59,9 +59,9 @@ class CartItem {
 		$quantity        = $cart_item['quantity'] ?? 1;
 		$quantity_number = QuantityValue::as_finite_float( $quantity );
 
-		$unit_price    = (float) $product->get_price();
+		$unit_price    = self::finite_amount( $product->get_price() );
 		$line_tax      = $cart_item['line_tax'] ?? 0;
-		$line_discount = ( $cart_item['line_subtotal'] ?? 0 ) - ( $cart_item['line_total'] ?? 0 );
+		$line_discount = self::line_discount( $cart_item );
 		$unit_tax      = self::per_unit_amount( $line_tax, $quantity_number );
 		$unit_discount = self::per_unit_amount( $line_discount, $quantity_number );
 
@@ -84,11 +84,66 @@ class CartItem {
 	}
 
 	/**
+	 * Read a money amount as a finite number, or report none.
+	 *
+	 * Every amount on this record is a number to whoever reads the payload, so an amount with no
+	 * finite numeric reading is reported as absent rather than cast. Casting is what makes this
+	 * worth a method: `(float) 'INF'` is `0.0`, a confident zero standing in for a number nobody
+	 * has.
+	 *
+	 * @param mixed $value Raw amount.
+	 * @return float|null
+	 */
+	private static function finite_amount( mixed $value ): ?float {
+		if ( ! is_numeric( $value ) ) {
+			return null;
+		}
+
+		$number = (float) $value;
+
+		return is_finite( $number ) ? $number : null;
+	}
+
+	/**
+	 * Read the discount on a line as what it would have cost minus what it did.
+	 *
+	 * Both operands are read as numbers before being subtracted. WooCommerce does not guarantee
+	 * a cart line amount is one: core keeps these as int|float, but they pass through cart
+	 * filters on the way here, and subtracting a string with no numeric reading raises a
+	 * TypeError. The caller's per-item guard turns that into a dropped order line, so one
+	 * unreadable amount would cost the whole item rather than the field it belongs to.
+	 *
+	 * @param array<string, mixed> $cart_item Raw cart entry.
+	 * @return float|null The discount, or null when either amount has no numeric reading.
+	 */
+	private static function line_discount( array $cart_item ): ?float {
+		$subtotal = $cart_item['line_subtotal'] ?? 0;
+		$total    = $cart_item['line_total'] ?? 0;
+
+		if ( ! is_numeric( $subtotal ) || ! is_numeric( $total ) ) {
+			return null;
+		}
+
+		return (float) $subtotal - (float) $total;
+	}
+
+	/**
 	 * Calculate a per-unit amount from a line total.
 	 *
-	 * Both checks concern the divisor. Without a numeric reading of the quantity there is
-	 * nothing to divide by, so no amount is derived. A zero or negative quantity keeps the
-	 * historical zero amounts rather than dividing.
+	 * Four checks in order: the quantity, the dividend, the quantity's sign, then the result.
+	 *
+	 * The quantity comes first — without a numeric reading of it there is nothing to divide by,
+	 * so no amount is derived. The dividend next, because a line amount is only guaranteed to be
+	 * a number while it stays inside core, and a cart filter can leave a string that casts to a
+	 * meaningless 0.0. Then the quantity's sign: zero or negative keeps the historical zero
+	 * amounts rather than dividing.
+	 *
+	 * The result is checked last, because two usable operands can still divide into one that is
+	 * not: a denormal quantity overflows the quotient even though the dividend is an ordinary
+	 * amount and the divisor is finite and positive. None of the checks above sees that.
+	 *
+	 * These amounts are the plugin's own arithmetic rather than relayed values, so wherever the
+	 * division has no usable result the honest report is no amount at all.
 	 *
 	 * @param mixed      $line_amount Total amount for the line.
 	 * @param float|null $quantity    Parsed quantity.
@@ -99,7 +154,19 @@ class CartItem {
 			return null;
 		}
 
-		return $quantity > 0 ? (float) $line_amount / $quantity : 0.0;
+		if ( null === self::finite_amount( $line_amount ) ) {
+			return null;
+		}
+
+		// Checked after the amount, not before: the historical zero stands for "nothing to
+		// divide", and an amount nobody can read is not nothing.
+		if ( $quantity <= 0 ) {
+			return 0.0;
+		}
+
+		$unit_amount = (float) $line_amount / $quantity;
+
+		return is_finite( $unit_amount ) ? $unit_amount : null;
 	}
 
 	/**

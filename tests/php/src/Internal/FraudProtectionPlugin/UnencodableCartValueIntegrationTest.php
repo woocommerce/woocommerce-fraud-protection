@@ -233,6 +233,41 @@ class UnencodableCartValueIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A quantity that overflows the line amounts it derives costs no more than its own fields.
+	 *
+	 * The companion to the case above, and the reason a guard on the divisor alone is not enough.
+	 * The quantity here stays finite and is reported as supplied; it is the amounts WooCommerce
+	 * derives from it that overflow, so the fields at risk are the plugin's own per-unit
+	 * arithmetic rather than the value that came in on the request.
+	 */
+	public function test_quantity_that_overflows_the_derived_line_amounts_still_reaches_the_transport(): void {
+		$this->add_to_cart_via_classic_form( '1e308' );
+		WC()->cart->calculate_totals();
+
+		// Precondition: a finite quantity really did produce non-finite line amounts.
+		$cart_contents = WC()->cart->get_cart();
+		$cart_item     = reset( $cart_contents );
+		$this->assertSame( 0, wc_notice_count( 'error' ), 'The classic add-to-cart request should succeed' );
+		$this->assertTrue( is_finite( $cart_item['quantity'] ), 'The cart quantity itself should be finite' );
+		$this->assertFalse( is_finite( (float) $cart_item['line_subtotal'] ), 'The derived line subtotal should overflow' );
+
+		$payload = wc_get_container()->get( SessionDataCollector::class )->get_collected_data();
+		$item    = $payload['order']['items'][0] ?? array();
+		$this->assertFiniteOrAbsent( $item['unit_tax_amount'] ?? null, 'order.items[].unit_tax_amount' );
+		$this->assertFiniteOrAbsent( $item['unit_discount_amount'] ?? null, 'order.items[].unit_discount_amount' );
+
+		$transport_calls = 0;
+		$captured_body   = null;
+		$result          = $this->verify_through_stub_transport( $payload, $transport_calls, $captured_body );
+
+		$this->assertSame( 1, $transport_calls, 'The verify request must reach the Blackbox transport' );
+		$this->assertFalse( $result->fail_open, 'Verification must reach a real verdict, not a fallback' );
+
+		$sent_item = $captured_body['context']['order']['items'][0] ?? array();
+		$this->assertSame( 1.0e308, $sent_item['quantity'] ?? null, 'The quantity itself is representable, so it is relayed' );
+	}
+
+	/**
 	 * @testdox The conversion-warning suppression hides only that conversion.
 	 *
 	 * The suppression exists so WooCommerce's notice formatting cannot decide these tests. It
