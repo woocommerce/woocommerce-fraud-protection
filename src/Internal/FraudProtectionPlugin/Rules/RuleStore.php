@@ -25,12 +25,13 @@ defined( 'ABSPATH' ) || exit;
  * only applies to live rules.
  *
  * New rules are seeded into two position bands (allow rules above block
- * rules) so the positive list keeps working as the recourse for enforcement
- * false positives unless the merchant deliberately reorders it. Within a
+ * rules) so allow rules keep working as the recourse for enforcement
+ * false positives unless the merchant deliberately reorders them. Within a
  * band, new rules land at the bottom.
  *
  * The active ruleset is loaded with a single query and cached in the object
- * cache; every write invalidates the cache, so steady-state evaluation costs
+ * cache; every write invalidates the cache (with a short TTL as the backstop
+ * for a repopulation racing a write), so steady-state evaluation costs
  * zero queries on sites with a persistent object cache.
  *
  * Callers are expected to gate on {@see SchemaManager::is_schema_installed()}:
@@ -47,6 +48,15 @@ class RuleStore {
 	 * Object cache key holding the active ruleset rows.
 	 */
 	private const ACTIVE_RULES_CACHE_KEY = 'active_rules';
+
+	/**
+	 * Lifetime of the cached active ruleset. Writes invalidate the cache
+	 * eagerly; the TTL is the backstop for a repopulation racing a write
+	 * (read rows, concurrent write invalidates, stale rows get cached),
+	 * which on a persistent object cache would otherwise keep serving the
+	 * stale ruleset until the next write.
+	 */
+	private const ACTIVE_RULES_CACHE_TTL = 5 * MINUTE_IN_SECONDS;
 
 	/**
 	 * Schema manager instance.
@@ -90,9 +100,10 @@ class RuleStore {
 			throw new \InvalidArgumentException( 'Invalid rule conditions.' );
 		}
 
-		$hash = RuleConditions::hash( $normalized );
-		if ( ! is_null( $this->find_rule_id_by_hash( $hash ) ) ) {
-			throw new DuplicateRuleException( 'A rule with the same conditions already exists.' );
+		$hash        = RuleConditions::hash( $normalized );
+		$existing_id = $this->find_rule_id_by_hash( $hash );
+		if ( ! is_null( $existing_id ) ) {
+			throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
 		}
 
 		$user_id = get_current_user_id();
@@ -112,8 +123,9 @@ class RuleStore {
 		if ( false === $this->run_write_query( $this->build_insert_sql( $columns ) ) ) {
 			// The unique hash key is the backstop for concurrent creations:
 			// re-check so a lost race reports as a duplicate, not a failure.
-			if ( ! is_null( $this->find_rule_id_by_hash( $hash ) ) ) {
-				throw new DuplicateRuleException( 'A rule with the same conditions already exists.' );
+			$existing_id = $this->find_rule_id_by_hash( $hash );
+			if ( ! is_null( $existing_id ) ) {
+				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
 			}
 			throw new \RuntimeException( 'Failed to insert the rule: ' . esc_html( $wpdb->last_error ) );
 		}
@@ -176,23 +188,33 @@ class RuleStore {
 			$changes['position'] = $position;
 		}
 
+		$new_hash = null;
 		if ( ! is_null( $conditions ) ) {
 			$normalized = RuleConditions::validate_and_normalize( $conditions );
 			if ( is_null( $normalized ) ) {
 				throw new \InvalidArgumentException( 'Invalid rule conditions.' );
 			}
 
-			$hash        = RuleConditions::hash( $normalized );
-			$existing_id = $this->find_rule_id_by_hash( $hash );
+			$new_hash    = RuleConditions::hash( $normalized );
+			$existing_id = $this->find_rule_id_by_hash( $new_hash );
 			if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
-				throw new DuplicateRuleException( 'A rule with the same conditions already exists.' );
+				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
 			}
 
 			$changes['conditions']     = (string) wp_json_encode( $normalized );
-			$changes['condition_hash'] = $hash;
+			$changes['condition_hash'] = $new_hash;
 		}
 
 		if ( false === $this->run_write_query( $this->build_update_sql( $changes, $id ) ) ) {
+			// The unique hash key is the backstop for a concurrent write of the
+			// same conditions: re-check so a lost race reports as a duplicate,
+			// not a failure.
+			if ( ! is_null( $new_hash ) ) {
+				$existing_id = $this->find_rule_id_by_hash( $new_hash );
+				if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
+					throw new DuplicateRuleException( 'A rule with the same conditions already exists.', $existing_id );
+				}
+			}
 			throw new \RuntimeException( 'Failed to update the rule: ' . esc_html( $wpdb->last_error ) );
 		}
 
@@ -273,7 +295,7 @@ class RuleStore {
 			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE status = %s ORDER BY position, id", RuleStatus::Active->value ), ARRAY_A );
 			$rows = is_array( $rows ) ? $rows : array();
 
-			wp_cache_set( self::ACTIVE_RULES_CACHE_KEY, $rows, self::CACHE_GROUP );
+			wp_cache_set( self::ACTIVE_RULES_CACHE_KEY, $rows, self::CACHE_GROUP, self::ACTIVE_RULES_CACHE_TTL );
 		}
 
 		$rules = array();

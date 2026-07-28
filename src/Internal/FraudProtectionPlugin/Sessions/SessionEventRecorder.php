@@ -13,6 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionControl
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionInfo;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 
@@ -26,7 +27,7 @@ defined( 'ABSPATH' ) || exit;
  * challenge decisions are recorded faithfully even when enforcement is
  * suppressed (learning mode, filter overrides). Every parsed decision is
  * recorded, allowed sessions included, so merchants can act on any session
- * from its row (e.g. add the shopper to the positive or negative list).
+ * from its row (e.g. create an allow or block rule for the shopper).
  * Verifies that failed to produce a real verdict (transport errors,
  * unparseable responses, unknown decision values) fail open to a synthetic
  * allow and are recorded under the {@see SessionTrigger::VerifyError}
@@ -170,7 +171,7 @@ class SessionEventRecorder {
 
 		$billing_name = trim( ( (string) ( $billing['first_name'] ?? '' ) ) . ' ' . ( (string) ( $billing['last_name'] ?? '' ) ) );
 
-		$ip         = \WC_Geolocation::get_ip_address();
+		$ip         = (string) SessionInfo::get_ip_address();
 		$geo        = \WC_Geolocation::geolocate_ip( $ip, false, false );
 		$ip_country = (string) ( $geo['country'] ?? '' );
 

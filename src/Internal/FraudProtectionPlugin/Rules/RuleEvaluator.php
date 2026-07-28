@@ -11,6 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionInfo;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -27,8 +28,9 @@ defined( 'ABSPATH' ) || exit;
  *
  * The evaluation context is built from the same data the sessions recorder
  * captures (billing email from the collected session data, visitor IP from
- * WooCommerce geolocation), normalized like rule values are at write time so
- * textual variants compare equal.
+ * {@see SessionInfo::get_ip_address()} - the same derivation the verify API
+ * request and the sessions recorder use), normalized like rule values are at
+ * write time so textual variants compare equal.
  */
 class RuleEvaluator {
 
@@ -153,7 +155,7 @@ class RuleEvaluator {
 		$email = (string) ( $customer['billing_email'] ?? '' );
 		$email = '' === $email ? (string) ( $session['email'] ?? '' ) : $email;
 
-		$ip = \WC_Geolocation::get_ip_address();
+		$ip = (string) SessionInfo::get_ip_address();
 
 		return array(
 			RuleConditions::FIELD_EMAIL => (string) RuleConditions::normalize_value( RuleConditions::FIELD_EMAIL, $email ),

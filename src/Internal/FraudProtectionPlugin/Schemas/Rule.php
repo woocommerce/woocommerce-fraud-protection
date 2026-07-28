@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
  * of the rules table.
  *
  * `action` is restricted to the actionable `FraudDecision` cases: an allow
- * rule is a positive-list entry, a block rule a negative-list entry.
+ * rule always allows matching sessions, a block rule always blocks them.
  * `conditions` is the decoded JSON condition document, already normalized at
  * write time.
  */

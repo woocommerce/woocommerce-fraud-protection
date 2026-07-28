@@ -394,7 +394,7 @@ class SchemaManager {
 
 	/**
 	 * Get the dbDelta schema for the merchant rules table. One row
-	 * per merchant rule (the positive and negative lists combined).
+	 * per merchant rule (allow and block rules in a single ordered ruleset).
 	 *
 	 * `action` and `status` hold the backing values of the `FraudDecision` and
 	 * `RuleStatus` enums, `conditions` is the JSON condition document

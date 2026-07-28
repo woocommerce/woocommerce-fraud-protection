@@ -37,6 +37,19 @@ class ConditionOperatorRegistry {
 	);
 
 	/**
+	 * Get the known operator names.
+	 *
+	 * This is the single source of truth for which operators exist: the
+	 * write-time condition validator ({@see RuleConditions}) accepts exactly
+	 * the operators this registry can resolve at evaluation time.
+	 *
+	 * @return string[] The operator names.
+	 */
+	public static function get_operator_names(): array {
+		return array_keys( self::OPERATORS );
+	}
+
+	/**
 	 * Get the operator instance for an operator name.
 	 *
 	 * Operators are resolved from the WooCommerce container, which returns

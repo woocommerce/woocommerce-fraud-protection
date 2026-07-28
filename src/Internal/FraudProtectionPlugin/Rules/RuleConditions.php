@@ -39,11 +39,6 @@ class RuleConditions {
 	private const VALID_FIELDS = array( self::FIELD_EMAIL, self::FIELD_IP );
 
 	/**
-	 * Condition operators the MVP validator accepts.
-	 */
-	private const VALID_OPERATORS = array( 'equals' );
-
-	/**
 	 * Maximum accepted email condition value length, mirroring the sessions
 	 * table `email` column.
 	 */
@@ -68,7 +63,7 @@ class RuleConditions {
 			return null;
 		}
 
-		if ( ! in_array( $operator, self::VALID_OPERATORS, true ) ) {
+		if ( ! in_array( $operator, ConditionOperatorRegistry::get_operator_names(), true ) ) {
 			return null;
 		}
 

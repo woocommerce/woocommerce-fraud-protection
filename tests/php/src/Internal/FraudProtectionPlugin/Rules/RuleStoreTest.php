@@ -155,12 +155,15 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should reject a rule whose normalized conditions duplicate an existing live rule.
 	 */
 	public function test_create_rejects_duplicate_conditions(): void {
-		$this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'fraudster@example.com' ) );
+		$existing = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'fraudster@example.com' ) );
 
-		$this->expectException( DuplicateRuleException::class );
-
-		// Textually different, identical once normalized.
-		$this->sut->create_rule( FraudDecision::Allow, $this->email_condition( ' FRAUDSTER@example.com' ) );
+		try {
+			// Textually different, identical once normalized.
+			$this->sut->create_rule( FraudDecision::Allow, $this->email_condition( ' FRAUDSTER@example.com' ) );
+			$this->fail( 'A DuplicateRuleException was expected' );
+		} catch ( DuplicateRuleException $e ) {
+			$this->assertSame( $existing->id, $e->existing_rule_id, 'The exception must carry the id of the existing duplicate rule' );
+		}
 	}
 
 	/**
@@ -249,12 +252,15 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should reject an update whose conditions duplicate another live rule.
 	 */
 	public function test_update_rejects_duplicate_conditions(): void {
-		$this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'first@example.com' ) );
+		$first  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'first@example.com' ) );
 		$second = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'second@example.com' ) );
 
-		$this->expectException( DuplicateRuleException::class );
-
-		$this->sut->update_rule( $second->id, null, $this->email_condition( 'first@example.com' ) );
+		try {
+			$this->sut->update_rule( $second->id, null, $this->email_condition( 'first@example.com' ) );
+			$this->fail( 'A DuplicateRuleException was expected' );
+		} catch ( DuplicateRuleException $e ) {
+			$this->assertSame( $first->id, $e->existing_rule_id, 'The exception must carry the id of the existing duplicate rule' );
+		}
 	}
 
 	/**
