@@ -537,6 +537,44 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox An amount with no whole-number reading the field can hold is absent, never a figure.
+	 *
+	 * @dataProvider provide_unrepresentable_amounts
+	 *
+	 * @param mixed $value Raw amount_minor_units value.
+	 */
+	public function test_amount_without_a_representable_reading_is_absent( mixed $value ): void {
+		$wire = $this->to_wire(
+			array(
+				'type'               => 'payment',
+				'result'             => 'captured',
+				'amount_minor_units' => $value,
+				'amount_currency'    => 'usd',
+			)
+		);
+
+		$this->assertNull( $wire['amount_minor_units'], 'the amount must be reported as unknown' );
+		$this->assertSame( 'usd', $wire['amount_currency'], 'the sibling currency is unaffected' );
+		$this->assertLogged( 'error', 'Dropped ReportContextData field "amount_minor_units" with a non-integer value' );
+	}
+
+	/**
+	 * Data provider for {@see test_amount_without_a_representable_reading_is_absent()}.
+	 *
+	 * Each value passes a whole-number test and still has no integer the field can hold, so the
+	 * amount is reported as unknown rather than as whatever the cast produces.
+	 *
+	 * @return array<string, array{0: mixed}>
+	 */
+	public function provide_unrepresentable_amounts(): array {
+		return array(
+			'numeric string with no finite reading' => array( '1e309' ),
+			'non-finite float'                      => array( INF ),
+			'below the integer minimum'             => array( -1.0e19 ),
+		);
+	}
+
+	/**
 	 * Build a context and return its wire array, asserting it was reportable.
 	 *
 	 * @param array<string, mixed> $data Context input.
