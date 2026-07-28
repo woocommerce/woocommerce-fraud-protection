@@ -61,6 +61,12 @@ class SchemaManager {
 	private const INSTALL_RETRY_INTERVAL = HOUR_IN_SECONDS;
 
 	/**
+	 * First keywords of the lines of a dbDelta CREATE TABLE statement that are
+	 * not column definitions, used when extracting the declared column names.
+	 */
+	private const NON_COLUMN_LINE_KEYWORDS = array( 'CREATE', 'PRIMARY', 'UNIQUE', 'KEY', 'INDEX', 'FULLTEXT', 'SPATIAL', 'CONSTRAINT', 'FOREIGN' );
+
+	/**
 	 * Merchant lists feature gate instance.
 	 *
 	 * @var MerchantListsFeature
@@ -166,21 +172,52 @@ class SchemaManager {
 		try {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-			$this->legacy_proxy->call_function( 'dbDelta', $this->get_sessions_table_schema() );
-			$this->legacy_proxy->call_function( 'dbDelta', $this->get_rules_table_schema() );
+			$schemas = array(
+				$this->get_sessions_table_name() => $this->get_sessions_table_schema(),
+				$this->get_rules_table_name()    => $this->get_rules_table_schema(),
+			);
 
-			$wpdb   = $this->legacy_proxy->get_global( 'wpdb' );
-			$tables = array( $this->get_sessions_table_name(), $this->get_rules_table_name() );
+			foreach ( $schemas as $schema ) {
+				$this->legacy_proxy->call_function( 'dbDelta', $schema );
+			}
 
-			// dbDelta swallows individual query errors, so confirm the tables exist
-			// before recording the schema version as installed.
-			foreach ( $tables as $table ) {
+			$wpdb = $this->legacy_proxy->get_global( 'wpdb' );
+
+			// dbDelta executes its queries without checking their results, so a
+			// failed CREATE or ALTER is silent: we'll verify the outcome before
+			// recording the schema version as installed.
+			//
+			// Table existence alone covers fresh installs (CREATE TABLE is atomic,
+			// a created table has all its columns) but not upgrades, where dbDelta
+			// ALTERs the pre-existing table column by column, so every schema-declared
+			// column is verified too.
+			//
+			// Indexes are deliberately not verified: a missing index degrades
+			// performance but breaks no reads or writes, so it is not worth blocking
+			// the version stamp (and the retries that stamp implies) over one.
+			foreach ( $schemas as $table => $schema ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
 					$this->record_failed_attempt( $state, (string) $wpdb->last_error );
 					FraudProtectionController::log(
 						'error',
 						sprintf( 'Table creation failed: %s does not exist after dbDelta.', $table ),
+						array(
+							'event_source' => 'schema_manager',
+							'db_error'     => $wpdb->last_error,
+							'attempts'     => $state['attempts'],
+						),
+						true
+					);
+					return;
+				}
+
+				$missing_columns = array_diff( $this->get_schema_column_names( $schema ), $this->get_table_column_names( $table ) );
+				if ( array() !== $missing_columns ) {
+					$this->record_failed_attempt( $state, (string) $wpdb->last_error );
+					FraudProtectionController::log(
+						'error',
+						sprintf( 'Table upgrade failed: %s is missing columns after dbDelta: %s.', $table, implode( ', ', $missing_columns ) ),
 						array(
 							'event_source' => 'schema_manager',
 							'db_error'     => $wpdb->last_error,
@@ -253,6 +290,45 @@ class SchemaManager {
 	private function record_failed_attempt( array $state, string $error ): void {
 		$state['last_error'] = $error;
 		update_option( self::DB_INSTALL_STATE_OPTION, $state, false );
+	}
+
+	/**
+	 * Get the column names a dbDelta schema string declares.
+	 *
+	 * Column definition lines start with the column name; every other line of
+	 * the statement (`CREATE TABLE`, index definitions, the closing
+	 * parenthesis) starts with a keyword or punctuation and is skipped.
+	 *
+	 * @param string $schema The dbDelta CREATE TABLE statement.
+	 * @return string[] The declared column names.
+	 */
+	private function get_schema_column_names( string $schema ): array {
+		$columns = array();
+
+		foreach ( explode( "\n", $schema ) as $line ) {
+			if ( 1 !== preg_match( '/^\s*(\w+)\s/', $line, $matches ) ) {
+				continue;
+			}
+			if ( in_array( strtoupper( $matches[1] ), self::NON_COLUMN_LINE_KEYWORDS, true ) ) {
+				continue;
+			}
+			$columns[] = $matches[1];
+		}
+
+		return $columns;
+	}
+
+	/**
+	 * Get the column names of an existing table.
+	 *
+	 * @param string $table The table name.
+	 * @return string[] The column names.
+	 */
+	private function get_table_column_names( string $table ): array {
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$columns = $this->legacy_proxy->get_global( 'wpdb' )->get_col( 'SHOW COLUMNS FROM ' . $table );
+
+		return is_array( $columns ) ? $columns : array();
 	}
 
 	/**

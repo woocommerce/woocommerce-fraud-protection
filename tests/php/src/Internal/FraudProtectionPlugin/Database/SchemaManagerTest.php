@@ -23,6 +23,20 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 class SchemaManagerTest extends FraudProtectionUnitTestCase {
 
 	/**
+	 * The columns of the sessions table schema.
+	 *
+	 * @var array
+	 */
+	private const SESSIONS_COLUMNS = array( 'id', 'session_id', 'recorded_at', 'source', 'decision', 'final_status', 'trigger_type', 'risk_score', 'email', 'ip', 'ip_country', 'billing_country', 'billing_state', 'billing_city', 'billing_postcode', 'billing_name', 'order_id', 'payment_method', 'matched_rule_id', 'metadata', 'reported_at' );
+
+	/**
+	 * The columns of the rules table schema.
+	 *
+	 * @var array
+	 */
+	private const RULES_COLUMNS = array( 'id', 'action', 'status', 'position', 'conditions', 'condition_hash', 'action_meta', 'source_meta', 'created_at', 'created_by', 'updated_at', 'updated_by', 'source_session_id' );
+
+	/**
 	 * The System Under Test.
 	 *
 	 * @var SchemaManager
@@ -60,6 +74,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 			public $prefix          = 'wp_';
 			public $last_error      = '';
 			public $existing_tables = array();
+			public $table_columns   = array();
 
 			public function prepare( $query, ...$args ) {
 				return vsprintf( str_replace( array( '%s', '%d' ), array( "'%s'", '%d' ), $query ), $args );
@@ -76,6 +91,15 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 					}
 				}
 				return null;
+			}
+
+			public function get_col( $query ) {
+				foreach ( $this->table_columns as $table => $columns ) {
+					if ( false !== strpos( $query, $table ) ) {
+						return $columns;
+					}
+				}
+				return array();
 			}
 
 			public function get_charset_collate() {
@@ -123,10 +147,15 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Mark both plugin tables as existing in the fake wpdb.
+	 * Mark both plugin tables as existing in the fake wpdb, with all of their
+	 * schema columns present.
 	 */
 	private function mark_tables_as_existing(): void {
 		$this->fake_wpdb->existing_tables = array( 'wp_wc_fraud_protection_sessions', 'wp_wc_fraud_protection_rules' );
+		$this->fake_wpdb->table_columns   = array(
+			'wp_wc_fraud_protection_sessions' => self::SESSIONS_COLUMNS,
+			'wp_wc_fraud_protection_rules'    => self::RULES_COLUMNS,
+		);
 	}
 
 	/**
@@ -160,11 +189,42 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_does_not_store_version_when_rules_table_creation_fails(): void {
 		$this->fake_wpdb->existing_tables = array( 'wp_wc_fraud_protection_sessions' );
+		$this->fake_wpdb->table_columns   = array( 'wp_wc_fraud_protection_sessions' => self::SESSIONS_COLUMNS );
 
 		$this->sut->register();
 
 		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'A failed installation must not be recorded as done' );
 		$this->assertLogged( 'error', 'Table creation failed: wp_wc_fraud_protection_rules' );
+	}
+
+	/**
+	 * @testdox Should log an error and not store the schema version when a sessions table column is missing after dbDelta.
+	 */
+	public function test_does_not_store_version_when_a_column_is_missing_after_upgrade(): void {
+		$this->mark_tables_as_existing();
+		$this->fake_wpdb->table_columns['wp_wc_fraud_protection_sessions'] = array_values( array_diff( self::SESSIONS_COLUMNS, array( 'matched_rule_id' ) ) );
+
+		$this->sut->register();
+
+		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'A failed upgrade must not be recorded as done' );
+		$this->assertLogged( 'error', 'Table upgrade failed: wp_wc_fraud_protection_sessions is missing columns after dbDelta: matched_rule_id.' );
+
+		$state = get_option( SchemaManager::DB_INSTALL_STATE_OPTION );
+		$this->assertIsArray( $state );
+		$this->assertSame( 1, $state['attempts'] );
+	}
+
+	/**
+	 * @testdox Should log an error and not store the schema version when a rules table column is missing after dbDelta.
+	 */
+	public function test_does_not_store_version_when_a_rules_table_column_is_missing(): void {
+		$this->mark_tables_as_existing();
+		$this->fake_wpdb->table_columns['wp_wc_fraud_protection_rules'] = array_values( array_diff( self::RULES_COLUMNS, array( 'condition_hash', 'source_meta' ) ) );
+
+		$this->sut->register();
+
+		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'A failed upgrade must not be recorded as done' );
+		$this->assertLogged( 'error', 'Table upgrade failed: wp_wc_fraud_protection_rules is missing columns after dbDelta: condition_hash, source_meta.' );
 	}
 
 	/**
