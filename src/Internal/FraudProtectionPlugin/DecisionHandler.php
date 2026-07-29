@@ -119,7 +119,7 @@ class DecisionHandler {
 				/**
 				 * Fires when a merchant rule has decided the session outcome.
 				 *
-				 * @since 0.1.0
+				 * @since 0.1.6
 				 *
 				 * @param int                  $rule_id           The id of the rule that decided the session.
 				 * @param FraudDecision        $applied_decision  The enforced decision (the rule's action).
@@ -193,6 +193,7 @@ class DecisionHandler {
 		 * rules on top of it.
 		 *
 		 * @since 0.1.0
+		 * @since 0.1.6 Renamed from `woocommerce_fraud_protection_decision`.
 		 *
 		 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
 		 * @param array<string, mixed> $session_data The session data that was analyzed, including the `verify_result` details.
