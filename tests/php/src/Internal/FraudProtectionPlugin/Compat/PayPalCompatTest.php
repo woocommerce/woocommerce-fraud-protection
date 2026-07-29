@@ -416,14 +416,28 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox A decision supplied by an earlier consumer is passed through untouched.
+	 *
+	 * The setup matters: on a ppcp-* request whose session ID matches a recorded
+	 * allow, removing the passthrough would answer from the record and downgrade
+	 * the earlier consumer's Block to an Allow. A non-PayPal request cannot pin
+	 * the passthrough — the gateway gate hands the same Block back.
 	 */
 	public function test_supply_passes_through_an_earlier_decision(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verified_session_id',
+			array(
+				'session_id'  => 'some-session-id',
+				'stand_downs' => 0,
+				'decision'    => 'allow',
+			)
+		);
+
 		$this->assertSame(
 			FraudDecision::Block,
 			$this->sut->supply_decision_for_paypal_express(
 				FraudDecision::Block,
 				'blocks_checkout',
-				array( 'payment_method' => 'stripe' ),
+				array( 'payment_method' => 'ppcp-gateway' ),
 				'some-session-id'
 			)
 		);

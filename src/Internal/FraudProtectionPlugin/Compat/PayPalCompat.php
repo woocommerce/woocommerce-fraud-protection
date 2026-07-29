@@ -33,11 +33,15 @@ defined( 'ABSPATH' ) || exit;
  * What it answers with is the point: standing down is not the same as allowing.
  * The record of the session ppc-create-order scored carries the decision that
  * verification produced — allow or block — and a request that stands down on it
- * gets that decision back, never a blanket allow. The decision can only reach a
- * request that passes every gate above it: a ppcp-* payment method, the exact
- * recorded session ID, and stand-down budget left. It never answers for another
- * gateway — a recorded allow presented on a non-PayPal checkout is verified for
- * real, which is what keeps the decision scoped to the attempt that earned it.
+ * gets that decision back, never a blanket allow. What keeps a recorded allow
+ * from answering for another gateway is placement: the stand-down read sits
+ * below the ppcp-* gateway gate, so a non-PayPal checkout presenting the
+ * recorded session ID is verified for real. The record is also read on two
+ * routes that spend no stand-down: the in-request marker, which is
+ * request-local, consumed on read and never set on a block; and the
+ * approved-order predicate (audit finding FP-03), which answers for as long as
+ * PayPal's session slot holds an approved order — bounded only by PayPal
+ * clearing it.
  *
  * All of this is PayPal's problem and lives here. SessionVerifier knows only that
  * some consumer supplied a decision.
