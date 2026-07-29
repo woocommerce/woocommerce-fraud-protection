@@ -210,10 +210,19 @@ class SchemaManager {
 			// Indexes are verified by name only: a missing index is never
 			// ignored, since one added by a migration can carry correctness
 			// semantics (e.g. a UNIQUE constraint), not just performance.
-			// Index definitions (uniqueness, column lists) are left alone
-			// though - comparing those against SHOW INDEX output is server-
-			// and version-sensitive, and a false mismatch here would
-			// permanently withhold the version stamp.
+			//
+			// Definitions - column types, signedness, nullability, index
+			// uniqueness and column lists - are deliberately not compared.
+			// Their DESCRIBE/SHOW INDEX representation is server- and
+			// version-sensitive (e.g. integer display widths on MariaDB vs
+			// MySQL 8), so a false mismatch would permanently withhold the
+			// version stamp here. And the only remedy this loop has is
+			// re-running dbDelta, which cannot repair every definition drift
+			// (it never issues nullability-only changes, and its own type
+			// comparison has the same cross-server gaps), so a flagged
+			// definition could retry futilely until the give-up. Presence by
+			// name is exactly the invariant dbDelta can always restore and
+			// that compares equal on any server.
 			foreach ( $schemas as $table => $schema ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
