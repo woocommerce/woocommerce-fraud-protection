@@ -95,7 +95,7 @@ Forwarded entries are emitted as `PHP Warning: [woo-fraud-protection <level>] <m
 
 **Compat layers**: Gateway compat classes in `src/Internal/FraudProtectionPlugin/Compat/` follow a pass-through pattern: receive `$resolved` as first parameter, return it unchanged if the gateway doesn't match, only override on successful resolution. This allows chaining.
 
-**Filter hooks**: Be judicious — once released, they must be maintained. Always validate filtered output and fall back to the original value on invalid data. The three released public extension filters are `woocommerce_fraud_protection_resolved_payment_data` (the primary hook payment-gateway compat layers attach to — enrich or replace the resolved `PaymentMethodData`), `woocommerce_fraud_protection_skip_session_verify`, and `woocommerce_fraud_protection_enqueue_blackbox_scripts` (all `@since 0.1.0`, all fail-open). Together with the `window.wcFraudProtection` JS API (`acquireSessionId()` / `reset()`, plus `config.sessionIdField`) and the `wc-fraud-protection-blackbox-init` script handle, they form the public integration surface for gateway compat layers and must stay stable. Gateway-specific interceptor JS (e.g. `paypal-express.js`) is owned and enqueued by the gateway from its own plugin URL/version, not by this plugin; the plugin owns only the shared Blackbox infrastructure (SDK loader, init script, localized `config`). See the README "Public API" section for the consumer-facing contract.
+**Filter hooks**: Be judicious — once released, they must be maintained. Always validate filtered output and fall back to the original value on invalid data. The three released public extension filters are `woocommerce_fraud_protection_resolved_payment_data` (the primary hook payment-gateway compat layers attach to — enrich or replace the resolved `PaymentMethodData`), `woocommerce_fraud_protection_pre_session_decision` (`@since 0.2.0` — replaces the removed `woocommerce_fraud_protection_skip_session_verify`; returns a `FraudDecision` to supply the decision, `null` to verify), and `woocommerce_fraud_protection_enqueue_blackbox_scripts` (all fail-open). Together with the `window.wcFraudProtection` JS API (`acquireSessionId()` / `reset()`, plus `config.sessionIdField`) and the `wc-fraud-protection-blackbox-init` script handle, they form the public integration surface for gateway compat layers and must stay stable. Gateway-specific interceptor JS (e.g. `paypal-express.js`) is owned and enqueued by the gateway from its own plugin URL/version, not by this plugin; the plugin owns only the shared Blackbox infrastructure (SDK loader, init script, localized `config`). See the README "Public API" section for the consumer-facing contract.
 
 ## Architecture
 
@@ -141,6 +141,14 @@ Use generic messages like "We are unable to process this request online". Never 
 ### 4. Open Source Awareness
 
 This code is open source. Never expose aggregation/correlation logic, risk scoring internals, or rule definitions/thresholds. Only reference session IDs and verdicts.
+
+### 5. A predicate that omits verification must rest on evidence the plugin issued
+
+Never a query parameter, header, or form field. A request that merely describes itself as trusted is not evidence, and treating it as such omits verification entirely for anyone who can send that request. Record what this plugin actually did — an in-request marker, a session it scored — and key the predicate on that.
+
+### 6. Not verifying is not the same as allowing
+
+`woocommerce_fraud_protection_pre_session_decision` supplies *the decision this attempt received*. A compat layer that verified earlier and is answering for a later request in the same attempt must return the verdict it got, and must record a block so it survives the request that produced it — returning Allow because "we already handled this" discards blocks. Keep that state in the compat layer: `SessionVerifier` is gateway-agnostic and only honours what the filter returns. Record blocks only — a request answered from a compat layer is allowed by default, so recording an allow buys nothing and leaves a token that stands in for a verdict on a later, unrelated request. Bound how many later requests one verification may answer for, to the number a genuine order flow produces; past it, defer and let the session be scored.
 
 ## Common Pitfalls
 

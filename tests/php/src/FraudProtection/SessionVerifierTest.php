@@ -87,7 +87,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		if ( WC()->session ) {
 			WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, null );
 		}
-		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
+		remove_all_filters( 'woocommerce_fraud_protection_pre_session_decision' );
 		remove_all_actions( 'woocommerce_checkout_order_created' );
 
 		parent::tearDown();
@@ -683,10 +683,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox verify_session() skips verification and returns ALLOW when filter returns true.
+	 * @testdox verify_session() applies an ALLOW supplied by the filter without calling the API.
 	 */
-	public function test_verify_session_skips_when_filter_returns_true(): void {
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', '__return_true' );
+	public function test_verify_session_applies_an_allow_supplied_by_the_filter(): void {
+		add_filter(
+			'woocommerce_fraud_protection_pre_session_decision',
+			function () {
+				return FraudDecision::Allow;
+			}
+		);
 
 		$this->api_client
 			->expects( $this->never() )
@@ -695,39 +700,39 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'info', 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
+		$this->assertLogged( 'info', 'Decision supplied by `woocommerce_fraud_protection_pre_session_decision` filter for source: blocks_checkout' );
 	}
 
 	/**
-	 * @testdox verify_session() proceeds normally when filter returns false.
+	 * @testdox verify_session() applies a BLOCK supplied by the filter without calling the API.
+	 *
+	 * The whole reason this filter carries a decision rather than a boolean: a
+	 * consumer that already scored this attempt and got a block must be able to say
+	 * so. A boolean could only ever mean "do not verify", which reads as allow.
 	 */
-	public function test_verify_session_proceeds_when_filter_returns_false(): void {
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', '__return_false' );
-
-		$this->data_collector
-			->method( 'get_collected_data' )
-			->willReturn( array() );
+	public function test_verify_session_applies_a_block_supplied_by_the_filter(): void {
+		add_filter(
+			'woocommerce_fraud_protection_pre_session_decision',
+			function () {
+				return FraudDecision::Block;
+			}
+		);
 
 		$this->api_client
-			->expects( $this->once() )
-			->method( 'verify' )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
-
-		$this->decision_handler
-			->method( 'apply_decision' )
-			->willReturn( FraudDecision::Allow );
+			->expects( $this->never() )
+			->method( 'verify' );
 
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
-		$this->assertSame( FraudDecision::Allow, $result );
+		$this->assertSame( FraudDecision::Block, $result );
 	}
 
 	/**
-	 * @testdox verify_session() proceeds normally when filter returns non-bool falsy value.
+	 * @testdox verify_session() verifies normally when the filter returns null.
 	 */
-	public function test_verify_session_proceeds_when_filter_returns_non_bool(): void {
+	public function test_verify_session_proceeds_when_filter_returns_null(): void {
 		add_filter(
-			'woocommerce_fraud_protection_skip_session_verify',
+			'woocommerce_fraud_protection_pre_session_decision',
 			function () {
 				return null;
 			}
@@ -752,11 +757,60 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() ignores a malformed filter return and verifies.
+	 *
+	 * A bool is the shape the removed skip filter used. It must not be honoured:
+	 * `true` would otherwise mean "allow", which is the conflation this replaced.
+	 *
+	 * @dataProvider malformed_filter_returns
+	 *
+	 * @param mixed $returned What the filter hands back.
+	 */
+	public function test_verify_session_ignores_a_malformed_filter_return( $returned ): void {
+		add_filter(
+			'woocommerce_fraud_protection_pre_session_decision',
+			function () use ( $returned ) {
+				return $returned;
+			}
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'test-session', 'blocks_checkout' ) );
+	}
+
+	/**
+	 * Returns that must never stand in for a verdict.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function malformed_filter_returns(): array {
+		return array(
+			'true (the old skip filter shape)' => array( true ),
+			'false'                            => array( false ),
+			'the decision as a string'         => array( 'allow' ),
+			'a non-actionable decision'        => array( FraudDecision::Challenge ),
+			'an unrelated object'              => array( new \stdClass() ),
+		);
+	}
+
+	/**
 	 * @testdox verify_session() proceeds normally when filter callback throws (fail-open).
 	 */
 	public function test_verify_session_proceeds_when_filter_throws(): void {
 		add_filter( // @phpstan-ignore return.missing
-			'woocommerce_fraud_protection_skip_session_verify',
+			'woocommerce_fraud_protection_pre_session_decision',
 			function () {
 				throw new \RuntimeException( 'Filter exploded' );
 			}
@@ -778,7 +832,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw' );
+		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_pre_session_decision` filter threw' );
 	}
 
 }

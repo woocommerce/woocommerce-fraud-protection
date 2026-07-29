@@ -81,11 +81,15 @@ Three hooks let an extension (e.g. a payment gateway with a non-standard checkou
   apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMethodData $resolved, array $checkout_payment_fields );
   ```
 
-- **`woocommerce_fraud_protection_skip_session_verify`** — return `true` to tell the built-in checkout protectors to skip their verification for a flow that runs its own `SessionVerifier::verify_session()` call, so the same session is not verified twice.
+- **`woocommerce_fraud_protection_pre_session_decision`** — return a `FraudDecision` to supply the decision for this request, so the built-in checkout protectors apply it instead of calling Blackbox. Return `null` (the default) to verify normally. For a flow that runs its own `SessionVerifier::verify_session()` earlier in the same payment attempt and still holds the decision it produced, so the attempt is not scored twice.
+
+  Return the decision the attempt actually received, not a blanket allow: if your earlier verification blocked, returning `FraudDecision::Allow` here would discard that block. Only `FraudDecision::Allow` and `FraudDecision::Block` are honoured; anything else is ignored and the session is verified.
 
   ```php
-  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', bool $skip, string $source, array $request_data, string $session_id );
+  apply_filters( 'woocommerce_fraud_protection_pre_session_decision', ?FraudDecision $decision, string $source, array $request_data, string $session_id );
   ```
+
+  *Replaces `woocommerce_fraud_protection_skip_session_verify` (removed in 0.2.0), which could only say "do not verify" and therefore turned every deferral into an allow.*
 
 - **`woocommerce_fraud_protection_enqueue_blackbox_scripts`** — return `true` to load the Blackbox scripts on a page the plugin would not otherwise target (e.g. product or cart pages that render express-checkout buttons).
 

@@ -153,38 +153,53 @@ class SessionVerifier {
 	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
 		try {
 			/**
-			 * Filters whether to skip session verification.
+			 * Filters in the fraud decision for this request, skipping verification.
 			 *
-			 * Extensions that handle their own verification (e.g. PayPal express
-			 * checkout via PayPalCompat) can return true to skip the redundant
-			 * verify call from standard protectors.
+			 * Returning a {@see FraudDecision} means "this is the decision": it is
+			 * applied as given and no Blackbox call is made. Return null — the
+			 * default — to verify normally.
 			 *
-			 * Fail-open: truthy values skip verification (session is allowed).
+			 * Intended for gateway compat layers that verified this payment attempt
+			 * earlier and still hold the decision it produced, so the attempt is not
+			 * scored twice. Whether such a layer answers with a verdict it recorded,
+			 * how long it does so, and on what terms are that layer's concern: this
+			 * class only honours what comes back.
 			 *
-			 * @since 0.1.0
+			 * Only an actionable decision is honoured. Anything else — a
+			 * non-actionable decision, a bool, a string — is ignored and the session
+			 * is verified, so a malformed return can never stand in for a verdict.
 			 *
-			 * @param bool   $skip         Whether to skip verification. Default false.
-			 * @param string $source       Source identifier (e.g. 'blocks_checkout').
-			 * @param array  $request_data Request data with payment_method, payment_data, etc.
-			 * @param string $session_id   The Blackbox session ID being verified.
+			 * @since 0.2.0
+			 *
+			 * @param FraudDecision|null $decision     Decision to apply, or null to verify. Default null.
+			 * @param string             $source       Source identifier (e.g. 'blocks_checkout').
+			 * @param array              $request_data Request data with payment_method, payment_data, etc.
+			 * @param string             $session_id   The Blackbox session ID being verified.
 			 */
-			$skip = (bool) apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $session_id );
+			$supplied = apply_filters( 'woocommerce_fraud_protection_pre_session_decision', null, $source, $request_data, $session_id );
 
-			if ( $skip ) {
+			if ( $supplied instanceof FraudDecision && in_array( $supplied, FraudDecision::ACTIONABLE, true ) ) {
 				FraudProtectionController::log(
 					'info',
-					sprintf( 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source )
+					sprintf( 'Decision supplied by `woocommerce_fraud_protection_pre_session_decision` filter for source: %s', $source ),
+					array(
+						'event_source' => $source,
+						'session_id'   => $session_id,
+						'order_id'     => $order_id,
+						'decision'     => $supplied->value,
+					)
 				);
-				return FraudDecision::Allow;
+
+				return $supplied;
 			}
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
-				'`woocommerce_fraud_protection_skip_session_verify` filter threw',
+				'`woocommerce_fraud_protection_pre_session_decision` filter threw',
 				array(
 					'event_source'      => $source,
 					'session_id'        => $session_id,
-					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
+					'filter'            => 'woocommerce_fraud_protection_pre_session_decision',
 					'exception'         => $e,
 					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
