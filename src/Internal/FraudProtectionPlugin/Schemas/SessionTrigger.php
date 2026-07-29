@@ -27,4 +27,16 @@ enum SessionTrigger: string {
 	 * recorded allow decision is synthetic, not a Blackbox verdict.
 	 */
 	case VerifyError = 'verify_error';
+
+	/**
+	 * A merchant allow rule decided the outcome, taking precedence over the
+	 * recorded Blackbox decision.
+	 */
+	case AllowRule = 'allow_rule';
+
+	/**
+	 * A merchant block rule decided the outcome, taking precedence over the
+	 * recorded Blackbox decision.
+	 */
+	case BlockRule = 'block_rule';
 }

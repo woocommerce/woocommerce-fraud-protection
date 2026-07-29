@@ -13,16 +13,24 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
  * Integration test for the session recording pipeline: a verify call whose
  * transport returns a block decision must produce a row in the sessions table,
- * exercising ApiClient parsing, DecisionHandler, SessionEventRecorder and
- * SessionEventStore together.
+ * exercising ApiClient parsing, DecisionHandler, RuleEvaluator,
+ * SessionEventRecorder and SessionEventStore together.
  */
 class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
+
+	/**
+	 * The REMOTE_ADDR value in place before the test.
+	 *
+	 * @var ?string
+	 */
+	private $original_remote_addr;
 
 	/**
 	 * Set up test fixtures.
@@ -30,9 +38,12 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
+		$this->original_remote_addr = $_SERVER['REMOTE_ADDR'] ?? null;
+
 		$schema_manager = wc_get_container()->get( SchemaManager::class );
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $schema_manager->get_sessions_table_schema() );
+		dbDelta( $schema_manager->get_rules_table_schema() );
 
 		// The recorder skips events while the schema is not recorded as
 		// installed, so stamp the version the same way a real install does.
@@ -45,10 +56,20 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		global $wpdb;
 
+		$schema_manager = wc_get_container()->get( SchemaManager::class );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$wpdb->query( 'DROP TABLE IF EXISTS ' . wc_get_container()->get( SchemaManager::class )->get_sessions_table_name() );
+		$wpdb->query( 'DROP TABLE IF EXISTS ' . $schema_manager->get_sessions_table_name() );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( 'DROP TABLE IF EXISTS ' . $schema_manager->get_rules_table_name() );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
 		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
+
+		if ( is_null( $this->original_remote_addr ) ) {
+			unset( $_SERVER['REMOTE_ADDR'] );
+		} else {
+			$_SERVER['REMOTE_ADDR'] = $this->original_remote_addr;
+		}
+
 		parent::tearDown();
 	}
 
@@ -215,5 +236,92 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( 2, $this->count_rows() );
 		$this->assertSame( 'block', $this->latest_row_for( 'integration-session-4' )['decision'] );
+	}
+
+	/**
+	 * Create a merchant rule matching the test visitor IP.
+	 *
+	 * @param FraudDecision $action The rule action.
+	 * @return \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule
+	 */
+	private function a_rule_matching_the_visitor_ip( FraudDecision $action ) {
+		$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
+
+		return wc_get_container()->get( RuleStore::class )->create_rule(
+			$action,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '203.0.113.7',
+			)
+		);
+	}
+
+	/**
+	 * @testdox A merchant block rule enforces even in learning mode and records a block_rule row with the rule id.
+	 */
+	public function test_merchant_block_rule_enforces_and_records_block_rule_trigger(): void {
+		$rule = $this->a_rule_matching_the_visitor_ip( FraudDecision::Block );
+
+		$verifier = $this->a_session_verifier_receiving(
+			array(
+				'decision'   => 'allow',
+				'risk_score' => 0.13,
+			)
+		);
+
+		$decision = $verifier->verify_session( 'integration-session-6', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Block, $decision, 'The merchant block rule must enforce even in learning mode' );
+
+		$row = $this->latest_row_for( 'integration-session-6' );
+		$this->assertNotNull( $row );
+		$this->assertSame( 'allow', $row['decision'], 'The Blackbox verdict must be recorded as received' );
+		$this->assertSame( 'blocked', $row['final_status'] );
+		$this->assertSame( 'block_rule', $row['trigger_type'] );
+		$this->assertSame( $rule->id, (int) $row['matched_rule_id'] );
+	}
+
+	/**
+	 * @testdox A merchant allow rule overrides a Blackbox block and records an allow_rule row with the rule id.
+	 */
+	public function test_merchant_allow_rule_overrides_block_and_records_allow_rule_trigger(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		$rule = $this->a_rule_matching_the_visitor_ip( FraudDecision::Allow );
+
+		$verifier = $this->a_session_verifier_receiving(
+			array(
+				'decision'   => 'block',
+				'risk_score' => 0.99,
+			)
+		);
+
+		$decision = $verifier->verify_session( 'integration-session-7', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Allow, $decision, 'The merchant allow rule must override the Blackbox block' );
+
+		$row = $this->latest_row_for( 'integration-session-7' );
+		$this->assertNotNull( $row );
+		$this->assertSame( 'block', $row['decision'], 'The Blackbox verdict must be recorded as received' );
+		$this->assertSame( 'allowed', $row['final_status'] );
+		$this->assertSame( 'allow_rule', $row['trigger_type'] );
+		$this->assertSame( $rule->id, (int) $row['matched_rule_id'] );
+	}
+
+	/**
+	 * @testdox A session matching no merchant rule keeps the blackbox trigger and a null matched rule id.
+	 */
+	public function test_unmatched_session_records_null_matched_rule_id(): void {
+		$this->a_rule_matching_the_visitor_ip( FraudDecision::Block );
+		$_SERVER['REMOTE_ADDR'] = '198.51.100.1';
+
+		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'allow' ) );
+		$verifier->verify_session( 'integration-session-8', 'blocks_checkout' );
+
+		$row = $this->latest_row_for( 'integration-session-8' );
+		$this->assertNotNull( $row );
+		$this->assertSame( 'blackbox', $row['trigger_type'] );
+		$this->assertNull( $row['matched_rule_id'] );
 	}
 }

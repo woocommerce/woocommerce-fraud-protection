@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Gate for the merchant-facing lists feature (session recording, the
- * positive/negative lists, and their admin surface).
+ * merchant allow/block rules, and their admin surface).
  *
  * The gate is hardcoded rather than driven by an option or a filter: rollout
  * and rollback of this feature are controlled by deploying the plugin itself,

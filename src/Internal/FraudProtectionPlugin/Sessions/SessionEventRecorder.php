@@ -11,7 +11,9 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionInfo;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 
@@ -25,7 +27,7 @@ defined( 'ABSPATH' ) || exit;
  * challenge decisions are recorded faithfully even when enforcement is
  * suppressed (learning mode, filter overrides). Every parsed decision is
  * recorded, allowed sessions included, so merchants can act on any session
- * from its row (e.g. add the shopper to the positive or negative list).
+ * from its row (e.g. create an allow or block rule for the shopper).
  * Verifies that failed to produce a real verdict (transport errors,
  * unparseable responses, unknown decision values) fail open to a synthetic
  * allow and are recorded under the {@see SessionTrigger::VerifyError}
@@ -91,12 +93,19 @@ class SessionEventRecorder {
 	 * trigger, so a synthetic allow stays distinguishable from a genuine
 	 * Blackbox allow.
 	 *
+	 * When a merchant rule decided the outcome, the row records the rule id
+	 * and a {@see SessionTrigger::AllowRule} or
+	 * {@see SessionTrigger::BlockRule} trigger, while the `decision`
+	 * column keeps what Blackbox said - the sessions log stores the verdict
+	 * alongside the enforced outcome.
+	 *
 	 * @param VerifyResult  $result           The verify result, carrying the received decision, session ID and risk score.
 	 * @param FraudDecision $applied_decision The decision actually applied to the session, after overrides.
 	 * @param array         $session_data     The session data payload that was sent to the API.
+	 * @param ?Rule         $matched_rule     The merchant rule that decided the outcome, if any.
 	 * @return void
 	 */
-	public function record_decision( VerifyResult $result, FraudDecision $applied_decision, array $session_data ): void {
+	public function record_decision( VerifyResult $result, FraudDecision $applied_decision, array $session_data, ?Rule $matched_rule = null ): void {
 		try {
 			if ( ! $this->merchant_lists_feature->is_enabled() ) {
 				return;
@@ -109,7 +118,7 @@ class SessionEventRecorder {
 			}
 
 			$final_status = FraudDecision::Block === $applied_decision ? SessionFinalStatus::Blocked : SessionFinalStatus::Allowed;
-			$event        = $this->build_event( $result, $final_status, $session_data );
+			$event        = $this->build_event( $result, $final_status, $session_data, $matched_rule );
 
 			if ( ! $this->event_store->record_event( $event ) ) {
 				global $wpdb;
@@ -147,9 +156,10 @@ class SessionEventRecorder {
 	 * @param VerifyResult       $result       The verify result, carrying the received decision, session ID and risk score.
 	 * @param SessionFinalStatus $final_status The effective outcome after overrides.
 	 * @param array              $session_data The session data payload.
+	 * @param ?Rule              $matched_rule The merchant rule that decided the outcome, if any.
 	 * @return array<string, mixed> The event row for {@see SessionEventStore::record_event()}.
 	 */
-	private function build_event( VerifyResult $result, SessionFinalStatus $final_status, array $session_data ): array {
+	private function build_event( VerifyResult $result, SessionFinalStatus $final_status, array $session_data, ?Rule $matched_rule ): array {
 		$customer = is_array( $session_data['customer'] ?? null ) ? $session_data['customer'] : array();
 		$billing  = is_array( $customer['billing_address'] ?? null ) ? $customer['billing_address'] : array();
 		$session  = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
@@ -161,14 +171,19 @@ class SessionEventRecorder {
 
 		$billing_name = trim( ( (string) ( $billing['first_name'] ?? '' ) ) . ' ' . ( (string) ( $billing['last_name'] ?? '' ) ) );
 
-		$ip         = \WC_Geolocation::get_ip_address();
+		$ip         = (string) SessionInfo::get_ip_address();
 		$geo        = \WC_Geolocation::geolocate_ip( $ip, false, false );
 		$ip_country = (string) ( $geo['country'] ?? '' );
 
 		// A fail-open verify produced no real verdict: record it under the
 		// verify_error trigger so the synthetic allow stays distinguishable
-		// from a genuine Blackbox allow in the sessions log.
-		$trigger = $result->fail_open ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
+		// from a genuine Blackbox allow in the sessions log. A matched rule
+		// takes precedence: it decided the outcome whatever the verify did.
+		if ( is_null( $matched_rule ) ) {
+			$trigger = $result->fail_open ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
+		} else {
+			$trigger = FraudDecision::Allow === $matched_rule->action ? SessionTrigger::AllowRule : SessionTrigger::BlockRule;
+		}
 
 		// Caps use mb_substr: the column limits are in characters, and a byte-based
 		// substr could split a multibyte character and produce invalid UTF-8.
@@ -189,6 +204,7 @@ class SessionEventRecorder {
 			'billing_name'     => mb_substr( $billing_name, 0, 255 ),
 			'order_id'         => (int) ( $order['order_id'] ?? 0 ),
 			'payment_method'   => mb_substr( (string) ( $payment['gateway'] ?? '' ), 0, 64 ),
+			'matched_rule_id'  => $matched_rule?->id,
 		);
 	}
 }
