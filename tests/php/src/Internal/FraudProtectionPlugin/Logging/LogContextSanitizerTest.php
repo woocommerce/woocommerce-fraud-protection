@@ -39,6 +39,7 @@ class LogContextSanitizerTest extends FraudProtectionUnitTestCase {
 			'exception_message' => 'Something broke',
 			'exception_file'    => '/srv/htdocs/wp-content/plugins/x/y.php',
 			'exception_line'    => 142,
+			'schema_db_error'   => "Key column 'matched_rule_id' doesn't exist in table",
 			'payment_type'      => 'card',
 		);
 

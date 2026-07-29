@@ -41,7 +41,7 @@ class SchemaManager {
 	/**
 	 * Option holding the schema installation retry state: an array with
 	 * `schema_version` (the version the attempts target), `attempts`,
-	 * `last_attempt` (Unix timestamp) and `last_error` (the database error
+	 * `last_attempt` (Unix timestamp) and `last_error` (the database error(s)
 	 * from the most recent failed attempt). Present only while installation
 	 * is failing or after it gave up, it is deleted on success.
 	 */
@@ -177,8 +177,17 @@ class SchemaManager {
 				$this->get_rules_table_name()    => $this->get_rules_table_schema(),
 			);
 
-			foreach ( $schemas as $schema ) {
+			// Collect each table's database errors as dbDelta runs:
+			// `$wpdb->last_error` cannot report them afterwards, because every
+			// query (the other table's dbDelta queries, the verification
+			// queries below) resets it. wpdb also appends every failed query
+			// to the cumulative `$EZSQL_ERROR` global, so slicing that around
+			// each dbDelta call yields exactly the errors that call produced.
+			$db_errors = array();
+			foreach ( $schemas as $table => $schema ) {
+				$error_count = count( $this->get_query_errors() );
 				$this->legacy_proxy->call_function( 'dbDelta', $schema );
+				$db_errors[ $table ] = implode( ' | ', array_filter( array_slice( $this->get_query_errors(), $error_count ) ) );
 			}
 
 			$wpdb = $this->legacy_proxy->get_global( 'wpdb' );
@@ -198,14 +207,14 @@ class SchemaManager {
 			foreach ( $schemas as $table => $schema ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
-					$this->record_failed_attempt( $state, (string) $wpdb->last_error );
+					$this->record_failed_attempt( $state, $db_errors[ $table ] );
 					FraudProtectionController::log(
 						'error',
 						sprintf( 'Table creation failed: %s does not exist after dbDelta.', $table ),
 						array(
-							'event_source' => 'schema_manager',
-							'db_error'     => $wpdb->last_error,
-							'attempts'     => $state['attempts'],
+							'event_source'    => 'schema_manager',
+							'schema_db_error' => $db_errors[ $table ],
+							'attempts'        => $state['attempts'],
 						),
 						true
 					);
@@ -214,14 +223,14 @@ class SchemaManager {
 
 				$missing_columns = array_diff( $this->get_schema_column_names( $schema ), $this->get_table_column_names( $table ) );
 				if ( array() !== $missing_columns ) {
-					$this->record_failed_attempt( $state, (string) $wpdb->last_error );
+					$this->record_failed_attempt( $state, $db_errors[ $table ] );
 					FraudProtectionController::log(
 						'error',
 						sprintf( 'Table upgrade failed: %s is missing columns after dbDelta: %s.', $table, implode( ', ', $missing_columns ) ),
 						array(
-							'event_source' => 'schema_manager',
-							'db_error'     => $wpdb->last_error,
-							'attempts'     => $state['attempts'],
+							'event_source'    => 'schema_manager',
+							'schema_db_error' => $db_errors[ $table ],
+							'attempts'        => $state['attempts'],
 						),
 						true
 					);
@@ -290,6 +299,44 @@ class SchemaManager {
 	private function record_failed_attempt( array $state, string $error ): void {
 		$state['last_error'] = $error;
 		update_option( self::DB_INSTALL_STATE_OPTION, $state, false );
+	}
+
+	/**
+	 * Get the error strings of every failed database query so far in the request.
+	 *
+	 * `$wpdb->last_error` only holds the error of the most recent query
+	 * (every query resets it, successful ones included), so it cannot report
+	 * a dbDelta failure once any later query has run. wpdb also appends each
+	 * failed query to the `$EZSQL_ERROR` global, which is cumulative for the
+	 * whole request and immune to that wiping: counting its entries before a
+	 * dbDelta call and slicing after yields exactly that call's errors.
+	 *
+	 * `$EZSQL_ERROR` is not formally documented as public API, but it has
+	 * behaved identically since WP 0.71, core writes it solely for external
+	 * consumers (nothing in core reads it), and WPCS/Plugin Check list it as
+	 * a protected WordPress global. The reliance here is diagnostics-only
+	 * anyway: if it ever stopped being populated, the recorded errors would
+	 * come back empty while the schema verification itself is unaffected.
+	 *
+	 * @return string[] One error string per failed query, oldest first.
+	 */
+	private function get_query_errors(): array {
+		// wpdb only creates the global on the first failed query; default it
+		// so it is readable through the proxy before any failure has happened.
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+		$GLOBALS['EZSQL_ERROR'] ??= array();
+
+		$errors = $this->legacy_proxy->get_global( 'EZSQL_ERROR' );
+		if ( ! is_array( $errors ) ) {
+			return array();
+		}
+
+		return array_map(
+			static function ( $error ): string {
+				return is_array( $error ) ? (string) ( $error['error_str'] ?? '' ) : '';
+			},
+			array_values( $errors )
+		);
 	}
 
 	/**

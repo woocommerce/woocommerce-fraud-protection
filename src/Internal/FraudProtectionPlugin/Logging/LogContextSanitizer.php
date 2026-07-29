@@ -54,8 +54,16 @@ final class LogContextSanitizer {
 	 * - Where in the plugin: event_source, filter, hook, api_endpoint.
 	 * - What we got: decision_received, argument_type, http_status.
 	 * - Why it failed: error_code, exception_class, exception_message,
-	 *   exception_file, exception_line.
+	 *   exception_file, exception_line, schema_db_error.
 	 * - Integration: payment_type.
+	 *
+	 * Note: `schema_db_error` is deliberately scoped to schema management
+	 * (DDL) errors, whose MySQL error text contains identifiers only (table
+	 * and column names, lock or permission errors). Do NOT reuse it for
+	 * errors from data-path (DML) queries: those error strings can embed row
+	 * values (e.g. "Duplicate entry 'foo@example.com' for key ..."). A
+	 * data-path error key would need its own allowlist entry and privacy
+	 * review.
 	 *
 	 * Note: `source` is intentionally NOT on the allowlist - WooCommerce's
 	 * logger uses it as the log channel name and {@see FraudProtectionController::log()}
@@ -79,6 +87,7 @@ final class LogContextSanitizer {
 		'exception_message',
 		'exception_file',
 		'exception_line',
+		'schema_db_error',
 		'payment_type',
 	);
 

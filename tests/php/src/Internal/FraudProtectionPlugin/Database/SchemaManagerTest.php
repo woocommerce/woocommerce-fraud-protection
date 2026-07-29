@@ -51,6 +51,22 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	private $db_delta_calls = array();
 
 	/**
+	 * Error strings the mocked dbDelta should simulate, keyed by call index:
+	 * each one is appended to the mocked `$EZSQL_ERROR` global during that
+	 * dbDelta call, like a failed query would in real wpdb.
+	 *
+	 * @var array
+	 */
+	private $db_delta_errors_by_call = array();
+
+	/**
+	 * The simulated content of the `$EZSQL_ERROR` global.
+	 *
+	 * @var array
+	 */
+	private $simulated_query_errors = array();
+
+	/**
 	 * The fake wpdb global.
 	 *
 	 * @var object
@@ -72,7 +88,6 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		// phpcs:ignore Squiz.Commenting -- test double.
 		$this->fake_wpdb = new class() {
 			public $prefix          = 'wp_';
-			public $last_error      = '';
 			public $existing_tables = array();
 			public $table_columns   = array();
 
@@ -107,11 +122,24 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 			}
 		};
 
-		$this->register_legacy_proxy_global_mocks( array( 'wpdb' => $this->fake_wpdb ) );
+		$this->register_legacy_proxy_global_mocks(
+			array(
+				'wpdb'        => $this->fake_wpdb,
+				'EZSQL_ERROR' => array(),
+			)
+		);
 		$this->register_legacy_proxy_function_mocks(
 			array(
 				'dbDelta' => function ( $schema ) {
+					$call_index             = count( $this->db_delta_calls );
 					$this->db_delta_calls[] = $schema;
+					foreach ( $this->db_delta_errors_by_call[ $call_index ] ?? array() as $error ) {
+						$this->simulated_query_errors[] = array(
+							'query'     => 'ALTER TABLE x ADD COLUMN y',
+							'error_str' => $error,
+						);
+					}
+					$this->register_legacy_proxy_global_mocks( array( 'EZSQL_ERROR' => $this->simulated_query_errors ) );
 					return array();
 				},
 			)
@@ -261,11 +289,11 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should record the attempt count and the last database error in the retry state when installation fails.
+	 * @testdox Should record the attempt count and the failed queries' database errors in the retry state when installation fails.
 	 */
 	public function test_failed_install_records_retry_state(): void {
 		$this->fake_wpdb->existing_tables = array();
-		$this->fake_wpdb->last_error      = 'Specified key was too long';
+		$this->db_delta_errors_by_call    = array( 0 => array( 'Specified key was too long' ) );
 
 		$this->sut->register();
 
@@ -275,6 +303,33 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 1, $state['attempts'] );
 		$this->assertSame( 'Specified key was too long', $state['last_error'] );
 		$this->assertEqualsWithDelta( time(), $state['last_attempt'], 5 );
+	}
+
+	/**
+	 * @testdox Should attribute each table's database errors to that table, unaffected by the queries that run afterwards.
+	 */
+	public function test_records_the_failing_tables_own_errors_not_the_last_query_error(): void {
+		// The sessions upgrade ALTERs fail (leaving the column missing) while
+		// the rules table dbDelta that runs afterwards succeeds. In real wpdb
+		// those later queries reset `$wpdb->last_error`, so this asserts the
+		// errors are captured per dbDelta call instead of read at the end.
+		$this->mark_tables_as_existing();
+		$this->fake_wpdb->table_columns['wp_wc_fraud_protection_sessions'] = array_values( array_diff( self::SESSIONS_COLUMNS, array( 'matched_rule_id' ) ) );
+		$this->db_delta_errors_by_call = array( 0 => array( 'Lock wait timeout exceeded', "Key column 'matched_rule_id' doesn't exist in table" ) );
+
+		$this->sut->register();
+
+		$expected_errors = "Lock wait timeout exceeded | Key column 'matched_rule_id' doesn't exist in table";
+
+		$state = get_option( SchemaManager::DB_INSTALL_STATE_OPTION );
+		$this->assertIsArray( $state );
+		$this->assertSame( $expected_errors, $state['last_error'] );
+		$this->assertLogged(
+			'error',
+			'Table upgrade failed: wp_wc_fraud_protection_sessions is missing columns after dbDelta: matched_rule_id.',
+			array( 'schema_db_error' => $expected_errors ),
+			true
+		);
 	}
 
 	/**
