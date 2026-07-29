@@ -57,10 +57,8 @@ class ApiClient {
 	 * Bounds the request URL size for an arbitrary client-supplied ID so an
 	 * unexpectedly long value cannot push the URL past transport limits. Set well
 	 * above any legitimate session ID length.
-	 *
-	 * Public so callers that key state on a session ID apply the same bound.
 	 */
-	public const MAX_SESSION_ID_LENGTH = 255;
+	private const MAX_SESSION_ID_LENGTH = 255;
 
 	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.

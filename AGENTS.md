@@ -148,7 +148,7 @@ Never a query parameter, header, or form field. A request that merely describes 
 
 ### 6. Not verifying is not the same as allowing
 
-`woocommerce_fraud_protection_pre_session_decision` supplies *the decision this attempt received*. A compat layer that verified earlier and is answering for a later request in the same attempt must return the verdict it got, and must record a block so it survives the request that produced it — returning Allow because "we already handled this" discards blocks. Keep that state in the compat layer: `SessionVerifier` is gateway-agnostic and only honours what the filter returns. Record blocks only — a request answered from a compat layer is allowed by default, so recording an allow buys nothing and leaves a token that stands in for a verdict on a later, unrelated request. Bound how many later requests one verification may answer for, to the number a genuine order flow produces; past it, defer and let the session be scored.
+`woocommerce_fraud_protection_pre_session_decision` supplies *the decision this attempt received*. A compat layer that verified earlier and is answering for a later request in the same attempt must return the verdict it got, and must record a block so it survives the request that produced it — returning Allow because "we already handled this" discards blocks.
 
 ## Common Pitfalls
 

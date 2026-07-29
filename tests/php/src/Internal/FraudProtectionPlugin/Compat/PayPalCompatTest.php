@@ -78,7 +78,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		if ( WC()->session ) {
 			WC()->session->set( 'ppcp', null );
 			WC()->session->set( '_fraud_protection_paypal_verified_session_id', null );
-			WC()->session->set( '_fraud_protection_paypal_blocked_sessions', null );
 		}
 
 		unset( $_GET['wc-ajax'] );
@@ -141,6 +140,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'test-session-abc',
 				'stand_downs' => 0,
+				'blocked'     => false,
 			),
 			WC()->session->get( '_fraud_protection_paypal_verified_session_id' )
 		);
@@ -613,6 +613,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'blocked-session',
 				'stand_downs' => 0,
+				'blocked'     => true,
 			),
 			WC()->session->get( '_fraud_protection_paypal_verified_session_id' ),
 			'A blocked create-order must still record the session it scored.'
@@ -641,9 +642,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_verify_records_nothing_for_an_allow(): void {
 		$this->score_create_order( 'allowed-session', FraudDecision::Allow );
 
-		$this->assertEmpty(
-			WC()->session->get( '_fraud_protection_paypal_blocked_sessions', array() ),
-			'An allow must leave the block record empty.'
+		$record = WC()->session->get( '_fraud_protection_paypal_verified_session_id' );
+
+		$this->assertFalse(
+			$record['blocked'] ?? false,
+			'An allow must not mark the record blocked.'
 		);
 	}
 
@@ -656,16 +659,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_does_not_apply_a_block_recorded_for_another_session(): void {
 		WC()->session->set(
-			'_fraud_protection_paypal_blocked_sessions',
-			array( 'a-different-blocked-session' => true )
-		);
-		WC()->session->set(
 			'_fraud_protection_paypal_verified_session_id',
 			array(
-				'session_id'  => 'this-session',
+				'session_id'  => 'a-different-blocked-session',
 				'stand_downs' => 0,
+				'blocked'     => true,
 			)
 		);
+		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
 
 		$this->assertSame(
 			FraudDecision::Allow,
@@ -691,39 +692,4 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/**
-	 * @testdox The block record stays bounded.
-	 */
-	public function test_verify_bounds_the_recorded_blocks(): void {
-		$this->session_verifier
-			->method( 'verify_session' )
-			->willReturn( FraudDecision::Block );
-
-		add_filter( 'wp_doing_ajax', '__return_true' );
-		add_filter(
-			'wp_die_ajax_handler',
-			function () {
-				return function () {
-					throw new \WPDieException();
-				};
-			}
-		);
-
-		for ( $i = 0; $i < 12; $i++ ) {
-			try {
-				$this->sut->verify_and_block_create_order(
-					array( SessionVerifier::SESSION_ID_FIELD => "blocked-session-$i" )
-				);
-			} catch ( \WPDieException $e ) {
-				unset( $e );
-			}
-		}
-
-		$blocked = WC()->session->get( '_fraud_protection_paypal_blocked_sessions' );
-
-		$this->assertIsArray( $blocked );
-		$this->assertCount( 10, $blocked, 'The block record must stay bounded.' );
-		$this->assertArrayNotHasKey( 'blocked-session-0', $blocked, 'The oldest entry is the one dropped.' );
-		$this->assertArrayHasKey( 'blocked-session-11', $blocked );
-	}
 }

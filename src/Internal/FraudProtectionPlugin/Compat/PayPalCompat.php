@@ -11,7 +11,6 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -53,55 +52,30 @@ class PayPalCompat {
 	private const PAYPAL_GATEWAY_PREFIX = 'ppcp-';
 
 	/**
-	 * WC session key for the Blackbox session verified during ppc-create-order.
+	 * WC session key for the record of the session ppc-create-order scored:
+	 * its ID, the stand-downs spent, and whether it was blocked.
 	 */
 	private const VERIFIED_SESSION_ID_KEY = '_fraud_protection_paypal_verified_session_id';
 
 	/**
-	 * WC session key holding the session IDs ppc-create-order scored as blocked.
-	 */
-	private const BLOCKED_SESSIONS_KEY = '_fraud_protection_paypal_blocked_sessions';
-
-	/**
-	 * How many blocked session IDs to keep before dropping the oldest.
-	 *
-	 * Bounds the WC session entry. Well above what one shopper produces: only
-	 * blocks are recorded, so reaching this takes ten scored refusals.
-	 */
-	private const MAX_RECORDED_BLOCKS = 10;
-
-	/**
 	 * How many later protectors one create-order verification may answer for.
 	 *
-	 * Set to the most a genuine order flow produces, which is one. The flow that
-	 * needs it is card fields on blocks checkout: blocks-checkout.js acquires the
-	 * session ID and puts it in the checkout extension data before PayPal's
-	 * createOrder callback runs, so ppc-create-order verifies that ID for real and
-	 * the Store API request that follows presents the same ID once. The shortcode
-	 * double-submit window is the same shape and also produces one.
+	 * Set to the most a genuine order flow produces, which is one: card fields on
+	 * blocks checkout, where blocks-checkout.js puts the session ID in the checkout
+	 * extension data before PayPal's createOrder callback runs, so ppc-create-order
+	 * scores that ID for real and the Store API request that follows presents it
+	 * once. Every other repeat of ppc-create-order mints a fresh Blackbox session
+	 * (the fetch interceptor resets in a `finally`), so it is scored for real.
 	 *
-	 * Nothing legitimate produces a second. Every other repeat of ppc-create-order
-	 * mints a fresh Blackbox session (the fetch interceptor resets in a `finally`),
-	 * so it is scored for real rather than answered from here. PayPal's
-	 * declined-funding retry loop does not add any either: it bounces the shopper
-	 * back to PayPal for the same order and returns through ppc-return-url, which
-	 * calls the gateway's process_payment() directly and never runs WooCommerce
-	 * checkout validation, so no protector fires on those legs.
-	 *
-	 * Worth knowing, because it looks like a contradiction and is not: express from
-	 * the classic checkout page does stand down twice in one order. Those two are a
-	 * different predicate each — the in-request marker during ppc-create-order, then
-	 * the approved-order check on the request after approval — and the second one
-	 * carries a *different* session ID, because the JS reset Blackbox in between. So
-	 * this bound, which is per session ID, never sees more than one of them.
+	 * Express from the classic checkout page looks like a contradiction — it stands
+	 * down twice per order — but those two are a different predicate each (the
+	 * in-request marker, then the approved-order check) and the second carries a
+	 * *different* session ID, so this per-session-ID bound never sees more than one.
 	 *
 	 * The bound is also what stops one verification answering for a whole Store API
-	 * batch: sub-request 1 is answered, 2..N are not, so they verify for real.
-	 *
-	 * Past the bound nothing is answered and the session is verified again. Blackbox
-	 * scores a reused session harder, so reuse beyond the shape above is decided by
-	 * the model rather than refused here, and it stays visible in the session data
-	 * instead of being served silently.
+	 * batch: sub-request 1 is answered, 2..N are not, so they verify for real. Past
+	 * the bound nothing is answered — Blackbox scores a reused session harder, so
+	 * reuse beyond the genuine shape is decided by the model rather than served here.
 	 */
 	private const MAX_STAND_DOWNS_PER_SESSION = 1;
 
@@ -267,18 +241,8 @@ class PayPalCompat {
 	 * Skip redundant verification for PayPal flows handled by PayPalCompat.
 	 *
 	 * Answers for requests this class already scored, so one payment attempt is
-	 * not scored twice. Each case is a verification performed here, for a request
-	 * that carries no session ID we could match instead:
-	 *
-	 * 1. The create-order request we verified moments ago, now running WooCommerce
-	 *    form validation. That protector call has no session ID at all, because
-	 *    PayPal serialized the form before our field existed.
-	 * 2. The Blackbox session ID matches the one ppc-create-order verified — the
-	 *    protector captured the same ID before ppc-create-order ran (card fields on
-	 *    blocks checkout). Bounded: see MAX_STAND_DOWNS_PER_SESSION.
-	 * 3. An approved PayPal order is in the WC session — an express flow completing
-	 *    after CreateOrder verified it. The JS reset Blackbox in between, so this
-	 *    request carries a different ID that was never scored for this purchase.
+	 * not scored twice. Each branch below is a verification performed here, for a
+	 * request that carries no session ID we could match instead.
 	 *
 	 * What comes back is the decision that attempt received, not a blanket allow:
 	 * if ppc-create-order blocked it, that block is what these requests get.
@@ -344,15 +308,24 @@ class PayPalCompat {
 	/**
 	 * The decision to hand back for a request this class already scored.
 	 *
-	 * A recorded block is the answer; otherwise the attempt was allowed and stays
-	 * allowed. Note the asymmetry is the whole design: blocks are recorded and
-	 * replayed, allows are neither.
+	 * The recorded block, when the presented session ID is the one that was
+	 * blocked; otherwise the attempt was allowed and stays allowed.
 	 *
 	 * @param string $session_id The Blackbox session ID being verified.
 	 * @return FraudDecision
 	 */
 	private function decision_for_verified_attempt( string $session_id ): FraudDecision {
-		return $this->get_recorded_block( $session_id ) ?? FraudDecision::Allow;
+		if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
+			return FraudDecision::Allow;
+		}
+
+		$record = $this->get_verified_session_record();
+
+		if ( $record['blocked'] && $record['session_id'] === $session_id ) {
+			return FraudDecision::Block;
+		}
+
+		return FraudDecision::Allow;
 	}
 
 	/**
@@ -410,6 +383,7 @@ class PayPalCompat {
 			array(
 				'session_id'  => $session_id,
 				'stand_downs' => 0,
+				'blocked'     => false,
 			)
 		);
 	}
@@ -418,8 +392,7 @@ class PayPalCompat {
 	 * Answer for a session ppc-create-order already scored, if budget remains.
 	 *
 	 * Spends one of this verification's stand-downs. Once they are gone the answer
-	 * is no, and the caller verifies with Blackbox instead — which is the point:
-	 * reuse past the shape a genuine flow produces gets scored rather than served.
+	 * is no, and the caller verifies with Blackbox instead.
 	 *
 	 * @param string $session_id The session ID from the current verify call.
 	 * @return bool Whether this request may be answered from the record.
@@ -454,7 +427,7 @@ class PayPalCompat {
 	 * Tolerates the bare session ID string written by earlier plugin versions, so
 	 * a WC session in flight across an update is read rather than discarded.
 	 *
-	 * @return array{session_id: string, stand_downs: int}
+	 * @return array{session_id: string, stand_downs: int, blocked: bool}
 	 */
 	private function get_verified_session_record(): array {
 		$stored = WC()->session->get( self::VERIFIED_SESSION_ID_KEY, array() );
@@ -463,6 +436,7 @@ class PayPalCompat {
 			return array(
 				'session_id'  => $stored,
 				'stand_downs' => 0,
+				'blocked'     => false,
 			);
 		}
 
@@ -470,22 +444,22 @@ class PayPalCompat {
 			return array(
 				'session_id'  => '',
 				'stand_downs' => 0,
+				'blocked'     => false,
 			);
 		}
 
 		return array(
 			'session_id'  => is_string( $stored['session_id'] ?? null ) ? $stored['session_id'] : '',
 			'stand_downs' => (int) ( $stored['stand_downs'] ?? 0 ),
+			'blocked'     => ! empty( $stored['blocked'] ),
 		);
 	}
 
 	/**
-	 * Record that this Blackbox session was scored as blocked.
+	 * Mark the record of the session just scored as blocked, so the verdict
+	 * outlives the request that produced it.
 	 *
-	 * Blocks only. An allow is not recorded: a request answered from this class
-	 * is allowed by default, so recording one would buy nothing and would leave a
-	 * token that stands in for a verdict on a later, unrelated request.
-	 *
+	 * Blocks only — the class docblock says why an allow is never recorded.
 	 * Kept in the WC session, so it goes when that does.
 	 *
 	 * @param string $session_id The session ID that was blocked.
@@ -495,60 +469,17 @@ class PayPalCompat {
 			return;
 		}
 
-		// ApiClient truncates at the same bound, so a longer value is not the ID
-		// the verdict was issued for.
-		if ( strlen( $session_id ) > ApiClient::MAX_SESSION_ID_LENGTH ) {
+		$record = $this->get_verified_session_record();
+
+		// The block belongs to the verification recorded just above it; a record
+		// for some other session is not the one this verdict was issued for.
+		if ( $record['session_id'] !== $session_id ) {
 			return;
 		}
 
-		$blocked = $this->get_recorded_blocks();
+		$record['blocked'] = true;
 
-		// Re-inserting moves the ID to the end, so eviction always drops the
-		// least recently blocked one.
-		unset( $blocked[ $session_id ] );
-		$blocked[ $session_id ] = true;
-
-		$overflow = count( $blocked ) - self::MAX_RECORDED_BLOCKS;
-		for ( $dropped = 0; $dropped < $overflow; $dropped++ ) {
-			$oldest = array_key_first( $blocked );
-			if ( null === $oldest ) {
-				break;
-			}
-			unset( $blocked[ $oldest ] );
-		}
-
-		WC()->session->set( self::BLOCKED_SESSIONS_KEY, $blocked );
-	}
-
-	/**
-	 * Get the block this Blackbox session produced, if it produced one.
-	 *
-	 * @param string $session_id The session ID being verified.
-	 * @return FraudDecision|null The recorded block, or null when there is none.
-	 */
-	private function get_recorded_block( string $session_id ): ?FraudDecision {
-		if ( '' === $session_id ) {
-			return null;
-		}
-
-		$blocked = $this->get_recorded_blocks();
-
-		return empty( $blocked[ $session_id ] ) ? null : FraudDecision::Block;
-	}
-
-	/**
-	 * Read the blocked-session map from the WC session.
-	 *
-	 * @return array<string, mixed> The stored map, or an empty array when unavailable.
-	 */
-	private function get_recorded_blocks(): array {
-		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-			return array();
-		}
-
-		$blocked = WC()->session->get( self::BLOCKED_SESSIONS_KEY, array() );
-
-		return is_array( $blocked ) ? $blocked : array();
+		WC()->session->set( self::VERIFIED_SESSION_ID_KEY, $record );
 	}
 
 	/**
