@@ -483,4 +483,18 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertTrue( $this->sut->is_schema_installed() );
 	}
+
+	/**
+	 * @testdox Should treat a newer stored schema version as installed and leave it untouched (rollback scenario).
+	 */
+	public function test_newer_stored_schema_version_counts_as_installed(): void {
+		update_option( SchemaManager::DB_VERSION_OPTION, SchemaManager::SCHEMA_VERSION + 1 );
+
+		$this->assertTrue( $this->sut->is_schema_installed() );
+
+		$this->sut->register();
+
+		$this->assertEmpty( $this->db_delta_calls, 'A rolled-back build must not re-run dbDelta against a newer schema' );
+		$this->assertSame( SchemaManager::SCHEMA_VERSION + 1, (int) get_option( SchemaManager::DB_VERSION_OPTION ), 'The newer version stamp must be left untouched' );
+	}
 }

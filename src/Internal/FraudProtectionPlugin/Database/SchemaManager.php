@@ -123,15 +123,21 @@ class SchemaManager {
 	}
 
 	/**
-	 * Whether the installed schema version matches the one this build needs.
+	 * Whether the installed schema version is at least the one this build needs.
 	 *
 	 * While this is false (installation pending, failing, or given up),
 	 * consumers of the sessions table should skip their reads and writes.
 	 *
+	 * A stored version newer than this build's counts as installed: that is
+	 * the rollback scenario, and migrations are additive (forward-safe), so a
+	 * newer schema always satisfies an older build's needs. Requiring an
+	 * exact match instead would make a rolled-back build re-run dbDelta and
+	 * re-stamp the version downwards for nothing.
+	 *
 	 * @return bool
 	 */
 	public function is_schema_installed(): bool {
-		return self::SCHEMA_VERSION === (int) get_option( self::DB_VERSION_OPTION, 0 );
+		return (int) get_option( self::DB_VERSION_OPTION, 0 ) >= self::SCHEMA_VERSION;
 	}
 
 	/**
