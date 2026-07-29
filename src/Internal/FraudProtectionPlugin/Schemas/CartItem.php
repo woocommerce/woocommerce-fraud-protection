@@ -88,11 +88,10 @@ class CartItem {
 	/**
 	 * Read the discount on a line as what it would have cost minus what it did.
 	 *
-	 * Both operands are read as numbers before being subtracted. WooCommerce does not guarantee
-	 * a cart line amount is one: core keeps these as int|float, but they pass through cart
-	 * filters on the way here, and subtracting a string with no numeric reading raises a
-	 * TypeError. The caller's per-item guard turns that into a dropped order line, so one
-	 * unreadable amount would cost the whole item rather than the field it belongs to.
+	 * Both operands are read as numbers first: core keeps these amounts as int|float, but they
+	 * pass through cart filters on the way here, and subtracting a string with no numeric
+	 * reading raises a TypeError that the caller's per-item guard turns into a dropped order
+	 * line — the whole item for one unreadable field.
 	 *
 	 * @param array<string, mixed> $cart_item Raw cart entry.
 	 * @return float|null The discount, or null when either amount has no numeric reading.
@@ -111,15 +110,11 @@ class CartItem {
 	/**
 	 * Calculate a per-unit amount from a line total.
 	 *
-	 * Four checks, and the order matters. The quantity first: with no numeric reading of it there
-	 * is nothing to divide by. The dividend next — a line amount is only guaranteed to be a number
-	 * while it stays inside core, and a cart filter can leave a string that casts to a meaningless
-	 * 0.0. Then the quantity's sign, which keeps the historical zero amounts rather than dividing.
-	 * The result last, because two usable operands can still divide into one that is not, and none
-	 * of the checks above sees that.
-	 *
-	 * This is the plugin's own arithmetic, not a relayed value, so no usable result means no
-	 * amount reported.
+	 * Four checks, in an order that matters: no numeric reading of the quantity means nothing to
+	 * divide by; a line amount is only guaranteed numeric inside core, and an unreadable one must
+	 * not cast to a meaningless 0.0; the quantity's sign keeps the historical zero amounts rather
+	 * than dividing; and two usable operands can still divide into a result that is not. This is
+	 * the plugin's own arithmetic, so no usable result means no amount reported.
 	 *
 	 * @param mixed      $line_amount Total amount for the line.
 	 * @param float|null $quantity    Parsed quantity.

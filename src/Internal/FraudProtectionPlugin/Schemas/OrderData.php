@@ -21,10 +21,9 @@ class OrderData {
 	/**
 	 * Private constructor — use factory methods.
 	 *
-	 * The money totals are nullable because they are derived from the cart, and WooCommerce
-	 * does not guarantee a derived total is a finite number. When it is not, there is no honest
-	 * number to put in its place: null omits the field (see ApiClient::filter_empty_values())
-	 * rather than asserting a zero total.
+	 * The money totals are nullable: WooCommerce does not guarantee a derived total is a finite
+	 * number, and null omits the field (see ApiClient::filter_empty_values()) rather than
+	 * asserting a zero total.
 	 *
 	 * @param int        $order_id          Order ID (0 when not yet created).
 	 * @param int|string $customer_id       Customer ID or 'guest'.
@@ -63,12 +62,9 @@ class OrderData {
 	public static function from_cart( int $order_id, \WC_Cart $cart, \WC_Customer $customer ): self {
 		$customer_id = $customer->get_id() ? $customer->get_id() : 'guest';
 
-		// Every total is derived from cart contents, and none is guaranteed finite. Half the
-		// setters store their value raw (set_cart_contents_tax, set_discount_total,
-		// set_shipping_tax), so a non-finite float arrives as a float; the other half
-		// (set_subtotal, set_shipping_total, set_total) flatten it into a string via
-		// wc_format_decimal(). Which half a field falls in is an implementation detail, not a
-		// contract, so all are guarded the same way.
+		// No cart total is guaranteed finite, and half the setters store raw floats while the
+		// other half flatten through wc_format_decimal() — which half is an implementation
+		// detail, so all are guarded the same way.
 		$items_total    = self::finite_number( $cart->get_subtotal() );
 		$shipping_total = self::finite_number( $cart->get_shipping_total() );
 		$tax_total      = self::finite_number( $cart->get_cart_contents_tax() );

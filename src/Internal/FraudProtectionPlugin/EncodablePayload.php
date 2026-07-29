@@ -21,10 +21,7 @@ defined( 'ABSPATH' ) || exit;
  * path and is stricter than the encoder these rules model, so it can still refuse a value this
  * walk permits — before the walk ever sees it.
  *
- * It is an allowlist rather than a list of known-bad types, deliberately: a reject-list covers
- * only the shapes someone thought to name, so an unanticipated type sails through it.
- *
- * The rules:
+ * The rules, an allowlist so an unanticipated type is rejected rather than sailing through:
  *
  * | Value                                       | Result                                     |
  * |---------------------------------------------|--------------------------------------------|
@@ -33,35 +30,21 @@ defined( 'ABSPATH' ) || exit;
  * | `string`                                    | kept as-is — see below                     |
  * | `array`                                     | walked; the array itself is always kept    |
  * | `object`                                    | kept when it encodes, once the walk permits it |
- * | `object` that iterates, serializes, or hooks itself | rejected — see below               |
+ * | `object` that iterates, serializes, or hooks itself | rejected — see guard_against_self_encoding() |
  * | anything else (resource, ...)               | rejected                                   |
  *
- * **Strings are never tested, deliberately.** Invalid UTF-8 also makes `json_encode()` fail, but
- * `wp_json_encode()` retries through `_wp_json_sanity_check()`, which repairs the string and
- * succeeds. Testing each string here would pre-empt that repair and discard data WordPress was
- * going to salvage. The rule is "reject what cannot be encoded *and* cannot be repaired".
- * The repair needs `mb_convert_encoding()`; without mbstring on a site whose charset is not
- * UTF-8 it is a no-op and the document still fails. That is a host limitation, not a value this
- * class could have rejected.
+ * Strings are never tested, deliberately: invalid UTF-8 also makes `json_encode()` fail, but
+ * `wp_json_encode()` repairs it through `_wp_json_sanity_check()`, and testing here would
+ * discard data WordPress was going to salvage. The repair needs `mb_convert_encoding()`;
+ * without mbstring on a site whose charset is not UTF-8 it is a no-op and the document still
+ * fails — a host limitation, not a value this class could have rejected.
  *
- * Known limits, all shared with `ApiClient::filter_empty_values()` and none introduced here.
- * Nesting deeper than the encoder's 512-level budget still fails, because the depth is a property
- * of the whole document rather than any one value. A self-referential array would recurse until
- * the stack gives out; PHP request parsing cannot construct one. Rejecting an element of a JSON
+ * Known limits, all shared with `ApiClient::filter_empty_values()` and none introduced here:
+ * nesting deeper than the encoder's 512-level budget still fails, because depth is a property of
+ * the whole document rather than any one value; a self-referential array would recurse until the
+ * stack gives out, and PHP request parsing cannot construct one; rejecting an element of a JSON
  * list leaves a gap in the keys, so the field encodes as an object rather than an array — no
- * payload field is a list of scalars today, but one would need reindexing.
- *
- * An object is refused outright, at any depth, when testing it would run its own code: when it is
- * `Traversable`, `JsonSerializable`, or carries a hook on a public property. All three are user
- * code the encoder dispatches, and none is guaranteed to answer the same way twice — one that
- * consumes something answers once and throws afterwards, on the real encode, where nothing
- * catches it. Asking whether such a value can travel is then what stops it travelling. This costs
- * repeatable serializers too (`WC_Shipping_Rate` is dropped whole), because telling a repeatable
- * one from a single-use one means running it.
- *
- * What remains is read by plain property access. One gap: `get_object_vars()` materializes a lazy
- * object, running its initializer — once, here, rather than again on the encode. No payload field
- * uses any of these types today.
+ * payload field is a list of scalars today.
  */
 final class EncodablePayload {
 
@@ -93,8 +76,8 @@ final class EncodablePayload {
 	/**
 	 * Filter a payload for logging, replacing anything that cannot travel with a readable marker.
 	 *
-	 * A log entry is read by a person, so an absent key is worse than a visible one: it looks
-	 * like the field was never set. `[unencodable: resource]` says what happened.
+	 * In a log an absent key reads as a field that was never set; `[unencodable: resource]`
+	 * says what happened.
 	 *
 	 * @template TKey of array-key
 	 * @param array<TKey, mixed> $data     Payload to filter.
@@ -159,28 +142,15 @@ final class EncodablePayload {
 
 		if ( is_object( $value ) ) {
 			// json_encode() propagates an exception thrown by JsonSerializable::jsonSerialize(),
-			// and wp_json_encode()'s own try/catch covers only its repair pass. A test that can
-			// throw instead of answering is not a test, and this one runs on the logging path
-			// that the plugin's error handling depends on staying quiet.
-			//
-			// The throwable is deliberately not logged: this class is what makes a log context
-			// safe to encode, so reporting from inside it would re-enter the very call it is
-			// serving. A value that throws is reported the same way as one that simply cannot
-			// encode — by its path on the wire, and by a marker in the log.
+			// and wp_json_encode()'s own try/catch covers only its repair pass — so the test
+			// itself could throw, on the logging path this class keeps quiet. The throwable is
+			// not logged: reporting from inside the class that makes log contexts encodable
+			// would re-enter the very call it is serving.
 			try {
-				// Walked before it is encoded, and the ordering is the whole refusal. Encoding
-				// runs the object's own code — jsonSerialize() directly, iteration through the
-				// repair pass a failed encode triggers, a property hook on either — anywhere in
-				// the graph, not just at the top. The walk throws on any such object, so it has
-				// to finish before the encode; a refusal after it could only ever be too late.
-				//
-				// One encode settles it. wp_json_encode() is the whole pipeline — it runs the
-				// repair pass itself when the first attempt fails — so its return is the
-				// encoder's final verdict on this value, not just the first pass. The repair
-				// pass can change what a value encodes to (a non-backed enum, unencodable on
-				// its own, becomes its {name} array; a bad-UTF-8 string is repaired) and can
-				// change an object's shape, but wp_json_encode() has already accounted for
-				// both, so there is nothing a separate second encode would add.
+				// The walk must finish before the encode: encoding runs the object's own code
+				// anywhere in the graph, and a refusal after that is too late. One encode then
+				// settles it — wp_json_encode() runs the repair pass itself, so its return is
+				// the encoder's final verdict, and a second encode would add nothing.
 				self::guard_against_self_encoding( $value, self::MAX_DEPTH );
 
 				return false !== \wp_json_encode( $value );
@@ -198,19 +168,17 @@ final class EncodablePayload {
 	 * The encoder describes most objects by reading their public properties, but three kinds it
 	 * asks to describe themselves: a `Traversable` through the repair pass a failed encode
 	 * triggers, a `JsonSerializable` directly, and an object with a hooked public property on
-	 * either path. None of that code is guaranteed to answer the same way twice — a serializer,
-	 * an iterator or a hook that consumes something answers once and throws afterwards — so
-	 * running it to decide whether the value can travel is exactly what stops it travelling. Any
-	 * such object is refused, at any depth, and this walk is what finds it.
+	 * either path. None of that code is guaranteed to answer the same way twice — one that
+	 * consumes something answers once and throws afterwards, on the real encode, where nothing
+	 * catches it — so running it to decide whether the value can travel is exactly what stops it
+	 * travelling. Refused at any depth, because the encoder recurses too. This costs repeatable
+	 * serializers as well (`WC_Shipping_Rate` is dropped whole): telling a repeatable one from a
+	 * single-use one means running it.
 	 *
-	 * It recurses because the encoder does, so a refused object nested inside a permitted one is
-	 * still caught. It reads nothing but type and, for a plain object, its public properties —
-	 * which by then are known to be hook-free. It runs before the encode, so a refusal lands
-	 * before the object's own code could.
-	 *
-	 * The walk is bounded by a depth budget so a cyclic graph terminates. `json_encode()` detects
-	 * a cycle on its own, but this walk reaches the graph first, and unbounded recursion offers
-	 * nothing to catch — it ends the process rather than the call.
+	 * The depth budget terminates a cyclic graph: `json_encode()` detects a cycle on its own,
+	 * but this walk reaches the graph first, and unbounded recursion ends the process rather
+	 * than the call. One gap: `get_object_vars()` materializes a lazy object, running its
+	 * initializer — once, here, rather than again on the encode.
 	 *
 	 * @param mixed $value Value to inspect.
 	 * @param int   $depth Remaining depth budget.
@@ -242,16 +210,13 @@ final class EncodablePayload {
 	/**
 	 * Whether any public property carries a PHP 8.4 hook.
 	 *
-	 * A `get` hook is a getter the encoder runs behind the property access, so `get_object_vars()`
-	 * here and `json_encode()` later both run it — the same "testing the value runs its code"
-	 * hazard as `Traversable` and `JsonSerializable`, and the same lack of a guarantee that it
-	 * answers twice the same way. The test is deliberately coarse: `hasHooks()` does not
-	 * distinguish `get` from `set`, and refusing an object for a set-only hook that the encoder
-	 * would never run is cheaper than reflecting each hook's kind, and safe. The result is decided
-	 * by the class, so it is cached per class rather than reflected on every value.
-	 *
-	 * `method_exists()` guards the reflection call because `ReflectionProperty::hasHooks()` does
-	 * not exist below 8.4; on those versions no property can be hooked, so the answer is false.
+	 * A `get` hook is a getter the encoder runs behind the property access — the same "testing
+	 * the value runs its code" hazard as `Traversable` and `JsonSerializable`. The test is
+	 * deliberately coarse: `hasHooks()` does not distinguish `get` from `set`, and refusing an
+	 * object for a set-only hook the encoder would never run is cheaper than reflecting each
+	 * hook's kind, and safe. `method_exists()` guards the call because `hasHooks()` does not
+	 * exist below PHP 8.4, where no property can be hooked. Decided by the class, so cached per
+	 * class.
 	 *
 	 * @param object $value Value to inspect.
 	 * @return bool
@@ -262,8 +227,8 @@ final class EncodablePayload {
 		$class = $value::class;
 
 		if ( ! isset( $cache[ $class ] ) ) {
-			// Computed into a local and assigned once, so a throw inside the loop leaves nothing
-			// memoized rather than caching a wrong "not hooked" for the life of the request.
+			// Computed into a local and assigned once, so a throw mid-loop memoizes nothing
+			// rather than a wrong "not hooked" for the life of the request.
 			$hooked = false;
 
 			foreach ( ( new \ReflectionClass( $class ) )->getProperties( \ReflectionProperty::IS_PUBLIC ) as $property ) {
