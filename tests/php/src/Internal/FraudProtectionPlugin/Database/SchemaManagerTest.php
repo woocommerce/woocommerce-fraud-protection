@@ -37,6 +37,20 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	private const RULES_COLUMNS = array( 'id', 'action', 'status', 'position', 'conditions', 'condition_hash', 'action_meta', 'source_meta', 'created_at', 'created_by', 'updated_at', 'updated_by', 'source_session_id' );
 
 	/**
+	 * The indexes of the sessions table schema, as SHOW INDEX reports them.
+	 *
+	 * @var array
+	 */
+	private const SESSIONS_INDEXES = array( 'PRIMARY', 'session_id', 'email', 'recorded_at', 'matched_rule_id' );
+
+	/**
+	 * The indexes of the rules table schema, as SHOW INDEX reports them.
+	 *
+	 * @var array
+	 */
+	private const RULES_INDEXES = array( 'PRIMARY', 'condition_hash', 'status_position' );
+
+	/**
 	 * The System Under Test.
 	 *
 	 * @var SchemaManager
@@ -90,6 +104,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 			public $prefix          = 'wp_';
 			public $existing_tables = array();
 			public $table_columns   = array();
+			public $table_indexes   = array();
 
 			public function prepare( $query, ...$args ) {
 				return vsprintf( str_replace( array( '%s', '%d' ), array( "'%s'", '%d' ), $query ), $args );
@@ -112,6 +127,20 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 				foreach ( $this->table_columns as $table => $columns ) {
 					if ( false !== strpos( $query, $table ) ) {
 						return $columns;
+					}
+				}
+				return array();
+			}
+
+			public function get_results( $query, $output = null ) {
+				foreach ( $this->table_indexes as $table => $indexes ) {
+					if ( false !== strpos( $query, $table ) ) {
+						return array_map(
+							function ( $name ) {
+								return array( 'Key_name' => $name );
+							},
+							$indexes
+						);
 					}
 				}
 				return array();
@@ -176,13 +205,17 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Mark both plugin tables as existing in the fake wpdb, with all of their
-	 * schema columns present.
+	 * schema columns and indexes present.
 	 */
 	private function mark_tables_as_existing(): void {
 		$this->fake_wpdb->existing_tables = array( 'wp_wc_fraud_protection_sessions', 'wp_wc_fraud_protection_rules' );
 		$this->fake_wpdb->table_columns   = array(
 			'wp_wc_fraud_protection_sessions' => self::SESSIONS_COLUMNS,
 			'wp_wc_fraud_protection_rules'    => self::RULES_COLUMNS,
+		);
+		$this->fake_wpdb->table_indexes   = array(
+			'wp_wc_fraud_protection_sessions' => self::SESSIONS_INDEXES,
+			'wp_wc_fraud_protection_rules'    => self::RULES_INDEXES,
 		);
 	}
 
@@ -218,6 +251,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	public function test_does_not_store_version_when_rules_table_creation_fails(): void {
 		$this->fake_wpdb->existing_tables = array( 'wp_wc_fraud_protection_sessions' );
 		$this->fake_wpdb->table_columns   = array( 'wp_wc_fraud_protection_sessions' => self::SESSIONS_COLUMNS );
+		$this->fake_wpdb->table_indexes   = array( 'wp_wc_fraud_protection_sessions' => self::SESSIONS_INDEXES );
 
 		$this->sut->register();
 
@@ -253,6 +287,32 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'A failed upgrade must not be recorded as done' );
 		$this->assertLogged( 'error', 'Table upgrade failed: wp_wc_fraud_protection_rules is missing columns after dbDelta: condition_hash, source_meta.' );
+	}
+
+	/**
+	 * @testdox Should log an error and not store the schema version when a sessions table index is missing after dbDelta.
+	 */
+	public function test_does_not_store_version_when_an_index_is_missing_after_upgrade(): void {
+		$this->mark_tables_as_existing();
+		$this->fake_wpdb->table_indexes['wp_wc_fraud_protection_sessions'] = array_values( array_diff( self::SESSIONS_INDEXES, array( 'matched_rule_id' ) ) );
+
+		$this->sut->register();
+
+		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'A failed upgrade must not be recorded as done' );
+		$this->assertLogged( 'error', 'Table upgrade failed: wp_wc_fraud_protection_sessions is missing indexes after dbDelta: matched_rule_id.' );
+	}
+
+	/**
+	 * @testdox Should log an error and not store the schema version when the rules table unique index is missing after dbDelta.
+	 */
+	public function test_does_not_store_version_when_the_rules_table_unique_index_is_missing(): void {
+		$this->mark_tables_as_existing();
+		$this->fake_wpdb->table_indexes['wp_wc_fraud_protection_rules'] = array_values( array_diff( self::RULES_INDEXES, array( 'condition_hash' ) ) );
+
+		$this->sut->register();
+
+		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'A failed upgrade must not be recorded as done' );
+		$this->assertLogged( 'error', 'Table upgrade failed: wp_wc_fraud_protection_rules is missing indexes after dbDelta: condition_hash.' );
 	}
 
 	/**

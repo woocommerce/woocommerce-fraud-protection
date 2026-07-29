@@ -201,9 +201,13 @@ class SchemaManager {
 			// ALTERs the pre-existing table column by column, so every schema-declared
 			// column is verified too.
 			//
-			// Indexes are deliberately not verified: a missing index degrades
-			// performance but breaks no reads or writes, so it is not worth blocking
-			// the version stamp (and the retries that stamp implies) over one.
+			// Indexes are verified by name only: a missing index is never
+			// ignored, since one added by a migration can carry correctness
+			// semantics (e.g. a UNIQUE constraint), not just performance.
+			// Index definitions (uniqueness, column lists) are left alone
+			// though - comparing those against SHOW INDEX output is server-
+			// and version-sensitive, and a false mismatch here would
+			// permanently withhold the version stamp.
 			foreach ( $schemas as $table => $schema ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
@@ -227,6 +231,22 @@ class SchemaManager {
 					FraudProtectionController::log(
 						'error',
 						sprintf( 'Table upgrade failed: %s is missing columns after dbDelta: %s.', $table, implode( ', ', $missing_columns ) ),
+						array(
+							'event_source'    => 'schema_manager',
+							'schema_db_error' => $db_errors[ $table ],
+							'attempts'        => $state['attempts'],
+						),
+						true
+					);
+					return;
+				}
+
+				$missing_indexes = array_diff( $this->get_schema_index_names( $schema ), $this->get_table_index_names( $table ) );
+				if ( array() !== $missing_indexes ) {
+					$this->record_failed_attempt( $state, $db_errors[ $table ] );
+					FraudProtectionController::log(
+						'error',
+						sprintf( 'Table upgrade failed: %s is missing indexes after dbDelta: %s.', $table, implode( ', ', $missing_indexes ) ),
 						array(
 							'event_source'    => 'schema_manager',
 							'schema_db_error' => $db_errors[ $table ],
@@ -376,6 +396,61 @@ class SchemaManager {
 		$columns = $this->legacy_proxy->get_global( 'wpdb' )->get_col( 'SHOW COLUMNS FROM ' . $table );
 
 		return is_array( $columns ) ? $columns : array();
+	}
+
+	/**
+	 * Get the index names a dbDelta schema string declares.
+	 *
+	 * Index definition lines start with `PRIMARY KEY`, `KEY` or `UNIQUE KEY`
+	 * (or their FULLTEXT/SPATIAL/INDEX variants). The primary key has no name
+	 * of its own and is reported as `PRIMARY`, mirroring `SHOW INDEX` output.
+	 * Names are lowercased for comparison.
+	 *
+	 * @param string $schema The dbDelta CREATE TABLE statement.
+	 * @return string[] The declared index names, lowercased.
+	 */
+	private function get_schema_index_names( string $schema ): array {
+		$indexes = array();
+
+		foreach ( explode( "\n", $schema ) as $line ) {
+			if ( 1 === preg_match( '/^\s*PRIMARY\s+KEY/i', $line ) ) {
+				$indexes[] = 'primary';
+				continue;
+			}
+			if ( 1 === preg_match( '/^\s*(?:UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?(?:KEY|INDEX)\s+`?(\w+)`?/i', $line, $matches ) ) {
+				$indexes[] = strtolower( $matches[1] );
+			}
+		}
+
+		return $indexes;
+	}
+
+	/**
+	 * Get the index names of an existing table.
+	 *
+	 * One name per index: `SHOW INDEX` returns one row per indexed column, so
+	 * multi-column indexes are deduplicated. Names are lowercased for
+	 * comparison; the primary key is reported as `primary`.
+	 *
+	 * @param string $table The table name.
+	 * @return string[] The index names, lowercased.
+	 */
+	private function get_table_index_names( string $table ): array {
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $this->legacy_proxy->get_global( 'wpdb' )->get_results( 'SHOW INDEX FROM ' . $table, ARRAY_A );
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$names = array();
+		foreach ( $rows as $row ) {
+			$name = is_array( $row ) ? ( $row['Key_name'] ?? null ) : null;
+			if ( is_string( $name ) && '' !== $name ) {
+				$names[] = strtolower( $name );
+			}
+		}
+
+		return array_values( array_unique( $names ) );
 	}
 
 	/**
