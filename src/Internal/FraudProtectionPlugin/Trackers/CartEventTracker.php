@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\QuantityValue;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\ReadsFiniteNumbers;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -21,10 +22,10 @@ defined( 'ABSPATH' ) || exit;
  * to the SessionDataCollector which handles session data storage internally.
  *
  * Quantities are reported as WooCommerce supplies them, in whatever type it supplies them.
- * The derived cart item count is the plugin's own number rather than a relayed one, and is
- * reported only when it is finite.
  */
 class CartEventTracker {
+
+	use ReadsFiniteNumbers;
 
 	/**
 	 * Session data collector instance.
@@ -247,9 +248,8 @@ class CartEventTracker {
 	 * and current cart state. This data will be merged with comprehensive
 	 * session data during event dispatching.
 	 *
-	 * The two quantity fields follow different policies on purpose. The quantity is reported as
-	 * supplied, whatever its type; the derived count is reported only when finite — see
-	 * finite_count() for why.
+	 * The quantity is relayed as supplied, whatever its type; the derived count is reported only
+	 * when finite — see finite_count().
 	 *
 	 * @param string $action       Action type (item_added, item_updated, item_removed, item_restored).
 	 * @param int    $product_id   Product ID.
@@ -277,15 +277,11 @@ class CartEventTracker {
 	/**
 	 * Keep a derived cart count only when it is a finite number.
 	 *
-	 * Unlike the quantity beside it, the count is derived rather than relayed: it is either a
-	 * number the payload can state or it is unknown. Do not substitute 0 — that is this method's
-	 * own "cart unavailable" value, and would assert an empty cart just when the count is unknown.
-	 *
-	 * The encoding boundary does not make this redundant. WooCommerce sums the count through the
-	 * `woocommerce_cart_contents_count` filter, and a filter returning the *string* `'INF'` sails
-	 * through {@see EncodablePayload}, which keeps every string on purpose.
-	 *
-	 * Read by numeric value rather than by PHP type, so a count stated as `'3'` is still a count.
+	 * The count is derived rather than relayed: it is either a number the payload can state or
+	 * it is unknown. Substituting 0 would assert an empty cart just when the count is unknown,
+	 * and the encode boundary cannot stand in — the `woocommerce_cart_contents_count` filter can
+	 * return the string 'INF', which encodes fine. Read by numeric value, so a count stated as
+	 * `'3'` is still a count.
 	 *
 	 * @param mixed $value Raw count.
 	 * @return int|float|null The count when it has a finite numeric reading, null otherwise.
@@ -295,25 +291,14 @@ class CartEventTracker {
 			return $value;
 		}
 
-		if ( ! is_numeric( $value ) ) {
+		$number = self::finite_number( $value );
+
+		if ( null === $number ) {
 			return null;
 		}
 
-		$number = (float) $value;
-
-		if ( ! is_finite( $number ) ) {
-			return null;
-		}
-
-		// A whole count reports as a whole number however it arrived, but only when the cast is
-		// lossless. The comparison happens in float, where PHP_INT_MAX rounds up to 2^63, so an
-		// inclusive upper bound would admit 2^63 and cast it back with the wrong sign.
-		// (float) PHP_INT_MIN is exact, so the lower bound is inclusive and the upper is not.
-		$is_lossless_int = floor( $number ) === $number
-			&& $number >= (float) PHP_INT_MIN
-			&& $number < (float) PHP_INT_MAX;
-
-		return $is_lossless_int ? (int) $number : $number;
+		// A whole count reports as an int however it arrived, but only when the cast is lossless.
+		return self::is_exact_int( $number ) ? (int) $number : $number;
 	}
 
 	/**

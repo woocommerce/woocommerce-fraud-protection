@@ -21,6 +21,8 @@ defined( 'ABSPATH' ) || exit;
  */
 trait SanitizesScalarFields {
 
+	use ReadsFiniteNumbers;
+
 	/**
 	 * Read a string field. A string passes through sanitized, with an empty result treated as
 	 * absent (null); a scalar number is coerced and logged; any other type is dropped to null
@@ -62,9 +64,8 @@ trait SanitizesScalarFields {
 	 * else is dropped to null and logged rather than silently truncated. The value itself is
 	 * never logged.
 	 *
-	 * "Can hold" is part of the rule, at both ends: a value outside the type is reported as
-	 * absent, never cast and never saturated to the nearest edge, because either would state a
-	 * number nobody supplied. This trait is public surface — integrations hand these values in.
+	 * "Can hold" is at both ends: a value outside the type is dropped, never saturated to the
+	 * nearest edge — that would state a number nobody supplied.
 	 *
 	 * @param array<string, mixed> $data  Raw fields.
 	 * @param string               $field Field name to read and sanitize.
@@ -88,53 +89,6 @@ trait SanitizesScalarFields {
 			sprintf( 'Dropped %s field "%s" with a non-integer value (%s).', self::sanitized_dto_label(), $field, gettype( $value ) )
 		);
 		return null;
-	}
-
-	/**
-	 * Read a value as an integer the field can carry, or report none.
-	 *
-	 * Three shapes, in order. An int is taken as given. An integer written out as a string is
-	 * relayed by its digits, and refused when those digits name one the type cannot carry.
-	 * Everything else is read by numeric value — a whole-valued float, or a string like `'5.0'`
-	 * that names a number without spelling out an integer.
-	 *
-	 * Reading through a float is what the first two avoid: it rounds anything past 2^53, puts
-	 * PHP_INT_MAX outside its own type, and saturates where refusing is the honest answer.
-	 *
-	 * @param mixed $value Raw value.
-	 * @return ?int The integer, or null when the value names none the field can carry.
-	 */
-	private static function read_int( mixed $value ): ?int {
-		if ( is_int( $value ) ) {
-			return $value;
-		}
-
-		// Whitespace and leading zeros are notation, normalised away before the range is tested
-		// rather than being what fails it. One match serves both the admit and the refuse path,
-		// so they cannot disagree about which strings count as written out. `\s` is exactly the
-		// whitespace a numeric string may carry; trim() is not, and would let a refusal through.
-		if ( is_string( $value ) && 1 === preg_match( '/^\s*(?<sign>[+-]?)0*(?<digits>\d+)\s*$/', $value, $written ) ) {
-			$integer = filter_var( $written['sign'] . $written['digits'], FILTER_VALIDATE_INT );
-
-			return false === $integer ? null : $integer;
-		}
-
-		if ( ! is_numeric( $value ) ) {
-			return null;
-		}
-
-		// Read by numeric value rather than by PHP type, as CartEventTracker reads a cart count.
-		// The bounds below test this reading and the field is set from it, so they cannot differ.
-		$number = (float) $value;
-
-		// Asymmetric because (float) PHP_INT_MIN is exact while PHP_INT_MAX rounds up to 2^63: an
-		// inclusive upper bound would admit 2^63 and cast it back with the wrong sign. No separate
-		// finiteness check — the bounds exclude both infinities, and NAN fails the whole test.
-		$is_representable_whole_number = floor( $number ) === $number
-			&& $number >= (float) PHP_INT_MIN
-			&& $number < (float) PHP_INT_MAX;
-
-		return $is_representable_whole_number ? (int) $number : null;
 	}
 
 	/**
