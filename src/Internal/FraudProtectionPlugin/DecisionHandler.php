@@ -99,6 +99,16 @@ class DecisionHandler {
 			'event_source' => $session_data['source'] ?? 'unknown',
 		);
 
+		// The payload the public hooks receive (the rule_applied action and
+		// the automated_decision filter) extends the session data with the
+		// intentional `verify_result` subset (no session ID) documented on
+		// the filter below.
+		$hook_session_data                  = $session_data;
+		$hook_session_data['verify_result'] = array(
+			'risk_score'     => $result->risk_score,
+			'payment_method' => (string) ( $session_data['payment']['gateway'] ?? '' ),
+		);
+
 		$matched_rule = $this->rule_evaluator->evaluate_for_session( $session_data );
 		if ( ! is_null( $matched_rule ) ) {
 			FraudProtectionController::log(
@@ -124,9 +134,9 @@ class DecisionHandler {
 				 * @param int                  $rule_id           The id of the rule that decided the session.
 				 * @param FraudDecision        $applied_decision  The enforced decision (the rule's action).
 				 * @param FraudDecision        $received_decision The automated decision received from the API, superseded by the rule.
-				 * @param array<string, mixed> $session_data      The session data that was analyzed.
+				 * @param array<string, mixed> $session_data      The session data that was analyzed, including the same `verify_result` subset the `woocommerce_fraud_protection_automated_decision` filter receives (see its docblock; the risk score is informational only).
 				 */
-				do_action( 'woocommerce_fraud_protection_rule_applied', $matched_rule->id, $matched_rule->action, $decision, $session_data );
+				do_action( 'woocommerce_fraud_protection_rule_applied', $matched_rule->id, $matched_rule->action, $decision, $hook_session_data );
 			} catch ( \Throwable $e ) {
 				FraudProtectionController::log(
 					'warning',
@@ -162,14 +172,6 @@ class DecisionHandler {
 
 		$original_decision = $decision;
 
-		// The filter payload extends the session data with the intentional
-		// `verify_result` subset (no session ID) documented on the filter below.
-		$filter_session_data                  = $session_data;
-		$filter_session_data['verify_result'] = array(
-			'risk_score'     => $result->risk_score,
-			'payment_method' => (string) ( $session_data['payment']['gateway'] ?? '' ),
-		);
-
 		/**
 		 * Filters the automated fraud protection decision before it is applied.
 		 *
@@ -203,7 +205,7 @@ class DecisionHandler {
 		 *
 		 * @var mixed $filtered
 		 */
-		$filtered = apply_filters( 'woocommerce_fraud_protection_automated_decision', $decision, $filter_session_data );
+		$filtered = apply_filters( 'woocommerce_fraud_protection_automated_decision', $decision, $hook_session_data );
 
 		// Validate filtered decision (third-party filters may return any value).
 		if ( $filtered instanceof FraudDecision && in_array( $filtered, FraudDecision::ACTIONABLE, true ) ) {

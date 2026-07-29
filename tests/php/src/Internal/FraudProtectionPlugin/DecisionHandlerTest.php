@@ -525,9 +525,16 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			4
 		);
 
-		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session', 0.42 ), array( 'session_id' => 'test' ) );
 
-		$this->assertSame( array( 7, FraudDecision::Block, FraudDecision::Allow, array( 'session_id' => 'test' ) ), $action_args );
+		$expected_session_data = array(
+			'session_id'    => 'test',
+			'verify_result' => array(
+				'risk_score'     => 0.42,
+				'payment_method' => '',
+			),
+		);
+		$this->assertSame( array( 7, FraudDecision::Block, FraudDecision::Allow, $expected_session_data ), $action_args );
 	}
 
 	/**
