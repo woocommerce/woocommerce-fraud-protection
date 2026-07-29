@@ -81,15 +81,15 @@ Three hooks let an extension (e.g. a payment gateway with a non-standard checkou
   apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMethodData $resolved, array $checkout_payment_fields );
   ```
 
-- **`woocommerce_fraud_protection_pre_session_decision`** — return a `FraudDecision` to supply the decision for this request, so the built-in checkout protectors apply it instead of calling Blackbox. Return `null` (the default) to verify normally. For a flow that runs its own `SessionVerifier::verify_session()` earlier in the same payment attempt and still holds the decision it produced, so the attempt is not scored twice.
+- **`woocommerce_fraud_protection_skip_session_verify`** — return a `FraudDecision` to skip verification and have the built-in checkout protectors apply that decision instead of calling Blackbox. For a flow that runs its own `SessionVerifier::verify_session()` earlier in the same payment attempt and still holds the decision it produced, so the attempt is not scored twice.
 
-  Return the decision the attempt actually received, not a blanket allow: if your earlier verification blocked, returning `FraudDecision::Allow` here would discard that block. Only `FraudDecision::Allow` and `FraudDecision::Block` are honoured; anything else is ignored and the session is verified.
+  Return the decision the attempt actually received, not a blanket allow: if your earlier verification blocked, returning `FraudDecision::Allow` here would discard that block. Only `FraudDecision::Allow` and `FraudDecision::Block` are honoured; any other return — including the `false` default — leaves the session to be verified. A consumer with nothing to say for a given call returns the value it received, unchanged.
 
   ```php
-  apply_filters( 'woocommerce_fraud_protection_pre_session_decision', ?FraudDecision $decision, string $source, array $request_data, string $session_id );
+  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', mixed $decision, string $source, array $request_data, string $session_id );
   ```
 
-  *Replaces `woocommerce_fraud_protection_skip_session_verify` (removed in 0.2.0), which could only say "do not verify" and therefore turned every deferral into an allow.*
+  *Since 0.2.0 a truthy return no longer skips. Skipping without saying what the decision was turned every deferral into an allow, so the skip now carries the decision.*
 
 - **`woocommerce_fraud_protection_enqueue_blackbox_scripts`** — return `true` to load the Blackbox scripts on a page the plugin would not otherwise target (e.g. product or cart pages that render express-checkout buttons).
 

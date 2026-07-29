@@ -69,7 +69,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		remove_all_filters( 'wp_doing_ajax' );
 		remove_all_filters( 'wp_die_ajax_handler' );
 		remove_all_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts' );
-		remove_all_filters( 'woocommerce_fraud_protection_pre_session_decision' );
+		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
 		remove_all_actions( 'woocommerce_paypal_payments_create_order_request_started' );
 		remove_all_actions( 'wp_enqueue_scripts' );
 		wp_dequeue_script( 'wc-fraud-protection-blackbox-init' );
@@ -110,7 +110,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			'wp_enqueue_scripts action should be registered'
 		);
 		$this->assertNotFalse(
-			has_filter( 'woocommerce_fraud_protection_pre_session_decision', array( $this->sut, 'supply_decision_for_paypal_express' ) ),
+			has_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->sut, 'supply_decision_for_paypal_express' ) ),
 			'should_verify_session filter should be registered'
 		);
 	}
@@ -140,7 +140,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'test-session-abc',
 				'stand_downs' => 0,
-				'blocked'     => false,
+				'decision'    => 'allow',
 			),
 			WC()->session->get( '_fraud_protection_paypal_verified_session_id' )
 		);
@@ -268,14 +268,17 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Drive the filter callback the way SessionVerifier does.
 	 *
+	 * Seeds the call with `false`, the filter's default. A deferral passes that
+	 * default through untouched, so it comes back as `false`.
+	 *
 	 * @param string $source         Source identifier.
 	 * @param string $payment_method Gateway id on the request.
 	 * @param string $session_id     Blackbox session ID on the request.
-	 * @return mixed A FraudDecision when answered, null when deferred.
+	 * @return mixed A FraudDecision when answered, false when deferred.
 	 */
 	private function ask( string $source, string $payment_method, string $session_id ) {
 		return $this->sut->supply_decision_for_paypal_express(
-			null,
+			false,
 			$source,
 			array( 'payment_method' => $payment_method ),
 			$session_id
@@ -346,7 +349,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_supply_defers_on_the_create_order_query_parameter(): void {
 		$_GET['wc-ajax'] = 'ppc-create-order';
 
-		$this->assertNull(
+		$this->assertFalse(
 			$this->ask( 'shortcode_checkout', 'ppcp-gateway', 'some-session-id' ),
 			'A request parameter must never be enough to omit verification entirely.'
 		);
@@ -374,7 +377,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_supply_defers_when_both_session_ids_are_empty(): void {
 		WC()->session->set( '_fraud_protection_paypal_verified_session_id', '' );
 
-		$this->assertNull( $this->ask( 'blocks_checkout', 'ppcp-gateway', '' ) );
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', '' ) );
 	}
 
 	/**
@@ -383,14 +386,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_supply_defers_when_session_id_does_not_match(): void {
 		WC()->session->set( '_fraud_protection_paypal_verified_session_id', 'old-session' );
 
-		$this->assertNull( $this->ask( 'blocks_checkout', 'ppcp-ideal', 'new-session' ) );
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-ideal', 'new-session' ) );
 	}
 
 	/**
 	 * @testdox A ppcp-* flow with nothing recorded is not answered for.
 	 */
 	public function test_supply_defers_for_paypal_without_anything_recorded(): void {
-		$this->assertNull( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'some-session-id' ) );
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'some-session-id' ) );
 	}
 
 	/**
@@ -399,7 +402,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_supply_defers_for_non_paypal_gateway(): void {
 		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
 
-		$this->assertNull( $this->ask( 'blocks_checkout', 'stripe', 'some-session-id' ) );
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'stripe', 'some-session-id' ) );
 	}
 
 	/**
@@ -408,7 +411,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_supply_defers_for_own_source(): void {
 		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
 
-		$this->assertNull( $this->ask( 'paypal_express_order_creation', 'ppcp-gateway', 'some-session-id' ) );
+		$this->assertFalse( $this->ask( 'paypal_express_order_creation', 'ppcp-gateway', 'some-session-id' ) );
 	}
 
 	/**
@@ -451,7 +454,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->ask( 'shortcode_checkout', '', '' );
 
-		$this->assertNull(
+		$this->assertFalse(
 			$this->ask( 'shortcode_checkout', '', '' ),
 			'The marker is consumed on read: a second validation verifies for itself.'
 		);
@@ -467,9 +470,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->score_create_order( 'in-flight-session', FraudDecision::Allow );
 
-		$this->assertNull(
+		$this->assertFalse(
 			$next_request->supply_decision_for_paypal_express(
-				null,
+				false,
 				'shortcode_checkout',
 				array( 'payment_method' => '' ),
 				''
@@ -505,7 +508,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			'The one stand-down a genuine flow needs must be granted.'
 		);
 
-		$this->assertNull(
+		$this->assertFalse(
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' ),
 			'Reuse past the genuine shape must fall through to a real verify.'
 		);
@@ -531,7 +534,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$deferred = 0;
 
 		for ( $sub_request = 0; $sub_request < 25; $sub_request++ ) {
-			if ( null === $this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'batched-session' ) ) {
+			if ( false === $this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'batched-session' ) ) {
 				++$deferred;
 			} else {
 				++$answered;
@@ -554,7 +557,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->assertNull(
+		$this->assertFalse(
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' ),
 			'Budget already spent.'
 		);
@@ -580,7 +583,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 	/*
 	|--------------------------------------------------------------------------
-	| Recorded blocks
+	| Recorded decision
 	|--------------------------------------------------------------------------
 	*/
 
@@ -613,7 +616,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'blocked-session',
 				'stand_downs' => 0,
-				'blocked'     => true,
+				'decision'    => 'block',
 			),
 			WC()->session->get( '_fraud_protection_paypal_verified_session_id' ),
 			'A blocked create-order must still record the session it scored.'
@@ -626,27 +629,67 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_verify_leaves_no_in_request_marker_on_block(): void {
 		$this->score_create_order( 'blocked-session', FraudDecision::Block );
 
-		$this->assertNull(
+		$this->assertFalse(
 			$this->ask( 'shortcode_checkout', '', '' ),
 			'A blocked create-order must not hand the rest of the request a free pass.'
 		);
 	}
 
 	/**
-	 * @testdox An allow is recorded nowhere.
+	 * @testdox An allowed create-order hands its allow back within the attempt.
 	 *
-	 * Blocks are recorded and replayed; allows are neither. Recording an allow
-	 * would leave a token that stands in for a verdict on a later, unrelated
-	 * request, which is the liability this design removes.
+	 * The completion leg of a create-order-by-AJAX flow presents the same session
+	 * ID in a later request. It is answered from the record — the allow that
+	 * verification produced — rather than scored a second time, which Blackbox
+	 * would score harder as a reused session.
 	 */
-	public function test_verify_records_nothing_for_an_allow(): void {
-		$this->score_create_order( 'allowed-session', FraudDecision::Allow );
+	public function test_supply_answers_an_allowed_session_with_its_allow(): void {
+		$this->score_create_order( 'clean-session', FraudDecision::Allow );
 
-		$record = WC()->session->get( '_fraud_protection_paypal_verified_session_id' );
+		$this->ask( 'shortcode_checkout', '', '' );
+
+		$this->assertSame(
+			FraudDecision::Allow,
+			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'clean-session' )
+		);
+	}
+
+	/**
+	 * @testdox A recorded allow never answers for another gateway.
+	 *
+	 * The regression that sank the first central design: a stored ppcp allow at
+	 * one amount satisfied a cod checkout at another with no verification at all.
+	 * The gateway gate sits above every record read, so a non-PayPal checkout
+	 * presenting the recorded session ID is verified for real — even with
+	 * PayPal's approved-order slot populated.
+	 */
+	public function test_supply_does_not_apply_a_recorded_allow_to_another_gateway(): void {
+		$this->score_create_order( 'paypal-scored-session', FraudDecision::Allow );
+
+		// Spend the in-request marker: the cross-gateway request is a later one.
+		$this->ask( 'shortcode_checkout', '', '' );
+
+		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
 
 		$this->assertFalse(
-			$record['blocked'] ?? false,
-			'An allow must not mark the record blocked.'
+			$this->ask( 'shortcode_checkout', 'cod', 'paypal-scored-session' ),
+			'A recorded allow must never answer for a non-PayPal checkout.'
+		);
+	}
+
+	/**
+	 * @testdox A recorded block does not answer for another gateway either; the request verifies.
+	 *
+	 * Same gate, other verdict. A non-PayPal checkout presenting a blocked ID
+	 * gets a real verification instead of the record — the record answers only
+	 * requests of the gateway whose flow produced it.
+	 */
+	public function test_supply_does_not_apply_a_recorded_block_to_another_gateway(): void {
+		$this->score_create_order( 'blocked-session', FraudDecision::Block );
+
+		$this->assertFalse(
+			$this->ask( 'shortcode_checkout', 'cod', 'blocked-session' ),
+			'The record must not answer for a non-PayPal checkout, whatever it holds.'
 		);
 	}
 
@@ -663,7 +706,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'a-different-blocked-session',
 				'stand_downs' => 0,
-				'blocked'     => true,
+				'decision'    => 'block',
 			)
 		);
 		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
@@ -672,23 +715,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			FraudDecision::Allow,
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'this-session' ),
 			'Another session being blocked says nothing about this one.'
-		);
-	}
-
-	/**
-	 * @testdox An attempt with no recorded block is answered with an allow.
-	 *
-	 * The other half of the read side: the record is consulted, finds nothing, and
-	 * the answer is the plain allow a stand-down has always meant.
-	 */
-	public function test_supply_answers_allow_when_no_block_is_recorded(): void {
-		$this->score_create_order( 'clean-session', FraudDecision::Allow );
-
-		$this->ask( 'shortcode_checkout', '', '' );
-
-		$this->assertSame(
-			FraudDecision::Allow,
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'clean-session' )
 		);
 	}
 

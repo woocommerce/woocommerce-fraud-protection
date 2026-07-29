@@ -28,13 +28,16 @@ defined( 'ABSPATH' ) || exit;
  * ppc-create-order verifies. The rest of the attempt must not be scored again —
  * Blackbox sessions are effectively single-use and a repeat scores worse — so
  * this class answers for those requests through the
- * `woocommerce_fraud_protection_pre_session_decision` filter.
+ * `woocommerce_fraud_protection_skip_session_verify` filter.
  *
  * What it answers with is the point: standing down is not the same as allowing.
- * A create-order that was blocked records that block here, and the requests that
- * stand down on it get the block back, not an allow. Only blocks are recorded —
- * standing down already allows, so recording an allow would buy nothing and cost
- * a token that stands in for a verdict on a later, unrelated request.
+ * The record of the session ppc-create-order scored carries the decision that
+ * verification produced — allow or block — and a request that stands down on it
+ * gets that decision back, never a blanket allow. The decision can only reach a
+ * request that passes every gate above it: a ppcp-* payment method, the exact
+ * recorded session ID, and stand-down budget left. It never answers for another
+ * gateway — a recorded allow presented on a non-PayPal checkout is verified for
+ * real, which is what keeps the decision scoped to the attempt that earned it.
  *
  * All of this is PayPal's problem and lives here. SessionVerifier knows only that
  * some consumer supplied a decision.
@@ -53,7 +56,7 @@ class PayPalCompat {
 
 	/**
 	 * WC session key for the record of the session ppc-create-order scored:
-	 * its ID, the stand-downs spent, and whether it was blocked.
+	 * its ID, the stand-downs spent, and the decision it received.
 	 */
 	private const VERIFIED_SESSION_ID_KEY = '_fraud_protection_paypal_verified_session_id';
 
@@ -135,7 +138,7 @@ class PayPalCompat {
 		add_action( 'woocommerce_paypal_payments_create_order_request_started', array( $this, 'verify_and_block_create_order' ) );
 		add_filter( 'woocommerce_fraud_protection_enqueue_blackbox_scripts', array( $this, 'should_enqueue_blackbox' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_paypal_script' ), 20 );
-		add_filter( 'woocommerce_fraud_protection_pre_session_decision', array( $this, 'supply_decision_for_paypal_express' ), 10, 4 );
+		add_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this, 'supply_decision_for_paypal_express' ), 10, 4 );
 	}
 
 	/**
@@ -148,15 +151,13 @@ class PayPalCompat {
 	 * wp_send_json_error(). On ALLOW, returns normally and the PayPal flow
 	 * continues.
 	 *
-	 * Three records are written here and their ordering around the block response
-	 * is deliberate:
+	 * Two writes happen here and their ordering around the block response is
+	 * deliberate:
 	 *
-	 * - The verified-session record, before the response and regardless of the
-	 *   decision. It says only that this session was scored here, so a later
-	 *   request in the same attempt is not scored again.
-	 * - The block, before the response, because a request that dies inside
-	 *   wp_send_json_error() is exactly the one whose verdict has to outlive it.
-	 *   Without this the blocked attempt's next request would stand down to an
+	 * - The verified-session record, carrying the decision, before the response
+	 *   and regardless of what the decision is. A request that dies inside
+	 *   wp_send_json_error() is exactly the one whose verdict has to outlive it —
+	 *   without this the blocked attempt's next request would stand down to an
 	 *   allow, which is the defect.
 	 * - The in-request marker, after the response, so a blocked request leaves
 	 *   nothing behind for anything still running in it.
@@ -171,11 +172,9 @@ class PayPalCompat {
 
 		$decision = $this->session_verifier->verify_session( $session_id, self::ORDER_CREATION_SOURCE, 0, $data );
 
-		$this->record_create_order_verification( $session_id );
+		$this->record_create_order_verification( $session_id, $decision );
 
 		if ( FraudDecision::Block === $decision ) {
-			$this->record_block( $session_id );
-
 			wp_send_json_error(
 				array( 'message' => $this->blocked_session_message->get_plaintext( MessageContext::Purchase ) ),
 				403
@@ -258,7 +257,7 @@ class PayPalCompat {
 	 *
 	 * @internal
 	 *
-	 * @param mixed  $decision     Decision supplied so far, or null to verify.
+	 * @param mixed  $decision     The filter's default (false), or what an earlier consumer returned.
 	 * @param string $source       Source identifier.
 	 * @param array  $request_data Request data with payment_method, payment_data, etc.
 	 * @param string $session_id   The Blackbox session ID being verified.
@@ -308,8 +307,10 @@ class PayPalCompat {
 	/**
 	 * The decision to hand back for a request this class already scored.
 	 *
-	 * The recorded block, when the presented session ID is the one that was
-	 * blocked; otherwise the attempt was allowed and stays allowed.
+	 * The recorded decision, when the presented session ID is the one that was
+	 * scored. A session ID that is not the recorded one reaches here only through
+	 * the approved-order predicate (the record cannot match a fresh post-reset
+	 * ID), and that path has always meant allow.
 	 *
 	 * @param string $session_id The Blackbox session ID being verified.
 	 * @return FraudDecision
@@ -321,8 +322,8 @@ class PayPalCompat {
 
 		$record = $this->get_verified_session_record();
 
-		if ( $record['blocked'] && $record['session_id'] === $session_id ) {
-			return FraudDecision::Block;
+		if ( $record['session_id'] === $session_id ) {
+			return FraudDecision::Block->value === $record['decision'] ? FraudDecision::Block : FraudDecision::Allow;
 		}
 
 		return FraudDecision::Allow;
@@ -364,16 +365,19 @@ class PayPalCompat {
 	}
 
 	/**
-	 * Record that ppc-create-order scored this Blackbox session.
+	 * Record that ppc-create-order scored this Blackbox session, and what it got.
 	 *
-	 * Records the session ID and nothing about the verdict — the verdict, when
-	 * there is one to keep, goes to {@see record_block()}. Resets the stand-down
-	 * count, so each verification gets its own budget rather than inheriting the
-	 * previous one's.
+	 * One write carries both facts: that this session was scored here, and the
+	 * decision that scoring produced. Kept in the WC session so the decision
+	 * outlives the request — a blocked create-order dies inside its own JSON
+	 * response, and it is exactly the attempt whose verdict must survive.
+	 * Resets the stand-down count, so each verification gets its own budget
+	 * rather than inheriting the previous one's.
 	 *
-	 * @param string $session_id The session ID that was verified.
+	 * @param string        $session_id The session ID that was verified.
+	 * @param FraudDecision $decision   The decision that verification produced.
 	 */
-	private function record_create_order_verification( string $session_id ): void {
+	private function record_create_order_verification( string $session_id, FraudDecision $decision ): void {
 		if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
 			return;
 		}
@@ -383,7 +387,7 @@ class PayPalCompat {
 			array(
 				'session_id'  => $session_id,
 				'stand_downs' => 0,
-				'blocked'     => false,
+				'decision'    => $decision->value,
 			)
 		);
 	}
@@ -425,9 +429,11 @@ class PayPalCompat {
 	 * Read the create-order verification record from the WC session.
 	 *
 	 * Tolerates the bare session ID string written by earlier plugin versions, so
-	 * a WC session in flight across an update is read rather than discarded.
+	 * a WC session in flight across an update is read rather than discarded. That
+	 * shape predates decision recording and carries no verdict; it reads as an
+	 * allow, which is what those versions treated it as.
 	 *
-	 * @return array{session_id: string, stand_downs: int, blocked: bool}
+	 * @return array{session_id: string, stand_downs: int, decision: string}
 	 */
 	private function get_verified_session_record(): array {
 		$stored = WC()->session->get( self::VERIFIED_SESSION_ID_KEY, array() );
@@ -436,7 +442,7 @@ class PayPalCompat {
 			return array(
 				'session_id'  => $stored,
 				'stand_downs' => 0,
-				'blocked'     => false,
+				'decision'    => FraudDecision::Allow->value,
 			);
 		}
 
@@ -444,42 +450,15 @@ class PayPalCompat {
 			return array(
 				'session_id'  => '',
 				'stand_downs' => 0,
-				'blocked'     => false,
+				'decision'    => FraudDecision::Allow->value,
 			);
 		}
 
 		return array(
 			'session_id'  => is_string( $stored['session_id'] ?? null ) ? $stored['session_id'] : '',
 			'stand_downs' => (int) ( $stored['stand_downs'] ?? 0 ),
-			'blocked'     => ! empty( $stored['blocked'] ),
+			'decision'    => FraudDecision::Block->value === ( $stored['decision'] ?? '' ) ? FraudDecision::Block->value : FraudDecision::Allow->value,
 		);
-	}
-
-	/**
-	 * Mark the record of the session just scored as blocked, so the verdict
-	 * outlives the request that produced it.
-	 *
-	 * Blocks only — the class docblock says why an allow is never recorded.
-	 * Kept in the WC session, so it goes when that does.
-	 *
-	 * @param string $session_id The session ID that was blocked.
-	 */
-	private function record_block( string $session_id ): void {
-		if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
-		}
-
-		$record = $this->get_verified_session_record();
-
-		// The block belongs to the verification recorded just above it; a record
-		// for some other session is not the one this verdict was issued for.
-		if ( $record['session_id'] !== $session_id ) {
-			return;
-		}
-
-		$record['blocked'] = true;
-
-		WC()->session->set( self::VERIFIED_SESSION_ID_KEY, $record );
 	}
 
 	/**

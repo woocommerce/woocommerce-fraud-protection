@@ -87,7 +87,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		if ( WC()->session ) {
 			WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, null );
 		}
-		remove_all_filters( 'woocommerce_fraud_protection_pre_session_decision' );
+		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
 		remove_all_actions( 'woocommerce_checkout_order_created' );
 
 		parent::tearDown();
@@ -687,7 +687,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_verify_session_applies_an_allow_supplied_by_the_filter(): void {
 		add_filter(
-			'woocommerce_fraud_protection_pre_session_decision',
+			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
 				return FraudDecision::Allow;
 			}
@@ -700,7 +700,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'info', 'Decision supplied by `woocommerce_fraud_protection_pre_session_decision` filter for source: blocks_checkout' );
+		$this->assertLogged( 'info', 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
 	}
 
 	/**
@@ -712,7 +712,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_verify_session_applies_a_block_supplied_by_the_filter(): void {
 		add_filter(
-			'woocommerce_fraud_protection_pre_session_decision',
+			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
 				return FraudDecision::Block;
 			}
@@ -728,13 +728,16 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() verifies normally when the filter returns null.
+	 * @testdox verify_session() verifies normally when the filter passes its default through.
+	 *
+	 * The standard WordPress shape for a consumer with nothing to say: return the
+	 * value received. Skipping takes a decision; not skipping takes nothing.
 	 */
-	public function test_verify_session_proceeds_when_filter_returns_null(): void {
+	public function test_verify_session_proceeds_when_filter_passes_the_default_through(): void {
 		add_filter(
-			'woocommerce_fraud_protection_pre_session_decision',
-			function () {
-				return null;
+			'woocommerce_fraud_protection_skip_session_verify',
+			function ( $decision ) {
+				return $decision;
 			}
 		);
 
@@ -759,8 +762,10 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox verify_session() ignores a malformed filter return and verifies.
 	 *
-	 * A bool is the shape the removed skip filter used. It must not be honoured:
-	 * `true` would otherwise mean "allow", which is the conflation this replaced.
+	 * A bool is the shape this filter's pre-0.2.0 contract used. It must not be
+	 * honoured: `true` would otherwise mean "allow", which is the conflation the
+	 * decision-carrying contract removed. Null is not a signal either — a
+	 * consumer with nothing to say passes the default through instead.
 	 *
 	 * @dataProvider malformed_filter_returns
 	 *
@@ -768,7 +773,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_verify_session_ignores_a_malformed_filter_return( $returned ): void {
 		add_filter(
-			'woocommerce_fraud_protection_pre_session_decision',
+			'woocommerce_fraud_protection_skip_session_verify',
 			function () use ( $returned ) {
 				return $returned;
 			}
@@ -797,11 +802,12 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function malformed_filter_returns(): array {
 		return array(
-			'true (the old skip filter shape)' => array( true ),
-			'false'                            => array( false ),
-			'the decision as a string'         => array( 'allow' ),
-			'a non-actionable decision'        => array( FraudDecision::Challenge ),
-			'an unrelated object'              => array( new \stdClass() ),
+			'true (the pre-0.2.0 skip shape)' => array( true ),
+			'false'                           => array( false ),
+			'null'                            => array( null ),
+			'the decision as a string'        => array( 'allow' ),
+			'a non-actionable decision'       => array( FraudDecision::Challenge ),
+			'an unrelated object'             => array( new \stdClass() ),
 		);
 	}
 
@@ -810,7 +816,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_verify_session_proceeds_when_filter_throws(): void {
 		add_filter( // @phpstan-ignore return.missing
-			'woocommerce_fraud_protection_pre_session_decision',
+			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
 				throw new \RuntimeException( 'Filter exploded' );
 			}
@@ -832,7 +838,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_pre_session_decision` filter threw' );
+		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw' );
 	}
 
 }
