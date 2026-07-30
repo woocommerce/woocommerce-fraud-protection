@@ -327,7 +327,7 @@ class PayPalCompat {
 
 		$record = $this->get_verified_session_record();
 
-		if ( $record['session_id'] === $session_id ) {
+		if ( null !== $record && $record['session_id'] === $session_id ) {
 			return $record['decision'];
 		}
 
@@ -395,7 +395,7 @@ class PayPalCompat {
 			self::VERIFICATION_RECORD_KEY,
 			array(
 				'session_id'  => $session_id,
-				'stand_downs' => $record['session_id'] === $session_id ? $record['stand_downs'] : 0,
+				'stand_downs' => null !== $record && $record['session_id'] === $session_id ? $record['stand_downs'] : 0,
 				'decision'    => $decision,
 			)
 		);
@@ -417,17 +417,15 @@ class PayPalCompat {
 
 		$record = $this->get_verified_session_record();
 
-		if ( ( $record['session_id'] ?? '' ) !== $session_id ) {
+		if ( null === $record || $record['session_id'] !== $session_id ) {
 			return false;
 		}
 
-		$stand_downs = (int) ( $record['stand_downs'] ?? 0 );
-
-		if ( $stand_downs >= self::MAX_STAND_DOWNS_PER_SESSION ) {
+		if ( $record['stand_downs'] >= self::MAX_STAND_DOWNS_PER_SESSION ) {
 			return false;
 		}
 
-		$record['stand_downs'] = $stand_downs + 1;
+		++$record['stand_downs'];
 
 		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 
@@ -437,21 +435,30 @@ class PayPalCompat {
 	/**
 	 * Read the create-order verification record from the WC session.
 	 *
-	 * @return array{session_id: string, stand_downs: int, decision: FraudDecision}
+	 * Only the shape {@see record_create_order_verification()} writes counts
+	 * as a record. Anything else — corruption, another plugin's write — reads
+	 * as no record, so the request falls through to a real verify.
+	 *
+	 * @return ?array{session_id: string, stand_downs: int, decision: FraudDecision} The record, or null when the session holds none this code wrote.
 	 */
-	private function get_verified_session_record(): array {
-		$stored = WC()->session->get( self::VERIFICATION_RECORD_KEY, array() );
+	private function get_verified_session_record(): ?array {
+		$stored = WC()->session->get( self::VERIFICATION_RECORD_KEY );
 
 		if ( ! is_array( $stored ) ) {
-			$stored = array();
+			return null;
 		}
 
-		$decision = $stored['decision'] ?? null;
+		$session_id = $stored['session_id'] ?? null;
+		$decision   = $stored['decision'] ?? null;
+
+		if ( ! is_string( $session_id ) || '' === $session_id || ! $decision instanceof FraudDecision ) {
+			return null;
+		}
 
 		return array(
-			'session_id'  => is_string( $stored['session_id'] ?? null ) ? $stored['session_id'] : '',
+			'session_id'  => $session_id,
 			'stand_downs' => (int) ( $stored['stand_downs'] ?? 0 ),
-			'decision'    => $decision instanceof FraudDecision ? $decision : FraudDecision::Allow,
+			'decision'    => $decision,
 		);
 	}
 

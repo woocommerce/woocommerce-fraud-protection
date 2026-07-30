@@ -420,6 +420,26 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A record this code could not have written is not answered from.
+	 *
+	 * Only the shape record_create_order_verification() writes counts as a
+	 * record. A matching session ID whose decision no verification produced
+	 * must be verified for real, not served a normalized allow.
+	 */
+	public function test_supply_defers_when_the_record_is_malformed(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'some-session-id',
+				'stand_downs' => 0,
+				'decision'    => 'block',
+			)
+		);
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'some-session-id' ) );
+	}
+
+	/**
 	 * @testdox A non-PayPal gateway is never answered for, even with an approved order in session.
 	 */
 	public function test_supply_defers_for_non_paypal_gateway(): void {
@@ -573,6 +593,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'reused-session',
 				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
 			)
 		);
 
@@ -601,6 +622,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'batched-session',
 				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
 			)
 		);
 
