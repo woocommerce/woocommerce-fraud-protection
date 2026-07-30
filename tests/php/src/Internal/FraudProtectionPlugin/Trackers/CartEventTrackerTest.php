@@ -501,6 +501,7 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 
 		WC()->cart->empty_cart();
 		remove_all_filters( 'woocommerce_is_cart' );
+		remove_all_filters( 'woocommerce_cart_contents_count' );
 		remove_all_actions( 'internal_woocommerce_cart_item_added_from_user_request' );
 		remove_all_actions( 'internal_woocommerce_cart_item_updated_from_user_request' );
 		remove_all_actions( 'internal_woocommerce_cart_item_removed_from_user_request' );
@@ -761,8 +762,6 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 			);
 
 		$this->sut->track_cart_item_added( $this->test_product->get_id(), 1 );
-
-		remove_all_filters( 'woocommerce_cart_contents_count' );
 	}
 
 	/**
