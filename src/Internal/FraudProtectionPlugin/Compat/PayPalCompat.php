@@ -17,33 +17,15 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Integrates Blackbox fraud protection into PayPal Payments express checkout flows.
  *
- * PayPal express checkout (product page, cart, mini-cart) bypasses the standard
- * WC checkout pipeline. This class hooks into PayPal's CreateOrder AJAX endpoint
- * to verify sessions before PayPal order creation.
- *
- * The JS fetch interceptor resets Blackbox after the CreateOrder fetch returns,
- * so subsequent payment attempts (retry, different method) get a fresh session.
- *
- * A PayPal checkout is one attempt spread over several requests, and only
- * ppc-create-order verifies. The rest of the attempt must not be scored again —
- * Blackbox sessions are effectively single-use and a repeat scores worse — so
- * this class answers for those requests through the
- * `woocommerce_fraud_protection_skip_session_verify` filter.
- *
- * What it answers with is the point: standing down is not the same as allowing.
- * The record of the session ppc-create-order scored carries the decision that
- * verification produced — allow or block — and a request that stands down on it
- * gets that decision back, never a blanket allow. What keeps a recorded allow
- * from answering for another gateway is placement: the stand-down read sits
- * below the ppcp-* gateway gate, so a non-PayPal checkout presenting the
- * recorded session ID is verified for real. The record is also read on two
- * routes that spend no stand-down: the in-request marker, which is
- * request-local, consumed on read and never set on a block; and the
- * approved-order predicate, which answers for as long as PayPal's session
- * slot holds an approved order — bounded only by PayPal clearing it.
- *
- * All of this is PayPal's problem and lives here. SessionVerifier knows only that
- * some consumer supplied a decision.
+ * PayPal express checkout bypasses the standard WC checkout pipeline, so this
+ * class verifies sessions from PayPal's CreateOrder AJAX endpoint instead. A
+ * PayPal checkout is one attempt spread over several requests and only
+ * ppc-create-order verifies — a repeat of the same session scores worse — so
+ * this class records the session it scored and the decision it received, and
+ * answers the attempt's other requests with that decision through the
+ * `woocommerce_fraud_protection_skip_session_verify` filter, never a blanket
+ * allow. The record reads sit below the ppcp-* gateway gate on purpose: a
+ * non-PayPal checkout presenting the recorded session ID is verified for real.
  */
 class PayPalCompat {
 
@@ -61,32 +43,18 @@ class PayPalCompat {
 	 * WC session key for the record of the session ppc-create-order scored:
 	 * its ID, the stand-downs spent, and the decision it received.
 	 *
-	 * Earlier versions kept a bare session ID string under
-	 * `_fraud_protection_paypal_verified_session_id`. That key is deliberately
-	 * left behind rather than migrated: an orphaned record ages out with its WC
-	 * session, and the requests it would have answered are verified for real.
+	 * Records under the retired pre-0.1.6 key are deliberately orphaned, not
+	 * migrated; they age out with their WC session.
 	 */
 	private const VERIFICATION_RECORD_KEY = '_fraud_protection_paypal_verification';
 
 	/**
 	 * How many later protectors one create-order verification may answer for.
 	 *
-	 * Set to the most a genuine order flow produces, which is one: card fields on
-	 * blocks checkout, where blocks-checkout.js puts the session ID in the checkout
-	 * extension data before PayPal's createOrder callback runs, so ppc-create-order
-	 * scores that ID for real and the Store API request that follows presents it
-	 * once. Every other repeat of ppc-create-order mints a fresh Blackbox session
-	 * (the fetch interceptor resets in a `finally`), so it is scored for real.
-	 *
-	 * Express from the classic checkout page looks like a contradiction — it stands
-	 * down twice per order — but those two are a different predicate each (the
-	 * in-request marker, then the approved-order check) and the second carries a
-	 * *different* session ID, so this per-session-ID bound never sees more than one.
-	 *
-	 * The bound is also what stops one verification answering for a whole Store API
-	 * batch: sub-request 1 is answered, 2..N are not, so they verify for real. Past
-	 * the bound nothing is answered — Blackbox scores a reused session harder, so
-	 * reuse beyond the genuine shape is decided by the model rather than served here.
+	 * One is the most a genuine flow presents the same session ID again (card
+	 * fields on blocks checkout); every other repeat mints a fresh session.
+	 * The bound is also what keeps one verification from answering a whole
+	 * Store API batch.
 	 */
 	private const MAX_STAND_DOWNS_PER_SESSION = 1;
 
@@ -107,15 +75,9 @@ class PayPalCompat {
 	/**
 	 * Whether this class has verified a create-order request that is still in flight.
 	 *
-	 * PayPal's CreateOrderEndpoint fires our verify action and then runs WooCommerce
-	 * form validation in the same request. The protector that validation reaches has
-	 * no session ID to verify — PayPal serialized the checkout form before the submit
-	 * that adds our field — so without this it would score an anonymous session rather
-	 * than the shopper's.
-	 *
-	 * A plain object property on purpose: it lives and dies with the PHP request, and
-	 * nothing in the request can forge it. Consumed on read, so it covers the one form
-	 * validation a create-order request performs and nothing further.
+	 * PayPal runs WC form validation inside the create-order request it already
+	 * verified, and that validation presents no session ID of its own. A plain
+	 * object property on purpose: request-local, unforgeable, consumed on read.
 	 *
 	 * @var bool
 	 */
@@ -152,23 +114,11 @@ class PayPalCompat {
 	/**
 	 * Verify the session and block the PayPal CreateOrder request if needed.
 	 *
-	 * Called during `woocommerce_paypal_payments_create_order_request_started`,
-	 * which fires after nonce validation but before PayPal order creation.
-	 *
-	 * On BLOCK, sends a JSON error response and terminates execution via
-	 * wp_send_json_error(). On ALLOW, returns normally and the PayPal flow
-	 * continues.
-	 *
-	 * Two writes happen here and their ordering around the block response is
-	 * deliberate:
-	 *
-	 * - The verified-session record, carrying the decision, before the response
-	 *   and regardless of what the decision is. A request that dies inside
-	 *   wp_send_json_error() is exactly the one whose verdict has to outlive it —
-	 *   without this the blocked attempt's next request would stand down to an
-	 *   allow, which is the defect.
-	 * - The in-request marker, after the response, so a blocked request leaves
-	 *   nothing behind for anything still running in it.
+	 * Runs on `woocommerce_paypal_payments_create_order_request_started`. On
+	 * BLOCK it responds and terminates via wp_send_json_error(), so the write
+	 * ordering around that response is deliberate: the record first — the
+	 * blocked attempt is the one whose verdict must outlive its request — and
+	 * the in-request marker after, so a blocked request leaves nothing behind.
 	 *
 	 * @internal
 	 *
@@ -247,23 +197,12 @@ class PayPalCompat {
 	/**
 	 * Skip redundant verification for PayPal flows handled by PayPalCompat.
 	 *
-	 * Answers for requests this class already scored, so one payment attempt is
-	 * not scored twice. Each branch below is a verification performed here, for a
-	 * request that carries no session ID we could match instead.
-	 *
-	 * What comes back is the decision that attempt received, not a blanket allow:
-	 * if ppc-create-order blocked it, that block is what these requests get.
-	 *
-	 * Flows that never reach ppc-create-order (Blocks "Place Order" with
-	 * ppcp-gateway, APM gateways) have nothing recorded here, so they are deferred
-	 * and verified normally.
-	 *
-	 * Standard filter arbitration: this callback answers from its record when it
-	 * has one and passes the value through when it defers; a consumer that wants
-	 * the last word registers with a later priority. The parameter type is the
-	 * contract — an earlier consumer that put anything else in the chain fails
-	 * loudly here, and SessionVerifier turns that into a logged warning and a
-	 * real verify, never a skip.
+	 * Answers requests this class already scored with the decision that scoring
+	 * produced, so one payment attempt is not scored twice; everything else is
+	 * deferred and verified normally. Standard filter arbitration: a consumer
+	 * that wants the last word registers with a later priority. The parameter
+	 * type is the contract — anything else in the chain fails loudly and ends
+	 * in a real verify.
 	 *
 	 * @internal
 	 *
@@ -292,15 +231,13 @@ class PayPalCompat {
 			return $decision;
 		}
 
-		// Same Blackbox session already verified during ppc-create-order in this
-		// payment flow (e.g. card fields on blocks checkout where blocks-checkout.js
-		// captured the session ID before ppc-create-order ran).
+		// Same Blackbox session already scored by ppc-create-order in this flow.
 		if ( $this->take_stand_down_for_verified_session( $session_id ) ) {
 			return $this->decision_for_verified_attempt( $session_id );
 		}
 
-		// After express approval: PayPal order in session means ppc-create-order
-		// already verified (Blackbox was reset since, so session IDs won't match).
+		// After express approval: an approved order in PayPal's session slot means
+		// ppc-create-order already verified (Blackbox reset since, IDs won't match).
 		if ( $this->has_paypal_order_in_session() ) {
 			return $this->decision_for_verified_attempt( $session_id );
 		}
@@ -312,10 +249,9 @@ class PayPalCompat {
 	/**
 	 * The decision to hand back for a request this class already scored.
 	 *
-	 * The recorded decision, when the presented session ID is the one that was
-	 * scored. A session ID that is not the recorded one reaches here only through
-	 * the approved-order predicate (the record cannot match a fresh post-reset
-	 * ID), and that path has always meant allow.
+	 * The recorded decision on an exact session-ID match; otherwise allow,
+	 * which is all the approved-order route — the only non-matching caller —
+	 * has ever meant.
 	 *
 	 * @param string $session_id The Blackbox session ID being verified.
 	 * @return FraudDecision
@@ -372,14 +308,10 @@ class PayPalCompat {
 	/**
 	 * Record that ppc-create-order scored a Blackbox session, and what it got.
 	 *
-	 * One write carries both facts: that this session was scored here, and the
-	 * decision that scoring produced. Kept in the WC session so the decision
-	 * outlives the request — a blocked create-order dies inside its own JSON
-	 * response, and it is exactly the attempt whose verdict must survive.
-	 *
-	 * The record is keyed by the session ID the verification resolved, and the
-	 * stand-down budget belongs to that session: scoring the same session again
-	 * does not top it up. A fresh session starts a fresh record, budget and all.
+	 * Kept in the WC session so the verdict outlives a blocked create-order,
+	 * which dies inside its own JSON response. Keyed by the session ID the
+	 * verification resolved; the stand-down budget belongs to that session,
+	 * so a same-session overwrite carries the spent count forward.
 	 *
 	 * @param string        $session_id The session ID the verification resolved, empty when it completed none.
 	 * @param FraudDecision $decision   The decision that verification produced.
@@ -404,8 +336,7 @@ class PayPalCompat {
 	/**
 	 * Answer for a session ppc-create-order already scored, if budget remains.
 	 *
-	 * Spends one of this verification's stand-downs. Once they are gone the answer
-	 * is no, and the caller verifies with Blackbox instead.
+	 * Spends one stand-down; past the budget the caller verifies with Blackbox.
 	 *
 	 * @param string $session_id The session ID from the current verify call.
 	 * @return bool Whether this request may be answered from the record.

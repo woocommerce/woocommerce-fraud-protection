@@ -168,25 +168,14 @@ class SessionVerifier {
 			/**
 			 * Filters whether to skip verification by supplying the fraud decision.
 			 *
-			 * Returning a {@see FraudDecision} means "this is the decision": it is
-			 * applied as given and no Blackbox call is made. A consumer with nothing
-			 * to say for this call returns the value it received, unchanged.
-			 *
-			 * Intended for gateway compat layers that verified this payment attempt
-			 * earlier and still hold the decision it produced, so the attempt is not
-			 * scored twice. Whether such a layer answers with a verdict it recorded,
-			 * how long it does so, and on what terms are that layer's concern: this
-			 * class only honours what comes back.
-			 *
-			 * Only an actionable decision is honoured. Anything else — the untouched
-			 * default, a bool, null, a string, a non-actionable decision — is ignored
-			 * and the session is verified, so a malformed or stale return can never
-			 * stand in for a verdict.
+			 * Returning an actionable {@see FraudDecision} applies it as the
+			 * decision and makes no Blackbox call. Any other return — including
+			 * the untouched `false` default — verifies. A consumer with nothing
+			 * to say returns the value it received.
 			 *
 			 * @since 0.1.0
-			 * @since 0.1.6 Skipping requires returning the FraudDecision to apply.
-			 *              A truthy return no longer skips: it verifies, because a
-			 *              skip without a verdict read as an allow.
+			 * @since 0.1.6 Skipping requires returning the FraudDecision to
+			 *              apply; a truthy return no longer skips.
 			 *
 			 * @param FraudDecision|false $decision     The decision to apply, when a consumer supplies one. Default false, which verifies.
 			 * @param string              $source       Source identifier (e.g. 'blocks_checkout').
@@ -210,10 +199,8 @@ class SessionVerifier {
 				return $supplied;
 			}
 
-			// What the chain returned, for the miscall warning below: a
-			// non-actionable decision reads as its value, anything else as its
-			// type. The declared filter type is the contract, not the reality —
-			// a miscalling consumer can return anything.
+			// For the miscall warning below; the declared filter type is a
+			// contract a miscalling consumer can break.
 			$returned = $supplied instanceof FraudDecision ? $supplied->value : get_debug_type( $supplied );
 
 			if ( false !== $supplied ) {
@@ -326,10 +313,9 @@ class SessionVerifier {
 	/**
 	 * The effective session ID of the last completed verification.
 	 *
-	 * The ID the verification resolved (response-preferred, resolved by
-	 * ApiClient) and the one this class persisted — the ID the verification's
-	 * outcome is attached to. A caller recording a verification it asked for
-	 * must key that record by this ID, not by the one it sent.
+	 * The ID the verification resolved and persisted — the one its outcome is
+	 * attached to. A caller recording a verification it asked for must key the
+	 * record by this ID, not by the one it sent.
 	 *
 	 * @since 0.1.6
 	 *
