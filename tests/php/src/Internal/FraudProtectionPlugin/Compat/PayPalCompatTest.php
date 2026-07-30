@@ -147,10 +147,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'session_id'  => 'test-session-abc',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow,
-				'order_id'    => '',
+				'session_id'        => 'test-session-abc',
+				'stand_downs'       => 0,
+				'decision'          => FraudDecision::Allow,
+				'order_id'          => '',
+				'order_stand_downs' => 0,
 			),
 			WC()->session->get( '_fraud_protection_paypal_verification' )
 		);
@@ -773,10 +774,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'session_id'  => 'blocked-session',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Block,
-				'order_id'    => '',
+				'session_id'        => 'blocked-session',
+				'stand_downs'       => 0,
+				'decision'          => FraudDecision::Block,
+				'order_id'          => '',
+				'order_stand_downs' => 0,
 			),
 			WC()->session->get( '_fraud_protection_paypal_verification' ),
 			'A blocked create-order must still record the session it scored.'
@@ -901,10 +903,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'session_id'  => 'scored-session',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow,
-				'order_id'    => 'PP-123',
+				'session_id'        => 'scored-session',
+				'stand_downs'       => 0,
+				'decision'          => FraudDecision::Allow,
+				'order_id'          => 'PP-123',
+				'order_stand_downs' => 0,
 			),
 			WC()->session->get( '_fraud_protection_paypal_verification' )
 		);
@@ -1200,6 +1203,121 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( '100' ) ) );
 
 		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' ) );
+	}
+
+	/**
+	 * @testdox The bound order answers once; its next completion leg verifies for real.
+	 *
+	 * One is all a genuine flow needs — a validation-passing completion
+	 * request reaches process_payment, which clears PayPal's slot either way.
+	 * A second consult on the same bound order is not a genuine shape, so it
+	 * is scored instead of served.
+	 */
+	public function test_supply_answers_the_bound_order_once_then_verifies(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$this->ask( 'shortcode_checkout', '', '' );
+
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame(
+			FraudDecision::Allow,
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-1' ),
+			'The one completion leg a genuine flow produces must be answered.'
+		);
+		$this->assertFalse(
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-2' ),
+			'Reuse of the bound order past the genuine shape must be verified for real.'
+		);
+	}
+
+	/**
+	 * @testdox One bound order cannot answer for a whole Store API batch.
+	 *
+	 * The order-bound mirror of the session-keyed batch cap: sub-request 1 is
+	 * answered, the rest are verified for real.
+	 */
+	public function test_supply_answers_a_batch_on_the_bound_order_once(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'        => 'scored-session',
+				'stand_downs'       => 0,
+				'decision'          => FraudDecision::Allow,
+				'order_id'          => 'PP-123',
+				'order_stand_downs' => 0,
+			)
+		);
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$answered = 0;
+		$deferred = 0;
+
+		for ( $sub_request = 0; $sub_request < 25; $sub_request++ ) {
+			if ( false === $this->ask( 'blocks_checkout', 'ppcp-gateway', "batch-leg-$sub_request" ) ) {
+				++$deferred;
+			} else {
+				++$answered;
+			}
+		}
+
+		$this->assertSame( 1, $answered, 'Exactly one sub-request may be answered from the bound order.' );
+		$this->assertSame( 24, $deferred, 'Every other sub-request must be verified for real.' );
+	}
+
+	/**
+	 * @testdox A freshly bound order gets its own budget.
+	 *
+	 * A retry mints a fresh session and a fresh order; the new order's one
+	 * completion leg must be answered even though the previous order spent its
+	 * budget.
+	 */
+	public function test_bind_grants_a_fresh_order_its_own_budget(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-1' ) );
+		$this->ask( 'shortcode_checkout', '', '' );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-1' ) ) );
+
+		$this->assertSame( FraudDecision::Allow, $this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-1' ) );
+
+		// The retry: the same session is scored again and mints a new order.
+		$this->sut->verify_and_block_create_order(
+			array( SessionVerifier::SESSION_ID_FIELD => 'scored-session' )
+		);
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-2' ) );
+		$this->ask( 'shortcode_checkout', '', '' );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-2' ) ) );
+
+		$this->assertSame(
+			FraudDecision::Allow,
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-2' ),
+			'The fresh order\'s one completion leg must be answered from its own budget.'
+		);
+	}
+
+	/**
+	 * @testdox A record without an order budget reads as unspent.
+	 *
+	 * Records written before the counter existed lack the field; a WC session
+	 * in flight across the update still gets its one replay.
+	 */
+	public function test_supply_reads_an_absent_order_budget_as_unspent(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+				'order_id'    => 'PP-123',
+			)
+		);
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame(
+			FraudDecision::Allow,
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' )
+		);
 	}
 
 	/**

@@ -61,6 +61,17 @@ class PayPalCompat {
 	private const MAX_STAND_DOWNS_PER_SESSION = 1;
 
 	/**
+	 * How many completion legs one bound order may answer for.
+	 *
+	 * One is all a genuine flow needs: a completion request that passes
+	 * validation consults this route once, then reaches PayPal's
+	 * process_payment, which clears the session slot whether payment succeeds
+	 * or fails — a second validation-passing submit can never find the bound
+	 * order there. A retry mints a fresh session and a fresh order.
+	 */
+	private const MAX_STAND_DOWNS_PER_ORDER = 1;
+
+	/**
 	 * Session verifier instance.
 	 *
 	 * @var SessionVerifier
@@ -200,7 +211,8 @@ class PayPalCompat {
 			return;
 		}
 
-		$record['order_id'] = $order_id;
+		$record['order_id']          = $order_id;
+		$record['order_stand_downs'] = 0;
 
 		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 	}
@@ -359,9 +371,10 @@ class PayPalCompat {
 	 * was reset after create-order. An unbound record, a foreign order in the
 	 * slot, or no order at all defers to a real verify.
 	 *
-	 * The replay is uncounted, and the bound order's amount can still be
-	 * patched after scoring; what bounds it is the order's own lifecycle —
-	 * PayPal clears the slot when payment succeeds or fails.
+	 * The replay is also counted: one bound order answers at most
+	 * MAX_STAND_DOWNS_PER_ORDER times, with a fresh budget when a new order is
+	 * bound. The order's amount can still be patched after scoring, so the one
+	 * replay may honor an allow scored on a since-changed cart.
 	 *
 	 * @return ?FraudDecision The recorded decision, or null to defer.
 	 */
@@ -379,6 +392,14 @@ class PayPalCompat {
 		if ( $this->paypal_order_id_in_session() !== $record['order_id'] ) {
 			return null;
 		}
+
+		if ( $record['order_stand_downs'] >= self::MAX_STAND_DOWNS_PER_ORDER ) {
+			return null;
+		}
+
+		++$record['order_stand_downs'];
+
+		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 
 		return $record['decision'];
 	}
@@ -432,10 +453,11 @@ class PayPalCompat {
 		WC()->session->set(
 			self::VERIFICATION_RECORD_KEY,
 			array(
-				'session_id'  => $session_id,
-				'stand_downs' => null !== $record && $record['session_id'] === $session_id ? $record['stand_downs'] : 0,
-				'decision'    => $decision,
-				'order_id'    => '',
+				'session_id'        => $session_id,
+				'stand_downs'       => null !== $record && $record['session_id'] === $session_id ? $record['stand_downs'] : 0,
+				'decision'          => $decision,
+				'order_id'          => '',
+				'order_stand_downs' => 0,
 			)
 		);
 	}
@@ -475,11 +497,12 @@ class PayPalCompat {
 	 *
 	 * Only the shape {@see record_create_order_verification()} writes counts
 	 * as a record. Anything else — corruption, another plugin's write — reads
-	 * as no record, so the request falls through to a real verify. The one
-	 * tolerated absence is `order_id`, which records written before the
-	 * binding existed lack: they read as unbound, never as no record.
+	 * as no record, so the request falls through to a real verify. The order
+	 * fields tolerate absence — records written before the binding, or before
+	 * its counter, existed lack them: they read as unbound with an unspent
+	 * budget, never as no record.
 	 *
-	 * @return ?array{session_id: string, stand_downs: int, decision: FraudDecision, order_id: string} The record, or null when the session holds none this code wrote.
+	 * @return ?array{session_id: string, stand_downs: int, decision: FraudDecision, order_id: string, order_stand_downs: int} The record, or null when the session holds none this code wrote.
 	 */
 	private function get_verified_session_record(): ?array {
 		$stored = WC()->session->get( self::VERIFICATION_RECORD_KEY );
@@ -496,10 +519,11 @@ class PayPalCompat {
 		}
 
 		return array(
-			'session_id'  => $session_id,
-			'stand_downs' => (int) ( $stored['stand_downs'] ?? 0 ),
-			'decision'    => $decision,
-			'order_id'    => is_string( $stored['order_id'] ?? null ) ? $stored['order_id'] : '',
+			'session_id'        => $session_id,
+			'stand_downs'       => (int) ( $stored['stand_downs'] ?? 0 ),
+			'decision'          => $decision,
+			'order_id'          => is_string( $stored['order_id'] ?? null ) ? $stored['order_id'] : '',
+			'order_stand_downs' => (int) ( $stored['order_stand_downs'] ?? 0 ),
 		);
 	}
 
