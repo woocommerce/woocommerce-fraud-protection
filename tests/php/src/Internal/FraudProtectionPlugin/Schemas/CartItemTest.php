@@ -240,9 +240,13 @@ class CartItemTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox from_cart_entry() omits a unit price that is not a finite number.
 	 *
-	 * The price reaches this record through the woocommerce_product_get_price filter, so it is
-	 * no more guaranteed to be a usable number than the line amounts beside it. Casting 'INF'
-	 * would report a free product.
+	 * The price reaches this record through get_price(), whose return passes through the
+	 * woocommerce_product_get_price filter, so it is no more guaranteed to be a usable number
+	 * than the line amounts beside it. Casting 'INF' would report a free product.
+	 *
+	 * The stubbed reads beside get_price() are the ones from_cart_entry() feeds into typed
+	 * constructor parameters, where the mock's default null would be a TypeError rather than
+	 * a case under test.
 	 *
 	 * @dataProvider provide_unreadable_prices
 	 *
@@ -251,16 +255,13 @@ class CartItemTest extends FraudProtectionUnitTestCase {
 	public function test_from_cart_entry_omits_an_unreadable_unit_price( mixed $price ): void {
 		$cart_item = $this->cart_entry();
 
-		add_filter(
-			'woocommerce_product_get_price',
-			static function () use ( $price ) {
-				return $price;
-			}
-		);
+		$product = $this->createMock( \WC_Product::class );
+		$product->method( 'get_price' )->willReturn( $price );
+		$product->method( 'get_id' )->willReturn( $cart_item['product_id'] );
+		$product->method( 'is_virtual' )->willReturn( false );
+		$product->method( 'is_downloadable' )->willReturn( false );
 
-		$arr = CartItem::from_cart_entry( $cart_item, $cart_item['data'] )->to_array();
-
-		remove_all_filters( 'woocommerce_product_get_price' );
+		$arr = CartItem::from_cart_entry( $cart_item, $product )->to_array();
 
 		$this->assertNull( $arr['unit_price'], 'an unreadable price must be omitted, not reported as free' );
 		$this->assertSame( 1, $arr['quantity'], 'the item itself must survive' );
