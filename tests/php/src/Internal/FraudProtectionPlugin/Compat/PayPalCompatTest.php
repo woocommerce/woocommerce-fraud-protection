@@ -13,6 +13,8 @@ use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
 
 /**
  * Tests for the PayPalCompat class.
@@ -71,6 +73,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		remove_all_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts' );
 		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
 		remove_all_actions( 'woocommerce_paypal_payments_create_order_request_started' );
+		remove_all_actions( 'woocommerce_paypal_payments_paypal_order_created' );
 		remove_all_actions( 'wp_enqueue_scripts' );
 		wp_dequeue_script( 'wc-fraud-protection-blackbox-init' );
 		wp_dequeue_script( 'wc-fraud-protection-paypal-express' );
@@ -112,7 +115,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 		$this->assertNotFalse(
 			has_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->sut, 'supply_decision_for_paypal_express' ) ),
-			'should_verify_session filter should be registered'
+			'skip_session_verify filter should be registered'
 		);
 		$this->assertNotFalse(
 			has_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this->sut, 'bind_created_order_to_verification' ) ),
@@ -206,6 +209,62 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->expectOutputRegex( '/"success":false.*unable to process this request/' );
 
 		$this->sut->verify_and_block_create_order( $data );
+	}
+
+	/**
+	 * @testdox verify_and_block_create_order() still enforces the block when recording the verification throws.
+	 *
+	 * The record is best-effort, but it is written before the block check. A
+	 * throw from the session read/write must not escape past that check: the
+	 * block stays enforced and no create-order marker is left for a later leg to
+	 * stand down on.
+	 */
+	public function test_verify_enforces_the_block_when_recording_throws(): void {
+		$data = array( SessionVerifier::SESSION_ID_FIELD => 'blocked-session' );
+
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'blocked-session' );
+
+		// A WC session whose reads and writes throw, so record_create_order_verification() fails.
+		$original_session = WC()->session;
+		WC()->session     = new class() {
+			public function get( $key, $default = null ) { // phpcs:ignore
+				throw new \RuntimeException( 'session unavailable' );
+			}
+			public function set( $key, $value = null ) { // phpcs:ignore
+				throw new \RuntimeException( 'session unavailable' );
+			}
+		};
+
+		add_filter( 'wp_doing_ajax', '__return_true' );
+		add_filter(
+			'wp_die_ajax_handler',
+			function () {
+				return function () {
+					throw new \WPDieException();
+				};
+			}
+		);
+
+		$blocked = false;
+		ob_start();
+		try {
+			$this->sut->verify_and_block_create_order( $data );
+		} catch ( \WPDieException $e ) {
+			$blocked = true;
+		} finally {
+			ob_end_clean();
+			WC()->session = $original_session;
+		}
+
+		$this->assertTrue( $blocked, 'The block must still be enforced when recording the verification throws.' );
+		$this->assertLogged( 'warning', 'Recording the create-order verification threw' );
+
+		// A skipped record must leave no create-order marker: a later leg defers.
+		$this->assertFalse(
+			$this->ask( 'shortcode_checkout', '', '' ),
+			'A blocked request whose record write failed must set no stand-down marker.'
+		);
 	}
 
 	/**
@@ -914,6 +973,26 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A bound-order id() that throws leaves the record unbound and is logged.
+	 *
+	 * The order is foreign code's object; a throw reading its ID must not escape
+	 * into ppcp's create-order request, which minted the order already and would
+	 * otherwise fail the shopper's checkout. Fail open: the record keeps its
+	 * empty order_id, so a later completion leg verifies for real.
+	 */
+	public function test_bind_fails_open_when_the_order_id_throws(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+
+		$this->sut->bind_created_order_to_verification( new ThrowingPayPalOrder() );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->assertIsArray( $record );
+		$this->assertSame( '', $record['order_id'], 'A throwing order must leave the record unbound.' );
+		$this->assertLogged( 'warning', 'Binding the created PayPal order threw' );
+	}
+
+	/**
 	 * @testdox The scored order's completion is answered with its decision, on a fresh session ID.
 	 *
 	 * The express flow: create-order scores and mints, Blackbox resets, the
@@ -1350,24 +1429,4 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'PP-9', $record['order_id'] );
 	}
 
-}
-
-/**
- * Serializable stand-in for PayPal's order entity: the one method read from it.
- */
-class FakePayPalOrder {
-
-	/**
-	 * @param string $order_id The PayPal order ID.
-	 */
-	public function __construct( private string $order_id ) {}
-
-	/**
-	 * The PayPal order ID.
-	 *
-	 * @return string
-	 */
-	public function id(): string {
-		return $this->order_id;
-	}
 }

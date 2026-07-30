@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -159,7 +160,29 @@ class PayPalCompat {
 
 		$resolved_session_id = $this->session_verifier->last_verified_session_id();
 
-		$this->record_create_order_verification( $resolved_session_id, $decision );
+		// The record is best-effort — only the completion-leg replay depends on
+		// it — and this runs on a ppcp hook outside SessionVerifier's guard, so a
+		// session read/write throw here would otherwise escape into ppcp's
+		// create-order request BEFORE the block check below. Guard only this
+		// call, and continue: on a throw, skip the record and fall through so
+		// the block is still enforced and completions re-verify. wp_send_json_error()
+		// stays outside the catch — a Throwable catch over it would swallow its
+		// wp_die() and turn a Block into a bypass.
+		try {
+			$this->record_create_order_verification( $resolved_session_id, $decision );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Recording the create-order verification threw; completion legs will re-verify',
+				array(
+					'hook'              => 'woocommerce_paypal_payments_create_order_request_started',
+					'session_id'        => $resolved_session_id,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				),
+				true
+			);
+		}
 
 		if ( FraudDecision::Block === $decision ) {
 			wp_send_json_error(
@@ -188,34 +211,55 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function bind_created_order_to_verification( $order ): void {
+		// Consumed on read, before the try, so the marker is always spent and
+		// the session ID is available to the fail-open log.
 		$session_id = $this->session_recorded_this_request;
 
 		$this->session_recorded_this_request = '';
 
-		if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
+		// This runs on a ppcp hook, outside SessionVerifier's fail-open guard,
+		// inside the create-order request that already minted the order — so any
+		// throw here (the foreign order object, a bad session deserialize, the
+		// write) would fail the shopper's checkout. Fail open: on any throw,
+		// leave the verification unbound so a later completion leg verifies.
+		try {
+			if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
+				return;
+			}
+
+			if ( ! is_object( $order ) || ! method_exists( $order, 'id' ) ) {
+				return;
+			}
+
+			$order_id = $order->id();
+
+			if ( ! is_string( $order_id ) || '' === $order_id ) {
+				return;
+			}
+
+			$record = $this->get_verified_session_record();
+
+			if ( null === $record || $record['session_id'] !== $session_id ) {
+				return;
+			}
+
+			$record['order_id']          = $order_id;
+			$record['order_stand_downs'] = 0;
+
+			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Binding the created PayPal order threw; leaving the verification unbound',
+				array(
+					'hook'              => 'woocommerce_paypal_payments_paypal_order_created',
+					'session_id'        => $session_id,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				),
+				true
+			);
 		}
-
-		if ( ! is_object( $order ) || ! method_exists( $order, 'id' ) ) {
-			return;
-		}
-
-		$order_id = $order->id();
-
-		if ( ! is_string( $order_id ) || '' === $order_id ) {
-			return;
-		}
-
-		$record = $this->get_verified_session_record();
-
-		if ( null === $record || $record['session_id'] !== $session_id ) {
-			return;
-		}
-
-		$record['order_id']          = $order_id;
-		$record['order_stand_downs'] = 0;
-
-		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 	}
 
 	/**
