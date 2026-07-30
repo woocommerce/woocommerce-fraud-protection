@@ -175,10 +175,10 @@ class SessionVerifier {
 			 *              A truthy return no longer skips: it verifies, because a
 			 *              skip without a verdict read as an allow.
 			 *
-			 * @param mixed  $decision     The decision to apply, when a consumer supplies one. Default false, which verifies.
-			 * @param string $source       Source identifier (e.g. 'blocks_checkout').
-			 * @param array  $request_data Request data with payment_method, payment_data, etc.
-			 * @param string $session_id   The Blackbox session ID being verified.
+			 * @param FraudDecision|false $decision     The decision to apply, when a consumer supplies one. Default false, which verifies.
+			 * @param string              $source       Source identifier (e.g. 'blocks_checkout').
+			 * @param array               $request_data Request data with payment_method, payment_data, etc.
+			 * @param string              $session_id   The Blackbox session ID being verified.
 			 */
 			$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $session_id );
 

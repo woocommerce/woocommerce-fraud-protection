@@ -86,7 +86,7 @@ Three hooks let an extension (e.g. a payment gateway with a non-standard checkou
   Return the decision the attempt actually received, not a blanket allow: if your earlier verification blocked, returning `FraudDecision::Allow` here would discard that block. Only `FraudDecision::Allow` and `FraudDecision::Block` are honoured; any other return — including the `false` default — leaves the session to be verified. A consumer with nothing to say for a given call returns the value it received, unchanged.
 
   ```php
-  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', mixed $decision, string $source, array $request_data, string $session_id );
+  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', FraudDecision|false $decision, string $source, array $request_data, string $session_id );
   ```
 
   *Since 0.2.0 a truthy return no longer skips. Skipping without saying what the decision was turned every deferral into an allow, so the skip now carries the decision.*

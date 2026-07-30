@@ -415,14 +415,32 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A decision supplied by an earlier consumer is passed through untouched.
+	 * @testdox An earlier consumer's decision is passed through when this class defers.
 	 *
-	 * The setup matters: on a ppcp-* request whose session ID matches a recorded
-	 * allow, removing the passthrough would answer from the record and downgrade
-	 * the earlier consumer's Block to an Allow. A non-PayPal request cannot pin
-	 * the passthrough — the gateway gate hands the same Block back.
+	 * Every deferral path returns the value received, so a decision put in the
+	 * chain by an earlier consumer survives a request this class has nothing
+	 * to say about.
 	 */
-	public function test_supply_passes_through_an_earlier_decision(): void {
+	public function test_supply_passes_an_earlier_decision_through_when_it_defers(): void {
+		$this->assertSame(
+			FraudDecision::Block,
+			$this->sut->supply_decision_for_paypal_express(
+				FraudDecision::Block,
+				'blocks_checkout',
+				array( 'payment_method' => 'stripe' ),
+				'some-session-id'
+			)
+		);
+	}
+
+	/**
+	 * @testdox The record answers at this callback's priority, over an earlier consumer's decision.
+	 *
+	 * Standard filter arbitration: this callback answers from its record at its
+	 * own priority, whatever an earlier consumer returned. A consumer that wants
+	 * the last word registers with a later priority.
+	 */
+	public function test_supply_answers_from_its_record_over_an_earlier_decision(): void {
 		WC()->session->set(
 			'_fraud_protection_paypal_verified_session_id',
 			array(
@@ -433,13 +451,32 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertSame(
-			FraudDecision::Block,
+			FraudDecision::Allow,
 			$this->sut->supply_decision_for_paypal_express(
 				FraudDecision::Block,
 				'blocks_checkout',
 				array( 'payment_method' => 'ppcp-gateway' ),
 				'some-session-id'
 			)
+		);
+	}
+
+	/**
+	 * @testdox A malformed value in the chain fails loudly instead of being silently ignored.
+	 *
+	 * The declared parameter type is the warning: an earlier consumer returning
+	 * something that is neither a FraudDecision nor the default raises a
+	 * TypeError, which SessionVerifier logs as a warning and answers with a
+	 * real verify.
+	 */
+	public function test_supply_rejects_a_malformed_earlier_value_loudly(): void {
+		$this->expectException( \TypeError::class );
+
+		$this->sut->supply_decision_for_paypal_express(
+			'allow',
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-gateway' ),
+			'some-session-id'
 		);
 	}
 

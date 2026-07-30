@@ -254,25 +254,22 @@ class PayPalCompat {
 	 * ppcp-gateway, APM gateways) have nothing recorded here, so they are deferred
 	 * and verified normally.
 	 *
-	 * Deliberately untyped first parameter: this is a public filter and an earlier
-	 * consumer may have put anything in it. A declared type would raise a TypeError
-	 * that SessionVerifier catches, which would turn someone else's mistake into a
-	 * silent re-verify of a consumed session.
+	 * Standard filter arbitration: this callback answers from its record when it
+	 * has one and passes the value through when it defers; a consumer that wants
+	 * the last word registers with a later priority. The parameter type is the
+	 * contract — an earlier consumer that put anything else in the chain fails
+	 * loudly here, and SessionVerifier turns that into a logged warning and a
+	 * real verify, never a skip.
 	 *
 	 * @internal
 	 *
-	 * @param mixed  $decision     The filter's default (false), or what an earlier consumer returned.
-	 * @param string $source       Source identifier.
-	 * @param array  $request_data Request data with payment_method, payment_data, etc.
-	 * @param string $session_id   The Blackbox session ID being verified.
-	 * @return mixed A FraudDecision to apply, or the value passed in to defer.
+	 * @param FraudDecision|false $decision     The filter's default (false), or what an earlier consumer returned.
+	 * @param string              $source       Source identifier.
+	 * @param array               $request_data Request data with payment_method, payment_data, etc.
+	 * @param string              $session_id   The Blackbox session ID being verified.
+	 * @return FraudDecision|false A FraudDecision to apply, or the value passed in to defer.
 	 */
-	public function supply_decision_for_paypal_express( $decision, string $source, array $request_data, string $session_id ) {
-		// Someone earlier already decided; don't second-guess them.
-		if ( $decision instanceof FraudDecision ) {
-			return $decision;
-		}
-
+	public function supply_decision_for_paypal_express( FraudDecision|false $decision, string $source, array $request_data, string $session_id ): FraudDecision|false {
 		// Don't answer for this class's own verification sources.
 		if ( self::ORDER_CREATION_SOURCE === $source ) {
 			return $decision;
