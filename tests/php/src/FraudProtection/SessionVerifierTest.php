@@ -796,6 +796,77 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() warns about a malformed filter return, wherever in the chain it was made.
+	 *
+	 * The typed PayPalCompat callback already fails loudly for garbage put in
+	 * the chain before it; this warning covers the rest of the chain, so a
+	 * miscalling consumer is named in the log regardless of its priority.
+	 */
+	public function test_verify_session_warns_about_a_malformed_filter_return(): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				return 'allow';
+			}
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertLogged(
+			'warning',
+			'`woocommerce_fraud_protection_skip_session_verify` filter returned a non-decision',
+			array( 'returned' => 'string' )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() does not warn when the filter chain passes the default through.
+	 *
+	 * The untouched `false` seed is the one non-decision that is not a miscall;
+	 * warning on it would flag every unfiltered checkout.
+	 */
+	public function test_verify_session_does_not_warn_about_the_untouched_default(): void {
+		$spy = $this->spy_on_controller_logging();
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$warnings = array_filter(
+			$spy->entries,
+			function ( array $entry ): bool {
+				return false !== strpos( $entry['message'], 'returned a non-decision' );
+			}
+		);
+
+		$this->assertSame( array(), $warnings, 'The false seed must not be reported as a miscall.' );
+	}
+
+	/**
 	 * Returns that must never stand in for a verdict.
 	 *
 	 * @return array<string, array{mixed}>

@@ -79,7 +79,7 @@ class SessionVerifier {
 	 * The effective session ID of the last completed verification.
 	 *
 	 * Empty when the last {@see verify_session()} call completed none: a
-	 * consumer supplied the decision, or verification failed and the call
+	 * consumer supplied the decision, or the pipeline threw and the call
 	 * failed open.
 	 *
 	 * @var string
@@ -208,6 +208,25 @@ class SessionVerifier {
 				);
 
 				return $supplied;
+			}
+
+			// What the chain returned, for the miscall warning below: a
+			// non-actionable decision reads as its value, anything else as its
+			// type. The declared filter type is the contract, not the reality —
+			// a miscalling consumer can return anything.
+			$returned = $supplied instanceof FraudDecision ? $supplied->value : get_debug_type( $supplied );
+
+			if ( false !== $supplied ) {
+				FraudProtectionController::log(
+					'warning',
+					'`woocommerce_fraud_protection_skip_session_verify` filter returned a non-decision; verifying',
+					array(
+						'event_source' => $source,
+						'session_id'   => $session_id,
+						'filter'       => 'woocommerce_fraud_protection_skip_session_verify',
+						'returned'     => $returned,
+					)
+				);
 			}
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
