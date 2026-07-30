@@ -77,6 +77,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		if ( WC()->session ) {
 			WC()->session->set( 'ppcp', null );
+			WC()->session->set( '_fraud_protection_paypal_verification', null );
 			WC()->session->set( '_fraud_protection_paypal_verified_session_id', null );
 		}
 
@@ -140,9 +141,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'test-session-abc',
 				'stand_downs' => 0,
-				'decision'    => 'allow',
+				'decision'    => FraudDecision::Allow,
 			),
-			WC()->session->get( '_fraud_protection_paypal_verified_session_id' )
+			WC()->session->get( '_fraud_protection_paypal_verification' )
 		);
 	}
 
@@ -158,7 +159,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->verify_and_block_create_order( $data );
 
-		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verified_session_id' ) );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
 	/**
@@ -356,26 +357,30 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The bare session ID string written by earlier plugin versions is still read.
+	 * @testdox A record under the retired pre-0.1.6 session key is not read.
 	 *
-	 * A WC session in flight across a plugin update still holds the old string
-	 * shape. It must be read, not discarded — discarding it would verify a consumed
-	 * session ID mid-checkout for anyone updating during a purchase.
+	 * Records written by earlier versions are orphaned by the key rename, not
+	 * migrated: they age out with their WC session. A shopper updating
+	 * mid-checkout gets one extra real verification — never a skip.
 	 */
-	public function test_supply_reads_the_legacy_bare_session_id_record(): void {
+	public function test_supply_ignores_a_record_under_the_retired_session_key(): void {
 		WC()->session->set( '_fraud_protection_paypal_verified_session_id', 'test-session-abc' );
 
-		$this->assertSame(
-			FraudDecision::Allow,
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'test-session-abc' )
-		);
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'test-session-abc' ) );
 	}
 
 	/**
 	 * @testdox Two empty session IDs are not a match.
 	 */
 	public function test_supply_defers_when_both_session_ids_are_empty(): void {
-		WC()->session->set( '_fraud_protection_paypal_verified_session_id', '' );
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => '',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+			)
+		);
 
 		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', '' ) );
 	}
@@ -384,7 +389,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox A session ID that does not match the recorded one is not answered for.
 	 */
 	public function test_supply_defers_when_session_id_does_not_match(): void {
-		WC()->session->set( '_fraud_protection_paypal_verified_session_id', 'old-session' );
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'old-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+			)
+		);
 
 		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-ideal', 'new-session' ) );
 	}
@@ -442,11 +454,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_answers_from_its_record_over_an_earlier_decision(): void {
 		WC()->session->set(
-			'_fraud_protection_paypal_verified_session_id',
+			'_fraud_protection_paypal_verification',
 			array(
 				'session_id'  => 'some-session-id',
 				'stand_downs' => 0,
-				'decision'    => 'allow',
+				'decision'    => FraudDecision::Allow,
 			)
 		);
 
@@ -546,7 +558,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_answers_for_a_verified_session_only_up_to_the_bound(): void {
 		WC()->session->set(
-			'_fraud_protection_paypal_verified_session_id',
+			'_fraud_protection_paypal_verification',
 			array(
 				'session_id'  => 'reused-session',
 				'stand_downs' => 0,
@@ -574,7 +586,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_does_not_answer_for_a_replayed_batch(): void {
 		WC()->session->set(
-			'_fraud_protection_paypal_verified_session_id',
+			'_fraud_protection_paypal_verification',
 			array(
 				'session_id'  => 'batched-session',
 				'stand_downs' => 0,
@@ -601,7 +613,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_resets_the_stand_down_budget_on_each_create_order_verification(): void {
 		WC()->session->set(
-			'_fraud_protection_paypal_verified_session_id',
+			'_fraud_protection_paypal_verification',
 			array(
 				'session_id'  => 'reused-session',
 				'stand_downs' => 1,
@@ -621,7 +633,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		// Spend the marker first, so what is left under test is the budget.
 		$this->ask( 'shortcode_checkout', '', '' );
 
-		$record = WC()->session->get( '_fraud_protection_paypal_verified_session_id' );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 
 		$this->assertIsArray( $record );
 		$this->assertSame( 0, $record['stand_downs'], 'Re-verifying the session must reset its budget.' );
@@ -667,9 +679,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'session_id'  => 'blocked-session',
 				'stand_downs' => 0,
-				'decision'    => 'block',
+				'decision'    => FraudDecision::Block,
 			),
-			WC()->session->get( '_fraud_protection_paypal_verified_session_id' ),
+			WC()->session->get( '_fraud_protection_paypal_verification' ),
 			'A blocked create-order must still record the session it scored.'
 		);
 	}
@@ -753,11 +765,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_does_not_apply_a_block_recorded_for_another_session(): void {
 		WC()->session->set(
-			'_fraud_protection_paypal_verified_session_id',
+			'_fraud_protection_paypal_verification',
 			array(
 				'session_id'  => 'a-different-blocked-session',
 				'stand_downs' => 0,
-				'decision'    => 'block',
+				'decision'    => FraudDecision::Block,
 			)
 		);
 		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );

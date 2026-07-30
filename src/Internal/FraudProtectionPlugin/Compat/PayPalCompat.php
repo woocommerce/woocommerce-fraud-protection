@@ -61,8 +61,13 @@ class PayPalCompat {
 	/**
 	 * WC session key for the record of the session ppc-create-order scored:
 	 * its ID, the stand-downs spent, and the decision it received.
+	 *
+	 * Earlier versions kept a bare session ID string under
+	 * `_fraud_protection_paypal_verified_session_id`. That key is deliberately
+	 * left behind rather than migrated: an orphaned record ages out with its WC
+	 * session, and the requests it would have answered are verified for real.
 	 */
-	private const VERIFIED_SESSION_ID_KEY = '_fraud_protection_paypal_verified_session_id';
+	private const VERIFICATION_RECORD_KEY = '_fraud_protection_paypal_verification';
 
 	/**
 	 * How many later protectors one create-order verification may answer for.
@@ -324,7 +329,7 @@ class PayPalCompat {
 		$record = $this->get_verified_session_record();
 
 		if ( $record['session_id'] === $session_id ) {
-			return FraudDecision::Block->value === $record['decision'] ? FraudDecision::Block : FraudDecision::Allow;
+			return $record['decision'];
 		}
 
 		return FraudDecision::Allow;
@@ -384,11 +389,11 @@ class PayPalCompat {
 		}
 
 		WC()->session->set(
-			self::VERIFIED_SESSION_ID_KEY,
+			self::VERIFICATION_RECORD_KEY,
 			array(
 				'session_id'  => $session_id,
 				'stand_downs' => 0,
-				'decision'    => $decision->value,
+				'decision'    => $decision,
 			)
 		);
 	}
@@ -421,7 +426,7 @@ class PayPalCompat {
 
 		$record['stand_downs'] = $stand_downs + 1;
 
-		WC()->session->set( self::VERIFIED_SESSION_ID_KEY, $record );
+		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 
 		return true;
 	}
@@ -429,36 +434,21 @@ class PayPalCompat {
 	/**
 	 * Read the create-order verification record from the WC session.
 	 *
-	 * Tolerates the bare session ID string written by earlier plugin versions, so
-	 * a WC session in flight across an update is read rather than discarded. That
-	 * shape predates decision recording and carries no verdict; it reads as an
-	 * allow, which is what those versions treated it as.
-	 *
-	 * @return array{session_id: string, stand_downs: int, decision: string}
+	 * @return array{session_id: string, stand_downs: int, decision: FraudDecision}
 	 */
 	private function get_verified_session_record(): array {
-		$stored = WC()->session->get( self::VERIFIED_SESSION_ID_KEY, array() );
-
-		if ( is_string( $stored ) ) {
-			return array(
-				'session_id'  => $stored,
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow->value,
-			);
-		}
+		$stored = WC()->session->get( self::VERIFICATION_RECORD_KEY, array() );
 
 		if ( ! is_array( $stored ) ) {
-			return array(
-				'session_id'  => '',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow->value,
-			);
+			$stored = array();
 		}
+
+		$decision = $stored['decision'] ?? null;
 
 		return array(
 			'session_id'  => is_string( $stored['session_id'] ?? null ) ? $stored['session_id'] : '',
 			'stand_downs' => (int) ( $stored['stand_downs'] ?? 0 ),
-			'decision'    => FraudDecision::Block->value === ( $stored['decision'] ?? '' ) ? FraudDecision::Block->value : FraudDecision::Allow->value,
+			'decision'    => $decision instanceof FraudDecision ? $decision : FraudDecision::Allow,
 		);
 	}
 
