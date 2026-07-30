@@ -1085,6 +1085,124 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The marker route answers for its own verify, not for a stale record.
+	 *
+	 * A create-order verify that completes no verification — it failed open,
+	 * or the chain supplied the decision — records nothing, so a record from
+	 * an earlier attempt can survive into the request. The covered validation
+	 * leg answers with this request's own outcome; the session-ID match is
+	 * what keeps the stale record out of a leg it does not cover.
+	 */
+	public function test_supply_answers_the_marker_route_from_its_own_verify_not_a_stale_record(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'earlier-blocked-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Block,
+				'order_id'    => '',
+			)
+		);
+
+		// This attempt's Allow came without a completed verification, so
+		// there is no resolved session ID and nothing is recorded.
+		$this->score_create_order( 'second-attempt-session', FraudDecision::Allow, '' );
+
+		$this->assertSame(
+			FraudDecision::Allow,
+			$this->ask( 'shortcode_checkout', '', 'crafted-session' ),
+			'The stale record must not answer for the leg this request covers.'
+		);
+	}
+
+	/**
+	 * @testdox A bound record's decision is what the bound route replays, whatever it is.
+	 *
+	 * A bound Block cannot be produced today — a blocked create-order dies
+	 * before its order exists — but the route's contract is "replay the
+	 * recorded decision", and this pin is what stops a future change from
+	 * turning a bound record into a verdict-blind allow.
+	 */
+	public function test_supply_answers_a_bound_block_with_its_block(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Block,
+				'order_id'    => 'PP-BOUND',
+			)
+		);
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-BOUND' ) ) );
+
+		$this->assertSame(
+			FraudDecision::Block,
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' )
+		);
+	}
+
+	/**
+	 * @testdox Scoring again starts the record unbound.
+	 *
+	 * The order a record names is the one minted under its own scoring, or
+	 * none yet; an order minted under a superseded scoring must not carry
+	 * over into a fresh one.
+	 */
+	public function test_verify_scoring_again_starts_the_record_unbound(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-1' ) );
+
+		// The same session is scored again; the mocks still resolve it.
+		$this->sut->verify_and_block_create_order(
+			array( SessionVerifier::SESSION_ID_FIELD => 'scored-session' )
+		);
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->assertIsArray( $record );
+		$this->assertSame( '', $record['order_id'], 'A superseded scoring\'s order must not carry over.' );
+	}
+
+	/**
+	 * @testdox Order IDs match as strings, never numerically.
+	 */
+	public function test_supply_matches_order_ids_as_strings_not_numbers(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+				'order_id'    => '100',
+			)
+		);
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( '1e2' ) ) );
+
+		$this->assertFalse(
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' ),
+			'"1e2" is not "100"; a numeric comparison would say it is.'
+		);
+	}
+
+	/**
+	 * @testdox A non-string order_id reads as unbound, never as a castable value.
+	 */
+	public function test_supply_treats_a_non_string_order_id_as_unbound(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+				'order_id'    => 100,
+			)
+		);
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( '100' ) ) );
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' ) );
+	}
+
+	/**
 	 * @testdox Binding preserves the spent budget.
 	 */
 	public function test_bind_preserves_the_spent_budget(): void {

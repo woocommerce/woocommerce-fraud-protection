@@ -359,6 +359,10 @@ class PayPalCompat {
 	 * was reset after create-order. An unbound record, a foreign order in the
 	 * slot, or no order at all defers to a real verify.
 	 *
+	 * The replay is uncounted, and the bound order's amount can still be
+	 * patched after scoring; what bounds it is the order's own lifecycle —
+	 * PayPal clears the slot when payment succeeds or fails.
+	 *
 	 * @return ?FraudDecision The recorded decision, or null to defer.
 	 */
 	private function decision_for_scored_order_in_session(): ?FraudDecision {
