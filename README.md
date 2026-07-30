@@ -89,7 +89,7 @@ Three hooks let an extension (e.g. a payment gateway with a non-standard checkou
   apply_filters( 'woocommerce_fraud_protection_skip_session_verify', FraudDecision|false $decision, string $source, array $request_data, string $session_id );
   ```
 
-  *Since 0.2.0 a truthy return no longer skips. Skipping without saying what the decision was turned every deferral into an allow, so the skip now carries the decision.*
+  *Since 0.1.6 a truthy return no longer skips. Skipping without saying what the decision was turned every deferral into an allow, so the skip now carries the decision.*
 
 - **`woocommerce_fraud_protection_enqueue_blackbox_scripts`** — return `true` to load the Blackbox scripts on a page the plugin would not otherwise target (e.g. product or cart pages that render express-checkout buttons).
 

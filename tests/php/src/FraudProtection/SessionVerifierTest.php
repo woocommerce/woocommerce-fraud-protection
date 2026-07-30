@@ -762,7 +762,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox verify_session() ignores a malformed filter return and verifies.
 	 *
-	 * A bool is the shape this filter's pre-0.2.0 contract used. It must not be
+	 * A bool is the shape this filter's pre-0.1.6 contract used. It must not be
 	 * honoured: `true` would otherwise mean "allow", which is the conflation the
 	 * decision-carrying contract removed. Null is not a signal either — a
 	 * consumer with nothing to say passes the default through instead.
@@ -802,7 +802,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function malformed_filter_returns(): array {
 		return array(
-			'true (the pre-0.2.0 skip shape)' => array( true ),
+			'true (the pre-0.1.6 skip shape)' => array( true ),
 			'false'                           => array( false ),
 			'null'                            => array( null ),
 			'the decision as a string'        => array( 'allow' ),

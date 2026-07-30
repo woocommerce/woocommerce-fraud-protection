@@ -39,9 +39,8 @@ defined( 'ABSPATH' ) || exit;
  * recorded session ID is verified for real. The record is also read on two
  * routes that spend no stand-down: the in-request marker, which is
  * request-local, consumed on read and never set on a block; and the
- * approved-order predicate (audit finding FP-03), which answers for as long as
- * PayPal's session slot holds an approved order — bounded only by PayPal
- * clearing it.
+ * approved-order predicate, which answers for as long as PayPal's session
+ * slot holds an approved order — bounded only by PayPal clearing it.
  *
  * All of this is PayPal's problem and lives here. SessionVerifier knows only that
  * some consumer supplied a decision.

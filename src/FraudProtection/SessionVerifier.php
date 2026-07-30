@@ -184,7 +184,7 @@ class SessionVerifier {
 			 * stand in for a verdict.
 			 *
 			 * @since 0.1.0
-			 * @since 0.2.0 Skipping requires returning the FraudDecision to apply.
+			 * @since 0.1.6 Skipping requires returning the FraudDecision to apply.
 			 *              A truthy return no longer skips: it verifies, because a
 			 *              skip without a verdict read as an allow.
 			 *
