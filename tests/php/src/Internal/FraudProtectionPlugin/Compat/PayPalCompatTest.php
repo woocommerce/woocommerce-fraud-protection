@@ -1145,15 +1145,20 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Scoring again starts the record unbound.
+	 * @testdox Scoring again starts the record unbound, with an unspent order budget.
 	 *
 	 * The order a record names is the one minted under its own scoring, or
-	 * none yet; an order minted under a superseded scoring must not carry
-	 * over into a fresh one.
+	 * none yet; neither an order minted under a superseded scoring nor the
+	 * budget it spent may carry over into a fresh one.
 	 */
 	public function test_verify_scoring_again_starts_the_record_unbound(): void {
 		$this->score_create_order( 'scored-session', FraudDecision::Allow );
 		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-1' ) );
+
+		// Spend the marker, then the bound order's budget.
+		$this->ask( 'shortcode_checkout', '', '' );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-1' ) ) );
+		$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-spend' );
 
 		// The same session is scored again; the mocks still resolve it.
 		$this->sut->verify_and_block_create_order(
@@ -1164,6 +1169,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertIsArray( $record );
 		$this->assertSame( '', $record['order_id'], 'A superseded scoring\'s order must not carry over.' );
+		$this->assertSame( 0, $record['order_stand_downs'], 'Neither must the budget it spent.' );
 	}
 
 	/**

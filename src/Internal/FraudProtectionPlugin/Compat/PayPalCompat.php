@@ -63,11 +63,12 @@ class PayPalCompat {
 	/**
 	 * How many completion legs one bound order may answer for.
 	 *
-	 * One is all a genuine flow needs: a completion request that passes
-	 * validation consults this route once, then reaches PayPal's
-	 * process_payment, which clears the session slot whether payment succeeds
-	 * or fails — a second validation-passing submit can never find the bound
-	 * order there. A retry mints a fresh session and a fresh order.
+	 * One is all a genuine flow needs. A second consult on the same bound
+	 * order can genuinely happen — a declined-payment retry keeps PayPal's
+	 * slot, and pay-for-order consults before the terms check — and past the
+	 * bound it gets an ordinary real verify of a typically fresh session ID,
+	 * which a genuine retry passes. Forcing that re-verify on every second
+	 * attempt, genuine or hostile alike, is the point of the cap.
 	 */
 	private const MAX_STAND_DOWNS_PER_ORDER = 1;
 
