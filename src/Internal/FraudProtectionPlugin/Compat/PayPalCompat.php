@@ -181,7 +181,7 @@ class PayPalCompat {
 
 		$decision = $this->session_verifier->verify_session( $session_id, self::ORDER_CREATION_SOURCE, 0, $data );
 
-		$this->record_create_order_verification( $session_id, $decision );
+		$this->record_create_order_verification( $this->session_verifier->last_verified_session_id(), $decision );
 
 		if ( FraudDecision::Block === $decision ) {
 			wp_send_json_error(
@@ -371,16 +371,18 @@ class PayPalCompat {
 	}
 
 	/**
-	 * Record that ppc-create-order scored this Blackbox session, and what it got.
+	 * Record that ppc-create-order scored a Blackbox session, and what it got.
 	 *
 	 * One write carries both facts: that this session was scored here, and the
 	 * decision that scoring produced. Kept in the WC session so the decision
 	 * outlives the request — a blocked create-order dies inside its own JSON
 	 * response, and it is exactly the attempt whose verdict must survive.
-	 * Resets the stand-down count, so each verification gets its own budget
-	 * rather than inheriting the previous one's.
 	 *
-	 * @param string        $session_id The session ID that was verified.
+	 * The record is keyed by the session ID the verification resolved, and the
+	 * stand-down budget belongs to that session: scoring the same session again
+	 * does not top it up. A fresh session starts a fresh record, budget and all.
+	 *
+	 * @param string        $session_id The session ID the verification resolved, empty when it completed none.
 	 * @param FraudDecision $decision   The decision that verification produced.
 	 */
 	private function record_create_order_verification( string $session_id, FraudDecision $decision ): void {
@@ -388,11 +390,13 @@ class PayPalCompat {
 			return;
 		}
 
+		$record = $this->get_verified_session_record();
+
 		WC()->session->set(
 			self::VERIFICATION_RECORD_KEY,
 			array(
 				'session_id'  => $session_id,
-				'stand_downs' => 0,
+				'stand_downs' => $record['session_id'] === $session_id ? $record['stand_downs'] : 0,
 				'decision'    => $decision,
 			)
 		);

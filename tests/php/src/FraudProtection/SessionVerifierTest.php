@@ -841,4 +841,94 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw' );
 	}
 
+	/*
+	|--------------------------------------------------------------------------
+	| last_verified_session_id() Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox last_verified_session_id() carries the effective ID of a completed verification.
+	 *
+	 * The effective ID is the one the verify resolved — which need not be the
+	 * one the caller sent — and the one a caller recording the verification
+	 * must key its record by.
+	 */
+	public function test_last_verified_session_id_returns_the_resolved_id(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, 'resolved-id' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'sent-id', 'blocks_checkout' );
+
+		$this->assertSame( 'resolved-id', $this->sut->last_verified_session_id() );
+	}
+
+	/**
+	 * @testdox last_verified_session_id() is empty after a supplied decision, not a stale earlier ID.
+	 */
+	public function test_last_verified_session_id_is_empty_after_a_supplied_decision(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, 'resolved-id' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		// A completed verification first, so a stale ID would be there to leak.
+		$this->sut->verify_session( 'sent-id', 'blocks_checkout' );
+
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				return FraudDecision::Block;
+			}
+		);
+
+		$this->sut->verify_session( 'another-id', 'blocks_checkout' );
+
+		$this->assertSame( '', $this->sut->last_verified_session_id() );
+	}
+
+	/**
+	 * @testdox last_verified_session_id() is empty after a verification that failed open.
+	 */
+	public function test_last_verified_session_id_is_empty_after_a_failed_verification(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->will(
+				$this->onConsecutiveCalls(
+					$this->returnValue( array() ),
+					$this->throwException( new \RuntimeException( 'Collector exploded' ) )
+				)
+			);
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, 'resolved-id' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		// A completed verification first, so a stale ID would be there to leak.
+		$this->sut->verify_session( 'sent-id', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'another-id', 'blocks_checkout' ) );
+		$this->assertSame( '', $this->sut->last_verified_session_id() );
+	}
+
 }

@@ -134,6 +134,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->with( 'test-session-abc', 'paypal_express_order_creation', 0, $data )
 			->willReturn( FraudDecision::Allow );
 
+		$this->session_verifier
+			->method( 'last_verified_session_id' )
+			->willReturn( 'test-session-abc' );
+
 		// Should return normally without terminating.
 		$this->sut->verify_and_block_create_order( $data );
 
@@ -289,13 +293,20 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Run a create-order verification with the given decision.
 	 *
-	 * @param string        $session_id The session ID being scored.
-	 * @param FraudDecision $decision   What the verifier returns.
+	 * @param string        $session_id          The session ID the request presents.
+	 * @param FraudDecision $decision            What the verifier returns.
+	 * @param ?string       $resolved_session_id The session ID the verifier resolves, when it differs.
 	 */
-	private function score_create_order( string $session_id, FraudDecision $decision ): void {
+	private function score_create_order( string $session_id, FraudDecision $decision, ?string $resolved_session_id = null ): void {
 		$this->session_verifier
 			->method( 'verify_session' )
 			->willReturn( $decision );
+
+		// A completed verification exposes the session ID it resolved; the
+		// record is keyed by that, not by what the request presented.
+		$this->session_verifier
+			->method( 'last_verified_session_id' )
+			->willReturn( $resolved_session_id ?? $session_id );
 
 		if ( FraudDecision::Block !== $decision ) {
 			$this->sut->verify_and_block_create_order(
@@ -609,39 +620,92 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The budget is per create-order verification, not per session lifetime.
+	 * @testdox Scoring the same session again does not refresh its budget.
+	 *
+	 * The budget belongs to the session and is spent once. A fresh budget comes
+	 * with a fresh session's record, not from scoring the old one again.
 	 */
-	public function test_supply_resets_the_stand_down_budget_on_each_create_order_verification(): void {
+	public function test_supply_does_not_refresh_the_budget_when_the_same_session_is_scored_again(): void {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
 				'session_id'  => 'reused-session',
 				'stand_downs' => 1,
+				'decision'    => FraudDecision::Allow,
 			)
 		);
 
-		$this->assertFalse(
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' ),
-			'Budget already spent.'
-		);
-
-		// A fresh scoring of the same ID earns a fresh budget.
 		$this->score_create_order( 'reused-session', FraudDecision::Allow );
 
-		// That verification also set the in-request marker, which would satisfy the
-		// assertion below on its own and hide whether the budget reset happened.
-		// Spend the marker first, so what is left under test is the budget.
+		// That scoring set the in-request marker, which would answer the ask
+		// below on its own. Spend it first, so what is under test is the budget.
 		$this->ask( 'shortcode_checkout', '', '' );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 
 		$this->assertIsArray( $record );
-		$this->assertSame( 0, $record['stand_downs'], 'Re-verifying the session must reset its budget.' );
+		$this->assertSame( 1, $record['stand_downs'], 'The budget must not be topped up by scoring the session again.' );
+
+		$this->assertFalse(
+			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' ),
+			'A spent budget stays spent.'
+		);
+	}
+
+	/**
+	 * @testdox A fresh session starts a fresh record with its own budget.
+	 */
+	public function test_supply_grants_a_fresh_session_its_own_budget(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'spent-session',
+				'stand_downs' => 1,
+				'decision'    => FraudDecision::Allow,
+			)
+		);
+
+		$this->score_create_order( 'fresh-session', FraudDecision::Allow );
+
+		$this->ask( 'shortcode_checkout', '', '' );
 
 		$this->assertSame(
 			FraudDecision::Allow,
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' )
+			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'fresh-session' )
 		);
+	}
+
+	/**
+	 * @testdox The record is keyed by the session ID the verification resolved, not the one presented.
+	 */
+	public function test_verify_keys_the_record_by_the_resolved_session_id(): void {
+		$this->score_create_order( 'presented-session', FraudDecision::Allow, 'resolved-session' );
+
+		// Spend the in-request marker; the asks below are later requests.
+		$this->ask( 'shortcode_checkout', '', '' );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->assertIsArray( $record );
+		$this->assertSame( 'resolved-session', $record['session_id'] );
+
+		$this->assertFalse(
+			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'presented-session' ),
+			'The ID the request presented is not the one that was scored; it is verified for real.'
+		);
+		$this->assertSame(
+			FraudDecision::Allow,
+			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'resolved-session' )
+		);
+	}
+
+	/**
+	 * @testdox Nothing is recorded when the call completed no verification.
+	 */
+	public function test_verify_records_nothing_when_no_verification_completed(): void {
+		$this->score_create_order( 'presented-session', FraudDecision::Allow, '' );
+
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
 	/*

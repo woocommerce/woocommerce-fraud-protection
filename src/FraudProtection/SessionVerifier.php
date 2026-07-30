@@ -76,6 +76,17 @@ class SessionVerifier {
 	private PaymentDataResolver $payment_data_resolver;
 
 	/**
+	 * The effective session ID of the last completed verification.
+	 *
+	 * Empty when the last {@see verify_session()} call completed none: a
+	 * consumer supplied the decision, or verification failed and the call
+	 * failed open.
+	 *
+	 * @var string
+	 */
+	private string $last_verified_session_id = '';
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -151,6 +162,8 @@ class SessionVerifier {
 	 * @return FraudDecision The final decision: Allow or Block.
 	 */
 	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
+		$this->last_verified_session_id = '';
+
 		try {
 			/**
 			 * Filters whether to skip verification by supplying the fraud decision.
@@ -261,6 +274,7 @@ class SessionVerifier {
 			// The result carries the effective session ID (response-preferred,
 			// resolved by ApiClient): the one /report will attach the outcome to.
 			$this->persist_session_id( $result->session_id, $order_id );
+			$this->last_verified_session_id = $result->session_id;
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'error',
@@ -288,6 +302,23 @@ class SessionVerifier {
 		}
 
 		return $decision;
+	}
+
+	/**
+	 * The effective session ID of the last completed verification.
+	 *
+	 * The ID the verification resolved (response-preferred, resolved by
+	 * ApiClient) and the one this class persisted — the ID the verification's
+	 * outcome is attached to. A caller recording a verification it asked for
+	 * must key that record by this ID, not by the one it sent.
+	 *
+	 * @since 0.1.6
+	 *
+	 * @return string The session ID, or empty string when the last
+	 *                {@see verify_session()} call completed no verification.
+	 */
+	public function last_verified_session_id(): string {
+		return $this->last_verified_session_id;
 	}
 
 	/**
