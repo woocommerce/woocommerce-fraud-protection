@@ -427,24 +427,16 @@ class EncodablePayloadTest extends FraudProtectionUnitTestCase {
 	 * standalone, survives an inspection that reads it, and then fails the real encode. Refusing
 	 * it for having a hook means its code never runs at all.
 	 *
-	 * The hooked class is built with eval() because its syntax does not parse before PHP 8.4,
-	 * where this file is still loaded; the counter it drives is a plain class defined normally.
+	 * The hooked class lives in its own fixture file because its syntax does not parse before
+	 * PHP 8.4, where this file is still loaded; the require below runs only once the version
+	 * requirement has passed. The counter the hook drives is a plain class defined normally.
 	 *
 	 * @requires PHP 8.4
 	 */
 	public function test_object_with_a_hooked_property_is_refused(): void {
 		HookProbe::$reads = 0;
 
-		$hooked = eval(
-			'return new class {
-				public float $amount {
-					get {
-						\\' . HookProbe::class . '::$reads++;
-						return \\' . HookProbe::class . '::$reads >= 3 ? INF : 1.5;
-					}
-				}
-			};'
-		);
+		$hooked = require dirname( __DIR__, 3 ) . '/Support/hooked-property-object.php';
 
 		$rejected = array();
 		$result   = EncodablePayload::for_wire( array( 'v' => $hooked ), $rejected );
