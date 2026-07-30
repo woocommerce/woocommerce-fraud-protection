@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\QuantityValue;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\ReadsFiniteNumbers;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -23,6 +24,8 @@ defined( 'ABSPATH' ) || exit;
  * Quantities are reported as WooCommerce supplies them, in whatever type it supplies them.
  */
 class CartEventTracker {
+
+	use ReadsFiniteNumbers;
 
 	/**
 	 * Session data collector instance.
@@ -245,6 +248,9 @@ class CartEventTracker {
 	 * and current cart state. This data will be merged with comprehensive
 	 * session data during event dispatching.
 	 *
+	 * The quantity is relayed as supplied, whatever its type; the derived count is reported only
+	 * when finite — see finite_count().
+	 *
 	 * @param string $action       Action type (item_added, item_updated, item_removed, item_restored).
 	 * @param int    $product_id   Product ID.
 	 * @param mixed  $quantity     Quantity, relayed verbatim.
@@ -264,8 +270,35 @@ class CartEventTracker {
 			'product_id'      => $product_id,
 			'quantity'        => $quantity,
 			'variation_id'    => $variation_id,
-			'cart_item_count' => $cart_item_count,
+			'cart_item_count' => self::finite_count( $cart_item_count ),
 		);
+	}
+
+	/**
+	 * Keep a derived cart count only when it is a finite number.
+	 *
+	 * The count is derived rather than relayed: it is either a number the payload can state or
+	 * it is unknown. Substituting 0 would assert an empty cart just when the count is unknown,
+	 * and the encode boundary cannot stand in — the `woocommerce_cart_contents_count` filter can
+	 * return the string 'INF', which encodes fine. Read by numeric value, so a count stated as
+	 * `'3'` is still a count.
+	 *
+	 * @param mixed $value Raw count.
+	 * @return int|float|null The count when it has a finite numeric reading, null otherwise.
+	 */
+	private static function finite_count( mixed $value ): int|float|null {
+		if ( is_int( $value ) ) {
+			return $value;
+		}
+
+		$number = self::finite_number( $value );
+
+		if ( null === $number ) {
+			return null;
+		}
+
+		// A whole count reports as an int however it arrived, but only when the cast is lossless.
+		return self::is_exact_int( $number ) ? (int) $number : $number;
 	}
 
 	/**

@@ -16,17 +16,23 @@ defined( 'ABSPATH' ) || exit;
  */
 class OrderData {
 
+	use ReadsFiniteNumbers;
+
 	/**
 	 * Private constructor — use factory methods.
 	 *
+	 * The money totals are nullable: WooCommerce does not guarantee a derived total is a finite
+	 * number, and null omits the field (see ApiClient::filter_empty_values()) rather than
+	 * asserting a zero total.
+	 *
 	 * @param int        $order_id          Order ID (0 when not yet created).
 	 * @param int|string $customer_id       Customer ID or 'guest'.
-	 * @param float      $total             Order total.
-	 * @param float      $items_total       Items subtotal.
-	 * @param float      $shipping_total    Shipping total.
-	 * @param float      $tax_total         Tax total.
+	 * @param ?float     $total             Order total.
+	 * @param ?float     $items_total       Items subtotal.
+	 * @param ?float     $shipping_total    Shipping total.
+	 * @param ?float     $tax_total         Tax total.
 	 * @param ?float     $shipping_tax_rate Shipping tax rate.
-	 * @param float      $discount_total    Discount total.
+	 * @param ?float     $discount_total    Discount total.
 	 * @param ?string    $currency          Currency code (defaults to store currency).
 	 * @param ?string    $cart_hash         Cart hash.
 	 * @param CartItem[] $items             Cart items.
@@ -34,12 +40,12 @@ class OrderData {
 	private function __construct(
 		private readonly int $order_id = 0,
 		private readonly int|string $customer_id = 'guest',
-		private readonly float $total = 0,
-		private readonly float $items_total = 0,
-		private readonly float $shipping_total = 0,
-		private readonly float $tax_total = 0,
+		private readonly ?float $total = 0,
+		private readonly ?float $items_total = 0,
+		private readonly ?float $shipping_total = 0,
+		private readonly ?float $tax_total = 0,
 		private readonly ?float $shipping_tax_rate = null,
-		private readonly float $discount_total = 0,
+		private readonly ?float $discount_total = 0,
 		private readonly ?string $currency = null,
 		private readonly ?string $cart_hash = null,
 		private readonly array $items = array()
@@ -56,18 +62,21 @@ class OrderData {
 	public static function from_cart( int $order_id, \WC_Cart $cart, \WC_Customer $customer ): self {
 		$customer_id = $customer->get_id() ? $customer->get_id() : 'guest';
 
-		$items_total    = (float) $cart->get_subtotal();
-		$shipping_total = (float) $cart->get_shipping_total();
-		$tax_total      = (float) $cart->get_cart_contents_tax();
-		$discount_total = (float) $cart->get_discount_total();
+		// No cart total is guaranteed finite, and half the setters store raw floats while the
+		// other half flatten through wc_format_decimal() — which half is an implementation
+		// detail, so all are guarded the same way.
+		$items_total    = self::finite_number( $cart->get_subtotal() );
+		$shipping_total = self::finite_number( $cart->get_shipping_total() );
+		$tax_total      = self::finite_number( $cart->get_cart_contents_tax() );
+		$discount_total = self::finite_number( $cart->get_discount_total() );
 		$cart_hash      = $cart->get_cart_hash();
-		$total          = (float) $cart->get_total( 'edit' );
+		$total          = self::finite_number( $cart->get_total( 'edit' ) );
 		$currency       = \WC()->call_function( 'get_woocommerce_currency' );
 
 		// Calculate shipping_tax_rate.
-		$shipping_tax      = (float) $cart->get_shipping_tax();
-		$shipping_tax_rate = ( $shipping_total > 0 && $shipping_tax > 0 )
-			? $shipping_tax / $shipping_total
+		$shipping_tax      = self::finite_number( $cart->get_shipping_tax() );
+		$shipping_tax_rate = ( null !== $shipping_total && null !== $shipping_tax && $shipping_total > 0 && $shipping_tax > 0 )
+			? self::finite_number( $shipping_tax / $shipping_total )
 			: null;
 
 		// Build cart items — per-item try/catch so one bad item doesn't lose the rest.

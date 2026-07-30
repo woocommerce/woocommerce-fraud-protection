@@ -522,4 +522,51 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		FraudProtectionController::log( 'error', 'Local log entry' );
 	}
+
+	/**
+	 * @testdox log() keeps the context readable when a value cannot be encoded.
+	 *
+	 * WooCommerce renders the context into the log line with wp_json_encode() and interpolates
+	 * the result, so one unencodable value makes that return false and the *entire* context
+	 * disappears from the entry — the log that would have explained the problem arrives empty.
+	 * Every log call in the plugin routes through here, so this is guarded once rather than at
+	 * each of the payload-carrying sites.
+	 */
+	public function test_log_replaces_unencodable_context_values_with_a_marker(): void {
+		$captured = null;
+		$logger   = $this->getMockBuilder( \WC_Logger_Interface::class )->getMock();
+		$logger->method( 'log' )->willReturnCallback(
+			function ( $level, $message, $context ) use ( &$captured ) {
+				$captured = $context;
+			}
+		);
+
+		add_filter(
+			'woocommerce_logging_class',
+			static function () use ( $logger ) {
+				return $logger;
+			}
+		);
+
+		FraudProtectionController::log(
+			'error',
+			'Entry whose context holds an unencodable value',
+			array(
+				'session_id' => 'abc',
+				'payload'    => array( 'order' => array( 'tax_total' => INF ) ),
+			)
+		);
+
+		$this->assertIsArray( $captured );
+		$this->assertSame( 'abc', $captured['session_id'], 'the rest of the context must survive' );
+		$this->assertSame(
+			'[unencodable: INF]',
+			$captured['payload']['order']['tax_total'],
+			'the offending value is named, not silently removed'
+		);
+		$this->assertNotFalse(
+			wp_json_encode( $captured ),
+			'the context WooCommerce renders must now encode'
+		);
+	}
 }

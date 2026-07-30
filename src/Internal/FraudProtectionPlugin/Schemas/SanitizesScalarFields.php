@@ -21,6 +21,8 @@ defined( 'ABSPATH' ) || exit;
  */
 trait SanitizesScalarFields {
 
+	use ReadsFiniteNumbers;
+
 	/**
 	 * Read a string field. A string passes through sanitized, with an empty result treated as
 	 * absent (null); a scalar number is coerced and logged; any other type is dropped to null
@@ -58,9 +60,12 @@ trait SanitizesScalarFields {
 	}
 
 	/**
-	 * Read an integer field. A whole number (int, integer-valued float, or numeric string) is
-	 * cast to int; a fractional or non-numeric value is dropped to null and logged rather than
-	 * silently truncated. The value itself is never logged.
+	 * Read an integer field. A whole number the int type can hold is read as an int; anything
+	 * else is dropped to null and logged rather than silently truncated. The value itself is
+	 * never logged.
+	 *
+	 * "Can hold" is at both ends: a value outside the type is dropped, never saturated to the
+	 * nearest edge — that would state a number nobody supplied.
 	 *
 	 * @param array<string, mixed> $data  Raw fields.
 	 * @param string               $field Field name to read and sanitize.
@@ -73,8 +78,10 @@ trait SanitizesScalarFields {
 			return null;
 		}
 
-		if ( is_numeric( $value ) && floor( (float) $value ) === (float) $value ) {
-			return (int) $value;
+		$integer = self::read_int( $value );
+
+		if ( null !== $integer ) {
+			return $integer;
 		}
 
 		FraudProtectionController::log(

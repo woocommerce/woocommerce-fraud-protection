@@ -210,4 +210,88 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( $array['cvc_check'] );
 		$this->assertSame( '424242', $array['bin'], 'the one valid field survives the malformed siblings' );
 	}
+
+	/**
+	 * @testdox A field the caller never supplied is left unset in silence.
+	 *
+	 * The trait documents twice that only a provided value is logged. Without it, every optional
+	 * field an integration leaves out is reported as a problem on every call.
+	 */
+	public function test_an_absent_field_is_left_unset_in_silence(): void {
+		$spy = $this->spy_on_controller_logging();
+
+		$instrument = PaymentInstrumentData::from_array( array( 'exp_year' => 2030 ) );
+
+		$this->assertSame( 2030, $instrument->to_array()['exp_year'], 'the supplied field is still read' );
+		$this->assertSame( array(), $spy->entries, 'an unsupplied field is not a problem to report' );
+	}
+
+	/**
+	 * @testdox An expiry is set only from a whole number the int field can hold.
+	 *
+	 * @dataProvider provide_expiry_readings
+	 *
+	 * @param mixed $value    Raw exp_year value.
+	 * @param ?int  $expected The expiry expected on the wire, or null when the value has none.
+	 */
+	public function test_expiry_is_set_only_from_a_representable_whole_number( mixed $value, ?int $expected ): void {
+		$instrument = PaymentInstrumentData::from_array( array( 'exp_year' => $value ) );
+
+		$this->assertSame( $expected, $instrument->to_array()['exp_year'] );
+	}
+
+	/**
+	 * Data provider for {@see test_expiry_is_set_only_from_a_representable_whole_number()}.
+	 *
+	 * `exp_year` is the one field that reports the shared int sanitizer's answer unfiltered, so
+	 * the boundary rows belong here. There are three shapes to pin, and the rows are grouped by
+	 * which one answers.
+	 *
+	 * @return array<string, array{0: mixed, 1: ?int}>
+	 */
+	public function provide_expiry_readings(): array {
+		return array(
+			// An int is taken as given, ahead of everything else. Read through a float instead,
+			// PHP_INT_MAX rounds up out of its own type and anything past 2^53 loses digits.
+			'whole year'                             => array( 2025, 2025 ),
+			'integer maximum'                        => array( PHP_INT_MAX, PHP_INT_MAX ),
+			'integer beyond float precision'         => array( 9007199254740993, 9007199254740993 ),
+
+			// An integer written out is relayed by its digits, so it survives past 2^53 too.
+			'numeric string'                         => array( '2025', 2025 ),
+			'integer string beyond float precision'  => array( '9223372036854774785', 9223372036854774785 ),
+			'integer maximum as a string'            => array( '9223372036854775807', PHP_INT_MAX ),
+			'integer minimum as a string'            => array( '-9223372036854775808', PHP_INT_MIN ),
+			// Notation, not value: whitespace, a sign and leading zeros are normalised away
+			// before the range is tested, so none of them decides the answer.
+			'zero-padded integer string'             => array( '05', 5 ),
+			'integer string in whitespace'           => array( "  5\n", 5 ),
+			'signed integer string'                  => array( '+5', 5 ),
+			'zero-padded negative integer string'    => array( '-007', -7 ),
+			'every digit a zero'                     => array( '000', 0 ),
+			// A written-out integer the type cannot carry has no reading that would fit, so it
+			// is refused rather than saturated to the nearest edge.
+			'one past the integer maximum, written'  => array( '9223372036854775808', null ),
+			'one below the integer minimum, written' => array( '-9223372036854775809', null ),
+			// Where the two notions of "written out" would diverge: read as a number instead,
+			// these land exactly on PHP_INT_MIN and are kept. The form feed is the one that
+			// catches a trim()-based rewrite, since trim() does not strip it but a numeric
+			// string may carry it.
+			'below the minimum, in whitespace'      => array( ' -9223372036854775809 ', null ),
+			'below the minimum, after a form feed'  => array( "\f-9223372036854775809", null ),
+
+			// Everything else is read by numeric value.
+			'whole number written as a decimal'      => array( '5.0', 5 ),
+			'whole number in exponent notation'      => array( '1e3', 1000 ),
+			'exactly the integer minimum'            => array( -9223372036854775808.0, PHP_INT_MIN ),
+			'largest lossless integer'               => array( 9223372036854774784.0, 9223372036854774784 ),
+			'numeric string with no finite reading'  => array( '1e309', null ),
+			'non-finite float'                       => array( INF, null ),
+			'above the integer maximum'              => array( 1.0e19, null ),
+			// The upper bound is exclusive, so this one is out even though it is the float
+			// PHP_INT_MAX rounds to; admitting it would cast back with the wrong sign.
+			'one past the integer maximum'           => array( 9223372036854775808.0, null ),
+			'below the integer minimum'              => array( -1.0e19, null ),
+		);
+	}
 }

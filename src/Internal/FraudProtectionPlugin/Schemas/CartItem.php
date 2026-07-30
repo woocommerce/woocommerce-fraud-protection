@@ -16,6 +16,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class CartItem {
 
+	use ReadsFiniteNumbers;
+
 	/**
 	 * Private constructor — use factory methods.
 	 *
@@ -24,7 +26,7 @@ class CartItem {
 	 * @param ?string $category             Comma-separated category names.
 	 * @param ?string $sku                  Product SKU.
 	 * @param mixed   $quantity             Quantity in cart, relayed verbatim.
-	 * @param float   $unit_price           Per-unit price.
+	 * @param ?float  $unit_price           Per-unit price; null when it has no numeric reading.
 	 * @param ?float  $unit_tax_amount      Per-unit tax amount; null when underivable.
 	 * @param ?float  $unit_discount_amount Per-unit discount amount; null when underivable.
 	 * @param ?string $product_type         WooCommerce product type.
@@ -38,7 +40,7 @@ class CartItem {
 		private readonly ?string $category,
 		private readonly ?string $sku,
 		private readonly mixed $quantity,
-		private readonly float $unit_price,
+		private readonly ?float $unit_price,
 		private readonly ?float $unit_tax_amount,
 		private readonly ?float $unit_discount_amount,
 		private readonly ?string $product_type,
@@ -59,9 +61,9 @@ class CartItem {
 		$quantity        = $cart_item['quantity'] ?? 1;
 		$quantity_number = QuantityValue::as_finite_float( $quantity );
 
-		$unit_price    = (float) $product->get_price();
+		$unit_price    = self::finite_number( $product->get_price() );
 		$line_tax      = $cart_item['line_tax'] ?? 0;
-		$line_discount = ( $cart_item['line_subtotal'] ?? 0 ) - ( $cart_item['line_total'] ?? 0 );
+		$line_discount = self::line_discount( $cart_item );
 		$unit_tax      = self::per_unit_amount( $line_tax, $quantity_number );
 		$unit_discount = self::per_unit_amount( $line_discount, $quantity_number );
 
@@ -84,11 +86,35 @@ class CartItem {
 	}
 
 	/**
+	 * Read the discount on a line as what it would have cost minus what it did.
+	 *
+	 * Both operands are read as numbers first: core keeps these amounts as int|float, but they
+	 * pass through cart filters on the way here, and subtracting a string with no numeric
+	 * reading raises a TypeError that the caller's per-item guard turns into a dropped order
+	 * line — the whole item for one unreadable field.
+	 *
+	 * @param array<string, mixed> $cart_item Raw cart entry.
+	 * @return float|null The discount, or null when either amount has no numeric reading.
+	 */
+	private static function line_discount( array $cart_item ): ?float {
+		$subtotal = $cart_item['line_subtotal'] ?? 0;
+		$total    = $cart_item['line_total'] ?? 0;
+
+		if ( ! is_numeric( $subtotal ) || ! is_numeric( $total ) ) {
+			return null;
+		}
+
+		return (float) $subtotal - (float) $total;
+	}
+
+	/**
 	 * Calculate a per-unit amount from a line total.
 	 *
-	 * Both checks concern the divisor. Without a numeric reading of the quantity there is
-	 * nothing to divide by, so no amount is derived. A zero or negative quantity keeps the
-	 * historical zero amounts rather than dividing.
+	 * Four checks, in an order that matters: no numeric reading of the quantity means nothing to
+	 * divide by; a line amount is only guaranteed numeric inside core, and an unreadable one must
+	 * not cast to a meaningless 0.0; the quantity's sign keeps the historical zero amounts rather
+	 * than dividing; and two usable operands can still divide into a result that is not. This is
+	 * the plugin's own arithmetic, so no usable result means no amount reported.
 	 *
 	 * @param mixed      $line_amount Total amount for the line.
 	 * @param float|null $quantity    Parsed quantity.
@@ -99,7 +125,19 @@ class CartItem {
 			return null;
 		}
 
-		return $quantity > 0 ? (float) $line_amount / $quantity : 0.0;
+		if ( null === self::finite_number( $line_amount ) ) {
+			return null;
+		}
+
+		// Checked after the amount, not before: the historical zero stands for "nothing to
+		// divide", and an amount nobody can read is not nothing.
+		if ( $quantity <= 0 ) {
+			return 0.0;
+		}
+
+		$unit_amount = (float) $line_amount / $quantity;
+
+		return is_finite( $unit_amount ) ? $unit_amount : null;
 	}
 
 	/**

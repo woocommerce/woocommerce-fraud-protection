@@ -210,4 +210,126 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/**
+	 * @testdox from_cart() omits a total WooCommerce cannot state as a finite number.
+	 *
+	 * Every total is derived from cart contents, so none is guaranteed finite — and the string
+	 * form matters as much as the float, because wc_format_decimal() renders a non-finite total
+	 * as 'INF' or 'inf'. A string encodes perfectly well, so the encoding boundary keeps it;
+	 * only this schema knows the field is meant to be a number. Each total is pinned separately
+	 * so removing any single guard fails a named case.
+	 *
+	 * @dataProvider provide_unrepresentable_totals
+	 *
+	 * @param string $getter The WC_Cart getter to override.
+	 * @param mixed  $raw    The value it returns.
+	 * @param string $field  The payload field that must be omitted.
+	 */
+	public function test_from_cart_omits_an_unrepresentable_total( string $getter, mixed $raw, string $field ): void {
+		$arr = $this->order_data_from_cart_returning( array( $getter => $raw ) );
+
+		$this->assertNull( $arr[ $field ], sprintf( '%s must be omitted, not asserted as a number', $field ) );
+	}
+
+	/**
+	 * Data provider for {@see test_from_cart_omits_an_unrepresentable_total()}.
+	 *
+	 * @return array<string, array{0: string, 1: mixed, 2: string}>
+	 */
+	public function provide_unrepresentable_totals(): array {
+		return array(
+			'items_total INF'           => array( 'get_subtotal', INF, 'items_total' ),
+			'items_total "INF" string'  => array( 'get_subtotal', 'INF', 'items_total' ),
+			'shipping_total INF'        => array( 'get_shipping_total', INF, 'shipping_total' ),
+			'tax_total INF'             => array( 'get_cart_contents_tax', INF, 'tax_total' ),
+			'tax_total NAN'             => array( 'get_cart_contents_tax', NAN, 'tax_total' ),
+			'discount_total INF'        => array( 'get_discount_total', INF, 'discount_total' ),
+			'total INF'                 => array( 'get_total', INF, 'total' ),
+			'total "inf" string'        => array( 'get_total', 'inf', 'total' ),
+			'total overflowing string'  => array( 'get_total', '1e400', 'total' ),
+		);
+	}
+
+	/**
+	 * @testdox from_cart() omits shipping_tax_rate when either side of the quotient is unusable.
+	 *
+	 * @dataProvider provide_unusable_shipping_operands
+	 *
+	 * @param array<string, mixed> $overrides Cart getter overrides.
+	 */
+	public function test_from_cart_omits_shipping_tax_rate_for_an_unusable_operand( array $overrides ): void {
+		$arr = $this->order_data_from_cart_returning( $overrides );
+
+		$this->assertNull( $arr['shipping_tax_rate'], 'shipping_tax_rate must be omitted rather than derived from a non-number' );
+	}
+
+	/**
+	 * Data provider for {@see test_from_cart_omits_shipping_tax_rate_for_an_unusable_operand()}.
+	 *
+	 * @return array<string, array{0: array<string, mixed>}>
+	 */
+	public function provide_unusable_shipping_operands(): array {
+		return array(
+			'non-finite shipping total' => array( array( 'get_shipping_total' => INF, 'get_shipping_tax' => 2.0 ) ),
+			// The string sentinel rather than float INF, because only the operand guard can
+			// catch it: were it removed, 'INF' > 0 is true and 'INF' / 10.0 is a TypeError, so
+			// the quotient guard never runs. Float INF would be caught by the quotient guard
+			// either way and so would pin nothing here.
+			'shipping tax "INF" string' => array( array( 'get_shipping_total' => 10.0, 'get_shipping_tax' => 'INF' ) ),
+			'quotient overflows'        => array( array( 'get_shipping_total' => 1e-320, 'get_shipping_tax' => 1e300 ) ),
+		);
+	}
+
+	/**
+	 * @testdox from_cart() still derives shipping_tax_rate from two usable operands.
+	 *
+	 * The positive control for the guards above. Without it, replacing the whole
+	 * shipping_tax_rate derivation with null would leave every assertion in the suite green.
+	 */
+	public function test_from_cart_derives_shipping_tax_rate_from_usable_operands(): void {
+		$arr = $this->order_data_from_cart_returning(
+			array(
+				'get_shipping_total' => '10',
+				'get_shipping_tax'   => '2',
+			)
+		);
+
+		$this->assertSame( 0.2, $arr['shipping_tax_rate'], 'A derivable rate must still be derived' );
+	}
+
+	/**
+	 * Build OrderData from a cart double whose getters return the given values.
+	 *
+	 * A double rather than a real cart: the point is the schema's own handling of what
+	 * WooCommerce hands over, and a real cart cannot be driven to return every shape it might.
+	 *
+	 * @param array<string, mixed> $overrides Getter name => return value.
+	 * @return array<string, mixed> The serialized OrderData.
+	 */
+	private function order_data_from_cart_returning( array $overrides ): array {
+		$returns = array_merge(
+			array(
+				'get_subtotal'          => '10',
+				'get_shipping_total'    => '0',
+				'get_cart_contents_tax' => '0',
+				'get_discount_total'    => '0',
+				'get_total'             => '10',
+				'get_shipping_tax'      => '0',
+				'get_cart_hash'         => 'test-hash',
+				'get_cart'              => array(),
+			),
+			$overrides
+		);
+
+		$cart = $this->createMock( \WC_Cart::class );
+		foreach ( $returns as $method => $value ) {
+			$cart->method( $method )->willReturn( $value );
+		}
+
+		$customer = $this->createMock( \WC_Customer::class );
+		$customer->method( 'get_id' )->willReturn( 0 );
+
+		return OrderData::from_cart( 0, $cart, $customer )->to_array();
+	}
+
 }

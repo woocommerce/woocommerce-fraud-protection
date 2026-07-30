@@ -501,6 +501,7 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 
 		WC()->cart->empty_cart();
 		remove_all_filters( 'woocommerce_is_cart' );
+		remove_all_filters( 'woocommerce_cart_contents_count' );
 		remove_all_actions( 'internal_woocommerce_cart_item_added_from_user_request' );
 		remove_all_actions( 'internal_woocommerce_cart_item_updated_from_user_request' );
 		remove_all_actions( 'internal_woocommerce_cart_item_removed_from_user_request' );
@@ -724,5 +725,77 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 		$this->assertIsString( $cart_item_key );
 
 		return $cart_item_key;
+	}
+
+	/**
+	 * @testdox track_cart_item_added() omits a cart_item_count WooCommerce cannot state.
+	 *
+	 * WooCommerce sums the count over the raw cart quantities and passes it through the
+	 * `woocommerce_cart_contents_count` filter, so neither its type nor its finiteness is
+	 * guaranteed. The count is the plugin's own number rather than a relayed one, so when it
+	 * has no finite numeric form the field is omitted rather than filled in.
+	 *
+	 * @dataProvider provide_cart_item_counts
+	 *
+	 * @param mixed $filtered The value the cart count filter returns.
+	 * @param mixed $expected The count expected in the event data.
+	 */
+	public function test_track_cart_item_added_guards_cart_item_count( mixed $filtered, mixed $expected ): void {
+		add_filter(
+			'woocommerce_cart_contents_count',
+			static function () use ( $filtered ) {
+				return $filtered;
+			}
+		);
+
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with(
+				$this->equalTo( 'cart_item_added' ),
+				$this->callback(
+					function ( $event_data ) use ( $expected ) {
+						$this->assertSame( $expected, $event_data['cart_item_count'] );
+						return true;
+					}
+				)
+			);
+
+		$this->sut->track_cart_item_added( $this->test_product->get_id(), 1 );
+	}
+
+	/**
+	 * Data provider for {@see test_track_cart_item_added_guards_cart_item_count()}.
+	 *
+	 * @return array<string, array{0: mixed, 1: mixed}>
+	 */
+	public function provide_cart_item_counts(): array {
+		return array(
+			'whole count'               => array( 3, 3 ),
+			// An int is taken as given. Without that fast path this would come back as a float,
+			// because (float) PHP_INT_MAX fails the deliberately strict upper bound below.
+			'integer maximum'           => array( PHP_INT_MAX, PHP_INT_MAX ),
+			'decimal count'             => array( 2.5, 2.5 ),
+			'positive INF'              => array( INF, null ),
+			'negative INF'              => array( -INF, null ),
+			'NAN'                       => array( NAN, null ),
+			// Read by numeric value rather than PHP type, matching how a money total is read,
+			// and reported as a whole number when that is what it is.
+			'numeric string'            => array( '3', 3 ),
+			'fractional numeric string' => array( '2.5', 2.5 ),
+			'sentinel string'           => array( 'INF', null ),
+			'array'                     => array( array( 1 ), null ),
+
+			// The integer boundary. Comparing in float rounds PHP_INT_MAX up to 2^63, so an
+			// inclusive upper bound would admit this and cast it to a large negative — a count
+			// reported with the wrong sign. It stays a float instead.
+			'one past the integer maximum' => array( '9223372036854775808', 9223372036854775808.0 ),
+			'largest lossless integer'     => array( 9223372036854774784.0, 9223372036854774784 ),
+			// The bottom end matters for the same reason: without it, a large negative count
+			// casts back to a large positive one.
+			'below the integer minimum'    => array( -1.0e19, -1.0e19 ),
+			'exactly the integer minimum'  => array( -9223372036854775808.0, PHP_INT_MIN ),
+			'negative zero'                => array( -0.0, 0 ),
+		);
 	}
 }
