@@ -114,6 +114,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			has_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->sut, 'supply_decision_for_paypal_express' ) ),
 			'should_verify_session filter should be registered'
 		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this->sut, 'bind_created_order_to_verification' ) ),
+			'paypal_order_created action should be registered'
+		);
 	}
 
 	/*
@@ -146,6 +150,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 				'session_id'  => 'test-session-abc',
 				'stand_downs' => 0,
 				'decision'    => FraudDecision::Allow,
+				'order_id'    => '',
 			),
 			WC()->session->get( '_fraud_protection_paypal_verification' )
 		);
@@ -336,18 +341,23 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An approved PayPal order in the session answers for any ppcp-* gateway.
+	 * @testdox An approved order alone no longer answers for any gateway.
+	 *
+	 * Deliberate 0.1.6 behavior change, not a regression: this route used to
+	 * stand down whenever any order sat in PayPal's session slot, whatever it
+	 * was and whoever put it there. It now answers only for the order the
+	 * recorded verification minted; with nothing recorded, every request
+	 * defers to a real verify.
 	 */
-	public function test_supply_answers_for_paypal_with_approved_order(): void {
-		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
+	public function test_supply_defers_for_an_approved_order_nothing_here_scored(): void {
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-FOREIGN' ) ) );
 
 		$gateways = array( 'ppcp-gateway', 'ppcp-credit-card-gateway', 'ppcp-applepay', 'ppcp-googlepay', 'ppcp-axo-gateway' );
 
 		foreach ( $gateways as $gateway ) {
-			$this->assertSame(
-				FraudDecision::Allow,
+			$this->assertFalse(
 				$this->ask( 'blocks_checkout', $gateway, 'some-session-id' ),
-				"Expected an answer for gateway: $gateway"
+				"Expected a deferral for gateway: $gateway"
 			);
 		}
 	}
@@ -766,6 +776,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 				'session_id'  => 'blocked-session',
 				'stand_downs' => 0,
 				'decision'    => FraudDecision::Block,
+				'order_id'    => '',
 			),
 			WC()->session->get( '_fraud_protection_paypal_verification' ),
 			'A blocked create-order must still record the session it scored.'
@@ -814,11 +825,15 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_does_not_apply_a_recorded_allow_to_another_gateway(): void {
 		$this->score_create_order( 'paypal-scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-SCORED' ) );
 
 		// Spend the in-request marker: the cross-gateway request is a later one.
 		$this->ask( 'shortcode_checkout', '', '' );
 
-		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
+		// The scored order itself sits in the slot, so both the session-keyed
+		// and the order-bound reads would answer; only the gateway gate stands
+		// between them and this request.
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-SCORED' ) ) );
 
 		$this->assertFalse(
 			$this->ask( 'shortcode_checkout', 'cod', 'paypal-scored-session' ),
@@ -845,9 +860,13 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A block recorded for one session does not answer for another.
 	 *
-	 * Guards the read side independently of the write side. The record is keyed on
-	 * the session ID that was scored; a block must not become a property of the
-	 * shopper, which is the sticky-block behaviour deliberately removed in #73.
+	 * Guards the read side independently of the write side. The record is keyed
+	 * on the session ID that was scored; a block must not become a property of
+	 * the shopper, which is the sticky-block behaviour deliberately removed in
+	 * #73. The expectation changed with 0.1.6's order binding — deliberately,
+	 * not as a regression: this setup used to be answered with an allow by the
+	 * approved-order route; unbound, it now defers to a real verify, which
+	 * still proves the block did not stick.
 	 */
 	public function test_supply_does_not_apply_a_block_recorded_for_another_session(): void {
 		WC()->session->set(
@@ -858,13 +877,255 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 				'decision'    => FraudDecision::Block,
 			)
 		);
-		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-FOREIGN' ) ) );
 
-		$this->assertSame(
-			FraudDecision::Allow,
+		$this->assertFalse(
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'this-session' ),
-			'Another session being blocked says nothing about this one.'
+			'Another session being blocked says nothing about this one; it verifies for real.'
 		);
 	}
 
+	/*
+	|--------------------------------------------------------------------------
+	| Order binding
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox The order created by a verified create-order request is bound to its record.
+	 */
+	public function test_verify_binds_the_created_order_to_the_record(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$this->assertSame(
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+				'order_id'    => 'PP-123',
+			),
+			WC()->session->get( '_fraud_protection_paypal_verification' )
+		);
+	}
+
+	/**
+	 * @testdox The scored order's completion is answered with its decision, on a fresh session ID.
+	 *
+	 * The express flow: create-order scores and mints, Blackbox resets, the
+	 * buyer approves, and the completion leg presents an ID that cannot match
+	 * the record. The order in PayPal's slot is the identity that can.
+	 */
+	public function test_supply_answers_the_scored_orders_completion_with_its_decision(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		// Spend the in-request marker; the completion leg is a later request.
+		$this->ask( 'shortcode_checkout', '', '' );
+
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame(
+			FraudDecision::Allow,
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' )
+		);
+	}
+
+	/**
+	 * @testdox An approved order that is not the scored one is not answered for.
+	 */
+	public function test_supply_defers_when_the_approved_order_is_not_the_scored_one(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$this->ask( 'shortcode_checkout', '', '' );
+
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-999' ) ) );
+
+		$this->assertFalse(
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' ),
+			'A foreign order in the slot must be verified for real.'
+		);
+	}
+
+	/**
+	 * @testdox An unbound record does not answer for an approved order.
+	 *
+	 * Records written before the binding existed lack the order_id key; they
+	 * stay valid for the session-keyed reads but name no order, so the
+	 * approved-order route defers.
+	 */
+	public function test_supply_defers_for_an_unbound_record_with_an_approved_order(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+			)
+		);
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' ) );
+	}
+
+	/**
+	 * @testdox Two empty order IDs are not a match.
+	 */
+	public function test_supply_defers_when_neither_side_names_an_order(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+				'order_id'    => '',
+			)
+		);
+
+		$this->assertFalse(
+			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' ),
+			'No order on either side is not an identity match.'
+		);
+	}
+
+	/**
+	 * @testdox A slot order that cannot be read defers.
+	 */
+	public function test_supply_defers_when_the_slot_order_is_not_readable(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$this->ask( 'shortcode_checkout', '', '' );
+
+		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' ) );
+	}
+
+	/**
+	 * @testdox An order created without a verification in this request binds nothing.
+	 *
+	 * The shape of a server-side order creation — a subscription renewal, for
+	 * instance: PayPal's order-created hook fires, but no create-order
+	 * verification ran in the request, so there is nothing to bind to.
+	 */
+	public function test_bind_appends_nothing_without_a_verification_in_this_request(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'scored-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+				'order_id'    => '',
+			)
+		);
+
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->assertIsArray( $record );
+		$this->assertSame( '', $record['order_id'], 'A request that verified nothing must bind nothing.' );
+	}
+
+	/**
+	 * @testdox A blocked create-order binds nothing.
+	 */
+	public function test_bind_appends_nothing_on_a_blocked_create_order(): void {
+		$this->score_create_order( 'blocked-session', FraudDecision::Block );
+
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->assertIsArray( $record );
+		$this->assertSame( FraudDecision::Block, $record['decision'] );
+		$this->assertSame( '', $record['order_id'], 'The blocked request died before an order existed; nothing may bind.' );
+	}
+
+	/**
+	 * @testdox One verification binds only the one order its request creates.
+	 */
+	public function test_bind_covers_only_the_one_order_a_request_creates(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-1' ) );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-2' ) );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->assertIsArray( $record );
+		$this->assertSame( 'PP-1', $record['order_id'], 'The binding state is consumed on read.' );
+	}
+
+	/**
+	 * @testdox A record that is no longer this verification's is not bound.
+	 */
+	public function test_bind_ignores_a_record_for_another_session(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+
+		// The record was replaced before the order was created.
+		$replaced = array(
+			'session_id'  => 'another-session',
+			'stand_downs' => 0,
+			'decision'    => FraudDecision::Allow,
+			'order_id'    => '',
+		);
+		WC()->session->set( '_fraud_protection_paypal_verification', $replaced );
+
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$this->assertSame(
+			$replaced,
+			WC()->session->get( '_fraud_protection_paypal_verification' ),
+			'Another verification\'s record must not inherit this order.'
+		);
+	}
+
+	/**
+	 * @testdox Binding preserves the spent budget.
+	 */
+	public function test_bind_preserves_the_spent_budget(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'reused-session',
+				'stand_downs' => 1,
+				'decision'    => FraudDecision::Allow,
+				'order_id'    => '',
+			)
+		);
+
+		$this->score_create_order( 'reused-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-9' ) );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->assertIsArray( $record );
+		$this->assertSame( 1, $record['stand_downs'], 'Binding must not top the budget up.' );
+		$this->assertSame( 'PP-9', $record['order_id'] );
+	}
+
+}
+
+/**
+ * Serializable stand-in for PayPal's order entity: the one method read from it.
+ */
+class FakePayPalOrder {
+
+	/**
+	 * @param string $order_id The PayPal order ID.
+	 */
+	public function __construct( private string $order_id ) {}
+
+	/**
+	 * The PayPal order ID.
+	 *
+	 * @return string
+	 */
+	public function id(): string {
+		return $this->order_id;
+	}
 }
