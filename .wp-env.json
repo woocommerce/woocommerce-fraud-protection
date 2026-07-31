@@ -1,0 +1,17 @@
+{
+	"phpVersion": "8.1",
+	"plugins": [
+		"https://downloads.wordpress.org/plugin/woocommerce.zip",
+		"https://github.com/woocommerce/woocommerce-gateway-dummy/releases/latest/download/woocommerce-gateway-dummy.zip",
+		"https://downloads.wordpress.org/plugin/query-monitor.zip",
+		"."
+	],
+	"themes": [
+		"https://downloads.wordpress.org/theme/storefront.zip"
+	],
+	"config": {
+		"WP_DEBUG": true,
+		"WP_DEBUG_LOG": true,
+		"WP_DEBUG_DISPLAY": false
+	}
+}

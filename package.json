@@ -16,6 +16,15 @@
 		"build": "wp-scripts build",
 		"build:release": "wp-scripts build --mode=production && npm run plugin-zip",
 		"start": "wp-scripts start",
+		"env": "wp-env",
+		"env:start": "wp-env start",
+		"env:stop": "wp-env stop",
+		"env:clean": "wp-env clean",
+		"env:destroy": "wp-env destroy",
+		"env:update": "wp-env start --update",
+		"env:setup": "bash ./bin/wp-env-setup.sh",
+		"postenv:start": "bash ./bin/wp-env-setup.sh",
+		"postenv:update": "bash ./bin/wp-env-setup.sh",
 		"lint": "npm run lint:js && npm run lint:css && npm run lint:php",
 		"lint:js": "wp-scripts lint-js assets/js",
 		"lint:css": "wp-scripts lint-style assets/css --allow-empty-input",
@@ -33,6 +42,7 @@
 	},
 	"devDependencies": {
 		"@babel/runtime": "^7.24.0",
+		"@wordpress/env": "10.39.0",
 		"@wordpress/scripts": "^31.7.0",
 		"jquery": "^3.7.1"
 	},

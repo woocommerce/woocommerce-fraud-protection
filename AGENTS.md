@@ -26,6 +26,7 @@ When starting work, check these env vars. If unset, ask the user for the paths.
 ## Build & Development
 
 - `npm run build:release` — Production build + plugin zip
+- **Manual site testing:** Use the isolated `wp-env` store for the current checkout or worktree. Follow [README → Local dev site (wp-env)](README.md#local-dev-site-wp-env) for setup, ports, and cleanup. Use the live service steps there only for an end-to-end test; they create real production traffic.
 
 JS and CSS assets are served raw from `assets/` — no build step required during development.
 
@@ -67,7 +68,7 @@ PHPStan stubs for external dependencies (e.g. WC Stripe) live in `stubs/`. If yo
 
 ## Code Conventions
 
-**Strict types**: All PHP files MUST declare `declare(strict_types=1)`.
+**Strict types**: All PHP files MUST declare `declare(strict_types=1)`. WP-CLI `eval-file` scripts under `bin/` are the exception because WP-CLI evaluates them after another statement and PHP rejects the declaration.
 
 **Component wiring**: Classes receive dependencies via an `init()` method (not `__construct`) and register hooks in a `register()` method. `FraudProtectionController` is the single place that registers everything; the bootstrap (`PluginInitializer`) only resolves the controller itself. First-party components are injected into `FraudProtectionController::init()` and registered from `handle_init()` (deferred to the WordPress `init` hook); to add one: (1) create the class in `src/Internal/FraudProtectionPlugin/` (the default location for internal classes; put protectors, trackers, session, and rules-engine classes in the `Protectors/`, `Trackers/`, `Sessions/`, and `Rules/` subnamespaces respectively), (2) add a typed property + an `init()` parameter (the container auto-resolves and injects it), (3) call `$this->component->register()` in `handle_init()`. Payment gateway compat layers instead register from `register()` itself (at `woocommerce_loaded`, preserving their original timing); they're resolved on demand in `register_compat_layers()` rather than held as properties — add new ones there. The single `feature_is_enabled()` gate lives at the top of `register()`, so no component repeats it. Mark `init()` with `final` and `@internal`. The `__construct()` must have no required parameters. Hook priorities are intentional (e.g. priority 1 for early blocking, 999 for late filtering) — don't change them without understanding the flow.
 
