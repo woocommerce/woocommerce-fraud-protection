@@ -81,11 +81,15 @@ Three hooks let an extension (e.g. a payment gateway with a non-standard checkou
   apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMethodData $resolved, array $checkout_payment_fields );
   ```
 
-- **`woocommerce_fraud_protection_skip_session_verify`** — return `true` to tell the built-in checkout protectors to skip their verification for a flow that runs its own `SessionVerifier::verify_session()` call, so the same session is not verified twice.
+- **`woocommerce_fraud_protection_skip_session_verify`** — return a `FraudDecision` to skip verification and have the built-in checkout protectors apply that decision instead of calling Blackbox. For a flow that runs its own `SessionVerifier::verify_session()` earlier in the same payment attempt and still holds the decision it produced, so the attempt is not scored twice.
+
+  Return the decision the attempt actually received, not a blanket allow: if your earlier verification blocked, returning `FraudDecision::Allow` here would discard that block. Only `FraudDecision::Allow` and `FraudDecision::Block` are honoured; any other return — including the `false` default — leaves the session to be verified. A consumer with nothing to say for a given call returns the value it received, unchanged.
 
   ```php
-  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', bool $skip, string $source, array $request_data, string $session_id );
+  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', FraudDecision|false $decision, string $source, array $request_data, string $session_id );
   ```
+
+  *Since 0.1.6 a truthy return no longer skips. Skipping without saying what the decision was turned every deferral into an allow, so the skip now carries the decision.*
 
 - **`woocommerce_fraud_protection_enqueue_blackbox_scripts`** — return `true` to load the Blackbox scripts on a page the plugin would not otherwise target (e.g. product or cart pages that render express-checkout buttons).
 

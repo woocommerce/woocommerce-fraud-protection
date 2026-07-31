@@ -76,6 +76,17 @@ class SessionVerifier {
 	private PaymentDataResolver $payment_data_resolver;
 
 	/**
+	 * The effective session ID of the last completed verification.
+	 *
+	 * Empty when the last {@see verify_session()} call completed none: a
+	 * consumer supplied the decision, or the pipeline threw and the call
+	 * failed open.
+	 *
+	 * @var string
+	 */
+	private string $last_verified_session_id = '';
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -151,31 +162,58 @@ class SessionVerifier {
 	 * @return FraudDecision The final decision: Allow or Block.
 	 */
 	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
+		$this->last_verified_session_id = '';
+
 		try {
 			/**
-			 * Filters whether to skip session verification.
+			 * Filters whether to skip verification by supplying the fraud decision.
 			 *
-			 * Extensions that handle their own verification (e.g. PayPal express
-			 * checkout via PayPalCompat) can return true to skip the redundant
-			 * verify call from standard protectors.
-			 *
-			 * Fail-open: truthy values skip verification (session is allowed).
+			 * Returning an actionable {@see FraudDecision} applies it as the
+			 * decision and makes no Blackbox call. Any other return — including
+			 * the untouched `false` default — verifies. A consumer with nothing
+			 * to say returns the value it received.
 			 *
 			 * @since 0.1.0
+			 * @since 0.1.6 Skipping requires returning the FraudDecision to
+			 *              apply; a truthy return no longer skips.
 			 *
-			 * @param bool   $skip         Whether to skip verification. Default false.
-			 * @param string $source       Source identifier (e.g. 'blocks_checkout').
-			 * @param array  $request_data Request data with payment_method, payment_data, etc.
-			 * @param string $session_id   The Blackbox session ID being verified.
+			 * @param FraudDecision|false $decision     The decision to apply, when a consumer supplies one. Default false, which verifies.
+			 * @param string              $source       Source identifier (e.g. 'blocks_checkout').
+			 * @param array               $request_data Request data with payment_method, payment_data, etc.
+			 * @param string              $session_id   The Blackbox session ID being verified.
 			 */
-			$skip = (bool) apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $session_id );
+			$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $session_id );
 
-			if ( $skip ) {
+			if ( $supplied instanceof FraudDecision && in_array( $supplied, FraudDecision::ACTIONABLE, true ) ) {
 				FraudProtectionController::log(
 					'info',
-					sprintf( 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source )
+					sprintf( 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source ),
+					array(
+						'event_source' => $source,
+						'session_id'   => $session_id,
+						'order_id'     => $order_id,
+						'decision'     => $supplied->value,
+					)
 				);
-				return FraudDecision::Allow;
+
+				return $supplied;
+			}
+
+			// For the miscall warning below; the declared filter type is a
+			// contract a miscalling consumer can break.
+			$returned = $supplied instanceof FraudDecision ? $supplied->value : get_debug_type( $supplied );
+
+			if ( false !== $supplied ) {
+				FraudProtectionController::log(
+					'warning',
+					'`woocommerce_fraud_protection_skip_session_verify` filter returned a non-decision; verifying',
+					array(
+						'event_source' => $source,
+						'session_id'   => $session_id,
+						'filter'       => 'woocommerce_fraud_protection_skip_session_verify',
+						'returned'     => $returned,
+					)
+				);
 			}
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
@@ -242,6 +280,7 @@ class SessionVerifier {
 			// The result carries the effective session ID (response-preferred,
 			// resolved by ApiClient): the one /report will attach the outcome to.
 			$this->persist_session_id( $result->session_id, $order_id );
+			$this->last_verified_session_id = $result->session_id;
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'error',
@@ -269,6 +308,22 @@ class SessionVerifier {
 		}
 
 		return $decision;
+	}
+
+	/**
+	 * The effective session ID of the last completed verification.
+	 *
+	 * The ID the verification resolved and persisted — the one its outcome is
+	 * attached to. A caller recording a verification it asked for must key the
+	 * record by this ID, not by the one it sent.
+	 *
+	 * @since 0.1.6
+	 *
+	 * @return string The session ID, or empty string when the last
+	 *                {@see verify_session()} call completed no verification.
+	 */
+	public function last_verified_session_id(): string {
+		return $this->last_verified_session_id;
 	}
 
 	/**

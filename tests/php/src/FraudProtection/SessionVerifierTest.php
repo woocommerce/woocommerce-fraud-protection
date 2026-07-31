@@ -683,10 +683,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox verify_session() skips verification and returns ALLOW when filter returns true.
+	 * @testdox verify_session() applies an ALLOW supplied by the filter without calling the API.
 	 */
-	public function test_verify_session_skips_when_filter_returns_true(): void {
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', '__return_true' );
+	public function test_verify_session_applies_an_allow_supplied_by_the_filter(): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				return FraudDecision::Allow;
+			}
+		);
 
 		$this->api_client
 			->expects( $this->never() )
@@ -695,41 +700,44 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'info', 'Session verification skipped by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
+		$this->assertLogged( 'info', 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
 	}
 
 	/**
-	 * @testdox verify_session() proceeds normally when filter returns false.
+	 * @testdox verify_session() applies a BLOCK supplied by the filter without calling the API.
+	 *
+	 * The whole reason this filter carries a decision rather than a boolean: a
+	 * consumer that already scored this attempt and got a block must be able to say
+	 * so. A boolean could only ever mean "do not verify", which reads as allow.
 	 */
-	public function test_verify_session_proceeds_when_filter_returns_false(): void {
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', '__return_false' );
-
-		$this->data_collector
-			->method( 'get_collected_data' )
-			->willReturn( array() );
-
-		$this->api_client
-			->expects( $this->once() )
-			->method( 'verify' )
-			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
-
-		$this->decision_handler
-			->method( 'apply_decision' )
-			->willReturn( FraudDecision::Allow );
-
-		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
-
-		$this->assertSame( FraudDecision::Allow, $result );
-	}
-
-	/**
-	 * @testdox verify_session() proceeds normally when filter returns non-bool falsy value.
-	 */
-	public function test_verify_session_proceeds_when_filter_returns_non_bool(): void {
+	public function test_verify_session_applies_a_block_supplied_by_the_filter(): void {
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
-				return null;
+				return FraudDecision::Block;
+			}
+		);
+
+		$this->api_client
+			->expects( $this->never() )
+			->method( 'verify' );
+
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Block, $result );
+	}
+
+	/**
+	 * @testdox verify_session() verifies normally when the filter passes its default through.
+	 *
+	 * The standard WordPress shape for a consumer with nothing to say: return the
+	 * value received. Skipping takes a decision; not skipping takes nothing.
+	 */
+	public function test_verify_session_proceeds_when_filter_passes_the_default_through(): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function ( $decision ) {
+				return $decision;
 			}
 		);
 
@@ -749,6 +757,129 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
 
 		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
+	 * @testdox verify_session() ignores a malformed filter return and verifies.
+	 *
+	 * A bool is the shape this filter's pre-0.1.6 contract used. It must not be
+	 * honoured: `true` would otherwise mean "allow", which is the conflation the
+	 * decision-carrying contract removed. Null is not a signal either — a
+	 * consumer with nothing to say passes the default through instead.
+	 *
+	 * @dataProvider malformed_filter_returns
+	 *
+	 * @param mixed $returned What the filter hands back.
+	 */
+	public function test_verify_session_ignores_a_malformed_filter_return( $returned ): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () use ( $returned ) {
+				return $returned;
+			}
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'test-session', 'blocks_checkout' ) );
+	}
+
+	/**
+	 * @testdox verify_session() warns about a malformed filter return, wherever in the chain it was made.
+	 *
+	 * The typed PayPalCompat callback already fails loudly for garbage put in
+	 * the chain before it; this warning covers the rest of the chain, so a
+	 * miscalling consumer is named in the log regardless of its priority.
+	 */
+	public function test_verify_session_warns_about_a_malformed_filter_return(): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				return 'allow';
+			}
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertLogged(
+			'warning',
+			'`woocommerce_fraud_protection_skip_session_verify` filter returned a non-decision',
+			array( 'returned' => 'string' )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() does not warn when the filter chain passes the default through.
+	 *
+	 * The untouched `false` seed is the one non-decision that is not a miscall;
+	 * warning on it would flag every unfiltered checkout.
+	 */
+	public function test_verify_session_does_not_warn_about_the_untouched_default(): void {
+		$spy = $this->spy_on_controller_logging();
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$warnings = array_filter(
+			$spy->entries,
+			function ( array $entry ): bool {
+				return false !== strpos( $entry['message'], 'returned a non-decision' );
+			}
+		);
+
+		$this->assertSame( array(), $warnings, 'The false seed must not be reported as a miscall.' );
+	}
+
+	/**
+	 * Returns that must never stand in for a verdict.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function malformed_filter_returns(): array {
+		return array(
+			'true (the pre-0.1.6 skip shape)' => array( true ),
+			'false'                           => array( false ),
+			'null'                            => array( null ),
+			'the decision as a string'        => array( 'allow' ),
+			'a non-actionable decision'       => array( FraudDecision::Challenge ),
+			'an unrelated object'             => array( new \stdClass() ),
+		);
 	}
 
 	/**
@@ -779,6 +910,96 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw' );
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| last_verified_session_id() Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox last_verified_session_id() carries the effective ID of a completed verification.
+	 *
+	 * The effective ID is the one the verify resolved — which need not be the
+	 * one the caller sent — and the one a caller recording the verification
+	 * must key its record by.
+	 */
+	public function test_last_verified_session_id_returns_the_resolved_id(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, 'resolved-id' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'sent-id', 'blocks_checkout' );
+
+		$this->assertSame( 'resolved-id', $this->sut->last_verified_session_id() );
+	}
+
+	/**
+	 * @testdox last_verified_session_id() is empty after a supplied decision, not a stale earlier ID.
+	 */
+	public function test_last_verified_session_id_is_empty_after_a_supplied_decision(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, 'resolved-id' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		// A completed verification first, so a stale ID would be there to leak.
+		$this->sut->verify_session( 'sent-id', 'blocks_checkout' );
+
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				return FraudDecision::Block;
+			}
+		);
+
+		$this->sut->verify_session( 'another-id', 'blocks_checkout' );
+
+		$this->assertSame( '', $this->sut->last_verified_session_id() );
+	}
+
+	/**
+	 * @testdox last_verified_session_id() is empty after a verification that failed open.
+	 */
+	public function test_last_verified_session_id_is_empty_after_a_failed_verification(): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->will(
+				$this->onConsecutiveCalls(
+					$this->returnValue( array() ),
+					$this->throwException( new \RuntimeException( 'Collector exploded' ) )
+				)
+			);
+
+		$this->api_client
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, 'resolved-id' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		// A completed verification first, so a stale ID would be there to leak.
+		$this->sut->verify_session( 'sent-id', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'another-id', 'blocks_checkout' ) );
+		$this->assertSame( '', $this->sut->last_verified_session_id() );
 	}
 
 }
