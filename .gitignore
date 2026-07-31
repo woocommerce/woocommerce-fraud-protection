@@ -51,6 +51,9 @@ wp-config.php
 vendor/
 node_modules/
 
+# wp-env local override (per-checkout port / testsPort)
+.wp-env.override.json
+
 # PHPStan
 tmp/
 

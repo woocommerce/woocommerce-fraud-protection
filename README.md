@@ -21,6 +21,80 @@ npm run build:release   # production build plus a distributable plugin zip
 
 The assets in `assets/` are served as-is, so a build step is not required for everyday development.
 
+## Local dev site (wp-env)
+
+With Docker running, start a test store for the current checkout or worktree:
+
+```bash
+npm run env:start
+```
+
+Open the store URL reported by `env:start` (default: http://localhost:8888). Add `/wp-admin` for the admin (`admin` / `password`). The first start seeds a test store. Later starts keep its data.
+
+```bash
+npm run env:stop      # stop the containers (keeps data)
+npm run env:destroy   # remove the containers and data
+```
+
+Each worktree gets separate containers. To run several at once, add a gitignored `.wp-env.override.json` to each worktree with unique ports:
+
+```json
+{ "port": 8890, "testsPort": 8891 }
+```
+
+Live service testing is disabled by default. Local UI, checkout, hook, and fail-open testing still work.
+
+### Live service testing
+
+Connect the environment only when you need an end-to-end test.
+
+> **Warning:** This creates a real WordPress.com blog and sends test traffic to the production fraud service. Use test data only. Change the default user passwords before you open the public tunnel, and close the tunnel after connecting.
+
+Give a durable environment its own hostname. A temporary environment can reuse a hostname after the previous environment is disconnected or no longer needed. Connecting another environment through the same hostname replaces the first connection; the first environment then fails open, so a live test can appear to pass without a live verdict.
+
+1. Start the environment and change the admin and customer passwords:
+
+   ```bash
+   npm run env:start
+   npm run env -- run cli wp user update admin customer --user_pass='<temporary-strong-password>'
+   ```
+
+2. Open a public HTTPS tunnel to the port reported by `env:start` using a tool like Jurassic Tube. It must preserve the public hostname in the `Host` header.
+
+3. Connect the site with the tunnel origin. Use `confirm-unused-hostname` only after you confirm that the hostname has never connected another site.
+
+   ```bash
+   npm run env -- run cli wp --user=1 eval-file \
+     "wp-content/plugins/$(basename "$PWD")/bin/jetpack-connect.php" \
+     https://<tunnel-hostname> confirm-unused-hostname
+   ```
+
+   If the hostname was used before, the script stops and prints an exact `force-hostname-takeover=<blog-id>` argument. Use it only when the previous connection can be replaced.
+
+4. Close the tunnel with your tunnel tool. The connection remains active across `env:stop` and `env:start`.
+
+No separate enrollment is required. Complete a checkout with test data to exercise the live path.
+
+For the default Checkout block, use the order ID from the confirmation page to inspect that attempt:
+
+```bash
+npm run env -- run cli wp db query \
+  "SELECT decision, trigger_type FROM wp_wc_fraud_protection_sessions WHERE order_id = <order-id> ORDER BY id DESC LIMIT 1;"
+```
+
+With no matching merchant rule, `blackbox` means verification returned a recognized service verdict and `verify_error` means no usable verdict was received and verification failed open. A rule-triggered row cannot confirm the service result. No row means this check could not confirm verification for that order. Shortcode checkout cannot use this query because it verifies before the order is created.
+
+#### Disconnect
+
+Before removing a worktree, disconnect, run `npm run env:destroy`, and then remove it. Disconnect before `npm run env:clean -- development` or `npm run env:clean -- all`; run `npm run env:start` afterward to seed the clean site. If you clean or destroy the site first, its WordPress.com blog is orphaned.
+
+```bash
+npm run env -- run cli wp --user=1 eval-file \
+  "wp-content/plugins/$(basename "$PWD")/bin/jetpack-disconnect.php"
+```
+
+If disconnect fails, keep the environment and follow the recovery instructions from the script. Do not clean or destroy the development environment until the disconnect succeeds.
+
 ## Tests
 
 Run the whole suite (smoke, PHP, and JavaScript):
