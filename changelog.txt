@@ -1,5 +1,18 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-08-03 - version 0.1.6
+* Added - Merchant allow and block rules matched on a shopper's email address or IP address, with no management screen yet; block rules apply even in learning mode.
+* Added - Session log recording every checked session with the decision received and the outcome applied, pruned automatically after 30 days.
+* Fixed - A blocked checkout attempt no longer follows the shopper for the rest of their session; each attempt is checked again, so a false positive is recoverable.
+* Fixed - Orders are verified even when the cart holds a value the request cannot encode; the value is left out instead of the check.
+* Fixed - Cart item quantities are recorded as WooCommerce supplies them regardless of their type.
+* Updated - PayPal express and card-fields decisions are bound to the PayPal order they were made for, so one decision cannot answer for another order or be reused more than one time.
+* Updated - Resolved payment data classes and the blocked-session message moved to the public API, so payment gateway integrations no longer depend on internal classes.
+* Updated - Verify requests send the visitor IP and headers on every check, and the session ID the service returns is used for later reporting.
+* Dev - The decision filter is renamed from woocommerce_fraud_protection_decision to woocommerce_fraud_protection_automated_decision, since it overrides the automated verdict only and never a merchant rule; the new woocommerce_fraud_protection_rule_applied action reports rule-decided outcomes.
+* Dev - woocommerce_fraud_protection_skip_session_verify now requires a decision object to apply as its return value; any other value results in a normal check.
+* Dev - FraudProtectionReporter::report() takes report_id (required) and occurred_at parameters, matching the new service contract.
+
 2026-07-03 - version 0.1.5
 * Fixed - Fatal error in cart event tracking on stores that allow decimal product quantities; quantity tracking now supports whole and fractional values.
 * Updated - Cart event tracking callbacks now fail open and log unexpected errors instead of interrupting shopper requests.
