@@ -184,12 +184,19 @@ Enqueue your integration script with `wc-fraud-protection-blackbox-init` as a de
 
 ```js
 ( function () {
+	// When your gateway is about to submit, acquire a session ID and attach it.
+	// Check for acquireSessionId at that moment — not when your script loads —
+	// and fail open when it is missing: window.wcFraudProtection always exists
+	// on targeted pages (it carries `config`), but the API methods are attached
+	// only once the Blackbox SDK has loaded, possibly after your script runs,
+	// or never (e.g. content blockers).
 	const fp = window.wcFraudProtection;
-	if ( ! fp ) {
+	if ( ! fp || typeof fp.acquireSessionId !== 'function' ) {
+		// Fail-open: send the request without a session ID. Never block the
+		// payment because fraud protection is unavailable.
 		return;
 	}
 
-	// When your gateway is about to submit, acquire a session ID and attach it:
 	fp.acquireSessionId().then( function ( sessionId ) {
 		requestBody[ fp.config.sessionIdField ] = sessionId;
 		// ... send the request, then reset for the next attempt:

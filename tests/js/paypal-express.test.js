@@ -97,6 +97,70 @@ describe( 'paypal-express fetch interceptor', () => {
 			expect( fetchCalls[ 0 ].init.body ).toBe( 'not-json' );
 		} );
 
+		it( 'passes ppc-create-order through untouched when acquireSessionId is missing', async () => {
+			// wp_localize_script always prints the config object, even when the
+			// Blackbox SDK never loaded and blackbox-init.js attached no methods.
+			window.wcFraudProtection = {
+				config: { sessionIdField: 'wc_fraud_protection_session_id' },
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/paypal-express' );
+			} );
+
+			const body = JSON.stringify( { nonce: 'abc' } );
+			const response = await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body }
+			);
+
+			expect( response.ok ).toBe( true );
+			expect( fetchCalls ).toHaveLength( 1 );
+			expect( fetchCalls[ 0 ].init.body ).toBe( body );
+		} );
+
+		it( 'intercepts when acquireSessionId is attached after the interceptor loads', async () => {
+			window.wcFraudProtection = {
+				config: { sessionIdField: 'wc_fraud_protection_session_id' },
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/paypal-express' );
+			} );
+
+			// Simulate blackbox-init.js executing later (e.g. deferred by a
+			// script optimizer) and attaching the API after this script ran.
+			window.wcFraudProtection.acquireSessionId = mockAcquireSessionId;
+			window.wcFraudProtection.reset = jest.fn();
+
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: JSON.stringify( { nonce: 'abc' } ) }
+			);
+
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+			const sentBody = JSON.parse( fetchCalls[ 0 ].init.body );
+			expect( sentBody.wc_fraud_protection_session_id ).toBe(
+				'test-session-abc'
+			);
+		} );
+
+		it( 'does not reject the CreateOrder fetch when reset is missing', async () => {
+			window.wcFraudProtection = {
+				config: { sessionIdField: 'wc_fraud_protection_session_id' },
+				acquireSessionId: mockAcquireSessionId,
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/paypal-express' );
+			} );
+
+			const response = await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: JSON.stringify( {} ) }
+			);
+
+			expect( response.ok ).toBe( true );
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+		} );
+
 		it( 'does nothing when wcFraudProtection is not available', async () => {
 			// Don't call setupAndLoad — wcFraudProtection is not set.
 			const savedFetch = window.fetch;
