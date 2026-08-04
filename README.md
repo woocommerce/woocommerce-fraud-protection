@@ -183,28 +183,34 @@ On pages where the Blackbox scripts are loaded, the plugin exposes a small API o
 Enqueue your integration script with `wc-fraud-protection-blackbox-init` as a dependency so it runs after the API is set up, and use the `woocommerce_fraud_protection_enqueue_blackbox_scripts` filter (above) to ensure the scripts load on your page:
 
 ```js
-( function () {
-	// When your gateway is about to submit, acquire a session ID and attach it.
-	// Check for acquireSessionId at that moment — not when your script loads —
-	// and fail open when it is missing: window.wcFraudProtection always exists
-	// on targeted pages (it carries `config`), but the API methods are attached
-	// only once the Blackbox SDK has loaded, possibly after your script runs,
-	// or never (e.g. content blockers).
+// In your gateway's submit path, immediately before sending the request —
+// not when your script loads: window.wcFraudProtection always exists on
+// targeted pages (it carries `config`), but the API methods are attached
+// only once the Blackbox SDK has loaded, possibly after your script runs,
+// or never (e.g. content blockers).
+function withSessionId( requestBody ) {
 	const fp = window.wcFraudProtection;
+
 	if ( ! fp || typeof fp.acquireSessionId !== 'function' ) {
-		// Fail-open: send the request without a session ID. Never block the
-		// payment because fraud protection is unavailable.
-		return;
+		// Fail-open: send the request without a session ID. Never block
+		// the payment because fraud protection is unavailable.
+		return Promise.resolve( requestBody );
 	}
 
-	fp.acquireSessionId().then( function ( sessionId ) {
+	return fp.acquireSessionId().then( function ( sessionId ) {
 		requestBody[ fp.config.sessionIdField ] = sessionId;
-		// ... send the request, then reset for the next attempt:
-		fp.reset();
+		return requestBody;
 	} );
-} )();
+}
+
+withSessionId( requestBody ).then( function ( body ) {
+	// ... send the request, then reset for the next attempt:
+	if ( window.wcFraudProtection && window.wcFraudProtection.reset ) {
+		window.wcFraudProtection.reset();
+	}
+} );
 ```
 
-The plugin owns only this shared Blackbox infrastructure (the SDK loader, the `wc-fraud-protection-blackbox-init` init script, and the localized `config`). A gateway's own interceptor script is owned and enqueued by the gateway — from its own plugin URL and version — not by this plugin.
+The plugin owns this shared Blackbox infrastructure (the SDK loader, the `wc-fraud-protection-blackbox-init` init script, and the localized `config`). A third-party gateway's own interceptor script is owned and enqueued by the gateway — from its own plugin URL and version; the one exception is the PayPal interceptor (`paypal-express.js`), which this plugin ships and enqueues itself.
 
 All the code in the `src/Internal/` directory (`Automattic\WooCommerce\Internal` as the root namespace) is for **exclusive internal usage** of the plugin and **MUST NOT** be used by other plugins (or otherwise from outside of this plugin): backwards compatibility for this code across plugin versions is not guaranteed.

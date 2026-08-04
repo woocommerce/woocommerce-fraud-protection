@@ -1,7 +1,7 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 2026-08-04 - version 0.1.7
-* Fixed - PayPal payments no longer fail for shoppers whose browsers block the fraud protection script; the payment now goes through without the fraud check instead.
+* Fixed - PayPal payments no longer fail for shoppers whose browsers block the fraud protection script; the payment is now checked without the browser session data instead.
 
 2026-08-03 - version 0.1.6
 * Added - Merchant allow and block rules matched on a shopper's email address or IP address, with no management screen yet; block rules apply even in learning mode.
