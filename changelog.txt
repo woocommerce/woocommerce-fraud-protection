@@ -1,6 +1,6 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-2026-08-04 - version 0.1.7
+2026-08-05 - version 0.1.7
 * Fixed - PayPal payments no longer fail for shoppers whose browsers block the fraud protection script; the payment is now checked without the browser session data instead.
 
 2026-08-03 - version 0.1.6
