@@ -34,12 +34,20 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	private $logging_spy = null;
 
 	/**
+	 * Original values of server variables changed by a test.
+	 *
+	 * @var array<string, array{exists: bool, value: mixed}>
+	 */
+	private array $original_server_variables = array();
+
+	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
 		$this->forwarded_platform_logs = array();
+		$this->original_server_variables = array();
 
 		$this->register_legacy_proxy_function_mocks(
 			array(
@@ -73,12 +81,68 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	 * Runs after each test.
 	 */
 	public function tearDown(): void {
+		$this->restore_server_variables();
 		$this->remove_controller_logging_spy();
 
 		$this->reset_legacy_proxy_mocks();
 		$this->forwarded_platform_logs = array();
 
 		parent::tearDown();
+	}
+
+	/**
+	 * Set server variables and restore their original state after the test.
+	 *
+	 * @param array<string, mixed> $variables Server variables keyed by name.
+	 */
+	protected function set_server_variables( array $variables ): void {
+		foreach ( $variables as $key => $value ) {
+			$this->remember_server_variable( $key );
+			$_SERVER[ $key ] = $value;
+		}
+	}
+
+	/**
+	 * Unset server variables and restore their original state after the test.
+	 *
+	 * @param string[] $keys Server variable names.
+	 */
+	protected function unset_server_variables( array $keys ): void {
+		foreach ( $keys as $key ) {
+			$this->remember_server_variable( $key );
+			unset( $_SERVER[ $key ] );
+		}
+	}
+
+	/**
+	 * Remember a server variable before its first change in a test.
+	 *
+	 * @param string $key Server variable name.
+	 */
+	private function remember_server_variable( string $key ): void {
+		if ( array_key_exists( $key, $this->original_server_variables ) ) {
+			return;
+		}
+
+		$this->original_server_variables[ $key ] = array(
+			'exists' => array_key_exists( $key, $_SERVER ),
+			'value'  => $_SERVER[ $key ] ?? null,
+		);
+	}
+
+	/**
+	 * Restore server variables changed through the test helpers.
+	 */
+	private function restore_server_variables(): void {
+		foreach ( $this->original_server_variables as $key => $original ) {
+			if ( $original['exists'] ) {
+				$_SERVER[ $key ] = $original['value'];
+			} else {
+				unset( $_SERVER[ $key ] );
+			}
+		}
+
+		$this->original_server_variables = array();
 	}
 
 	/**

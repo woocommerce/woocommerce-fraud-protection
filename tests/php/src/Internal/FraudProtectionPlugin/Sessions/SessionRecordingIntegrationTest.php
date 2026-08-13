@@ -16,6 +16,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
 /**
  * Integration test for the session recording pipeline: a verify call whose
@@ -26,19 +27,12 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 	/**
-	 * The REMOTE_ADDR value in place before the test.
-	 *
-	 * @var ?string
-	 */
-	private $original_remote_addr;
-
-	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->original_remote_addr = $_SERVER['REMOTE_ADDR'] ?? null;
+		$this->unset_server_variables( array( 'REMOTE_ADDR' ) );
 
 		$schema_manager = wc_get_container()->get( SchemaManager::class );
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -67,12 +61,6 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		if ( function_exists( 'WC' ) && WC()->session instanceof \WC_Session ) {
 			WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, null );
-		}
-
-		if ( is_null( $this->original_remote_addr ) ) {
-			unset( $_SERVER['REMOTE_ADDR'] );
-		} else {
-			$_SERVER['REMOTE_ADDR'] = $this->original_remote_addr;
 		}
 
 		parent::tearDown();
@@ -113,15 +101,17 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	/**
 	 * A SessionVerifier whose ApiClient transport returns the given response body.
 	 *
-	 * @param array $response_data The `data` object of the API response body.
+	 * @param array     $response_data The `data` object of the API response body.
+	 * @param ?callable $capture       Optional callback for the request arguments and body.
 	 * @return SessionVerifier
 	 */
-	private function a_session_verifier_receiving( array $response_data ): SessionVerifier {
+	private function a_session_verifier_receiving( array $response_data, ?callable $capture = null ): SessionVerifier {
 		return $this->a_session_verifier_with_transport(
 			array(
 				'response' => array( 'code' => 200 ),
 				'body'     => wp_json_encode( array( 'data' => $response_data ) ),
-			)
+			),
+			$capture
 		);
 	}
 
@@ -129,16 +119,26 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * A SessionVerifier whose ApiClient transport returns the given raw result.
 	 *
 	 * @param array|\WP_Error $transport_result The value the stubbed transport returns.
+	 * @param ?callable        $capture          Optional callback for the request arguments and body.
 	 * @return SessionVerifier
 	 */
-	private function a_session_verifier_with_transport( $transport_result ): SessionVerifier {
+	private function a_session_verifier_with_transport( $transport_result, ?callable $capture = null ): SessionVerifier {
 		$api_client = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request' ) )
 			->getMock();
 
-		$api_client->method( 'jetpack_remote_request' )->willReturn( $transport_result );
+		$api_client->method( 'jetpack_remote_request' )->willReturnCallback(
+			function ( array $request_args, string $body ) use ( $transport_result, $capture ) {
+				if ( null !== $capture ) {
+					$capture( $request_args, $body );
+				}
+
+				return $transport_result;
+			}
+		);
 
 		$container = wc_get_container();
+		$api_client->init( $container->get( VisitorIpResolver::class ) );
 		$verifier  = new SessionVerifier();
 		$verifier->init(
 			$container->get( SessionDataCollector::class ),
@@ -290,7 +290,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @return \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule
 	 */
 	private function a_rule_matching_the_visitor_ip( FraudDecision $action ) {
-		$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
+		$this->set_server_variables( array( 'REMOTE_ADDR' => '203.0.113.7' ) );
 
 		return wc_get_container()->get( RuleStore::class )->create_rule(
 			$action,
@@ -307,12 +307,22 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_merchant_block_rule_enforces_and_records_block_rule_trigger(): void {
 		$rule = $this->a_rule_matching_the_visitor_ip( FraudDecision::Block );
+		$this->set_server_variables(
+			array(
+				'HTTP_X_REAL_IP'       => '198.51.100.1',
+				'HTTP_X_FORWARDED_FOR' => '198.51.100.2',
+			)
+		);
+		$captured_body = null;
 
 		$verifier = $this->a_session_verifier_receiving(
 			array(
 				'decision'   => 'allow',
 				'risk_score' => 0.13,
-			)
+			),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
 		);
 
 		$decision = $verifier->verify_session( 'integration-session-6', 'blocks_checkout' );
@@ -325,6 +335,8 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'blocked', $row['final_status'] );
 		$this->assertSame( 'block_rule', $row['trigger_type'] );
 		$this->assertSame( $rule->id, (int) $row['matched_rule_id'] );
+		$this->assertSame( '203.0.113.7', $captured_body['visitor_ip'] );
+		$this->assertSame( '203.0.113.7', $row['ip'] );
 	}
 
 	/**
@@ -358,8 +370,21 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox A session matching no merchant rule keeps the blackbox trigger and a null matched rule id.
 	 */
 	public function test_unmatched_session_records_null_matched_rule_id(): void {
-		$this->a_rule_matching_the_visitor_ip( FraudDecision::Block );
-		$_SERVER['REMOTE_ADDR'] = '198.51.100.1';
+		$this->set_server_variables(
+			array(
+				'REMOTE_ADDR'    => '203.0.113.7',
+				'HTTP_X_REAL_IP' => '198.51.100.1',
+			)
+		);
+
+		wc_get_container()->get( RuleStore::class )->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '198.51.100.1',
+			)
+		);
 
 		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'allow' ) );
 		$verifier->verify_session( 'integration-session-8', 'blocks_checkout' );
@@ -368,5 +393,6 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->assertNotNull( $row );
 		$this->assertSame( 'blackbox', $row['trigger_type'] );
 		$this->assertNull( $row['matched_rule_id'] );
+		$this->assertSame( '203.0.113.7', $row['ip'] );
 	}
 }

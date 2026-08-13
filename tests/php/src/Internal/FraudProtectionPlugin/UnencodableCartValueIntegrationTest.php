@@ -12,6 +12,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CartEventTracker;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
 /**
  * End-to-end cover for a cart value the JSON encoder cannot carry.
@@ -362,6 +363,7 @@ class UnencodableCartValueIntegrationTest extends FraudProtectionUnitTestCase {
 		$api_client = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request' ) )
 			->getMock();
+		$api_client->init( wc_get_container()->get( VisitorIpResolver::class ) );
 		$api_client->method( 'jetpack_remote_request' )->willReturnCallback(
 			function ( array $request_args, string $body ) use ( &$transport_calls, &$captured_body ) {
 				++$transport_calls;

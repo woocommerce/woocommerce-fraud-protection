@@ -48,21 +48,6 @@ class SessionInfo {
 	}
 
 	/**
-	 * Get client IP address using WooCommerce geolocation utility.
-	 *
-	 * Public for use by ApiClient as the top-level visitor_ip on every verify.
-	 *
-	 * @return ?string IP address or null.
-	 */
-	public static function get_ip_address(): ?string {
-		if ( class_exists( 'WC_Geolocation' ) ) {
-			$ip = \WC_Geolocation::get_ip_address();
-			return $ip ? $ip : null;
-		}
-		return null;
-	}
-
-	/**
 	 * Get WordPress user email (logged-in users only).
 	 *
 	 * Billing email is already available in customer.billing_email,

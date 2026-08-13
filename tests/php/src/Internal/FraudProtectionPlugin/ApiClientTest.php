@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use WP_Error;
 
 /**
@@ -27,13 +28,16 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	/**
 	 * The System Under Test.
 	 *
-	 * Used directly only by tests that exercise the real default transport
-	 * (Jetpack guards / the request-callback filter). Tests that simulate an API
-	 * response build a transport-stubbed client via {@see api_client_returning()}.
-	 *
 	 * @var ApiClient
 	 */
 	private ApiClient $sut;
+
+	/**
+	 * Mock visitor IP resolver.
+	 *
+	 * @var VisitorIpResolver&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $visitor_ip_resolver;
 
 	/**
 	 * Set up test fixtures.
@@ -41,7 +45,11 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->sut = new ApiClient();
+		$this->visitor_ip_resolver = $this->createMock( VisitorIpResolver::class );
+		$this->sut                 = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
+			->getMock();
+		$this->sut->init( $this->visitor_ip_resolver );
 
 		update_option( 'jetpack_options', array( 'id' => 12345 ) );
 		update_option( 'jetpack_private_options', array( 'blog_token' => 'IAM.AJETPACKBLOGTOKEN' ) );
@@ -53,35 +61,32 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		delete_option( 'jetpack_options' );
 		delete_option( 'jetpack_private_options' );
+
 		parent::tearDown();
 	}
 
 	/**
-	 * Build an ApiClient whose Blackbox transport is stubbed to return $response.
+	 * Configure the ApiClient transport to return $response.
 	 *
-	 * Overrides jetpack_remote_request() so no real request leaves the process.
 	 * When given, $capture receives the request args and JSON body the client
-	 * built, so request construction can still be asserted.
+	 * built.
 	 *
 	 * @param array<string, mixed>|WP_Error $response The stubbed transport response.
 	 * @param ?callable                     $capture  Optional callback( array $request_args, string $body ).
 	 * @return ApiClient
 	 */
 	private function api_client_returning( $response, ?callable $capture = null ): ApiClient {
-		$sut = $this->getMockBuilder( ApiClient::class )
-			->onlyMethods( array( 'jetpack_remote_request' ) )
-			->getMock();
-
-		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+		$this->sut->method( 'jetpack_remote_request' )->willReturnCallback(
 			function ( array $request_args, string $body ) use ( $response, $capture ) {
 				if ( null !== $capture ) {
 					$capture( $request_args, $body );
 				}
+
 				return $response;
 			}
 		);
 
-		return $sut;
+		return $this->sut;
 	}
 
 	/**
@@ -254,8 +259,10 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_verify_fails_open_when_blog_id_not_found(): void {
 		update_option( 'jetpack_options', array( 'id' => null ) );
+		$sut = new ApiClient();
+		$sut->init( $this->visitor_ip_resolver );
 
-		$result = $this->sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertTrue( $result->fail_open );
@@ -416,6 +423,63 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify() gets visitor_ip from VisitorIpResolver and keeps forwarding headers in full_headers.
+	 */
+	public function test_verify_uses_visitor_ip_resolver_and_keeps_forwarding_headers(): void {
+		$captured_body      = null;
+		$forwarding_headers = array(
+			'X-Real-IP'        => '198.51.100.1',
+			'X-Forwarded-For'  => '198.51.100.2',
+			'Client-IP'         => '198.51.100.3',
+			'Forwarded'         => 'for=198.51.100.4',
+			'CF-Connecting-IP' => '198.51.100.5',
+		);
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_address' )
+			->willReturn( '203.0.113.7' );
+
+		$this->sut->method( 'get_raw_request_headers' )->willReturn( $forwarding_headers );
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( '203.0.113.7', $captured_body['visitor_ip'] );
+		foreach ( $forwarding_headers as $name => $value ) {
+			$this->assertSame( $value, $captured_body['full_headers'][ $name ] );
+		}
+	}
+
+	/**
+	 * @testdox verify() keeps a null visitor_ip from VisitorIpResolver.
+	 */
+	public function test_verify_keeps_null_visitor_ip_from_resolver(): void {
+		$captured_body = null;
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_address' )
+			->willReturn( null );
+
+		$this->sut->method( 'get_raw_request_headers' )->willReturn( array( 'X-Real-IP' => '198.51.100.1' ) );
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertArrayHasKey( 'visitor_ip', $captured_body );
+		$this->assertNull( $captured_body['visitor_ip'] );
+	}
+
+	/**
 	 * Session IDs for verify() request-metadata payload coverage.
 	 *
 	 * @return array<string, array{string}>
@@ -431,47 +495,39 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() strips sensitive headers from full_headers case-insensitively and keeps the rest
 	 */
 	public function test_verify_strips_sensitive_headers(): void {
-		$_SERVER['GEOIP_COUNTRY_CODE'] = 'DE';
+		$this->set_server_variables( array( 'GEOIP_COUNTRY_CODE' => 'DE' ) );
+		$captured_body = null;
 
-		try {
-			$captured_body = null;
-
-			$sut = $this->getMockBuilder( ApiClient::class )
-				->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
-				->getMock();
-			$sut->method( 'get_raw_request_headers' )->willReturn(
-				array(
-					'User-Agent'          => 'Mozilla/5.0',
-					'Accept-Language'     => 'en-US',
-					'Cookie'              => 'wp_logged_in=secret',
-					'AUTHORIZATION'       => 'Bearer secret',
-					'Proxy-Authorization' => 'Basic secret',
-					'X-Api-Key'           => 'secret-key',
-					'X-WP-Nonce'          => 'nonce-value',
-				)
-			);
-			$sut->method( 'jetpack_remote_request' )->willReturnCallback(
-				function ( array $request_args, string $body ) use ( &$captured_body ) {
-					$captured_body = json_decode( $body, true );
-					return $this->decision_response( 'allow' );
-				}
-			);
-
-			$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
-
-			$headers = $captured_body['full_headers'];
-
-			// Benign headers and GEOIP server variables pass through.
-			$this->assertSame( 'Mozilla/5.0', $headers['User-Agent'] );
-			$this->assertSame( 'en-US', $headers['Accept-Language'] );
-			$this->assertSame( 'DE', $headers['GEOIP_COUNTRY_CODE'] );
-
-			// Credential-bearing headers are stripped regardless of casing.
-			foreach ( array( 'Cookie', 'AUTHORIZATION', 'Proxy-Authorization', 'X-Api-Key', 'X-WP-Nonce' ) as $stripped ) {
-				$this->assertArrayNotHasKey( $stripped, $headers );
+		$this->sut->method( 'get_raw_request_headers' )->willReturn(
+			array(
+				'User-Agent'          => 'Mozilla/5.0',
+				'Accept-Language'     => 'en-US',
+				'Cookie'              => 'wp_logged_in=secret',
+				'AUTHORIZATION'       => 'Bearer secret',
+				'Proxy-Authorization' => 'Basic secret',
+				'X-Api-Key'           => 'secret-key',
+				'X-WP-Nonce'          => 'nonce-value',
+			)
+		);
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
 			}
-		} finally {
-			unset( $_SERVER['GEOIP_COUNTRY_CODE'] );
+		);
+
+		$sut->verify( 'has-session', array( 'source' => 'blocks_checkout' ) );
+
+		$headers = $captured_body['full_headers'];
+
+		// Benign headers and GEOIP server variables pass through.
+		$this->assertSame( 'Mozilla/5.0', $headers['User-Agent'] );
+		$this->assertSame( 'en-US', $headers['Accept-Language'] );
+		$this->assertSame( 'DE', $headers['GEOIP_COUNTRY_CODE'] );
+
+		// Credential-bearing headers are stripped regardless of casing.
+		foreach ( array( 'Cookie', 'AUTHORIZATION', 'Proxy-Authorization', 'X-Api-Key', 'X-WP-Nonce' ) as $stripped ) {
+			$this->assertArrayNotHasKey( $stripped, $headers );
 		}
 	}
 
@@ -481,20 +537,17 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function test_verify_drops_malformed_header_names(): void {
 		$captured_body = null;
 
-		$sut = $this->getMockBuilder( ApiClient::class )
-			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
-			->getMock();
-		$sut->method( 'get_raw_request_headers' )->willReturn(
+		$this->sut->method( 'get_raw_request_headers' )->willReturn(
 			array(
 				'User-Agent'  => 'Mozilla/5.0',
 				"Bad\xFFName" => 'first',
 				"Other\xFEId" => 'second',
 			)
 		);
-		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
 			function ( array $request_args, string $body ) use ( &$captured_body ) {
 				$captured_body = json_decode( $body, true );
-				return $this->decision_response( 'allow' );
 			}
 		);
 
@@ -516,16 +569,11 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function test_verify_encodes_non_utf8_header_value(): void {
 		$captured_body = null;
 
-		$sut = $this->getMockBuilder( ApiClient::class )
-			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
-			->getMock();
-		$sut->method( 'get_raw_request_headers' )->willReturn(
-			array( 'X-Note' => "K\xFFln" )
-		);
-		$sut->method( 'jetpack_remote_request' )->willReturnCallback(
+		$this->sut->method( 'get_raw_request_headers' )->willReturn( array( 'X-Note' => "K\xFFln" ) );
+		$sut = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
 			function ( array $request_args, string $body ) use ( &$captured_body ) {
 				$captured_body = $body;
-				return $this->decision_response( 'allow' );
 			}
 		);
 
