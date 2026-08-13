@@ -130,7 +130,7 @@ The plugin bootstraps on the `woocommerce_loaded` action (not `plugins_loaded` â
 
 ### 1. Fail-Open Pattern (CRITICAL)
 
-**Always default to "allow" when errors occur.** Invalid decisions, API failures, timeouts, or filter errors MUST all result in allowing the session. Never block legitimate transactions due to system errors.
+**Default to "allow" when an error occurs before an actionable decision exists.** Invalid decisions, API failures, and timeouts MUST result in allowing the session. If a `woocommerce_fraud_protection_automated_decision` callback throws after an actionable decision exists, use the actionable decision that entered the filter. Apply the later learning-mode decision as usual. An error fallback must never block a session that did not already have an actionable Block decision.
 
 ### 2. Use the FraudDecision enum
 

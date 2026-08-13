@@ -63,6 +63,11 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $schema_manager->get_rules_table_name() );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
 		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
+		remove_all_filters( 'woocommerce_fraud_protection_automated_decision' );
+
+		if ( function_exists( 'WC' ) && WC()->session instanceof \WC_Session ) {
+			WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, null );
+		}
 
 		if ( is_null( $this->original_remote_addr ) ) {
 			unset( $_SERVER['REMOTE_ADDR'] );
@@ -185,6 +190,46 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->assertNotNull( $row );
 		$this->assertSame( 'blocked', $row['final_status'] );
 		$this->assertNull( $row['risk_score'], 'No risk score in the response should record as null' );
+	}
+
+	/**
+	 * @testdox A throwing automated-decision filter preserves, records, and persists an enforced Block.
+	 */
+	public function test_automated_filter_error_preserves_enforced_block_and_records_it(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		add_filter(
+			'woocommerce_fraud_protection_automated_decision',
+			function () {
+				throw new \RuntimeException( 'Broken decision filter' );
+			}
+		);
+
+		$verifier = $this->a_session_verifier_receiving(
+			array(
+				'decision'   => 'block',
+				'session_id' => 'integration-filter-response-session',
+			)
+		);
+
+		$decision = $verifier->verify_session( 'integration-filter-request-session', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Block, $decision );
+
+		$row = $this->latest_row_for( 'integration-filter-response-session' );
+		$this->assertNotNull( $row );
+		$this->assertSame( 'block', $row['decision'] );
+		$this->assertSame( 'blocked', $row['final_status'] );
+		$this->assertSame( 'integration-filter-response-session', $verifier->last_verified_session_id() );
+		$this->assertSame( 'integration-filter-response-session', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertLogged(
+			'warning',
+			'Filter `woocommerce_fraud_protection_automated_decision` threw. Using the decision that entered the filter.',
+			array(
+				'filter'            => 'woocommerce_fraud_protection_automated_decision',
+				'decision_received' => 'block',
+			),
+			true
+		);
 	}
 
 	/**
