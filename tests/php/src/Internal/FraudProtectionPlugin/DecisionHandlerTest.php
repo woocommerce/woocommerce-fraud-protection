@@ -220,6 +220,96 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A throwing automated-decision filter uses and records the decision that entered it.
+	 * @dataProvider automated_filter_throw_scenarios
+	 *
+	 * @param FraudDecision $entry_decision         The decision that enters the filter.
+	 * @param \Throwable    $throwable              The error from the filter callback.
+	 * @param bool          $add_allow_before_throw Whether an earlier callback returns Allow.
+	 */
+	public function test_automated_filter_throw_uses_entry_decision_and_records( FraudDecision $entry_decision, \Throwable $throwable, bool $add_allow_before_throw ): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+
+		if ( $add_allow_before_throw ) {
+			add_filter(
+				'woocommerce_fraud_protection_automated_decision',
+				function () {
+					return FraudDecision::Allow;
+				},
+				10
+			);
+		}
+
+		add_filter(
+			'woocommerce_fraud_protection_automated_decision',
+			function () use ( $throwable ) {
+				throw $throwable;
+			},
+			20
+		);
+
+		$verify_result = VerifyResult::create( $entry_decision, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, $entry_decision, $this->anything() );
+
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( $entry_decision, $result );
+		$this->assertLogged(
+			'warning',
+			'Filter `woocommerce_fraud_protection_automated_decision` threw. Using the decision that entered the filter.',
+			array(
+				'filter'            => 'woocommerce_fraud_protection_automated_decision',
+				'decision_received' => $entry_decision->value,
+				'exception_class'   => $throwable::class,
+				'exception_message' => $throwable->getMessage(),
+				'exception_file'    => $throwable->getFile(),
+				'exception_line'    => $throwable->getLine(),
+			),
+			true
+		);
+	}
+
+	/**
+	 * Automated-decision filter error scenarios.
+	 *
+	 * @return array<string, array{FraudDecision, \Throwable, bool}>
+	 */
+	public function automated_filter_throw_scenarios(): array {
+		return array(
+			'block after an earlier Allow' => array( FraudDecision::Block, new \RuntimeException( 'Broken decision filter' ), true ),
+			'allow'                        => array( FraudDecision::Allow, new \RuntimeException( 'Broken decision filter' ), false ),
+			'Error'                        => array( FraudDecision::Block, new \Error( 'Broken decision filter' ), false ),
+		);
+	}
+
+	/**
+	 * @testdox Default learning mode suppresses a Block recovered after an automated-decision filter error.
+	 */
+	public function test_automated_filter_throw_still_applies_default_learning_mode(): void {
+		add_filter(
+			'woocommerce_fraud_protection_automated_decision',
+			function () {
+				throw new \RuntimeException( 'Broken decision filter' );
+			}
+		);
+
+		$verify_result = VerifyResult::create( FraudDecision::Block, 'test-session' );
+
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( $verify_result, FraudDecision::Allow, $this->anything() );
+
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
 	 * @testdox Exposes the intentional verify_result subset (no session ID) to the decision filter.
 	 */
 	public function test_decision_filter_receives_intentional_verify_result(): void {

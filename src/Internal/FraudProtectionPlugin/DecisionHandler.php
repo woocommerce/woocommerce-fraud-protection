@@ -172,41 +172,63 @@ class DecisionHandler {
 
 		$original_decision = $decision;
 
+		try {
+			/**
+			 * Filters the automated fraud protection decision before it is applied.
+			 *
+			 * This filter allows extensions to override automated fraud protection
+			 * decisions to implement custom whitelisting logic. It does not apply
+			 * to sessions decided by a merchant rule: an explicit rule set by the
+			 * merchant takes precedence over extension code (see the
+			 * `woocommerce_fraud_protection_rule_applied` action). Common use cases:
+			 * - Whitelist specific users (e.g., admins, trusted customers)
+			 * - Whitelist specific conditions (e.g., certain IP ranges, logged-in users)
+			 * - Integrate with external fraud detection services
+			 *
+			 * The decision is passed and expected back as a {@see FraudDecision}
+			 * (`FraudDecision::Allow` or `FraudDecision::Block`). Any other value is
+			 * rejected and the original decision is used.
+			 *
+			 * The session data includes a `verify_result` key with details of the
+			 * verify response: `risk_score` (float|null) and `payment_method`
+			 * (string). The risk score is informational only: it may be
+			 * recalibrated server-side at any time, so do not build threshold
+			 * rules on top of it.
+			 *
+			 * @since 0.1.0
+			 * @since 0.1.6 Renamed from `woocommerce_fraud_protection_decision`.
+			 * @since 0.1.8 A throwing callback uses the actionable decision that entered the filter.
+			 *
+			 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
+			 * @param array<string, mixed> $session_data The session data that was analyzed, including the `verify_result` details.
+			 */
+			$filtered = apply_filters( 'woocommerce_fraud_protection_automated_decision', $decision, $hook_session_data );
+		} catch ( \Throwable $e ) {
+			$filtered = $original_decision;
+
+			FraudProtectionController::log(
+				'warning',
+				'Filter `woocommerce_fraud_protection_automated_decision` threw. Using the decision that entered the filter.',
+				array_merge(
+					$log_context,
+					array(
+						'filter'            => 'woocommerce_fraud_protection_automated_decision',
+						'decision_received' => $original_decision->value,
+						'exception_class'   => $e::class,
+						'exception_message' => $e->getMessage(),
+						'exception_file'    => $e->getFile(),
+						'exception_line'    => $e->getLine(),
+					)
+				),
+				true
+			);
+		}
+
 		/**
-		 * Filters the automated fraud protection decision before it is applied.
-		 *
-		 * This filter allows extensions to override automated fraud protection
-		 * decisions to implement custom whitelisting logic. It does not apply
-		 * to sessions decided by a merchant rule: an explicit rule set by the
-		 * merchant takes precedence over extension code (see the
-		 * `woocommerce_fraud_protection_rule_applied` action). Common use cases:
-		 * - Whitelist specific users (e.g., admins, trusted customers)
-		 * - Whitelist specific conditions (e.g., certain IP ranges, logged-in users)
-		 * - Integrate with external fraud detection services
-		 *
-		 * The decision is passed and expected back as a {@see FraudDecision}
-		 * (`FraudDecision::Allow` or `FraudDecision::Block`). Any other value is
-		 * rejected and the original decision is used.
-		 *
-		 * The session data includes a `verify_result` key with details of the
-		 * verify response: `risk_score` (float|null) and `payment_method`
-		 * (string). The risk score is informational only: it may be
-		 * recalibrated server-side at any time, so do not build threshold
-		 * rules on top of it.
-		 *
-		 * @since 0.1.0
-		 * @since 0.1.6 Renamed from `woocommerce_fraud_protection_decision`.
-		 *
-		 * @param FraudDecision        $decision     The decision from the API (Allow or Block).
-		 * @param array<string, mixed> $session_data The session data that was analyzed, including the `verify_result` details.
-		 */
-		/**
-		 * A third-party filter callback may return any type; it is validated below.
+		 * A third-party callback may return any type.
 		 *
 		 * @var mixed $filtered
 		 */
-		$filtered = apply_filters( 'woocommerce_fraud_protection_automated_decision', $decision, $hook_session_data );
-
 		// Validate filtered decision (third-party filters may return any value).
 		if ( $filtered instanceof FraudDecision && in_array( $filtered, FraudDecision::ACTIONABLE, true ) ) {
 			$decision = $filtered;
