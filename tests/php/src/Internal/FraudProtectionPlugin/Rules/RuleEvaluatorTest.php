@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\ConditionOperato
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\RuleStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -47,19 +48,17 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 	private $schema_manager;
 
 	/**
-	 * The REMOTE_ADDR value in place before the test.
+	 * Mock visitor IP resolver.
 	 *
-	 * @var ?string
+	 * @var VisitorIpResolver&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	private $original_remote_addr;
+	private $visitor_ip_resolver;
 
 	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
-
-		$this->original_remote_addr = $_SERVER['REMOTE_ADDR'] ?? null;
 
 		$this->schema_manager = new SchemaManager();
 		$this->schema_manager->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ) );
@@ -71,8 +70,9 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 		$this->rule_store = new RuleStore();
 		$this->rule_store->init( $this->schema_manager );
 
-		$this->sut = new RuleEvaluator();
-		$this->sut->init( $this->rule_store, new MerchantListsFeature(), $this->schema_manager, new ConditionOperatorRegistry() );
+		$this->visitor_ip_resolver = $this->createMock( VisitorIpResolver::class );
+		$this->sut                 = new RuleEvaluator();
+		$this->sut->init( $this->rule_store, new MerchantListsFeature(), $this->schema_manager, new ConditionOperatorRegistry(), $this->visitor_ip_resolver );
 	}
 
 	/**
@@ -84,12 +84,6 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_rules_table_name() );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
-
-		if ( is_null( $this->original_remote_addr ) ) {
-			unset( $_SERVER['REMOTE_ADDR'] );
-		} else {
-			$_SERVER['REMOTE_ADDR'] = $this->original_remote_addr;
-		}
 
 		parent::tearDown();
 	}
@@ -151,7 +145,10 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should match an IP rule against the canonicalized visitor IP.
 	 */
 	public function test_matches_ip_rule(): void {
-		$_SERVER['REMOTE_ADDR'] = '2001:db8::1';
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_address' )
+			->willReturn( '2001:db8::1' );
 
 		$rule = $this->rule_store->create_rule(
 			FraudDecision::Block,
@@ -165,6 +162,20 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 		$matched = $this->sut->evaluate_for_session( $this->a_session_data_payload() );
 
 		$this->assertSame( $rule->id, $matched->id, 'Textual IPv6 variants of the same address must match' );
+	}
+
+	/**
+	 * @testdox Should not match an IP rule when VisitorIpResolver returns null.
+	 */
+	public function test_ip_rule_does_not_match_without_resolved_ip(): void {
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_address' )
+			->willReturn( null );
+
+		$this->rule_store->create_rule( FraudDecision::Block, $this->ip_condition( '198.51.100.1' ) );
+
+		$this->assertNull( $this->sut->evaluate_for_session( $this->a_session_data_payload() ) );
 	}
 
 	/**
@@ -185,7 +196,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should return the first matching rule in position order: a seeded allow rule wins over a block rule.
 	 */
 	public function test_first_match_wins_allow_band_first(): void {
-		$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
+		$this->visitor_ip_resolver->method( 'get_ip_address' )->willReturn( '203.0.113.7' );
 
 		$block = $this->rule_store->create_rule( FraudDecision::Block, $this->email_condition( 'customer@example.com' ) );
 		$allow = $this->rule_store->create_rule( FraudDecision::Allow, $this->ip_condition( '203.0.113.7' ) );
@@ -200,7 +211,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should honor an explicit reorder: a block rule moved above an allow rule wins.
 	 */
 	public function test_first_match_honors_explicit_reordering(): void {
-		$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
+		$this->visitor_ip_resolver->method( 'get_ip_address' )->willReturn( '203.0.113.7' );
 
 		$block = $this->rule_store->create_rule( FraudDecision::Block, $this->email_condition( 'customer@example.com' ) );
 		$allow = $this->rule_store->create_rule( FraudDecision::Allow, $this->ip_condition( '203.0.113.7' ) );
@@ -216,7 +227,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should ignore disabled and soft-deleted rules.
 	 */
 	public function test_ignores_disabled_and_deleted_rules(): void {
-		$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
+		$this->visitor_ip_resolver->method( 'get_ip_address' )->willReturn( '203.0.113.7' );
 
 		$disabled = $this->rule_store->create_rule( FraudDecision::Block, $this->email_condition( 'customer@example.com' ) );
 		$this->rule_store->update_rule( $disabled->id, null, null, RuleStatus::Disabled );
@@ -290,7 +301,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 		$disabled_feature->method( 'is_enabled' )->willReturn( false );
 
 		$sut = new RuleEvaluator();
-		$sut->init( $this->rule_store, $disabled_feature, $this->schema_manager, new ConditionOperatorRegistry() );
+		$sut->init( $this->rule_store, $disabled_feature, $this->schema_manager, new ConditionOperatorRegistry(), $this->visitor_ip_resolver );
 
 		$this->assertNull( $sut->evaluate_for_session( $this->a_session_data_payload() ) );
 	}
@@ -314,7 +325,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 		$throwing_store->method( 'get_active_rules' )->willThrowException( new \RuntimeException( 'database exploded' ) );
 
 		$sut = new RuleEvaluator();
-		$sut->init( $throwing_store, new MerchantListsFeature(), $this->schema_manager, new ConditionOperatorRegistry() );
+		$sut->init( $throwing_store, new MerchantListsFeature(), $this->schema_manager, new ConditionOperatorRegistry(), $this->visitor_ip_resolver );
 
 		$this->assertNull( $sut->evaluate_for_session( $this->a_session_data_payload() ) );
 		$this->assertLogged( 'error', 'Rule evaluation failed, no rule applied' );

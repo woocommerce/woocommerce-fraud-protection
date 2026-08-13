@@ -11,7 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionInfo;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -27,10 +27,9 @@ defined( 'ABSPATH' ) || exit;
  * evaluation is wrapped so a failure can never break checkout.
  *
  * The evaluation context is built from the same data the sessions recorder
- * captures (billing email from the collected session data, visitor IP from
- * {@see SessionInfo::get_ip_address()} - the same derivation the verify API
- * request and the sessions recorder use), normalized like rule values are at
- * write time so textual variants compare equal.
+ * captures (billing email from the collected session data and visitor IP from
+ * the shared resolver), normalized like rule values are at write time so
+ * textual variants compare equal.
  */
 class RuleEvaluator {
 
@@ -63,6 +62,13 @@ class RuleEvaluator {
 	private ConditionOperatorRegistry $operator_registry;
 
 	/**
+	 * Visitor IP resolver instance.
+	 *
+	 * @var VisitorIpResolver
+	 */
+	private VisitorIpResolver $visitor_ip_resolver;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -71,17 +77,20 @@ class RuleEvaluator {
 	 * @param MerchantListsFeature      $merchant_lists_feature The merchant lists feature gate instance.
 	 * @param SchemaManager             $schema_manager         The schema manager instance.
 	 * @param ConditionOperatorRegistry $operator_registry      The condition operator registry instance.
+	 * @param VisitorIpResolver         $visitor_ip_resolver    Visitor IP resolver instance.
 	 */
 	final public function init(
 		RuleStore $rule_store,
 		MerchantListsFeature $merchant_lists_feature,
 		SchemaManager $schema_manager,
-		ConditionOperatorRegistry $operator_registry
+		ConditionOperatorRegistry $operator_registry,
+		VisitorIpResolver $visitor_ip_resolver
 	): void {
 		$this->rule_store             = $rule_store;
 		$this->merchant_lists_feature = $merchant_lists_feature;
 		$this->schema_manager         = $schema_manager;
 		$this->operator_registry      = $operator_registry;
+		$this->visitor_ip_resolver    = $visitor_ip_resolver;
 	}
 
 	/**
@@ -155,7 +164,7 @@ class RuleEvaluator {
 		$email = (string) ( $customer['billing_email'] ?? '' );
 		$email = '' === $email ? (string) ( $session['email'] ?? '' ) : $email;
 
-		$ip = (string) SessionInfo::get_ip_address();
+		$ip = (string) $this->visitor_ip_resolver->get_ip_address();
 
 		return array(
 			RuleConditions::FIELD_EMAIL => (string) RuleConditions::normalize_value( RuleConditions::FIELD_EMAIL, $email ),

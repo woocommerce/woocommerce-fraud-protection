@@ -17,6 +17,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheck
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 
 /**
@@ -62,6 +63,7 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->api_client = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request' ) )
 			->getMock();
+		$this->api_client->init( wc_get_container()->get( VisitorIpResolver::class ) );
 
 		$decision_handler = new DecisionHandler();
 		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $this->createMock( RuleEvaluator::class ) );

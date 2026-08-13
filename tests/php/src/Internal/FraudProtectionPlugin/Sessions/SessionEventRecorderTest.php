@@ -15,6 +15,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
 /**
  * Tests for the SessionEventRecorder class.
@@ -43,6 +44,13 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	private $schema_manager;
 
 	/**
+	 * Mock visitor IP resolver.
+	 *
+	 * @var VisitorIpResolver&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $visitor_ip_resolver;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -53,8 +61,9 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 		$this->schema_manager = $this->createMock( SchemaManager::class );
 		$this->schema_manager->method( 'is_schema_installed' )->willReturn( true );
 
-		$this->sut = new SessionEventRecorder();
-		$this->sut->init( $this->event_store, new MerchantListsFeature(), $this->schema_manager );
+		$this->visitor_ip_resolver = $this->createMock( VisitorIpResolver::class );
+		$this->sut                 = new SessionEventRecorder();
+		$this->sut->init( $this->event_store, new MerchantListsFeature(), $this->schema_manager, $this->visitor_ip_resolver );
 	}
 
 	/**
@@ -159,7 +168,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 		$disabled_feature->method( 'is_enabled' )->willReturn( false );
 
 		$sut = new SessionEventRecorder();
-		$sut->init( $this->event_store, $disabled_feature, $this->schema_manager );
+		$sut->init( $this->event_store, $disabled_feature, $this->schema_manager, $this->visitor_ip_resolver );
 
 		$this->event_store
 			->expects( $this->never() )
@@ -176,7 +185,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 		$missing_schema->method( 'is_schema_installed' )->willReturn( false );
 
 		$sut = new SessionEventRecorder();
-		$sut->init( $this->event_store, new MerchantListsFeature(), $missing_schema );
+		$sut->init( $this->event_store, new MerchantListsFeature(), $missing_schema, $this->visitor_ip_resolver );
 
 		$this->event_store
 			->expects( $this->never() )
@@ -234,6 +243,46 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'Jane Doe', $captured['billing_name'] );
 		$this->assertSame( 456, $captured['order_id'] );
 		$this->assertSame( 'woocommerce_payments', $captured['payment_method'] );
+	}
+
+	/**
+	 * @testdox Should store the visitor IP and country from VisitorIpResolver.
+	 */
+	public function test_records_visitor_ip_resolver_values(): void {
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_address' )
+			->willReturn( '203.0.113.7' );
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_country' )
+			->with( '203.0.113.7' )
+			->willReturn( 'US' );
+
+		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Allow );
+
+		$this->assertSame( '203.0.113.7', $captured['ip'] );
+		$this->assertSame( 'US', $captured['ip_country'] );
+	}
+
+	/**
+	 * @testdox Should store empty IP data when VisitorIpResolver returns no IP.
+	 */
+	public function test_records_empty_ip_data_without_resolved_ip(): void {
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_address' )
+			->willReturn( null );
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_country' )
+			->with( null )
+			->willReturn( '' );
+
+		$captured = $this->record_and_capture( FraudDecision::Allow, FraudDecision::Allow );
+
+		$this->assertSame( '', $captured['ip'] );
+		$this->assertSame( '', $captured['ip_country'] );
 	}
 
 	/**

@@ -13,9 +13,9 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionControl
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionInfo;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -66,6 +66,13 @@ class SessionEventRecorder {
 	private SchemaManager $schema_manager;
 
 	/**
+	 * Visitor IP resolver instance.
+	 *
+	 * @var VisitorIpResolver
+	 */
+	private VisitorIpResolver $visitor_ip_resolver;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -73,11 +80,13 @@ class SessionEventRecorder {
 	 * @param SessionEventStore    $event_store            The session event store instance.
 	 * @param MerchantListsFeature $merchant_lists_feature The merchant lists feature gate instance.
 	 * @param SchemaManager        $schema_manager         The schema manager instance.
+	 * @param VisitorIpResolver    $visitor_ip_resolver    Visitor IP resolver instance.
 	 */
-	final public function init( SessionEventStore $event_store, MerchantListsFeature $merchant_lists_feature, SchemaManager $schema_manager ): void {
+	final public function init( SessionEventStore $event_store, MerchantListsFeature $merchant_lists_feature, SchemaManager $schema_manager, VisitorIpResolver $visitor_ip_resolver ): void {
 		$this->event_store            = $event_store;
 		$this->merchant_lists_feature = $merchant_lists_feature;
 		$this->schema_manager         = $schema_manager;
+		$this->visitor_ip_resolver    = $visitor_ip_resolver;
 	}
 
 	/**
@@ -171,9 +180,8 @@ class SessionEventRecorder {
 
 		$billing_name = trim( ( (string) ( $billing['first_name'] ?? '' ) ) . ' ' . ( (string) ( $billing['last_name'] ?? '' ) ) );
 
-		$ip         = (string) SessionInfo::get_ip_address();
-		$geo        = \WC_Geolocation::geolocate_ip( $ip, false, false );
-		$ip_country = (string) ( $geo['country'] ?? '' );
+		$ip         = $this->visitor_ip_resolver->get_ip_address();
+		$ip_country = $this->visitor_ip_resolver->get_ip_country( $ip );
 
 		// A fail-open verify produced no real verdict: record it under the
 		// verify_error trigger so the synthetic allow stays distinguishable
@@ -195,7 +203,7 @@ class SessionEventRecorder {
 			'trigger_type'     => $trigger->value,
 			'risk_score'       => $result->risk_score,
 			'email'            => mb_substr( strtolower( trim( $email ) ), 0, 254 ),
-			'ip'               => mb_substr( $ip, 0, 45 ),
+			'ip'               => mb_substr( (string) $ip, 0, 45 ),
 			'ip_country'       => mb_substr( $ip_country, 0, 2 ),
 			'billing_country'  => mb_substr( (string) ( $billing['country'] ?? '' ), 0, 2 ),
 			'billing_state'    => mb_substr( (string) ( $billing['state'] ?? '' ), 0, 100 ),

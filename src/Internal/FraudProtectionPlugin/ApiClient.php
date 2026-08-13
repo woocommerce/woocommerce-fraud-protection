@@ -27,6 +27,13 @@ defined( 'ABSPATH' ) || exit;
 class ApiClient {
 
 	/**
+	 * Visitor IP resolver instance.
+	 *
+	 * @var VisitorIpResolver
+	 */
+	private VisitorIpResolver $visitor_ip_resolver;
+
+	/**
 	 * Default timeout for API requests in seconds.
 	 *
 	 * Sized above the Blackbox API's observed p99 server response time with
@@ -61,6 +68,17 @@ class ApiClient {
 	private const MAX_SESSION_ID_LENGTH = 255;
 
 	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param VisitorIpResolver $visitor_ip_resolver Visitor IP resolver instance.
+	 */
+	final public function init( VisitorIpResolver $visitor_ip_resolver ): void {
+		$this->visitor_ip_resolver = $visitor_ip_resolver;
+	}
+
+	/**
 	 * Verify a session with the Blackbox API and get a fraud decision.
 	 *
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,
@@ -73,7 +91,7 @@ class ApiClient {
 	public function verify( string $session_id, array $context ): VerifyResult {
 		$payload = array(
 			'context'      => $this->filter_empty_values( $context ),
-			'visitor_ip'   => Schemas\SessionInfo::get_ip_address(),
+			'visitor_ip'   => $this->visitor_ip_resolver->get_ip_address(),
 			'full_headers' => $this->get_request_headers(),
 		);
 
