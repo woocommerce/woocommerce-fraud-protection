@@ -219,18 +219,30 @@ class BlocksCheckoutProtector {
 	}
 
 	/**
-	 * Normalize raw payment_data from Store API [{key, value}, ...] to key-value map.
+	 * Normalize Store API string or boolean payment data with sanitize_key() and wc_clean().
+	 *
+	 * The last value for each normalized key replaces earlier values.
 	 *
 	 * @param array $raw_payment_data Raw payment_data array from Store API.
-	 * @return array Flat key-value map.
+	 * @return array<string, string> Flat key-value map.
 	 */
 	private function normalize_payment_data( array $raw_payment_data ): array {
 		$normalized = array();
 
 		foreach ( $raw_payment_data as $item ) {
-			if ( is_array( $item ) && isset( $item['key'], $item['value'] ) ) {
-				$normalized[ $item['key'] ] = $item['value'];
+			if ( ! is_array( $item ) || ! isset( $item['key'], $item['value'] ) ) {
+				continue;
 			}
+
+			$key   = $item['key'];
+			$value = $item['value'];
+
+			if ( ! is_string( $key ) || ( ! is_string( $value ) && ! is_bool( $value ) ) ) {
+				continue;
+			}
+
+			// @phpstan-ignore argument.type, cast.string (Core supports booleans; PaymentContext casts the cleaned value.)
+			$normalized[ sanitize_key( $key ) ] = (string) wc_clean( $value );
 		}
 
 		return $normalized;
