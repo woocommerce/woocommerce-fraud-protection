@@ -887,6 +887,40 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 1, $stored_record['stand_downs'] );
 	}
 
+	/**
+	 * @testdox Invalid stored session IDs do not match a submitted invalid marker in either comparison path
+	 *
+	 * @dataProvider invalid_stored_session_id_provider
+	 *
+	 * @param string $stored_session_id Stored session ID.
+	 */
+	public function test_invalid_stored_session_id_does_not_match_submitted_marker( string $stored_session_id ): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$record['session_id'] = $stored_session_id;
+		$record['decision']   = FraudDecision::Block;
+		WC()->session->set( '_fraud_protection_paypal_verification', $record );
+
+		$this->assertSame( FraudDecision::Allow, $this->ask( 'shortcode_checkout', '', 'wcfp-invalid-characters' ) );
+
+		WC()->session->set( '_fraud_protection_paypal_verification', $record );
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'wcfp-invalid-characters' ) );
+	}
+
+	/**
+	 * Invalid stored session IDs.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public function invalid_stored_session_id_provider(): array {
+		return array(
+			'single dot' => array( '.' ),
+			'double dot' => array( '..' ),
+		);
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Recorded decision

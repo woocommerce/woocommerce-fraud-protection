@@ -72,16 +72,16 @@ class OrderEventsTracker {
 	public function fraud_protection_report( \WC_Order $order, ReportSource $source, string $report_id, ReportContextData $context, ?\DateTimeInterface $occurred_at = null, string $notes = '' ): void {
 		$session_id = '';
 		try {
-			$session_id = $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY );
-			if ( ! is_string( $session_id ) || '' === $session_id ) {
+			$session_id = $this->session_id_normalizer->normalize_stored(
+				$order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+			);
+			if ( '' === $session_id ) {
 				FraudProtectionController::log(
 					'warning',
 					'Missing session ID in order meta, skipping Blackbox API report.'
 				);
 				return;
 			}
-			// Normalize values written by older plugin versions before constructing the report URL.
-			$session_id = $this->session_id_normalizer->normalize_stored( $session_id );
 
 			$context = $context->with_order_defaults( $order->get_id(), $order->get_payment_method() );
 

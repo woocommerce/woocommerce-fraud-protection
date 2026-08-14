@@ -156,14 +156,14 @@ class SessionIdNormalizerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox normalize_stored() bounds stored IDs without changing opaque response characters
+	 * @testdox normalize_stored() bounds valid values and discards invalid mappings
 	 */
-	public function test_normalize_stored_preserves_opaque_response_characters(): void {
-		$opaque = ' <b>opaque.response/id</b> ';
-
-		$this->assertSame( $opaque, $this->sut->normalize_stored( $opaque ) );
+	public function test_normalize_stored_discards_invalid_mappings(): void {
+		$this->assertSame( 'stored-session', $this->sut->normalize_stored( 'stored-session' ) );
 		$this->assertSame( str_repeat( 'a', 255 ), $this->sut->normalize_stored( str_repeat( 'a', 256 ) ) );
-		$this->assertSame( 'wcfp-invalid-characters', $this->sut->normalize_stored( '..' ) );
+		$this->assertSame( '', $this->sut->normalize_stored( '..' ) );
+		$this->assertSame( '', $this->sut->normalize_stored( 'opaque.response/id' ) );
+		$this->assertSame( '', $this->sut->normalize_stored( 'wcfp-invalid-characters' ) );
 	}
 
 	/**

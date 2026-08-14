@@ -303,10 +303,16 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox fraud_protection_report() skips reporting when the order has no session ID.
+	 * @testdox fraud_protection_report() skips reporting when the stored session ID normalizes to empty.
+	 *
+	 * @dataProvider unusable_stored_session_id_provider
+	 *
+	 * @param string $stored_session_id Stored session ID.
 	 */
-	public function test_fraud_protection_report_skips_when_no_session_id(): void {
+	public function test_fraud_protection_report_skips_when_session_id_normalizes_to_empty( string $stored_session_id ): void {
 		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, $stored_session_id );
+		$order->save_meta_data();
 
 		$this->api_client
 			->expects( $this->never() )
@@ -315,6 +321,19 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 		$this->sut->fraud_protection_report( $order, ReportSource::Api, 'rep_nosession', $this->make_context() );
 
 		$this->assertLogged( 'warning', 'Missing session ID in order meta, skipping Blackbox API report.' );
+	}
+
+	/**
+	 * Stored session IDs that cannot be reported.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public function unusable_stored_session_id_provider(): array {
+		return array(
+			'missing'    => array( '' ),
+			'single dot' => array( '.' ),
+			'double dot' => array( '..' ),
+		);
 	}
 
 	/**

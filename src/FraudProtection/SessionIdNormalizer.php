@@ -87,17 +87,17 @@ class SessionIdNormalizer {
 	}
 
 	/**
-	 * Bound a stored string without applying submitted-input character rules.
+	 * Normalize a stored session ID and discard invalid mappings.
 	 *
-	 * @param string $value Stored session ID.
-	 * @return string The bounded value or the invalid-character marker for a complete dot path segment.
+	 * @param mixed $value Stored session ID value.
+	 * @return string The bounded value, or an empty string for invalid input.
 	 *
 	 * @since 0.1.8
 	 */
-	public function normalize_stored( string $value ): string {
-		$normalized = substr( $value, 0, self::MAX_LENGTH );
+	public function normalize_stored( mixed $value ): string {
+		$normalized = $this->normalize( $value );
 
-		return in_array( $normalized, array( '.', '..' ), true ) ? self::INVALID_CHARACTERS : $normalized;
+		return $this->is_invalid_marker( $normalized ) ? '' : $normalized;
 	}
 
 	/**
