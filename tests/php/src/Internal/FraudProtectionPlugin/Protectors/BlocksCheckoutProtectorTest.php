@@ -250,36 +250,84 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox extract_request_data() normalizes [{key, value}, ...] payment_data to flat map.
+	 * @testdox extract_request_data() applies Store API payment data normalization.
+	 *
+	 * @dataProvider payment_data_normalization_provider
+	 *
+	 * @param array<string, mixed>  $request_params Request parameters.
+	 * @param array<string, string> $expected       Expected payment data.
 	 */
-	public function test_extract_request_data_normalizes_payment_data(): void {
-		$request = $this->create_mock_request(
-			'test-session-normalize',
-			array(
-				'payment_method' => 'stripe',
-				'payment_data'   => array(
-					array(
-						'key'   => 'wc-stripe-payment-method',
-						'value' => 'pm_123',
-					),
-					array(
-						'key'   => 'wc-stripe-is-deferred-intent',
-						'value' => 'yes',
-					),
-				),
-			)
-		);
-		$order = $this->create_mock_order( 800 );
+	public function test_extract_request_data_normalizes_payment_data(
+		array $request_params,
+		array $expected
+	): void {
+		$request = $this->create_mock_request( null, $request_params );
 
-		$this->sut->extract_request_data( $order, $request );
+		$this->sut->extract_request_data( $this->create_mock_order( 800 ), $request );
 
 		$request_data = $this->get_request_data();
-		$this->assertSame(
-			array(
-				'wc-stripe-payment-method'       => 'pm_123',
-				'wc-stripe-is-deferred-intent'   => 'yes',
+		$this->assertSame( $expected, $request_data['payment_data'] );
+	}
+
+	/**
+	 * Store API payment data normalization cases.
+	 *
+	 * @return array<string, array{array<string, mixed>, array<string, string>}>
+	 */
+	public function payment_data_normalization_provider(): array {
+		return array(
+			'sanitizes key and cleans value' => array(
+				array(
+					'payment_data' => array(
+						array( 'key' => 'WC-STRIPE-PAYMENT-TOKEN', 'value' => ' <b>235</b> ' ),
+					),
+				),
+				array( 'wc-stripe-payment-token' => '235' ),
 			),
-			$request_data['payment_data']
+			'converts true to string'         => array(
+				array(
+					'payment_data' => array(
+						array( 'key' => 'BOOL-TRUE', 'value' => true ),
+					),
+				),
+				array( 'bool-true' => '1' ),
+			),
+			'converts false to empty string'  => array(
+				array(
+					'payment_data' => array(
+						array( 'key' => 'BOOL-FALSE', 'value' => false ),
+					),
+				),
+				array( 'bool-false' => '' ),
+			),
+			'keeps empty normalized key'      => array(
+				array(
+					'payment_data' => array(
+						array( 'key' => '!', 'value' => 'empty-key' ),
+					),
+				),
+				array( '' => 'empty-key' ),
+			),
+			'keeps last mixed-case duplicate' => array(
+				array(
+					'payment_data' => array(
+						array( 'key' => 'token', 'value' => '234' ),
+						array( 'key' => 'Token', 'value' => '235' ),
+					),
+				),
+				array( 'token' => '235' ),
+			),
+			'keeps last lowercase duplicate'  => array(
+				array(
+					'payment_data' => array(
+						array( 'key' => 'Token', 'value' => '235' ),
+						array( 'key' => 'token', 'value' => '234' ),
+					),
+				),
+				array( 'token' => '234' ),
+			),
+			'missing payment data'             => array( array(), array() ),
+			'empty payment data'               => array( array( 'payment_data' => array() ), array() ),
 		);
 	}
 
