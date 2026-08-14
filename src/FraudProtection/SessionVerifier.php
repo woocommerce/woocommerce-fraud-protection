@@ -76,11 +76,18 @@ class SessionVerifier {
 	private PaymentDataResolver $payment_data_resolver;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private SessionIdNormalizer $session_id_normalizer;
+
+	/**
 	 * The effective session ID of the last completed verification.
 	 *
-	 * Empty when the last {@see verify_session()} call completed none: a
-	 * consumer supplied the decision, or the pipeline threw and the call
-	 * failed open.
+	 * Empty when the last {@see verify_session()} call did not complete with an
+	 * acceptable response session ID. This includes a consumer-supplied
+	 * decision, a fail-open error, or a response without a usable ID.
 	 *
 	 * @var string
 	 */
@@ -95,17 +102,20 @@ class SessionVerifier {
 	 * @param ApiClient            $api_client            The API client instance.
 	 * @param DecisionHandler      $decision_handler      The decision handler instance.
 	 * @param PaymentDataResolver  $payment_data_resolver The payment data resolver instance.
+	 * @param SessionIdNormalizer  $session_id_normalizer  The session ID normalizer.
 	 */
 	final public function init(
 		SessionDataCollector $data_collector,
 		ApiClient $api_client,
 		DecisionHandler $decision_handler,
-		PaymentDataResolver $payment_data_resolver
+		PaymentDataResolver $payment_data_resolver,
+		SessionIdNormalizer $session_id_normalizer
 	): void {
 		$this->data_collector        = $data_collector;
 		$this->api_client            = $api_client;
 		$this->decision_handler      = $decision_handler;
 		$this->payment_data_resolver = $payment_data_resolver;
+		$this->session_id_normalizer = $session_id_normalizer;
 	}
 
 	/**
@@ -155,14 +165,15 @@ class SessionVerifier {
 	 *
 	 * Fail-open: Never throws. Returns ALLOW on any internal error.
 	 *
-	 * @param string $session_id   The Blackbox session ID from collect().
+	 * @param mixed  $session_id   The submitted Blackbox session ID.
 	 * @param string $source       Identifies the caller (e.g. 'blocks_checkout').
 	 * @param int    $order_id     The WooCommerce order ID (0 for pre-order flows).
 	 * @param array  $request_data Request data containing payment_method and payment_data.
 	 * @return FraudDecision The final decision: Allow or Block.
 	 */
-	public function verify_session( string $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
+	public function verify_session( mixed $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
 		$this->last_verified_session_id = '';
+		$normalized_session_id          = $this->session_id_normalizer->normalize( $session_id );
 
 		try {
 			/**
@@ -182,7 +193,7 @@ class SessionVerifier {
 			 * @param array               $request_data Request data with payment_method, payment_data, etc.
 			 * @param string              $session_id   The Blackbox session ID being verified.
 			 */
-			$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $session_id );
+			$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $normalized_session_id );
 
 			if ( $supplied instanceof FraudDecision && in_array( $supplied, FraudDecision::ACTIONABLE, true ) ) {
 				FraudProtectionController::log(
@@ -190,7 +201,7 @@ class SessionVerifier {
 					sprintf( 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source ),
 					array(
 						'event_source' => $source,
-						'session_id'   => $session_id,
+						'session_id'   => $normalized_session_id,
 						'order_id'     => $order_id,
 						'decision'     => $supplied->value,
 					)
@@ -209,7 +220,7 @@ class SessionVerifier {
 					'`woocommerce_fraud_protection_skip_session_verify` filter returned a non-decision; verifying',
 					array(
 						'event_source' => $source,
-						'session_id'   => $session_id,
+						'session_id'   => $normalized_session_id,
 						'filter'       => 'woocommerce_fraud_protection_skip_session_verify',
 						'returned'     => $returned,
 					)
@@ -221,7 +232,7 @@ class SessionVerifier {
 				'`woocommerce_fraud_protection_skip_session_verify` filter threw',
 				array(
 					'event_source'      => $source,
-					'session_id'        => $session_id,
+					'session_id'        => $normalized_session_id,
 					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
 					'exception'         => $e,
 					'exception_class'   => $e::class,
@@ -246,7 +257,7 @@ class SessionVerifier {
 				'Payment data resolution failed',
 				array(
 					'event_source'      => $source,
-					'session_id'        => $session_id,
+					'session_id'        => $normalized_session_id,
 					'order_id'          => $order_id,
 					'payment_type'      => $request_data['payment_method'] ?? '',
 					'hook'              => 'payment_data_resolution',
@@ -257,7 +268,7 @@ class SessionVerifier {
 					'exception_line'    => $e->getLine(),
 					'verify_context'    => array(
 						'source'       => $source,
-						'session_id'   => $session_id,
+						'session_id'   => $normalized_session_id,
 						'order_id'     => $order_id,
 						'request_data' => $request_data,
 					),
@@ -273,13 +284,15 @@ class SessionVerifier {
 			$payload['source']  = $source;
 			$payload['payment'] = $payment_data?->to_array();
 
-			$result = $this->api_client->verify( $session_id, $payload );
+			$result = $this->api_client->verify( $normalized_session_id, $payload );
+
+			// Only a session ID returned by Blackbox becomes association state.
+			// Persist it before decision handling so an empty result clears current
+			// state even if a later handler fails open.
+			$this->update_session_id_association( $result->session_id, $order_id );
 
 			$decision = $this->decision_handler->apply_decision( $result, $payload );
 
-			// The result carries the effective session ID (response-preferred,
-			// resolved by ApiClient): the one /report will attach the outcome to.
-			$this->persist_session_id( $result->session_id, $order_id );
 			$this->last_verified_session_id = $result->session_id;
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
@@ -287,7 +300,7 @@ class SessionVerifier {
 				'Session verification failed, allowing',
 				array(
 					'event_source'      => $source,
-					'session_id'        => $session_id,
+					'session_id'        => $normalized_session_id,
 					'order_id'          => $order_id,
 					'hook'              => 'session_verify',
 					'exception'         => $e,
@@ -297,7 +310,7 @@ class SessionVerifier {
 					'exception_line'    => $e->getLine(),
 					'verify_context'    => array(
 						'source'       => $source,
-						'session_id'   => $session_id,
+						'session_id'   => $normalized_session_id,
 						'order_id'     => $order_id,
 						'request_data' => $request_data,
 					),
@@ -319,15 +332,14 @@ class SessionVerifier {
 	 *
 	 * @since 0.1.6
 	 *
-	 * @return string The session ID, or empty string when the last
-	 *                {@see verify_session()} call completed no verification.
+	 * @return string The acceptable response session ID, or an empty string.
 	 */
 	public function last_verified_session_id(): string {
 		return $this->last_verified_session_id;
 	}
 
 	/**
-	 * Persist the Blackbox session ID to order meta and WC session.
+	 * Update the Blackbox session ID association in order meta and the WC session.
 	 *
 	 * Saves to order meta when an order already exists (blocks checkout,
 	 * pay-for-order). Always saves to WC session so the deferred hook
@@ -336,7 +348,7 @@ class SessionVerifier {
 	 * @param string $session_id The Blackbox session ID.
 	 * @param int    $order_id   The WooCommerce order ID (0 for pre-order flows).
 	 */
-	private function persist_session_id( string $session_id, int $order_id ): void {
+	private function update_session_id_association( string $session_id, int $order_id ): void {
 		$this->store_session_id_in_session( $session_id );
 
 		if ( $order_id > 0 ) {

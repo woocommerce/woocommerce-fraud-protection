@@ -103,7 +103,7 @@ class AddPaymentMethodProtector {
 		$request_data = $this->build_request_data( $_POST );
 
 		$decision = $this->session_verifier->verify_session(
-			$this->get_blackbox_session_id(),
+			$this->get_submitted_session_id(),
 			self::SOURCE,
 			0, // No order in add-payment-method flow.
 			$request_data

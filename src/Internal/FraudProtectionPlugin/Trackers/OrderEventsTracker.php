@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
@@ -33,14 +34,23 @@ class OrderEventsTracker {
 	private ApiClient $api_client;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private SessionIdNormalizer $session_id_normalizer;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param ApiClient $api_client The API client instance.
+	 * @param ApiClient           $api_client           The API client instance.
+	 * @param SessionIdNormalizer $session_id_normalizer The session ID normalizer.
 	 */
-	final public function init( ApiClient $api_client ): void {
-		$this->api_client = $api_client;
+	final public function init( ApiClient $api_client, SessionIdNormalizer $session_id_normalizer ): void {
+		$this->api_client            = $api_client;
+		$this->session_id_normalizer = $session_id_normalizer;
 	}
 
 	/**
@@ -62,8 +72,10 @@ class OrderEventsTracker {
 	public function fraud_protection_report( \WC_Order $order, ReportSource $source, string $report_id, ReportContextData $context, ?\DateTimeInterface $occurred_at = null, string $notes = '' ): void {
 		$session_id = '';
 		try {
-			$session_id = $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY );
-			if ( ! is_string( $session_id ) || '' === $session_id ) {
+			$session_id = $this->session_id_normalizer->normalize_stored(
+				$order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+			);
+			if ( '' === $session_id ) {
 				FraudProtectionController::log(
 					'warning',
 					'Missing session ID in order meta, skipping Blackbox API report.'

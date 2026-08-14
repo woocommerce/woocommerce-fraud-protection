@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use WP_Error;
@@ -40,16 +41,24 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	private $visitor_ip_resolver;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private $session_id_normalizer;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
 		$this->visitor_ip_resolver = $this->createMock( VisitorIpResolver::class );
-		$this->sut                 = $this->getMockBuilder( ApiClient::class )
+		$this->session_id_normalizer = new SessionIdNormalizer();
+		$this->sut                   = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
 			->getMock();
-		$this->sut->init( $this->visitor_ip_resolver );
+		$this->sut->init( $this->visitor_ip_resolver, $this->session_id_normalizer );
 
 		update_option( 'jetpack_options', array( 'id' => 12345 ) );
 		update_option( 'jetpack_private_options', array( 'blog_token' => 'IAM.AJETPACKBLOGTOKEN' ) );
@@ -85,6 +94,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 				return $response;
 			}
 		);
+		$this->sut->init( $this->visitor_ip_resolver, $this->session_id_normalizer );
 
 		return $this->sut;
 	}
@@ -145,16 +155,16 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		// Characters that survive sanitize_text_field() but would malform the URL or pivot the path.
+		// Characters that would alter an unencoded URL or its path.
 		$sut->verify( 'a b%#?/../report', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/a%20b%25%23%3F%2F..%2Freport', $captured_url );
 	}
 
 	/**
-	 * @testdox verify() caps an over-length session ID so the request URL stays within transport limits
+	 * @testdox verify() uses the same caller-bounded session ID in the URL and body
 	 */
-	public function test_verify_caps_over_length_session_id(): void {
+	public function test_verify_uses_same_caller_bounded_session_id_in_url_and_body(): void {
 		$captured_url  = null;
 		$captured_body = null;
 
@@ -166,10 +176,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$sut->verify( str_repeat( 'a', 5000 ), array( 'source' => 'blocks_checkout' ) );
-
-		// The over-length value is truncated (to MAX_SESSION_ID_LENGTH, 255) in both URL and body.
 		$expected = str_repeat( 'a', 255 );
+		$sut->verify( $expected, array( 'source' => 'blocks_checkout' ) );
+
 		$this->assertStringEndsWith( '/verify/' . $expected, $captured_url );
 		$this->assertSame( $expected, $captured_body['session_id'] );
 	}
@@ -260,11 +269,12 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function test_verify_fails_open_when_blog_id_not_found(): void {
 		update_option( 'jetpack_options', array( 'id' => null ) );
 		$sut = new ApiClient();
-		$sut->init( $this->visitor_ip_resolver );
+		$sut->init( $this->visitor_ip_resolver, $this->session_id_normalizer );
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
@@ -280,7 +290,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertSame( 'test-session-id', $result->session_id, 'The fail-open result should carry the session ID the request was made with' );
+		$this->assertSame( '', $result->session_id );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
@@ -301,6 +311,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'status code 500' );
 	}
@@ -321,6 +332,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
@@ -341,7 +353,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
-		$this->assertSame( 'test-session-id', $result->session_id, 'The fail-open result should carry the session ID the request was made with' );
+		$this->assertSame( '', $result->session_id );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
@@ -357,6 +369,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
@@ -656,14 +669,122 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify() falls back to the requested session ID when the response omits one (normal sessionful path)
+	 * @testdox verify() does not trust the requested session ID when the response omits one
 	 */
-	public function test_verify_falls_back_to_requested_session_id(): void {
+	public function test_verify_does_not_fall_back_to_requested_session_id(): void {
 		$sut = $this->api_client_returning( $this->decision_response( 'allow' ) );
 
 		$result = $sut->verify( 'requested-id', array( 'source' => 'blocks_checkout' ) );
 
-		$this->assertSame( 'requested-id', $result->session_id );
+		$this->assertSame( '', $result->session_id );
+	}
+
+	/**
+	 * @testdox verify() keeps a marker in the request and preserves a different response ID
+	 */
+	public function test_verify_sends_marker_and_preserves_different_response_id(): void {
+		$captured_url        = null;
+		$captured_body       = null;
+		$response_session_id = ' <b>opaque-response-id</b> ';
+		$this->session_id_normalizer = $this->createMock( SessionIdNormalizer::class );
+		$this->session_id_normalizer
+			->expects( $this->once() )
+			->method( 'is_invalid_marker' )
+			->with( $response_session_id )
+			->willReturn( false );
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode(
+					array(
+						'data' => array(
+							'session_id' => $response_session_id,
+							'decision'   => 'block',
+						),
+					)
+				),
+			),
+			function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body ) {
+				$captured_url  = $request_args['url'];
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$result = $sut->verify( 'wcfp-invalid-array', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertStringEndsWith( '/verify/wcfp-invalid-array', $captured_url );
+		$this->assertSame( 'wcfp-invalid-array', $captured_body['session_id'] );
+		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertSame( $response_session_id, $result->session_id );
+	}
+
+	/**
+	 * @testdox verify() keeps a valid decision but rejects a response ID identified as a reserved marker
+	 */
+	public function test_verify_rejects_reserved_response_id(): void {
+		$response_session_id = 'reserved-response-id';
+		$this->session_id_normalizer = $this->createMock( SessionIdNormalizer::class );
+		$this->session_id_normalizer
+			->expects( $this->once() )
+			->method( 'is_invalid_marker' )
+			->with( $response_session_id )
+			->willReturn( true );
+
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode(
+					array(
+						'data' => array(
+							'session_id' => $response_session_id,
+							'decision'   => 'block',
+						),
+					)
+				),
+			)
+		);
+
+		$result = $sut->verify( 'submitted-id', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertSame( '', $result->session_id );
+		$this->assertFalse( $result->fail_open );
+	}
+
+	/**
+	 * @testdox verify() keeps a valid decision but returns no association for a missing, non-string, or empty response ID
+	 *
+	 * @dataProvider unusable_response_id_provider
+	 *
+	 * @param array<string, mixed> $data Response data.
+	 */
+	public function test_verify_rejects_unusable_response_ids( array $data ): void {
+		$data['decision'] = 'block';
+		$sut              = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode( array( 'data' => $data ) ),
+			)
+		);
+
+		$result = $sut->verify( 'submitted-id', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertSame( '', $result->session_id );
+		$this->assertFalse( $result->fail_open );
+	}
+
+	/**
+	 * Response IDs that cannot create association state.
+	 *
+	 * @return array<string, array{array<string, mixed>}>
+	 */
+	public function unusable_response_id_provider(): array {
+		return array(
+			'missing'    => array( array() ),
+			'non-string' => array( array( 'session_id' => array( 'value' ) ) ),
+			'empty'      => array( array( 'session_id' => '' ) ),
+		);
 	}
 
 	/*
@@ -966,6 +1087,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertFalse( $transport_called, 'An unencodable payload must not be sent' );
 		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertSame( '', $result->session_id );
 		$this->assertLogged( 'error', 'Failed to encode payload' );
 	}
 }

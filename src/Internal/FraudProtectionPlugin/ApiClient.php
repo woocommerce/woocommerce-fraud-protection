@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\Jetpack\Connection\Client as Jetpack_Connection_Client;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 
 defined( 'ABSPATH' ) || exit;
@@ -32,6 +33,13 @@ class ApiClient {
 	 * @var VisitorIpResolver
 	 */
 	private VisitorIpResolver $visitor_ip_resolver;
+
+	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
 	 * Default timeout for API requests in seconds.
@@ -59,23 +67,16 @@ class ApiClient {
 	private const REPORT_ENDPOINT = '/report';
 
 	/**
-	 * Upper bound on the session ID length used when building a request.
-	 *
-	 * Bounds the request URL size for an arbitrary client-supplied ID so an
-	 * unexpectedly long value cannot push the URL past transport limits. Set well
-	 * above any legitimate session ID length.
-	 */
-	private const MAX_SESSION_ID_LENGTH = 255;
-
-	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param VisitorIpResolver $visitor_ip_resolver Visitor IP resolver instance.
+	 * @param VisitorIpResolver   $visitor_ip_resolver   Visitor IP resolver instance.
+	 * @param SessionIdNormalizer $session_id_normalizer The session ID normalizer.
 	 */
-	final public function init( VisitorIpResolver $visitor_ip_resolver ): void {
-		$this->visitor_ip_resolver = $visitor_ip_resolver;
+	final public function init( VisitorIpResolver $visitor_ip_resolver, SessionIdNormalizer $session_id_normalizer ): void {
+		$this->visitor_ip_resolver   = $visitor_ip_resolver;
+		$this->session_id_normalizer = $session_id_normalizer;
 	}
 
 	/**
@@ -84,9 +85,9 @@ class ApiClient {
 	 * Implements fail-open pattern: if the endpoint is unreachable or times out,
 	 * returns "allow" decision and logs the error.
 	 *
-	 * @param string               $session_id Session ID to verify.
+	 * @param string               $session_id Normalized session ID to verify.
 	 * @param array<string, mixed> $context    Session context data to send to the endpoint.
-	 * @return VerifyResult The decision, the effective session ID (the response's ID, generated server-side on the no-session or degraded path, or the requested one when the response omits it), and the risk score.
+	 * @return VerifyResult The decision, the response session ID when present, and the risk score.
 	 */
 	public function verify( string $session_id, array $context ): VerifyResult {
 		$payload = array(
@@ -124,7 +125,7 @@ class ApiClient {
 	 * This is a fire-and-forget operation - errors are logged but do not
 	 * affect the checkout flow.
 	 *
-	 * @param string               $session_id Session ID to report.
+	 * @param string               $session_id Normalized stored session ID to report.
 	 * @param array<string, mixed> $payload    Event data to send to the endpoint.
 	 * @return bool True if report was sent successfully, false otherwise.
 	 */
@@ -179,8 +180,8 @@ class ApiClient {
 	 *
 	 * @param array<string, mixed>|\WP_Error $response   API response or WP_Error.
 	 * @param array<string, mixed>           $event_data Event data for logging.
-	 * @param string                         $session_id Session ID associated with the request, carried into the result and included in log context for cross-system tracing.
-	 * @return VerifyResult The decision plus the effective session ID, or the fail-open result when no verdict could be extracted.
+	 * @param string                         $session_id Session ID associated with the request and included in log context for cross-system tracing.
+	 * @return VerifyResult The decision plus the acceptable response session ID, or the fail-open result when no verdict could be extracted.
 	 */
 	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
@@ -203,7 +204,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::fail_open( $session_id );
+			return VerifyResult::fail_open();
 		}
 
 		$raw = $this->extract_decision( $response );
@@ -221,7 +222,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::fail_open( $session_id );
+			return VerifyResult::fail_open();
 		}
 
 		// Any valid FraudDecision is accepted here, including the not-yet-actionable
@@ -246,7 +247,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::fail_open( $session_id );
+			return VerifyResult::fail_open();
 		}
 
 		$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
@@ -262,15 +263,13 @@ class ApiClient {
 		);
 
 		$response_session_id = $this->extract_session_id( $response );
+		if ( $this->session_id_normalizer->is_invalid_marker( $response_session_id ) ) {
+			$response_session_id = '';
+		}
 
 		return VerifyResult::create(
 			$decision,
-			// Prefer the ID the response returned over the requested one: Blackbox
-			// generates a new session on the no-session path, and may do the same
-			// when degrading a sessionful verify over an invalid ID. /report must
-			// attach outcomes to the ID Blackbox knows, so that one wins; fall back
-			// to the request ID when the response omits one.
-			'' !== $response_session_id ? $response_session_id : $session_id,
+			$response_session_id,
 			$this->extract_risk_score( $response )
 		);
 	}
@@ -295,10 +294,6 @@ class ApiClient {
 	 * @return array<string, mixed>|\WP_Error Parsed JSON response or WP_Error on failure.
 	 */
 	private function make_request( string $method, string $path, string $session_id, array $payload ): array|\WP_Error {
-		// Bound the client-supplied session ID before it goes into the URL and body so an
-		// unexpectedly long value cannot push the request URL past transport limits.
-		$session_id = substr( $session_id, 0, self::MAX_SESSION_ID_LENGTH );
-
 		$rejected = array();
 		$body     = \wp_json_encode(
 			EncodablePayload::for_wire(
@@ -335,7 +330,6 @@ class ApiClient {
 		}
 
 		$request_args = array(
-			// The session ID is client-supplied: encode it so it cannot malform or redirect the request URL.
 			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . rawurlencode( $session_id ),
 			'method'        => $method,
 			'timeout'       => self::DEFAULT_TIMEOUT,

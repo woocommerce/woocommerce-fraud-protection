@@ -17,6 +17,15 @@ class ClassicFormDataExtractionTraitTestDouble {
 	use ClassicFormDataExtractionTrait;
 
 	/**
+	 * Public proxy for the private get_submitted_session_id() method.
+	 *
+	 * @return mixed Submitted session ID.
+	 */
+	public function test_get_submitted_session_id(): mixed {
+		return $this->get_submitted_session_id();
+	}
+
+	/**
 	 * Public proxy for the private build_request_data() method.
 	 *
 	 * @param array $form_data Form data array.
@@ -66,6 +75,53 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 
 		parent::tearDown();
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| get_submitted_session_id() Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox get_submitted_session_id() unslashes a string without text sanitization
+	 */
+	public function test_get_submitted_session_id_unslashes_string(): void {
+		$_POST['wc_fraud_protection_session_id'] = "a\\\\b/<tag>?";
+
+		$this->assertSame( 'a\b/<tag>?', $this->sut->test_get_submitted_session_id() );
+	}
+
+	/**
+	 * @testdox get_submitted_session_id() returns an empty string when the field is absent
+	 */
+	public function test_get_submitted_session_id_returns_empty_for_absent_field(): void {
+		$this->assertSame( '', $this->sut->test_get_submitted_session_id() );
+	}
+
+	/**
+	 * @testdox get_submitted_session_id() returns a non-string value unchanged
+	 *
+	 * @dataProvider submitted_non_string_provider
+	 *
+	 * @param mixed $value Submitted value.
+	 */
+	public function test_get_submitted_session_id_returns_non_string_unchanged( $value ): void {
+		$_POST['wc_fraud_protection_session_id'] = $value;
+
+		$this->assertSame( $value, $this->sut->test_get_submitted_session_id() );
+	}
+
+	/**
+	 * Submitted non-string values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function submitted_non_string_provider(): array {
+		return array(
+			'null'  => array( null ),
+			'array' => array( array( 'private' ) ),
+		);
 	}
 
 	/*

@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
@@ -87,6 +88,22 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Get the latest row without an associated session ID.
+	 *
+	 * @return ?array The row, or null if none exists.
+	 */
+	private function latest_row_without_session_id(): ?array {
+		global $wpdb;
+
+		$table = wc_get_container()->get( SchemaManager::class )->get_sessions_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$row = $wpdb->get_row( "SELECT * FROM {$table} WHERE session_id IS NULL ORDER BY id DESC LIMIT 1", ARRAY_A );
+
+		return is_array( $row ) ? $row : null;
+	}
+
+	/**
 	 * Count the rows in the sessions table.
 	 *
 	 * @return int
@@ -138,13 +155,15 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		);
 
 		$container = wc_get_container();
-		$api_client->init( $container->get( VisitorIpResolver::class ) );
+		$session_id_normalizer = $container->get( SessionIdNormalizer::class );
+		$api_client->init( $container->get( VisitorIpResolver::class ), $session_id_normalizer );
 		$verifier  = new SessionVerifier();
 		$verifier->init(
 			$container->get( SessionDataCollector::class ),
 			$api_client,
 			$container->get( DecisionHandler::class ),
-			$container->get( PaymentDataResolver::class )
+			$container->get( PaymentDataResolver::class ),
+			$session_id_normalizer
 		);
 
 		return $verifier;
@@ -156,6 +175,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	public function test_suppressed_block_decision_is_recorded(): void {
 		$verifier = $this->a_session_verifier_receiving(
 			array(
+				'session_id' => 'integration-session-1',
 				'decision'   => 'block',
 				'risk_score' => 0.87,
 			)
@@ -180,7 +200,12 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	public function test_enforced_block_decision_is_recorded_as_blocked(): void {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 
-		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'block' ) );
+		$verifier = $this->a_session_verifier_receiving(
+			array(
+				'session_id' => 'integration-session-2',
+				'decision'   => 'block',
+			)
+		);
 
 		$decision = $verifier->verify_session( 'integration-session-2', 'blocks_checkout' );
 
@@ -238,6 +263,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	public function test_allow_decision_is_recorded_as_allowed(): void {
 		$verifier = $this->a_session_verifier_receiving(
 			array(
+				'session_id' => 'integration-session-3',
 				'decision'   => 'allow',
 				'risk_score' => 0.02,
 			)
@@ -262,7 +288,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $decision, 'A failed verify must fail open to allow' );
 
-		$row = $this->latest_row_for( 'integration-session-5' );
+		$row = $this->latest_row_without_session_id();
 		$this->assertNotNull( $row, 'Fail-open verifies must be recorded so unverified sessions stay visible' );
 		$this->assertSame( 'allow', $row['decision'] );
 		$this->assertSame( 'allowed', $row['final_status'] );
@@ -274,13 +300,70 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox Each verify event of a repeated session ID gets its own row.
 	 */
 	public function test_repeated_verifies_record_one_row_each(): void {
-		$this->a_session_verifier_receiving( array( 'decision' => 'allow' ) )
+		$this->a_session_verifier_receiving(
+			array(
+				'session_id' => 'integration-session-4',
+				'decision'   => 'allow',
+			)
+		)
 			->verify_session( 'integration-session-4', 'blocks_checkout' );
-		$this->a_session_verifier_receiving( array( 'decision' => 'block' ) )
+		$this->a_session_verifier_receiving(
+			array(
+				'session_id' => 'integration-session-4',
+				'decision'   => 'block',
+			)
+		)
 			->verify_session( 'integration-session-4', 'blocks_checkout' );
 
 		$this->assertSame( 2, $this->count_rows() );
 		$this->assertSame( 'block', $this->latest_row_for( 'integration-session-4' )['decision'] );
+	}
+
+	/**
+	 * @testdox A valid decision without a response ID records SQL NULL and does not trust the request ID
+	 */
+	public function test_valid_decision_without_response_id_records_null(): void {
+		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'allow' ) );
+
+		$this->assertSame( FraudDecision::Allow, $verifier->verify_session( 'submitted-id', 'blocks_checkout' ) );
+		$this->assertNull( $this->latest_row_for( 'submitted-id' ) );
+		$this->assertNotNull( $this->latest_row_without_session_id() );
+	}
+
+	/**
+	 * @testdox An echoed invalid-string marker records SQL NULL and creates no WC association
+	 *
+	 * @dataProvider invalid_string_marker_provider
+	 *
+	 * @param string $submitted Submitted invalid string.
+	 * @param string $marker    Reserved marker returned by the API.
+	 */
+	public function test_echoed_invalid_string_marker_records_null( string $submitted, string $marker ): void {
+		$verifier = $this->a_session_verifier_receiving(
+			array(
+				'session_id' => $marker,
+				'decision'   => 'block',
+			)
+		);
+
+		$verifier->verify_session( $submitted, 'blocks_checkout' );
+
+		$this->assertNull( $this->latest_row_for( $marker ) );
+		$this->assertNotNull( $this->latest_row_without_session_id() );
+		$this->assertSame( '', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+	}
+
+	/**
+	 * Invalid strings and their reserved request markers.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function invalid_string_marker_provider(): array {
+		return array(
+			'dot segment'        => array( '.', 'wcfp-invalid-characters' ),
+			'double-dot segment' => array( '..', 'wcfp-invalid-characters' ),
+			'control byte'       => array( "a\x00b", 'wcfp-invalid-characters' ),
+		);
 	}
 
 	/**
@@ -317,6 +400,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$verifier = $this->a_session_verifier_receiving(
 			array(
+				'session_id' => 'integration-session-6',
 				'decision'   => 'allow',
 				'risk_score' => 0.13,
 			),
@@ -349,6 +433,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$verifier = $this->a_session_verifier_receiving(
 			array(
+				'session_id' => 'integration-session-7',
 				'decision'   => 'block',
 				'risk_score' => 0.99,
 			)
@@ -386,7 +471,12 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$verifier = $this->a_session_verifier_receiving( array( 'decision' => 'allow' ) );
+		$verifier = $this->a_session_verifier_receiving(
+			array(
+				'session_id' => 'integration-session-8',
+				'decision'   => 'allow',
+			)
+		);
 		$verifier->verify_session( 'integration-session-8', 'blocks_checkout' );
 
 		$row = $this->latest_row_for( 'integration-session-8' );

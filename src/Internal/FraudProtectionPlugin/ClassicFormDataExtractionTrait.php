@@ -19,14 +19,20 @@ defined( 'ABSPATH' ) || exit;
 trait ClassicFormDataExtractionTrait {
 
 	/**
-	 * Get the Blackbox session ID from the POST data.
+	 * Get the submitted session ID from the POST data.
 	 *
-	 * @return string The session ID, or empty string if not found.
+	 * @return mixed The submitted session ID, or an empty string if not found.
 	 */
-	private function get_blackbox_session_id(): string {
+	private function get_submitted_session_id(): mixed {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce before this hook fires.
-		$session_id = isset( $_POST[ SessionVerifier::SESSION_ID_FIELD ] ) ? sanitize_text_field( wp_unslash( $_POST[ SessionVerifier::SESSION_ID_FIELD ] ) ) : '';
-		return $session_id;
+		if ( ! array_key_exists( SessionVerifier::SESSION_ID_FIELD, $_POST ) ) {
+			return '';
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by WooCommerce. Strings are unslashed below; SessionVerifier normalizes the value.
+		$value = $_POST[ SessionVerifier::SESSION_ID_FIELD ];
+
+		return is_string( $value ) ? wp_unslash( $value ) : $value;
 	}
 
 	/**

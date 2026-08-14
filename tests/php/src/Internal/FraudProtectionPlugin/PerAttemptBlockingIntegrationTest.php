@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
@@ -63,7 +64,8 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->api_client = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request' ) )
 			->getMock();
-		$this->api_client->init( wc_get_container()->get( VisitorIpResolver::class ) );
+		$session_id_normalizer = new SessionIdNormalizer();
+		$this->api_client->init( wc_get_container()->get( VisitorIpResolver::class ), $session_id_normalizer );
 
 		$decision_handler = new DecisionHandler();
 		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $this->createMock( RuleEvaluator::class ) );
@@ -73,7 +75,8 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 			wc_get_container()->get( SessionDataCollector::class ),
 			$this->api_client,
 			$decision_handler,
-			wc_get_container()->get( PaymentDataResolver::class )
+			wc_get_container()->get( PaymentDataResolver::class ),
+			$session_id_normalizer
 		);
 
 		$this->sut = new BlocksCheckoutProtector();
@@ -105,8 +108,8 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 			->expects( $this->exactly( 2 ) )
 			->method( 'jetpack_remote_request' )
 			->willReturnOnConsecutiveCalls(
-				$this->decision_response( 'block' ),
-				$this->decision_response( 'allow' )
+				$this->decision_response( 'block', 'blackbox-attempt-1' ),
+				$this->decision_response( 'allow', 'blackbox-attempt-2' )
 			);
 
 		$product = \WC_Helper_Product::create_simple_product();
@@ -167,13 +170,21 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 	/**
 	 * A canned successful transport response carrying the given decision.
 	 *
-	 * @param string $decision The decision to return in the response body.
+	 * @param string $decision   The decision to return in the response body.
+	 * @param string $session_id The response-backed session ID.
 	 * @return array<string, mixed>
 	 */
-	private function decision_response( string $decision ): array {
+	private function decision_response( string $decision, string $session_id ): array {
 		return array(
 			'response' => array( 'code' => 200 ),
-			'body'     => wp_json_encode( array( 'data' => array( 'decision' => $decision ) ) ),
+			'body'     => wp_json_encode(
+				array(
+					'data' => array(
+						'decision'   => $decision,
+						'session_id' => $session_id,
+					),
+				)
+			),
 		);
 	}
 }
