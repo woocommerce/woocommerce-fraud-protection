@@ -147,8 +147,12 @@ class PaymentDataResolver {
 			return null;
 		}
 
+		if ( $token->get_gateway_id() !== $payment_method ) {
+			return null;
+		}
+
 		return new PaymentMethodData(
-			$token->get_gateway_id(),
+			$payment_method,
 			'card',
 			true,
 			PaymentInstrumentData::from_array(

@@ -32,6 +32,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
+		wp_set_current_user( $this->factory->user->create() );
 		$this->sut = new PaymentDataResolver();
 	}
 
@@ -40,6 +41,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		remove_all_filters( 'woocommerce_fraud_protection_resolved_payment_data' );
+		wp_set_current_user( 0 );
 
 		parent::tearDown();
 	}
@@ -101,15 +103,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Falls back to pre-resolved data when a filter callback throws an exception.
 	 */
 	public function test_falls_back_when_filter_throws(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'stripe' );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '4242' );
-		$token->set_expiry_month( '12' );
-		$token->set_expiry_year( '2028' );
-		$token->set_token( 'tok_throw_test' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_card_token( 'stripe' );
 
 		add_filter( // @phpstan-ignore return.missing
 			'woocommerce_fraud_protection_resolved_payment_data',
@@ -196,15 +190,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Pre-resolves PaymentMethodData from a WC payment token when token key is present.
 	 */
 	public function test_token_preresolution_provides_payment_method_data(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'stripe' );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '4242' );
-		$token->set_expiry_month( '12' );
-		$token->set_expiry_year( '2028' );
-		$token->set_token( 'tok_test_123' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_card_token( 'stripe' );
 
 		$result = $this->sut->resolve(
 			'stripe',
@@ -222,18 +208,48 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Saved-token fields that must enforce the gateway match.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function mismatched_gateway_token_field_provider(): array {
+		return array(
+			'bare token field'               => array( 'stripe', 'token' ),
+			'classic selected-gateway field' => array( 'stripe', 'wc-stripe-payment-token' ),
+			'dasherized Square field'        => array( 'square_credit_card', 'wc-square-credit-card-payment-token' ),
+		);
+	}
+
+	/**
+	 * @testdox Pre-resolution returns the selected gateway baseline for a saved token from another gateway.
+	 *
+	 * @dataProvider mismatched_gateway_token_field_provider
+	 *
+	 * @param string $selected_gateway The selected gateway ID.
+	 * @param string $token_field       The submitted token field.
+	 */
+	public function test_token_preresolution_returns_baseline_for_token_from_other_gateway( string $selected_gateway, string $token_field ): void {
+		$token = $this->create_card_token( 'woocommerce_payments' );
+
+		$actual = $this->sut->resolve(
+			$selected_gateway,
+			array( $token_field => (string) $token->get_id() )
+		)->to_array();
+
+		$this->assertSame( $selected_gateway, $actual['gateway'] );
+		$this->assertNull( $actual['payment_type'] );
+		$this->assertFalse( $actual['is_saved_payment_method'] );
+		$this->assertNull( $actual['instrument']['brand'] );
+		$this->assertNull( $actual['instrument']['last4'] );
+		$this->assertNull( $actual['instrument']['exp_month'] );
+		$this->assertNull( $actual['instrument']['exp_year'] );
+	}
+
+	/**
 	 * @testdox Pre-resolution returns baseline when token belongs to a different user.
 	 */
 	public function test_token_preresolution_returns_baseline_for_other_users_token(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'stripe' );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '4242' );
-		$token->set_expiry_month( '12' );
-		$token->set_expiry_year( '2028' );
-		$token->set_token( 'tok_other_user' );
-		$token->set_user_id( 99999 );
-		$token->save();
+		$token = $this->create_card_token( 'stripe', 99999 );
 
 		$result = $this->sut->resolve(
 			'stripe',
@@ -274,15 +290,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Pre-resolves from wc-{gateway}-payment-token key (classic checkout).
 	 */
 	public function test_token_preresolution_from_classic_checkout_key(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'stripe' );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '4242' );
-		$token->set_expiry_month( '12' );
-		$token->set_expiry_year( '2028' );
-		$token->set_token( 'tok_classic_test' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_card_token( 'stripe' );
 
 		$result = $this->sut->resolve(
 			'stripe',
@@ -300,15 +308,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Pre-resolves from dasherized gateway key (e.g. Square's SkyVerge framework).
 	 */
 	public function test_token_preresolution_from_dasherized_gateway_key(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'square_credit_card' );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '1111' );
-		$token->set_expiry_month( '03' );
-		$token->set_expiry_year( '2029' );
-		$token->set_token( 'tok_square_dasherized' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_card_token( 'square_credit_card' );
 
 		$result = $this->sut->resolve(
 			'square_credit_card',
@@ -318,7 +318,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 		$array = $result->to_array();
 		$this->assertSame( 'square_credit_card', $array['gateway'] );
 		$this->assertSame( 'visa', $array['instrument']['brand'] );
-		$this->assertSame( '1111', $array['instrument']['last4'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
 	}
 
@@ -326,22 +326,14 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Pre-resolution falls back to bare token key when gateway key is absent.
 	 */
 	public function test_token_preresolution_falls_back_to_bare_token_key(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'stripe' );
-		$token->set_card_type( 'mastercard' );
-		$token->set_last4( '5678' );
-		$token->set_expiry_month( '06' );
-		$token->set_expiry_year( '2027' );
-		$token->set_token( 'tok_bare_fallback' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_card_token( 'stripe' );
 
 		$result = $this->sut->resolve(
 			'stripe',
 			array( 'token' => (string) $token->get_id() )
 		);
 
-		$this->assertSame( 'mastercard', $result->to_array()['instrument']['brand'] );
+		$this->assertSame( 'visa', $result->to_array()['instrument']['brand'] );
 	}
 
 	/**
@@ -361,15 +353,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Filter can override token-based pre-resolved data.
 	 */
 	public function test_filter_can_override_token_data(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'stripe' );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '4242' );
-		$token->set_expiry_month( '12' );
-		$token->set_expiry_year( '2028' );
-		$token->set_token( 'tok_test_456' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_card_token( 'stripe' );
 
 		$override = new PaymentMethodData(
 			'stripe',
@@ -397,15 +381,7 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Filter receives token-based data as initial value and can pass it through.
 	 */
 	public function test_filter_passes_through_token_data(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'square_credit_card' );
-		$token->set_card_type( 'mastercard' );
-		$token->set_last4( '5678' );
-		$token->set_expiry_month( '06' );
-		$token->set_expiry_year( '2027' );
-		$token->set_token( 'tok_test_789' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_card_token( 'square_credit_card' );
 
 		$captured_initial = null;
 
@@ -423,6 +399,27 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertSame( $captured_initial, $result );
-		$this->assertSame( 'mastercard', $result->to_array()['instrument']['brand'] );
+		$this->assertSame( 'visa', $result->to_array()['instrument']['brand'] );
+	}
+
+	/**
+	 * Create a saved card token.
+	 *
+	 * @param string $gateway_id Gateway ID.
+	 * @param ?int   $user_id    User ID. Defaults to the current user.
+	 * @return \WC_Payment_Token_CC
+	 */
+	private function create_card_token( string $gateway_id, ?int $user_id = null ): \WC_Payment_Token_CC {
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( $gateway_id );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '4242' );
+		$token->set_expiry_month( '12' );
+		$token->set_expiry_year( '2028' );
+		$token->set_token( 'tok_' . wp_unique_id() );
+		$token->set_user_id( null === $user_id ? get_current_user_id() : $user_id );
+		$token->save();
+
+		return $token;
 	}
 }
