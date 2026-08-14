@@ -13,6 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
@@ -61,6 +62,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	private $payment_data_resolver;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private $session_id_normalizer;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -70,13 +78,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->api_client            = $this->createMock( ApiClient::class );
 		$this->decision_handler      = $this->createMock( DecisionHandler::class );
 		$this->payment_data_resolver = $this->createMock( PaymentDataResolver::class );
+		$this->session_id_normalizer  = new SessionIdNormalizer();
 
 		$this->sut = new SessionVerifier();
 		$this->sut->init(
 			$this->data_collector,
 			$this->api_client,
 			$this->decision_handler,
-			$this->payment_data_resolver
+			$this->payment_data_resolver,
+			$this->session_id_normalizer
 		);
 	}
 
@@ -160,6 +170,59 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() passes the normalized submitted value to the API
+	 */
+	public function test_verify_session_uses_normalized_submitted_input(): void {
+		$submitted  = array( 'malformed' );
+		$normalized = 'normalized-by-helper';
+		$normalizer = $this->createMock( SessionIdNormalizer::class );
+
+		$normalizer
+			->expects( $this->once() )
+			->method( 'normalize' )
+			->with( $submitted )
+			->willReturn( $normalized );
+		$this->sut->init(
+			$this->data_collector,
+			$this->api_client,
+			$this->decision_handler,
+			$this->payment_data_resolver,
+			$normalizer
+		);
+
+		$this->data_collector->method( 'get_collected_data' )->willReturn( array() );
+		$verify_result = VerifyResult::create( FraudDecision::Allow, '' );
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->with( $normalized, $this->anything() )
+			->willReturn( $verify_result );
+		$this->decision_handler
+			->expects( $this->once() )
+			->method( 'apply_decision' )
+			->with( $verify_result, $this->anything() )
+			->willReturn( FraudDecision::Allow );
+
+		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( $submitted, 'direct_caller' ) );
+	}
+
+	/**
+	 * Reserved submitted markers.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public function submitted_marker_provider(): array {
+		return array(
+			'boolean'    => array( 'wcfp-invalid-boolean' ),
+			'null'       => array( 'wcfp-invalid-null' ),
+			'array'      => array( 'wcfp-invalid-array' ),
+			'object'     => array( 'wcfp-invalid-object' ),
+			'resource'   => array( 'wcfp-invalid-resource' ),
+			'characters' => array( 'wcfp-invalid-characters' ),
+		);
+	}
+
+	/**
 	 * @testdox verify_session() returns the filtered decision from apply_decision(), not from verify().
 	 */
 	public function test_verify_session_returns_filtered_decision(): void {
@@ -189,7 +252,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->method( 'get_collected_data' )
 			->willReturn( array() );
 
-		$verify_result = VerifyResult::fail_open( 'session-123' );
+		$verify_result = VerifyResult::fail_open();
 
 		$this->api_client
 			->method( 'verify' )
@@ -336,9 +399,14 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() fails open when decision_handler->apply_decision() throws.
+	 * @testdox verify_session() clears empty-result associations before failing open when the decision handler throws.
 	 */
 	public function test_verify_session_fails_open_when_decision_handler_throws(): void {
+		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-order-id' );
+		$order->save_meta_data();
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
+
 		$this->data_collector
 			->method( 'get_collected_data' )
 			->willReturn( array() );
@@ -351,9 +419,12 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->method( 'apply_decision' )
 			->willThrowException( new \RuntimeException( 'Decision handler exploded' ) );
 
-		$result = $this->sut->verify_session( 'test-session', 'checkout' );
+		$result = $this->sut->verify_session( 'test-session', 'checkout', $order->get_id() );
 
 		$this->assertSame( FraudDecision::Allow, $result );
+		$this->assertSame( '', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( '', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( '', $this->sut->last_verified_session_id() );
 		$this->assertLogged(
 			'error',
 			'Session verification failed, allowing',
@@ -444,6 +515,22 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox persist_session_id_to_order() preserves an existing invalid marker
+	 *
+	 * @dataProvider submitted_marker_provider
+	 *
+	 * @param string $marker Stored legacy association.
+	 */
+	public function test_persist_session_id_to_order_preserves_existing_invalid_marker( string $marker ): void {
+		$order = \WC_Helper_Order::create_order();
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, $marker );
+
+		$this->sut->persist_session_id_to_order( $order );
+
+		$this->assertSame( $marker, wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+	}
+
+	/**
 	 * @testdox persist_session_id_to_order() does nothing when WC session has no session ID.
 	 */
 	public function test_persist_session_id_to_order_skips_when_session_empty(): void {
@@ -479,6 +566,9 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_verify_session_does_not_persist_when_verification_fails(): void {
 		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-order-id' );
+		$order->save_meta_data();
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
 
 		$this->data_collector
 			->method( 'get_collected_data' )
@@ -489,9 +579,10 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$saved_order = wc_get_order( $order->get_id() );
 		$this->assertInstanceOf( \WC_Order::class, $saved_order );
 		$this->assertSame(
-			'',
+			'prior-order-id',
 			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
 		);
+		$this->assertSame( 'prior-session-id', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
 	}
 
 	/**
@@ -591,6 +682,23 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() clears current WC and order associations for an empty current result
+	 */
+	public function test_verify_session_clears_current_associations_for_empty_result(): void {
+		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-order-id' );
+		$order->save_meta_data();
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
+
+		$this->stub_verification_with_returned_id( '' );
+
+		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'submitted-id', 'blocks_checkout', $order->get_id() ) );
+		$this->assertSame( '', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( '', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( '', $this->sut->last_verified_session_id() );
+	}
+
+	/**
 	 * @testdox No-session generated ID survives to order meta via the deferred order-created hook.
 	 */
 	public function test_no_session_generated_id_reaches_order_meta_via_deferred_hook(): void {
@@ -633,10 +741,8 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Stub a successful verification pipeline (data collector, API, decision handler).
 	 *
-	 * The API client stub echoes the requested session ID back in the result,
-	 * mirroring the real client's contract (the result carries the effective
-	 * session ID: the requested one, or the server-generated one on the
-	 * no-session path).
+	 * The API client stub returns the requested string as response-backed test
+	 * data. Production association state still comes only from the result.
 	 */
 	private function stub_successful_verification(): void {
 		$this->data_collector
@@ -686,6 +792,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify_session() applies an ALLOW supplied by the filter without calling the API.
 	 */
 	public function test_verify_session_applies_an_allow_supplied_by_the_filter(): void {
+		$order = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-order-id' );
+		$order->save_meta_data();
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
+
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
@@ -697,9 +808,12 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'verify' );
 
-		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout' );
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout', $order->get_id() );
 
 		$this->assertSame( FraudDecision::Allow, $result );
+		$this->assertSame( 'prior-session-id', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( 'prior-order-id', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( '', $this->sut->last_verified_session_id() );
 		$this->assertLogged( 'info', 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
 	}
 

@@ -137,6 +137,44 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->sut->verify_and_block( $order );
 	}
 
+	/**
+	 * @testdox verify_and_block() passes the submitted extension value to SessionVerifier
+	 *
+	 * @dataProvider submitted_session_value_provider
+	 *
+	 * @param mixed $value Submitted value.
+	 */
+	public function test_verify_passes_submitted_value_to_session_verifier( $value ): void {
+		$request_data = array(
+			'extensions' => array(
+				'woocommerce/fraud-protection' => array(
+					'blackbox_session_id' => $value,
+				),
+			),
+		);
+		$this->set_request_data( $request_data );
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( $value, 'blocks_checkout', 201, $this->anything() )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block( $this->create_mock_order( 201 ) );
+	}
+
+	/**
+	 * Submitted extension values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function submitted_session_value_provider(): array {
+		return array(
+			'null'  => array( null ),
+			'array' => array( array( 'private' ) ),
+		);
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| extract_request_data() Tests

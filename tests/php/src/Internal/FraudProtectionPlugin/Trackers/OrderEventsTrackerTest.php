@@ -11,6 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\OrderEventsTracker;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -36,15 +37,23 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 	private $api_client;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private $session_id_normalizer;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->api_client = $this->createMock( ApiClient::class );
+		$this->api_client           = $this->createMock( ApiClient::class );
+		$this->session_id_normalizer = new SessionIdNormalizer();
 
 		$this->sut = new OrderEventsTracker();
-		$this->sut->init( $this->api_client );
+		$this->sut->init( $this->api_client, $this->session_id_normalizer );
 	}
 
 	/**
@@ -116,6 +125,32 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 			new \DateTimeImmutable( '2026-06-03T12:00:00Z' ),
 			'Visa CB 10.4 fraud.'
 		);
+	}
+
+	/**
+	 * @testdox fraud_protection_report() sends the normalized stored session ID to the API
+	 */
+	public function test_fraud_protection_report_uses_normalized_stored_session_id(): void {
+		$stored     = 'legacy-stored-session-id';
+		$normalized = 'normalized-by-helper';
+		$normalizer = $this->createMock( SessionIdNormalizer::class );
+		$order      = \WC_Helper_Order::create_order();
+		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, $stored );
+		$order->save_meta_data();
+
+		$normalizer
+			->expects( $this->once() )
+			->method( 'normalize_stored' )
+			->with( $stored )
+			->willReturn( $normalized );
+		$this->sut->init( $this->api_client, $normalizer );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'report' )
+			->with( $normalized, $this->anything() );
+
+		$this->sut->fraud_protection_report( $order, ReportSource::Api, 'rep_legacy', $this->make_context() );
 	}
 
 	/**

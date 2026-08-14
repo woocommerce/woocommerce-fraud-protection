@@ -104,7 +104,7 @@ class ShortcodeCheckoutProtector {
 		$request_data = $this->build_request_data( $posted_data );
 
 		$decision = $this->session_verifier->verify_session(
-			$this->get_blackbox_session_id(),
+			$this->get_submitted_session_id(),
 			self::SOURCE,
 			0, // No order_id yet — pre-order hook. Cart data used instead.
 			$request_data

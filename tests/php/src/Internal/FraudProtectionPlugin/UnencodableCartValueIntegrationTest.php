@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
@@ -363,7 +364,7 @@ class UnencodableCartValueIntegrationTest extends FraudProtectionUnitTestCase {
 		$api_client = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request' ) )
 			->getMock();
-		$api_client->init( wc_get_container()->get( VisitorIpResolver::class ) );
+		$api_client->init( wc_get_container()->get( VisitorIpResolver::class ), new SessionIdNormalizer() );
 		$api_client->method( 'jetpack_remote_request' )->willReturnCallback(
 			function ( array $request_args, string $body ) use ( &$transport_calls, &$captured_body ) {
 				++$transport_calls;

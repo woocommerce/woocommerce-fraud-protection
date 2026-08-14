@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
@@ -88,6 +89,13 @@ class PayPalCompat {
 	private BlockedSessionMessage $blocked_session_message;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private SessionIdNormalizer $session_id_normalizer;
+
+	/**
 	 * Whether this class has verified a create-order request that is still in flight.
 	 *
 	 * PayPal runs WC form validation inside the create-order request it already
@@ -117,13 +125,16 @@ class PayPalCompat {
 	 *
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
+	 * @param SessionIdNormalizer   $session_id_normalizer    The session ID normalizer.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionMessage $blocked_session_message
+		BlockedSessionMessage $blocked_session_message,
+		SessionIdNormalizer $session_id_normalizer
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
+		$this->session_id_normalizer   = $session_id_normalizer;
 	}
 
 	/**
@@ -154,9 +165,9 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function verify_and_block_create_order( array $data ): void {
-		$session_id = sanitize_text_field( $data[ SessionVerifier::SESSION_ID_FIELD ] ?? '' );
+		$submitted_session_id = array_key_exists( SessionVerifier::SESSION_ID_FIELD, $data ) ? $data[ SessionVerifier::SESSION_ID_FIELD ] : '';
 
-		$decision = $this->session_verifier->verify_session( $session_id, self::ORDER_CREATION_SOURCE, 0, $data );
+		$decision = $this->session_verifier->verify_session( $submitted_session_id, self::ORDER_CREATION_SOURCE, 0, $data );
 
 		$resolved_session_id = $this->session_verifier->last_verified_session_id();
 
@@ -169,7 +180,7 @@ class PayPalCompat {
 		// stays outside the catch — a Throwable catch over it would swallow its
 		// wp_die() and turn a Block into a bypass.
 		try {
-			$this->record_create_order_verification( $resolved_session_id, $decision );
+			$this->update_create_order_verification_record( $resolved_session_id, $decision );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
@@ -385,7 +396,7 @@ class PayPalCompat {
 
 		$record = $this->get_verified_session_record();
 
-		if ( null !== $record && $record['session_id'] === $session_id ) {
+		if ( null !== $record && $this->session_id_normalizer->normalize_stored( $record['session_id'] ) === $session_id ) {
 			return $record['decision'];
 		}
 
@@ -476,7 +487,7 @@ class PayPalCompat {
 	}
 
 	/**
-	 * Record that ppc-create-order scored a Blackbox session, and what it got.
+	 * Update the record of the session and decision scored by ppc-create-order.
 	 *
 	 * Kept in the WC session so the verdict outlives a blocked create-order,
 	 * which dies inside its own JSON response. Keyed by the session ID the
@@ -488,8 +499,13 @@ class PayPalCompat {
 	 * @param string        $session_id The session ID the verification resolved, empty when it completed none.
 	 * @param FraudDecision $decision   The decision that verification produced.
 	 */
-	private function record_create_order_verification( string $session_id, FraudDecision $decision ): void {
-		if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
+	private function update_create_order_verification_record( string $session_id, FraudDecision $decision ): void {
+		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			return;
+		}
+
+		if ( '' === $session_id ) {
+			WC()->session->set( self::VERIFICATION_RECORD_KEY, null );
 			return;
 		}
 
@@ -522,7 +538,7 @@ class PayPalCompat {
 
 		$record = $this->get_verified_session_record();
 
-		if ( null === $record || $record['session_id'] !== $session_id ) {
+		if ( null === $record || $this->session_id_normalizer->normalize_stored( $record['session_id'] ) !== $session_id ) {
 			return false;
 		}
 
@@ -540,7 +556,7 @@ class PayPalCompat {
 	/**
 	 * Read the create-order verification record from the WC session.
 	 *
-	 * Only the shape {@see record_create_order_verification()} writes counts
+	 * Only the shape {@see update_create_order_verification_record()} writes counts
 	 * as a record. Anything else — corruption, another plugin's write — reads
 	 * as no record, so the request falls through to a real verify. The order
 	 * fields tolerate absence — records written before the binding, or before

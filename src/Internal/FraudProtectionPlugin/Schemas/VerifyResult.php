@@ -14,11 +14,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Immutable result of a Blackbox `verify` call: decision, session ID, and risk score.
  *
- * The session ID is the *effective* one for the verify: the ID the response
- * returned (generated server-side on the no-session and degraded paths), or
- * the ID the request was made with when the response omits one. It is the ID
- * to persist and record; ApiClient resolves response-vs-request when building
- * the result.
+ * The session ID is the ID returned by Blackbox. An empty value means the
+ * response did not supply an ID that can become association state.
  */
 class VerifyResult {
 
@@ -38,19 +35,18 @@ class VerifyResult {
 	) {}
 
 	/**
-	 * Build a VerifyResult, sanitizing the session ID.
+	 * Build a VerifyResult from an accepted Blackbox response.
 	 *
-	 * The decision is expected to be pre-validated by ApiClient. The session ID
-	 * originates from the API response or the request payload, so it is
-	 * sanitized here.
+	 * ApiClient validates the decision and rejects reserved submitted-value
+	 * markers before it creates this result.
 	 *
 	 * @param FraudDecision $decision   The fraud decision.
-	 * @param string        $session_id The effective Blackbox session ID (raw).
+	 * @param string        $session_id The accepted Blackbox response session ID.
 	 * @param ?float        $risk_score The Blackbox risk score from the response, or null if absent.
 	 * @return self
 	 */
 	public static function create( FraudDecision $decision, string $session_id, ?float $risk_score = null ): self {
-		return new self( $decision, \sanitize_text_field( $session_id ), $risk_score );
+		return new self( $decision, $session_id, $risk_score );
 	}
 
 	/**
@@ -58,10 +54,9 @@ class VerifyResult {
 	 * verification could not obtain a real verdict (transport error,
 	 * unparseable response, unknown decision value).
 	 *
-	 * @param string $session_id The session ID the verify request was made with (raw).
 	 * @return self
 	 */
-	public static function fail_open( string $session_id ): self {
-		return new self( FraudDecision::Allow, \sanitize_text_field( $session_id ), null, true );
+	public static function fail_open(): self {
+		return new self( FraudDecision::Allow, '', null, true );
 	}
 }

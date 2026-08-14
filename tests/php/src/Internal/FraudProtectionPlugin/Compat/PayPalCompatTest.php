@@ -12,6 +12,7 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
@@ -45,6 +46,13 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	private $blocked_session_message;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private $session_id_normalizer;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -52,6 +60,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
+		$this->session_id_normalizer    = new SessionIdNormalizer();
 
 		$this->blocked_session_message
 			->method( 'get_plaintext' )
@@ -60,7 +69,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut = new PayPalCompat();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_message
+			$this->blocked_session_message,
+			$this->session_id_normalizer
 		);
 	}
 
@@ -161,10 +171,18 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_and_block_create_order() does not store empty session ID in WC session.
+	 * @testdox verify_and_block_create_order() removes a prior record when no response-backed ID exists.
 	 */
-	public function test_verify_does_not_store_empty_session_id(): void {
+	public function test_verify_removes_prior_record_without_response_session_id(): void {
 		$data = array( 'context' => 'product' );
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'prior-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Allow,
+			)
+		);
 
 		$this->session_verifier
 			->method( 'verify_session' )
@@ -173,6 +191,41 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut->verify_and_block_create_order( $data );
 
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/**
+	 * @testdox verify_and_block_create_order() passes the submitted value to SessionVerifier
+	 *
+	 * @dataProvider submitted_session_value_provider
+	 *
+	 * @param mixed $value Submitted value.
+	 */
+	public function test_verify_passes_submitted_value_to_session_verifier( $value ): void {
+		$data = array(
+			SessionVerifier::SESSION_ID_FIELD => $value,
+			'context'                         => array( 'source' => 'product' ),
+		);
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( $value, 'paypal_express_order_creation', 0, $this->anything() )
+			->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-id' );
+
+		$this->sut->verify_and_block_create_order( $data );
+	}
+
+	/**
+	 * Submitted session values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function submitted_session_value_provider(): array {
+		return array(
+			'null'  => array( null ),
+			'array' => array( array( 'private' ) ),
+		);
 	}
 
 	/**
@@ -225,7 +278,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'blocked-session' );
 
-		// A WC session whose reads and writes throw, so record_create_order_verification() fails.
+		// A WC session whose reads and writes throw, so update_create_order_verification_record() fails.
 		$original_session = WC()->session;
 		WC()->session     = new class() {
 			public function get( $key, $default = null ) { // phpcs:ignore
@@ -492,7 +545,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A record this code could not have written is not answered from.
 	 *
-	 * Only the shape record_create_order_verification() writes counts as a
+	 * Only the shape update_create_order_verification_record() writes counts as a
 	 * record. A matching session ID whose decision no verification produced
 	 * must be verified for real, not served a normalized allow.
 	 */
@@ -630,7 +683,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	public function test_supply_does_not_answer_for_a_session_verified_in_an_earlier_request(): void {
 		// A fresh instance is what the next request gets.
 		$next_request = new PayPalCompat();
-		$next_request->init( $this->session_verifier, $this->blocked_session_message );
+		$next_request->init( $this->session_verifier, $this->blocked_session_message, $this->session_id_normalizer );
 
 		$this->score_create_order( 'in-flight-session', FraudDecision::Allow );
 
@@ -795,9 +848,43 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Nothing is recorded when the call completed no verification.
 	 */
 	public function test_verify_records_nothing_when_no_verification_completed(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'  => 'prior-session',
+				'stand_downs' => 0,
+				'decision'    => FraudDecision::Block,
+			)
+		);
+
 		$this->score_create_order( 'presented-session', FraudDecision::Allow, '' );
 
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/**
+	 * @testdox Both comparison paths normalize a stored session ID written before the byte limit
+	 */
+	public function test_legacy_record_comparisons_normalize_stored_session_id(): void {
+		$normalized = str_repeat( 'a', 255 );
+		$stored     = $normalized . 'b';
+
+		$this->score_create_order( $normalized, FraudDecision::Allow );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$record['session_id'] = $stored;
+		$record['decision']   = FraudDecision::Block;
+		WC()->session->set( '_fraud_protection_paypal_verification', $record );
+
+		$this->assertSame( FraudDecision::Block, $this->ask( 'shortcode_checkout', '', $normalized ) );
+		$this->assertSame( $stored, WC()->session->get( '_fraud_protection_paypal_verification' )['session_id'] );
+
+		WC()->session->set( '_fraud_protection_paypal_verification', $record );
+
+		$this->assertSame( FraudDecision::Block, $this->ask( 'blocks_checkout', 'ppcp-gateway', $normalized ) );
+		$stored_record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertSame( $stored, $stored_record['session_id'] );
+		$this->assertSame( 1, $stored_record['stand_downs'] );
 	}
 
 	/*

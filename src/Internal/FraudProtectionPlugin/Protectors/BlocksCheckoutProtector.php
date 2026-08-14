@@ -145,7 +145,7 @@ class BlocksCheckoutProtector {
 	 */
 	public function verify_and_block( \WC_Order $order ): void {
 		$decision = $this->session_verifier->verify_session(
-			$this->get_blackbox_session_id(),
+			$this->get_submitted_session_id(),
 			self::SOURCE,
 			$order->get_id(),
 			$this->request_data
@@ -237,23 +237,23 @@ class BlocksCheckoutProtector {
 	}
 
 	/**
-	 * Get the Blackbox session ID from the stored request data.
+	 * Get the submitted session ID from the stored request data.
 	 *
-	 * @return string The session ID, or empty string if not found.
+	 * @return mixed The submitted session ID, or an empty string if not found.
 	 */
-	private function get_blackbox_session_id(): string {
+	private function get_submitted_session_id(): mixed {
 		$extensions = $this->request_data['extensions'] ?? array();
 
-		if ( ! is_array( $extensions ) || ! isset( $extensions[ self::EXTENSION_NAMESPACE ] ) ) {
+		if ( ! is_array( $extensions ) || ! array_key_exists( self::EXTENSION_NAMESPACE, $extensions ) ) {
 			return '';
 		}
 
 		$fraud_data = $extensions[ self::EXTENSION_NAMESPACE ];
 
-		if ( is_array( $fraud_data ) && ! empty( $fraud_data['blackbox_session_id'] ) ) {
-			return sanitize_text_field( $fraud_data['blackbox_session_id'] );
+		if ( ! is_array( $fraud_data ) || ! array_key_exists( 'blackbox_session_id', $fraud_data ) ) {
+			return '';
 		}
 
-		return '';
+		return $fraud_data['blackbox_session_id'];
 	}
 }

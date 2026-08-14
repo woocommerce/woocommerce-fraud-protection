@@ -289,12 +289,12 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should record fail-open results under the verify_error trigger, distinguishable from genuine Blackbox allows.
 	 */
 	public function test_derives_verify_error_trigger_for_fail_open_results(): void {
-		$captured = $this->record_result_and_capture( VerifyResult::fail_open( 'session-xyz' ), FraudDecision::Allow );
+		$captured = $this->record_result_and_capture( VerifyResult::fail_open(), FraudDecision::Allow );
 
 		$this->assertSame( 'allow', $captured['decision'] );
 		$this->assertSame( 'allowed', $captured['final_status'] );
 		$this->assertSame( 'verify_error', $captured['trigger_type'] );
-		$this->assertSame( 'session-xyz', $captured['session_id'], 'The session ID the request was made with should be recorded' );
+		$this->assertSame( '', $captured['session_id'], 'A fail-open result must not trust the submitted session ID' );
 		$this->assertNull( $captured['risk_score'] );
 	}
 
@@ -337,7 +337,7 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_matched_rule_trigger_takes_precedence_over_verify_error(): void {
 		$captured = $this->record_result_and_capture(
-			VerifyResult::fail_open( 'session-xyz' ),
+			VerifyResult::fail_open(),
 			FraudDecision::Block,
 			null,
 			$this->a_matching_rule( FraudDecision::Block )

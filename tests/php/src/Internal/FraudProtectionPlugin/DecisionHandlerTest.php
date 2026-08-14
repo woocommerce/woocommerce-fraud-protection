@@ -485,7 +485,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Forwards a fail-open verify result to the recorder unchanged, so it can derive the verify_error trigger.
 	 */
 	public function test_forwards_fail_open_result_to_the_recorder(): void {
-		$verify_result = VerifyResult::fail_open( 'test-session' );
+		$verify_result = VerifyResult::fail_open();
 
 		$this->event_recorder
 			->expects( $this->once() )

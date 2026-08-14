@@ -192,10 +192,14 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should insert separate rows for events with no session ID.
 	 */
 	public function test_events_without_session_id_insert_separate_rows(): void {
+		global $wpdb;
+
 		$this->sut->record_event( $this->an_event( array( 'session_id' => '' ) ) );
 		$this->sut->record_event( $this->an_event( array( 'session_id' => '' ) ) );
 
 		$this->assertSame( 2, $this->count_rows() );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( 2, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $this->schema_manager->get_sessions_table_name() . ' WHERE session_id IS NULL' ) );
 	}
 
 	/**

@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportContextData;
 use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
@@ -33,14 +34,23 @@ class OrderEventsTracker {
 	private ApiClient $api_client;
 
 	/**
+	 * Session ID normalizer.
+	 *
+	 * @var SessionIdNormalizer
+	 */
+	private SessionIdNormalizer $session_id_normalizer;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param ApiClient $api_client The API client instance.
+	 * @param ApiClient           $api_client           The API client instance.
+	 * @param SessionIdNormalizer $session_id_normalizer The session ID normalizer.
 	 */
-	final public function init( ApiClient $api_client ): void {
-		$this->api_client = $api_client;
+	final public function init( ApiClient $api_client, SessionIdNormalizer $session_id_normalizer ): void {
+		$this->api_client            = $api_client;
+		$this->session_id_normalizer = $session_id_normalizer;
 	}
 
 	/**
@@ -70,6 +80,8 @@ class OrderEventsTracker {
 				);
 				return;
 			}
+			// Normalize values written by older plugin versions before constructing the report URL.
+			$session_id = $this->session_id_normalizer->normalize_stored( $session_id );
 
 			$context = $context->with_order_defaults( $order->get_id(), $order->get_payment_method() );
 
