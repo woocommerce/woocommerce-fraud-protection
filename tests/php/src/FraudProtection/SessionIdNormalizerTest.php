@@ -61,32 +61,29 @@ class SessionIdNormalizerTest extends FraudProtectionUnitTestCase {
 			'integer zero'       => array( 0, '0' ),
 			'integer'            => array( 42, '42' ),
 			'float zero'         => array( 0.0, '0' ),
-			'positive float'     => array( 1.5, 'wcfp-invalid-characters' ),
-			'negative float'     => array( -1.5, 'wcfp-invalid-characters' ),
-			'not a number'       => array( NAN, 'NAN' ),
-			'positive infinity'  => array( INF, 'INF' ),
-			'negative infinity'  => array( -INF, '-INF' ),
 		);
 	}
 
 	/**
-	 * @testdox normalize() replaces strings containing unsupported characters with a fixed invalid marker
+	 * @testdox normalize() replaces scalars containing unsupported characters with a fixed invalid marker
 	 *
-	 * @dataProvider unsupported_string_provider
+	 * @dataProvider unsupported_scalar_provider
 	 *
-	 * @param string $value Submitted string.
+	 * @param mixed $value Submitted scalar value.
 	 */
-	public function test_normalize_replaces_unsupported_characters( string $value ): void {
+	public function test_normalize_replaces_unsupported_characters( mixed $value ): void {
 		$this->assertSame( 'wcfp-invalid-characters', $this->sut->normalize( $value ) );
 	}
 
 	/**
-	 * Strings outside the Base64URL alphabet.
+	 * Scalar values outside the Base64URL alphabet after string conversion.
 	 *
-	 * @return array<string, array{string}>
+	 * @return array<string, array{mixed}>
 	 */
-	public function unsupported_string_provider(): array {
+	public function unsupported_scalar_provider(): array {
 		$values = array(
+			'positive float'     => array( 1.5 ),
+			'negative float'     => array( -1.5 ),
 			'single dot'        => array( '.' ),
 			'double dot'        => array( '..' ),
 			'three dots'         => array( '...' ),
@@ -112,6 +109,30 @@ class SessionIdNormalizerTest extends FraudProtectionUnitTestCase {
 		}
 
 		return $values;
+	}
+
+	/**
+	 * @testdox normalize() uses a fixed invalid-number marker for non-finite floats
+	 *
+	 * @dataProvider non_finite_number_provider
+	 *
+	 * @param float $value Non-finite float.
+	 */
+	public function test_normalize_uses_invalid_number_marker( float $value ): void {
+		$this->assertSame( 'wcfp-invalid-number', $this->sut->normalize( $value ) );
+	}
+
+	/**
+	 * Non-finite float values.
+	 *
+	 * @return array<string, array{float}>
+	 */
+	public function non_finite_number_provider(): array {
+		return array(
+			'not a number'      => array( NAN ),
+			'positive infinity' => array( INF ),
+			'negative infinity' => array( -INF ),
+		);
 	}
 
 	/**
@@ -167,7 +188,7 @@ class SessionIdNormalizerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox is_invalid_marker() recognizes only the six exact reserved markers
+	 * @testdox is_invalid_marker() recognizes only the seven exact reserved markers
 	 */
 	public function test_is_invalid_marker_recognizes_only_exact_markers(): void {
 		foreach (
@@ -178,6 +199,7 @@ class SessionIdNormalizerTest extends FraudProtectionUnitTestCase {
 				'wcfp-invalid-object',
 				'wcfp-invalid-resource',
 				'wcfp-invalid-characters',
+				'wcfp-invalid-number',
 			) as $marker
 		) {
 			$this->assertTrue( $this->sut->is_invalid_marker( $marker ) );

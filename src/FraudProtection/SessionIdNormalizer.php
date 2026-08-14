@@ -54,6 +54,11 @@ class SessionIdNormalizer {
 	private const INVALID_CHARACTERS = 'wcfp-invalid-characters';
 
 	/**
+	 * Marker for a non-finite number.
+	 */
+	private const INVALID_NUMBER = 'wcfp-invalid-number';
+
+	/**
 	 * Normalize one untrusted or legacy local value to a bounded Base64URL session ID.
 	 *
 	 * @param mixed $value Session ID value.
@@ -64,6 +69,10 @@ class SessionIdNormalizer {
 	public function normalize( mixed $value ): string {
 		if ( is_bool( $value ) ) {
 			return self::INVALID_BOOLEAN;
+		}
+
+		if ( is_float( $value ) && ! is_finite( $value ) ) {
+			return self::INVALID_NUMBER;
 		}
 
 		if ( is_scalar( $value ) ) {
@@ -118,6 +127,7 @@ class SessionIdNormalizer {
 				self::INVALID_OBJECT,
 				self::INVALID_RESOURCE,
 				self::INVALID_CHARACTERS,
+				self::INVALID_NUMBER,
 			),
 			true
 		);

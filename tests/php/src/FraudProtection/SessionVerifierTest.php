@@ -219,6 +219,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			'object'     => array( 'wcfp-invalid-object' ),
 			'resource'   => array( 'wcfp-invalid-resource' ),
 			'characters' => array( 'wcfp-invalid-characters' ),
+			'number'     => array( 'wcfp-invalid-number' ),
 		);
 	}
 
