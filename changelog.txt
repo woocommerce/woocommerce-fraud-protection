@@ -1,5 +1,14 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-08-18 - version 0.1.8
+* Fixed - PayPal validation requests no longer start an early fraud check that could interrupt it.
+* Fixed - Checkout and add-payment-method forms no longer fail when another extension supplies an unexpected validation value.
+* Fixed - Fraud decisions remain effective when an automated decision filter reports an error.
+* Fixed - Visitor IP checks ignore shopper-supplied forwarding headers.
+* Fixed - Submitted session IDs are validated and normalized before verification.
+* Fixed - Saved payment tokens must match the selected payment gateway.
+* Fixed - Checkout block payment data is normalized in the same way as WooCommerce.
+
 2026-08-05 - version 0.1.7
 * Fixed - PayPal payments no longer fail for shoppers whose browsers block the fraud protection script; the payment is now checked without the browser session data instead.
 
