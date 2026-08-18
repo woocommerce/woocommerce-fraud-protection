@@ -91,15 +91,17 @@ class ShortcodeCheckoutProtector {
 	 *
 	 * @internal
 	 *
-	 * @param array     $posted_data The posted checkout form data.
+	 * @param mixed     $posted_data The posted checkout form data.
 	 * @param \WP_Error $errors      Validation errors object — add errors here to block checkout.
 	 * @return void
 	 */
-	public function verify_and_block( array $posted_data, \WP_Error $errors ): void {
+	public function verify_and_block( mixed $posted_data, \WP_Error $errors ): void {
 		// Other validation already failed — the order won't be created, so skip verify.
 		if ( $this->checkout_has_blocking_error( $errors ) ) {
 			return;
 		}
+
+		$posted_data = is_array( $posted_data ) ? $posted_data : array();
 
 		$request_data = $this->build_request_data( $posted_data );
 

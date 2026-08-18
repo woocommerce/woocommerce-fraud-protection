@@ -148,19 +148,24 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox verify_and_block() passes session_id and request_data to SessionVerifier, allows on ALLOW.
+	 * @dataProvider checkout_data_with_expected_request_data_provider
+	 *
+	 * @param mixed $posted_data          Checkout data supplied to the method.
+	 * @param array $expected_request_data Expected request data.
 	 */
-	public function test_verify_allows_on_allow_decision(): void {
+	public function test_verify_allows_on_allow_decision( mixed $posted_data, array $expected_request_data ): void {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-123';
-
-		$posted_data = array(
-			'billing_first_name' => 'Bob',
-			'payment_method'     => 'stripe',
-		);
+		$_POST['gateway_token']                    = 'test-token';
 
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-123', 'shortcode_checkout', 0, $this->isType( 'array' ) )
+			->with(
+				'test-session-123',
+				'shortcode_checkout',
+				0,
+				$expected_request_data
+			)
 			->willReturn( FraudDecision::Allow );
 
 		$errors = new \WP_Error();
@@ -171,14 +176,12 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox verify_and_block() adds error on BLOCK decision.
+	 * @dataProvider checkout_data_provider
+	 *
+	 * @param mixed $posted_data Checkout data supplied to the method.
 	 */
-	public function test_verify_adds_error_on_block_decision(): void {
+	public function test_verify_adds_error_on_block_decision( mixed $posted_data ): void {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-456';
-
-		$posted_data = array(
-			'billing_first_name' => 'Jane',
-			'payment_method'     => 'woocommerce_payments',
-		);
 
 		$this->session_verifier
 			->expects( $this->once() )
@@ -197,19 +200,73 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox verify_and_block() skips verification when core checkout validation already failed.
+	 * @dataProvider checkout_data_provider
+	 *
+	 * @param mixed $posted_data Checkout data supplied to the method.
 	 */
-	public function test_skips_verify_when_checkout_validation_already_failed(): void {
+	public function test_skips_verify_when_checkout_validation_already_failed( mixed $posted_data ): void {
 		$this->session_verifier
 			->expects( $this->never() )
 			->method( 'verify_session' );
 
-		$this->sut->register();
-
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'XX' ) );
+		$this->sut->verify_and_block( $posted_data, $errors );
 
 		$this->assertNotEmpty(
 			$errors->get_error_codes(),
 			'Core validation should fail for an invalid country, so verification must be skipped'
+		);
+	}
+
+	/**
+	 * Checkout data and expected request data.
+	 *
+	 * @return array<string, array{mixed, array<string, mixed>}>
+	 */
+	public function checkout_data_with_expected_request_data_provider(): array {
+		$normalized_request_data = array(
+			'payment_method' => '',
+			'payment_data'   => array( 'gateway_token' => 'test-token' ),
+		);
+
+		return array(
+			'array'   => array(
+				array(
+					'billing_first_name' => 'Bob',
+					'payment_method'     => 'stripe',
+				),
+				array(
+					'payment_method'  => 'stripe',
+					'payment_data'    => array( 'gateway_token' => 'test-token' ),
+					'billing_address' => array( 'first_name' => 'Bob' ),
+				),
+			),
+			'null'    => array( null, $normalized_request_data ),
+			'string'  => array( 'invalid', $normalized_request_data ),
+			'integer' => array( 1, $normalized_request_data ),
+			'boolean' => array( true, $normalized_request_data ),
+			'object'  => array( new \stdClass(), $normalized_request_data ),
+		);
+	}
+
+	/**
+	 * Checkout data values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function checkout_data_provider(): array {
+		return array(
+			'array'   => array(
+				array(
+					'billing_first_name' => 'Bob',
+					'payment_method'     => 'stripe',
+				),
+			),
+			'null'    => array( null ),
+			'string'  => array( 'invalid' ),
+			'integer' => array( 1 ),
+			'boolean' => array( true ),
+			'object'  => array( new \stdClass() ),
 		);
 	}
 
