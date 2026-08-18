@@ -115,8 +115,11 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox verify_and_block() passes session_id and request_data to SessionVerifier, returns true on ALLOW.
+	 * @dataProvider truthy_prior_validation_values_provider
+	 *
+	 * @param mixed $prior_value Value returned by a prior filter.
 	 */
-	public function test_verify_returns_true_on_allow_decision(): void {
+	public function test_verify_returns_true_on_allow_decision( mixed $prior_value ): void {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-123';
 		$_POST['payment_method']                 = 'stripe';
 
@@ -126,15 +129,18 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 			->with( 'test-session-123', 'add_payment_method', 0, $this->isType( 'array' ) )
 			->willReturn( FraudDecision::Allow );
 
-		$result = $this->sut->verify_and_block( true );
+		$result = $this->sut->verify_and_block( $prior_value );
 
 		$this->assertTrue( $result );
 	}
 
 	/**
 	 * @testdox verify_and_block() returns false and adds notice on BLOCK decision.
+	 * @dataProvider truthy_prior_validation_values_provider
+	 *
+	 * @param mixed $prior_value Value returned by a prior filter.
 	 */
-	public function test_verify_returns_false_and_adds_notice_on_block_decision(): void {
+	public function test_verify_returns_false_and_adds_notice_on_block_decision( mixed $prior_value ): void {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-456';
 		$_POST['payment_method']                 = 'woocommerce_payments';
 
@@ -143,7 +149,7 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 			->method( 'verify_session' )
 			->willReturn( FraudDecision::Block );
 
-		$result = $this->sut->verify_and_block( true );
+		$result = $this->sut->verify_and_block( $prior_value );
 
 		$this->assertFalse( $result );
 		$this->assertTrue(
@@ -174,15 +180,46 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox verify_and_block() respects prior validation failure and skips verification.
+	 * @dataProvider falsey_prior_validation_values_provider
+	 *
+	 * @param mixed $prior_value Value returned by a prior filter.
 	 */
-	public function test_verify_respects_prior_validation_failure(): void {
+	public function test_verify_respects_prior_validation_failure( mixed $prior_value ): void {
 		$this->session_verifier
 			->expects( $this->never() )
 			->method( 'verify_session' );
 
-		$result = $this->sut->verify_and_block( false );
+		$result = $this->sut->verify_and_block( $prior_value );
 
 		$this->assertFalse( $result );
+	}
+
+	/**
+	 * Falsey prior validation values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function falsey_prior_validation_values_provider(): array {
+		return array(
+			'false'        => array( false ),
+			'null'         => array( null ),
+			'zero'         => array( 0 ),
+			'empty string' => array( '' ),
+			'empty array'  => array( array() ),
+		);
+	}
+
+	/**
+	 * Truthy prior validation values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function truthy_prior_validation_values_provider(): array {
+		return array(
+			'true'            => array( true ),
+			'non-empty array' => array( array( 'valid' ) ),
+			'object'          => array( new \stdClass() ),
+		);
 	}
 
 }

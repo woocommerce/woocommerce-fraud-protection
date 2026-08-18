@@ -90,13 +90,13 @@ class AddPaymentMethodProtector {
 	 *
 	 * @internal
 	 *
-	 * @param bool $is_valid Current form validity from prior filters.
+	 * @param mixed $is_valid Current form validity from prior filters. A falsey value stops processing.
 	 * @return bool True to allow, false to block.
 	 */
-	public function verify_and_block( bool $is_valid ): bool {
+	public function verify_and_block( mixed $is_valid ): bool {
 		// Respect prior validation failures.
 		if ( ! $is_valid ) {
-			return $is_valid;
+			return false;
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
