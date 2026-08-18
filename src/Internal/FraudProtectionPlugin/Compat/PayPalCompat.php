@@ -96,23 +96,12 @@ class PayPalCompat {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
-	 * Whether this class has verified a create-order request that is still in flight.
-	 *
-	 * PayPal runs WC form validation inside the create-order request it already
-	 * verified, and that validation presents no session ID of its own. A plain
-	 * object property on purpose: request-local, unforgeable, consumed on read.
-	 *
-	 * @var bool
-	 */
-	private bool $create_order_request_verified = false;
-
-	/**
 	 * The session ID this request's create-order verification recorded, if any.
 	 *
 	 * Lets the PayPal order created later in the same request be bound to the
-	 * record it belongs to. Request-local and consumed on read, like the marker
-	 * above: a PayPal order created outside a verified create-order request —
-	 * a subscription renewal, for instance — binds nothing.
+	 * record it belongs to. Request-local and consumed on read: a PayPal order
+	 * created outside a verified create-order request — a subscription renewal,
+	 * for instance — binds nothing.
 	 *
 	 * @var string
 	 */
@@ -154,10 +143,9 @@ class PayPalCompat {
 	 * Verify the session and block the PayPal CreateOrder request if needed.
 	 *
 	 * Runs on `woocommerce_paypal_payments_create_order_request_started`. On
-	 * BLOCK it responds and terminates via wp_send_json_error(), so the write
-	 * ordering around that response is deliberate: the record first — the
-	 * blocked attempt is the one whose verdict must outlive its request — and
-	 * the in-request marker after, so a blocked request leaves nothing behind.
+	 * BLOCK it responds and terminates via wp_send_json_error(), so the record is
+	 * written first: the blocked attempt is the one whose verdict must outlive
+	 * its request.
 	 *
 	 * @internal
 	 *
@@ -202,7 +190,6 @@ class PayPalCompat {
 			);
 		}
 
-		$this->create_order_request_verified = true;
 		$this->session_recorded_this_request = $resolved_session_id;
 	}
 
@@ -222,8 +209,8 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function bind_created_order_to_verification( $order ): void {
-		// Consumed on read, before the try, so the marker is always spent and
-		// the session ID is available to the fail-open log.
+		// Consumed on read, before the try, so the session ID state is always
+		// spent and remains available to the fail-open log.
 		$session_id = $this->session_recorded_this_request;
 
 		$this->session_recorded_this_request = '';
@@ -349,12 +336,6 @@ class PayPalCompat {
 			return $decision;
 		}
 
-		// Before anything read from the request: the form PayPal rebuilds for
-		// validation is not ours to make assumptions about.
-		if ( $this->consume_create_order_verification() ) {
-			return $this->decision_for_verified_attempt( $session_id );
-		}
-
 		$payment_method = (string) ( $request_data['payment_method'] ?? '' );
 
 		// Not a PayPal gateway — nothing for this filter to do.
@@ -381,10 +362,8 @@ class PayPalCompat {
 	/**
 	 * The decision to hand back for a request this class already scored.
 	 *
-	 * The recorded decision on an exact session-ID match; otherwise allow,
-	 * which only the marker route reaches — the validation leg it covers
-	 * presents no matchable ID, and its origin verify allowed (a blocked one
-	 * dies before the marker is set).
+	 * The recorded decision on the exact session-ID match the caller confirmed.
+	 * If that record becomes unavailable before this read, fail open.
 	 *
 	 * @param string $session_id The Blackbox session ID being verified.
 	 * @return FraudDecision
@@ -401,22 +380,6 @@ class PayPalCompat {
 		}
 
 		return FraudDecision::Allow;
-	}
-
-	/**
-	 * Take the create-order verification marker, if this request has one.
-	 *
-	 * One verification covers one deferral: a create-order request runs form
-	 * validation once, and anything beyond that verifies for itself.
-	 *
-	 * @return bool Whether this request had already been verified here.
-	 */
-	private function consume_create_order_verification(): bool {
-		$verified = $this->create_order_request_verified;
-
-		$this->create_order_request_verified = false;
-
-		return $verified;
 	}
 
 	/**

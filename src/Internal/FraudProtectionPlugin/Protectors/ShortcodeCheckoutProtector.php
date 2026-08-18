@@ -22,8 +22,8 @@ defined( 'ABSPATH' ) || exit;
  * Handles the collect -> verify -> verdict flow for the classic AJAX checkout:
  * 1. Enqueues shortcode-checkout.js which gates form submission to acquire a
  *    Blackbox session ID and inject it as a hidden field.
- * 2. Hooks into `woocommerce_after_checkout_validation` (before order creation)
- *    to verify the session with Blackbox and block on BLOCK decisions.
+ * 2. Registers checkout validation verification when WooCommerce starts the
+ *    classic checkout process, before order creation.
  *
  * Fail-open: Delegated to SessionVerifier — all internal errors result in ALLOW.
  */
@@ -74,9 +74,20 @@ class ShortcodeCheckoutProtector {
 	 * @return void
 	 */
 	public function register(): void {
+		add_action( 'woocommerce_checkout_process', array( $this, 'register_checkout_validation_verifier' ), PHP_INT_MAX );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_shortcode_checkout_script' ) );
+	}
+
+	/**
+	 * Register verification for the current checkout process.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function register_checkout_validation_verifier(): void {
 		// Run as late as possible so verify_and_block()'s guard sees other validators' errors.
 		add_action( 'woocommerce_after_checkout_validation', array( $this, 'verify_and_block' ), PHP_INT_MAX, 2 );
-		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_shortcode_checkout_script' ) );
 	}
 
 	/**

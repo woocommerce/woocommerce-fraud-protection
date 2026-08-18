@@ -124,15 +124,19 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox register() hooks woocommerce_after_checkout_validation at PHP_INT_MAX and wp_enqueue_scripts.
+	 * @testdox register() waits for the checkout process before registering validation verification.
 	 */
 	public function test_register_hooks(): void {
 		$this->sut->register();
 
 		$this->assertSame(
 			PHP_INT_MAX,
+			has_action( 'woocommerce_checkout_process', array( $this->sut, 'register_checkout_validation_verifier' ) ),
+			'woocommerce_checkout_process hook should be registered at PHP_INT_MAX'
+		);
+		$this->assertFalse(
 			has_action( 'woocommerce_after_checkout_validation', array( $this->sut, 'verify_and_block' ) ),
-			'woocommerce_after_checkout_validation hook should be registered at PHP_INT_MAX'
+			'Validation verification should not be registered before checkout processing starts'
 		);
 		$this->assertNotFalse(
 			has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_shortcode_checkout_script' ) ),
@@ -196,6 +200,21 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			'We are unable to process this request online',
 			$errors->get_error_message( 'woocommerce_checkout_error' )
 		);
+	}
+
+	/**
+	 * @testdox Direct checkout validation before checkout processing does not verify.
+	 */
+	public function test_direct_validation_before_checkout_process_does_not_verify(): void {
+		$this->session_verifier
+			->expects( $this->never() )
+			->method( 'verify_session' );
+
+		$this->sut->register();
+
+		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
+
+		$this->assertEmpty( $errors->get_error_codes(), 'Direct validation should remain valid without verification.' );
 	}
 
 	/**
@@ -278,6 +297,8 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->expects( $this->never() )
 			->method( 'verify_session' );
 
+		$this->sut->register();
+
 		// Mirrors how WCPay/Subscriptions validate: an error notice, not $errors.
 		add_action(
 			'woocommerce_checkout_process',
@@ -286,8 +307,6 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			}
 		);
 		do_action( 'woocommerce_checkout_process' );
-
-		$this->sut->register();
 
 		// Valid data, so the only blocking signal is the notice above.
 		$this->run_checkout_validation( array( 'billing_country' => 'US' ) );
@@ -320,6 +339,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->sut->register();
+		do_action( 'woocommerce_checkout_process' );
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
 
@@ -344,6 +364,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		add_filter( 'woocommerce_add_error', '__return_empty_string' );
 
 		$this->sut->register();
+		do_action( 'woocommerce_checkout_process' );
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'XX' ) );
 
@@ -354,15 +375,30 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_and_block() runs verification when core checkout validation passes.
+	 * @testdox Checkout processing followed by core validation verifies once.
 	 */
-	public function test_runs_verify_when_checkout_validation_passes(): void {
+	public function test_checkout_process_then_validation_verifies_once(): void {
+		$_POST['wc_fraud_protection_session_id'] = 'checkout-session';
+
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
+			->with(
+				'checkout-session',
+				'shortcode_checkout',
+				0,
+				$this->isType( 'array' )
+			)
 			->willReturn( FraudDecision::Allow );
 
 		$this->sut->register();
+		do_action( 'woocommerce_checkout_process' );
+
+		$this->assertSame(
+			PHP_INT_MAX,
+			has_action( 'woocommerce_after_checkout_validation', array( $this->sut, 'verify_and_block' ) ),
+			'Validation verification should be registered at PHP_INT_MAX'
+		);
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
 
