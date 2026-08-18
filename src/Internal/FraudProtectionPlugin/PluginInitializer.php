@@ -41,7 +41,7 @@ class PluginInitializer {
 	 * @return void
 	 */
 	public static function run( string $plugin_file ): void {
-		define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.7' );
+		define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.8' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', dirname( $plugin_file ) );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( $plugin_file ) );
 
