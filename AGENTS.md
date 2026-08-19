@@ -32,7 +32,7 @@ Assets under `assets/` are served directly. Most development changes do not requ
 ## Code structure
 
 - All project PHP files must declare `strict_types=1`. WP-CLI `eval-file` scripts under `bin/` and `tests/bootstrap.php` are the exceptions.
-- The two plugin entry points and the kill-switch smoke files must remain parseable on PHP 7.4 and 8.0. Do not add PHP 8.1 syntax to those files.
+- PHP 7.4 and 8.0 are parseability targets only for the two plugin entry points and the kill-switch smoke files; they are not supported plugin runtimes. Do not add PHP 8.1 syntax to those files.
 - Composer maps `Automattic\WooCommerce\` to `src/`. Do not add manual `require_once` calls for autoloaded classes.
 - Public API belongs under `Automattic\WooCommerce\FraudProtection\` in `src/FraudProtection/`.
 - Internal code belongs under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` in `src/Internal/FraudProtectionPlugin/`. Internal is the default for new classes.
@@ -87,11 +87,11 @@ Use generic customer messages such as “We are unable to process this request o
 
 ### Platform-log forwarding
 
-The optional fourth argument to `FraudProtectionController::log()` forwards a sanitized copy to the PHP error log when set to `true`. It defaults to `false`. Forward only events that need central operator attention, such as transport failures, response parsing failures, plugin exception paths, and third-party filter failures. The entry is still written to the local WooCommerce log.
+The optional fourth argument to `FraudProtectionController::log()` forwards the prepared message and a sanitized copy of its structured context to the PHP error log when set to `true`. Only the structured context is sanitized. The argument defaults to `false`. Forward only events that need central operator attention, such as transport failures, response parsing failures, plugin exception paths, and third-party filter failures. The entry is still written to the local WooCommerce log.
 
 Forwarded context passes through `LogContextSanitizer`. It keeps only reviewed, top-level allowlisted keys with scalar values, truncates strings to 200 characters, and drops all other values. Nested keys are not extracted. Keep detailed or sensitive data only in the local context. Add an allowlist key only with a privacy review in the pull request. Use a new key for each reviewed purpose; in particular, do not reuse `schema_db_error` for data-path query errors because their text can contain stored values.
 
-The message is not sanitized. Do not include form fields, raw payment data, personal data, full payloads or responses, or user-controlled third-party exception text in a forwarded message. Pass reviewed values as structured context instead.
+The message is forwarded without sanitization. Do not include form fields, raw payment data, personal data, full payloads or responses, or user-controlled third-party exception text in a forwarded message. Pass reviewed values as structured context instead.
 
 Do not change the forwarded line format without confirming the host PHP-errors parser contract and updating its tests. The required form is:
 
