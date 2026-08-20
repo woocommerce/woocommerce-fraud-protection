@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 
@@ -81,16 +81,25 @@ class SchemaManager {
 	private LegacyProxy $legacy_proxy;
 
 	/**
+	 * Fraud Protection logger instance.
+	 *
+	 * @var FraudProtectionLogger
+	 */
+	private FraudProtectionLogger $logger;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param MerchantListsFeature $merchant_lists_feature The merchant lists feature gate instance.
-	 * @param LegacyProxy          $legacy_proxy           The legacy proxy instance.
+	 * @param MerchantListsFeature  $merchant_lists_feature The merchant lists feature gate instance.
+	 * @param LegacyProxy           $legacy_proxy           The legacy proxy instance.
+	 * @param FraudProtectionLogger $logger                The logger instance.
 	 */
-	final public function init( MerchantListsFeature $merchant_lists_feature, LegacyProxy $legacy_proxy ): void {
+	final public function init( MerchantListsFeature $merchant_lists_feature, LegacyProxy $legacy_proxy, FraudProtectionLogger $logger ): void {
 		$this->merchant_lists_feature = $merchant_lists_feature;
 		$this->legacy_proxy           = $legacy_proxy;
+		$this->logger                 = $logger;
 	}
 
 	/**
@@ -227,7 +236,7 @@ class SchemaManager {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
 					$this->record_failed_attempt( $state, $db_errors[ $table ] );
-					FraudProtectionController::log(
+					$this->logger->log(
 						'error',
 						sprintf( 'Table creation failed: %s does not exist after dbDelta.', $table ),
 						array(
@@ -243,7 +252,7 @@ class SchemaManager {
 				$missing_columns = array_diff( $this->get_schema_column_names( $schema ), $this->get_table_column_names( $table ) );
 				if ( array() !== $missing_columns ) {
 					$this->record_failed_attempt( $state, $db_errors[ $table ] );
-					FraudProtectionController::log(
+					$this->logger->log(
 						'error',
 						sprintf( 'Table upgrade failed: %s is missing columns after dbDelta: %s.', $table, implode( ', ', $missing_columns ) ),
 						array(
@@ -259,7 +268,7 @@ class SchemaManager {
 				$missing_indexes = array_diff( $this->get_schema_index_names( $schema ), $this->get_table_index_names( $table ) );
 				if ( array() !== $missing_indexes ) {
 					$this->record_failed_attempt( $state, $db_errors[ $table ] );
-					FraudProtectionController::log(
+					$this->logger->log(
 						'error',
 						sprintf( 'Table upgrade failed: %s is missing indexes after dbDelta: %s.', $table, implode( ', ', $missing_indexes ) ),
 						array(
@@ -276,13 +285,13 @@ class SchemaManager {
 			update_option( self::DB_VERSION_OPTION, self::SCHEMA_VERSION );
 			delete_option( self::DB_INSTALL_STATE_OPTION );
 
-			FraudProtectionController::log(
+			$this->logger->log(
 				'info',
 				sprintf( 'Database schema installed (version %d).', self::SCHEMA_VERSION )
 			);
 		} catch ( \Throwable $e ) {
 			$this->record_failed_attempt( $state, $e->getMessage() );
-			FraudProtectionController::log(
+			$this->logger->log(
 				'error',
 				'Database schema installation failed',
 				array(

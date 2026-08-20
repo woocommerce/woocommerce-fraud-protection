@@ -57,7 +57,7 @@ class FraudProtectionControllerForTests extends FraudProtectionController {
 	 * @param bool                 $forward_to_platform_log Whether the caller requested platform-log forwarding.
 	 * @return void
 	 */
-	public function write_log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
+	protected function write_log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
 		$this->entries[] = array(
 			'level'     => $level,
 			'message'   => $message,

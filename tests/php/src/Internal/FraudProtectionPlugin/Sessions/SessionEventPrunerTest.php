@@ -8,6 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -32,14 +34,23 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 	private $event_store;
 
 	/**
+	 * Mock logger.
+	 *
+	 * @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $logger;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
 		$this->event_store = $this->createMock( SessionEventStore::class );
+		$this->logger      = $this->createMock( FraudProtectionLogger::class );
+		$this->logger->method( 'log' )->willReturnCallback( array( FraudProtectionController::class, 'log' ) );
 		$this->sut         = new SessionEventPruner();
-		$this->sut->init( $this->event_store, new MerchantListsFeature() );
+		$this->sut->init( $this->event_store, new MerchantListsFeature(), $this->logger );
 	}
 
 	/**
@@ -76,7 +87,7 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 		$disabled_feature->method( 'is_enabled' )->willReturn( false );
 
 		$sut = new SessionEventPruner();
-		$sut->init( $this->event_store, $disabled_feature );
+		$sut->init( $this->event_store, $disabled_feature, $this->logger );
 
 		$this->event_store
 			->expects( $this->never() )
@@ -136,7 +147,7 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 		$disabled_feature->method( 'is_enabled' )->willReturn( false );
 
 		$sut = new SessionEventPruner();
-		$sut->init( $this->event_store, $disabled_feature );
+		$sut->init( $this->event_store, $disabled_feature, $this->logger );
 		$sut->register();
 
 		$this->assertFalse( as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'Turning the gate off in code should unschedule the pruning job' );

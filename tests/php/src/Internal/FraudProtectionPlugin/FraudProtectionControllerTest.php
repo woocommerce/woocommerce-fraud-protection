@@ -45,7 +45,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	 * @return FraudProtectionController
 	 */
 	private function create_controller(): FraudProtectionController {
-		return new FraudProtectionController();
+		return wc_get_container()->get( FraudProtectionController::class );
 	}
 
 	/**
@@ -109,31 +109,6 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		// Call the log method with context.
 		FraudProtectionController::log( 'debug', 'Test with context', array( 'foo' => 'bar' ) );
-	}
-
-	/**
-	 * @testdox write_log() instance method writes to the woo-fraud-protection log source.
-	 */
-	public function test_write_log_instance_method_writes_to_woo_fraud_protection_source(): void {
-		$logger = $this->getMockBuilder( \WC_Logger_Interface::class )
-			->getMock();
-
-		$logger->expects( $this->once() )
-			->method( 'log' )
-			->with(
-				$this->equalTo( 'info' ),
-				$this->equalTo( 'Instance message' ),
-				$this->equalTo( array( 'source' => 'woo-fraud-protection' ) )
-			);
-
-		add_filter(
-			'woocommerce_logging_class',
-			function () use ( $logger ) {
-				return $logger;
-			}
-		);
-
-		$this->create_controller()->write_log( 'info', 'Instance message' );
 	}
 
 	/**

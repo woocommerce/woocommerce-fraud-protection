@@ -26,27 +26,12 @@ if ( ! class_exists( 'WC_Order' ) ) {
 	class WC_Order {} // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 }
 
-// Capture warnings logged via wc_get_logger() so the skip path can be asserted.
-$GLOBALS['wfp_smoke_logged'] = array();
-if ( ! function_exists( 'wc_get_logger' ) ) {
-	function wc_get_logger() {
-		return new class() {
-			public function log( $level, $message, $context = array() ) {
-				$GLOBALS['wfp_smoke_logged'][] = $message;
-			}
-		};
-	}
-}
-
 // Load the plugin's namespaced classes via the Composer autoloader.
 require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
 
-// init() wires a controller into the static FraudProtectionController::log() facade
-// when the DI container creates it; in production that happens at boot. There is no
-// container here, so point the facade at a real controller directly (the same way
-// the unit tests do).
+$logging_spy = new Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests();
 Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests::set_facade_target(
-	new Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController()
+	$logging_spy
 );
 
 // Deliberately not init()'d: a null context must be skipped before report() ever
@@ -55,8 +40,8 @@ $reporter = new Automattic\WooCommerce\FraudProtection\FraudProtectionReporter()
 $reporter->report( new WC_Order(), Automattic\WooCommerce\FraudProtection\Schemas\ReportSource::Api, 'smoke-report-id', null, null, 'smoke-test' );
 
 $skip_logged = false;
-foreach ( $GLOBALS['wfp_smoke_logged'] as $logged_message ) {
-	if ( false !== strpos( (string) $logged_message, 'no reportable context' ) ) {
+foreach ( $logging_spy->entries as $entry ) {
+	if ( false !== strpos( $entry['message'], 'no reportable context' ) ) {
 		$skip_logged = true;
 		break;
 	}
@@ -64,7 +49,7 @@ foreach ( $GLOBALS['wfp_smoke_logged'] as $logged_message ) {
 
 wfp_smoke_assert(
 	$skip_logged,
-	'report() with a null context must skip and log a warning without fatalling. Logged: ' . var_export( $GLOBALS['wfp_smoke_logged'], true )
+	'report() with a null context must skip and log a warning without fatalling. Logged: ' . var_export( $logging_spy->entries, true )
 );
 
 echo "OK\n";

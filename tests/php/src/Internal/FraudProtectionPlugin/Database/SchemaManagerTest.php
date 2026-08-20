@@ -8,6 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Database;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -86,6 +88,13 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 * @var object
 	 */
 	private $fake_wpdb;
+
+	/**
+	 * Mock logger.
+	 *
+	 * @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $logger;
 
 	/**
 	 * Set up test fixtures.
@@ -173,9 +182,11 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 				},
 			)
 		);
+		$this->logger = $this->createMock( FraudProtectionLogger::class );
+		$this->logger->method( 'log' )->willReturnCallback( array( FraudProtectionController::class, 'log' ) );
 
 		$this->sut = new SchemaManager();
-		$this->sut->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->sut->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ), $this->logger );
 	}
 
 	/**
@@ -195,7 +206,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		$disabled_feature->method( 'is_enabled' )->willReturn( false );
 
 		$sut = new SchemaManager();
-		$sut->init( $disabled_feature, wc_get_container()->get( LegacyProxy::class ) );
+		$sut->init( $disabled_feature, wc_get_container()->get( LegacyProxy::class ), $this->logger );
 
 		$sut->register();
 

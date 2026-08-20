@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 
 defined( 'ABSPATH' ) || exit;
@@ -51,16 +51,25 @@ class SessionEventPruner {
 	private MerchantListsFeature $merchant_lists_feature;
 
 	/**
+	 * Fraud Protection logger instance.
+	 *
+	 * @var FraudProtectionLogger
+	 */
+	private FraudProtectionLogger $logger;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionEventStore    $event_store            The session event store instance.
-	 * @param MerchantListsFeature $merchant_lists_feature The merchant lists feature gate instance.
+	 * @param SessionEventStore     $event_store            The session event store instance.
+	 * @param MerchantListsFeature  $merchant_lists_feature The merchant lists feature gate instance.
+	 * @param FraudProtectionLogger $logger                 The logger instance.
 	 */
-	final public function init( SessionEventStore $event_store, MerchantListsFeature $merchant_lists_feature ): void {
+	final public function init( SessionEventStore $event_store, MerchantListsFeature $merchant_lists_feature, FraudProtectionLogger $logger ): void {
 		$this->event_store            = $event_store;
 		$this->merchant_lists_feature = $merchant_lists_feature;
+		$this->logger                 = $logger;
 	}
 
 	/**
@@ -99,13 +108,13 @@ class SessionEventPruner {
 			$deleted = $this->event_store->prune_older_than( self::RETENTION_DAYS );
 
 			if ( $deleted > 0 ) {
-				FraudProtectionController::log(
+				$this->logger->log(
 					'info',
 					sprintf( 'Pruned %d session event(s) older than %d days.', $deleted, self::RETENTION_DAYS )
 				);
 			}
 		} catch ( \Throwable $e ) {
-			FraudProtectionController::log(
+			$this->logger->log(
 				'warning',
 				'Session event pruning failed',
 				array(
