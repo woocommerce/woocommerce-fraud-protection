@@ -210,6 +210,19 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'stripe', $result['payment_method'] );
 	}
 
+	/**
+	 * @testdox build_request_data() skips an integer form key and keeps valid address data.
+	 */
+	public function test_build_request_data_skips_integer_key_and_keeps_address_data(): void {
+		$form_data = array();
+		parse_str( '0=bad&billing_city=Paris', $form_data );
+		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$result = $this->sut->test_build_request_data( $form_data );
+
+		$this->assertSame( array( 'city' => 'Paris' ), $result['billing_address'] );
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| extract_payment_data() Tests
@@ -264,5 +277,16 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 		$this->assertArrayNotHasKey( 'wc_fraud_protection_session_id', $payment_data );
 		$this->assertArrayNotHasKey( 'wc_order_attribution_source_type', $payment_data );
 		$this->assertArrayNotHasKey( 'wc_order_attribution_utm_source', $payment_data );
+	}
+
+	/**
+	 * @testdox extract_payment_data() skips an integer key and keeps valid gateway data.
+	 */
+	public function test_extract_payment_data_skips_integer_key_and_keeps_gateway_data(): void {
+		parse_str( '0=bad&gateway_token=valid', $_POST );
+
+		$payment_data = $this->sut->test_extract_payment_data();
+
+		$this->assertSame( array( 'gateway_token' => 'valid' ), $payment_data );
 	}
 }

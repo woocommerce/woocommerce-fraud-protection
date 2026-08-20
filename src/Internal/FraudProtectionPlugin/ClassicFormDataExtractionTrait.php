@@ -76,6 +76,10 @@ trait ClassicFormDataExtractionTrait {
 		$length  = strlen( $prefix );
 
 		foreach ( $form_data as $key => $value ) {
+			if ( ! is_string( $key ) ) {
+				continue;
+			}
+
 			if ( str_starts_with( $key, $prefix ) && is_string( $value ) ) {
 				$address[ substr( $key, $length ) ] = $value;
 			}
@@ -116,6 +120,10 @@ trait ClassicFormDataExtractionTrait {
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce before this hook fires.
 		foreach ( $_POST as $key => $value ) {
+			if ( ! is_string( $key ) ) {
+				continue;
+			}
+
 			if ( in_array( $key, $excluded_keys, true ) ) {
 				continue;
 			}
