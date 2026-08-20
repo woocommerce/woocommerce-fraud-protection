@@ -51,13 +51,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	protected static FraudProtectionController $instance;
 
 	/**
-	 * Blackbox script handler instance.
-	 *
-	 * @var BlackboxScriptHandler
-	 */
-	private BlackboxScriptHandler $blackbox_script_handler;
-
-	/**
 	 * Blocks checkout protector instance.
 	 *
 	 * @var BlocksCheckoutProtector
@@ -161,7 +154,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * @internal
 	 *
-	 * @param BlackboxScriptHandler      $blackbox_script_handler      The instance of BlackboxScriptHandler to use.
 	 * @param CartEventTracker           $cart_event_tracker           The instance of CartEventTracker to use.
 	 * @param CheckoutEventTracker       $checkout_event_tracker       The instance of CheckoutEventTracker to use.
 	 * @param PaymentMethodEventTracker  $payment_method_event_tracker The instance of PaymentMethodEventTracker to use.
@@ -174,7 +166,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param SessionEventPruner         $session_event_pruner         The instance of SessionEventPruner to use.
 	 */
 	final public function init(
-		BlackboxScriptHandler $blackbox_script_handler,
 		CartEventTracker $cart_event_tracker,
 		CheckoutEventTracker $checkout_event_tracker,
 		PaymentMethodEventTracker $payment_method_event_tracker,
@@ -188,7 +179,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	): void {
 		self::$instance = $this;
 
-		$this->blackbox_script_handler      = $blackbox_script_handler;
 		$this->cart_event_tracker           = $cart_event_tracker;
 		$this->checkout_event_tracker       = $checkout_event_tracker;
 		$this->payment_method_event_tracker = $payment_method_event_tracker;
@@ -209,7 +199,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	public function handle_init(): void {
 		$this->schema_manager->register();
 		$this->session_event_pruner->register();
-		$this->blackbox_script_handler->register();
 		$this->session_verifier->register();
 		$this->blocks_checkout_protector->register();
 		$this->shortcode_checkout_protector->register();

@@ -16,7 +16,7 @@ declare( strict_types = 1 );
 require_once __DIR__ . '/../stubs/wp.php';
 
 // WooCommerce is loaded, but at a version below the plugin's minimum.
-define( 'WC_VERSION', '9.4.0' );
+define( 'WC_VERSION', '9.7.1' );
 
 $error_log_path = wfp_smoke_capture_errors();
 

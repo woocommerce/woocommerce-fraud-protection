@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -51,19 +52,29 @@ class AddPaymentMethodProtector {
 	private BlockedSessionMessage $blocked_session_message;
 
 	/**
+	 * Blackbox script handler, asked for the shared scripts at enqueue time.
+	 *
+	 * @var BlackboxScriptHandler
+	 */
+	private BlackboxScriptHandler $blackbox_script_handler;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
+	 * @param BlackboxScriptHandler $blackbox_script_handler The shared Blackbox script handler.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionMessage $blocked_session_message
+		BlockedSessionMessage $blocked_session_message,
+		BlackboxScriptHandler $blackbox_script_handler
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
+		$this->blackbox_script_handler = $blackbox_script_handler;
 	}
 
 	/**
@@ -75,7 +86,7 @@ class AddPaymentMethodProtector {
 	 */
 	public function register(): void {
 		add_filter( 'woocommerce_add_payment_method_form_is_valid', array( $this, 'verify_and_block' ) );
-		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_add_payment_method_script' ) );
+		add_action( 'woocommerce_add_payment_method_form_bottom', array( $this, 'enqueue_add_payment_method_script' ), 10, 0 );
 	}
 
 	/**
@@ -121,19 +132,14 @@ class AddPaymentMethodProtector {
 	}
 
 	/**
-	 * Conditionally enqueue the add-payment-method.js script.
-	 *
-	 * Only enqueues on the actual add-payment-method page, not the
-	 * payment methods listing page.
+	 * Enqueue the protector when the add-payment-method form renders.
 	 *
 	 * @internal
 	 *
 	 * @return void
 	 */
 	public function enqueue_add_payment_method_script(): void {
-		global $wp;
-
-		if ( ! is_add_payment_method_page() || ! isset( $wp->query_vars['add-payment-method'] ) ) {
+		if ( ! $this->blackbox_script_handler->request_scripts() ) {
 			return;
 		}
 

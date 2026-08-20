@@ -8,7 +8,7 @@
  * plugin URL resolution, escape helpers, and translation passthroughs.
  *
  * Each scenario is responsible for defining or stubbing class symbols
- * (WC_Blocks_Utils, CheckoutSchema, WC_Emails, WooCommerce, etc.) as needed.
+ * (CheckoutSchema, WC_Emails, WooCommerce, etc.) as needed.
  *
  * @package WooCommerce\FraudProtection\Tests\Smoke
  */
@@ -168,6 +168,48 @@ if ( ! function_exists( 'is_add_payment_method_page' ) ) {
 
 if ( ! function_exists( 'is_order_received_page' ) ) {
 	function is_order_received_page() {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'is_wc_endpoint_url' ) ) {
+	function is_wc_endpoint_url( $endpoint = false ) {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'is_admin' ) ) {
+	function is_admin() {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'is_preview' ) ) {
+	function is_preview() {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'is_customize_preview' ) ) {
+	function is_customize_preview() {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'get_queried_object_id' ) ) {
+	function get_queried_object_id() {
+		return 0;
+	}
+}
+
+if ( ! function_exists( 'current_user_can' ) ) {
+	function current_user_can( $capability, ...$args ) {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'wp_script_is' ) ) {
+	function wp_script_is( $handle, $list = 'enqueued' ) {
 		return false;
 	}
 }

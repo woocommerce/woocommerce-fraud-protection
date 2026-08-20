@@ -39,8 +39,12 @@ wfp_smoke_assert(
 $session_verifier        = new \Automattic\WooCommerce\FraudProtection\SessionVerifier();
 $blocked_session_message = new \Automattic\WooCommerce\FraudProtection\BlockedSessionMessage();
 
+$session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager();
+$script_handler  = new \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler();
+$script_handler->init( $session_manager );
+
 $protector = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector();
-$protector->init( $session_verifier, $blocked_session_message );
+$protector->init( $session_verifier, $blocked_session_message, $script_handler );
 $protector->register();
 
 wfp_smoke_assert(

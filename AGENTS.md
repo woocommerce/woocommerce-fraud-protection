@@ -47,6 +47,8 @@ Assets under `assets/` are served directly. Most development changes do not requ
 
 When changing the public API, read the README public API section and inspect all current consumers. Released public hooks and JavaScript interfaces must remain compatible.
 
+The released extension filters are `woocommerce_fraud_protection_resolved_payment_data` and `woocommerce_fraud_protection_skip_session_verify`. Gateway integrations that render payment surfaces resolve `BlackboxScriptHandler` from the WooCommerce container, call `request_scripts()`, and enqueue their browser script with `wc-fraud-protection-blackbox-init` as a dependency only when the call succeeds. Keep the `window.wcFraudProtection` methods `acquireSessionId()` and `reset()`, the `config.sessionIdField` value, and the init script handle compatible.
+
 ## Safety rules
 
 ### Fail open

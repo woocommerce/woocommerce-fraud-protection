@@ -23,6 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Minimum supported WordPress, WooCommerce, and PHP versions.
+          - php: '8.1'
+            wp: '6.6'
+            wc: '9.8.0'
           # Test with WC 10.6.0 because that version included the fraud protection
           # engine directly in core, and we need to ensure that there are no conflicts.
           - php: '8.1'

@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -69,19 +70,29 @@ class BlocksCheckoutProtector {
 	private array $request_data = array();
 
 	/**
+	 * Blackbox script handler, asked for the shared scripts at enqueue time.
+	 *
+	 * @var BlackboxScriptHandler
+	 */
+	private BlackboxScriptHandler $blackbox_script_handler;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
+	 * @param BlackboxScriptHandler $blackbox_script_handler The shared Blackbox script handler.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionMessage $blocked_session_message
+		BlockedSessionMessage $blocked_session_message,
+		BlackboxScriptHandler $blackbox_script_handler
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
+		$this->blackbox_script_handler = $blackbox_script_handler;
 	}
 
 	/**
@@ -99,7 +110,10 @@ class BlocksCheckoutProtector {
 
 		add_action( 'woocommerce_store_api_checkout_update_order_from_request', array( $this, 'extract_request_data' ), 10, 2 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'verify_and_block' ) );
-		add_action( 'woocommerce_blocks_checkout_enqueue_data', array( $this, 'enqueue_blocks_checkout_script' ) );
+		// This frontend-only hook fires immediately before Checkout block assets.
+		// Unlike woocommerce_blocks_checkout_enqueue_data, it is not emitted by the
+		// global block-editor asset bootstrap.
+		add_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this, 'enqueue_blocks_checkout_script' ), 10, 0 );
 	}
 
 	/**
@@ -163,14 +177,32 @@ class BlocksCheckoutProtector {
 	/**
 	 * Enqueue the blocks-checkout.js script.
 	 *
-	 * Called during `woocommerce_blocks_checkout_enqueue_data`. The script gates
-	 * checkout on Blackbox.getSessionId() and sets the extension data via wp.data.dispatch.
+	 * Called immediately before frontend Checkout block scripts are enqueued. The
+	 * script gates checkout on Blackbox.getSessionId() and sets the extension data
+	 * via wp.data.dispatch.
+	 *
+	 * WooCommerce's separate `woocommerce_blocks_checkout_enqueue_data` hook also
+	 * fires during global editor bootstrap, even when no checkout is present. Using
+	 * the frontend asset hook keeps purchase-only telemetry out of editors.
+	 *
+	 * The endpoint exclusions below are this protector's own routing rules.
+	 * Everything else is decided by request_scripts().
 	 *
 	 * @internal
 	 *
 	 * @return void
 	 */
 	public function enqueue_blocks_checkout_script(): void {
+		// WooCommerce fires this hook before Checkout::render() swaps these endpoints for their
+		// classic endpoint views, so the block hook alone does not prove a Checkout block renders.
+		if ( is_wc_endpoint_url( 'order-pay' ) || is_wc_endpoint_url( 'order-received' ) ) {
+			return;
+		}
+
+		if ( ! $this->blackbox_script_handler->request_scripts() ) {
+			return;
+		}
+
 		wp_enqueue_script(
 			'wc-fraud-protection-blocks-checkout',
 			WC_FRAUD_PROTECTION_PLUGIN_URL . 'assets/js/blocks-checkout.js',

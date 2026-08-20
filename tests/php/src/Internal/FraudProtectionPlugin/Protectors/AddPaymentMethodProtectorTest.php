@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\AddPaymentMethodProtector;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
@@ -44,6 +45,13 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 	private $blocked_session_message;
 
 	/**
+	 * Mock Blackbox script handler.
+	 *
+	 * @var BlackboxScriptHandler&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $blackbox_script_handler;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -51,6 +59,7 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
+		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
 		$this->blocked_session_message
 			->method( 'get_html' )
@@ -59,7 +68,8 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 		$this->sut = new AddPaymentMethodProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_message
+			$this->blocked_session_message,
+			$this->blackbox_script_handler
 		);
 	}
 
@@ -70,9 +80,100 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		wc_clear_notices();
 		remove_all_filters( 'woocommerce_add_payment_method_form_is_valid' );
-		remove_all_actions( 'wp_enqueue_scripts' );
+		remove_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_add_payment_method_script' ), 10 );
+		$this->reset_fraud_protection_scripts();
 
 		parent::tearDown();
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| enqueue_add_payment_method_script() Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox enqueue_add_payment_method_script() enqueues its script when the shared scripts are available.
+	 */
+	public function test_enqueue_add_payment_method_script_when_shared_scripts_are_available(): void {
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+
+		$this->sut->enqueue_add_payment_method_script();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-add-payment-method', 'enqueued' ) );
+		$script = wp_scripts()->query( 'wc-fraud-protection-add-payment-method', 'registered' );
+		$this->assertNotFalse( $script );
+		$this->assertContains( 'wc-fraud-protection-blackbox-init', $script->deps );
+	}
+
+	/**
+	 * @testdox enqueue_add_payment_method_script() does not enqueue when the shared scripts are unavailable.
+	 */
+	public function test_enqueue_add_payment_method_script_skips_when_shared_scripts_are_unavailable(): void {
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
+
+		$this->sut->enqueue_add_payment_method_script();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-add-payment-method', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox The real add-payment-method form requests scripts when a gateway is available.
+	 */
+	public function test_available_gateway_form_render_enqueues_scripts(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->init(
+			$this->session_verifier,
+			$this->blocked_session_message,
+			$this->make_blackbox_script_handler()
+		);
+		$gateway     = $this->getMockBuilder( \WC_Payment_Gateway::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$gateway->id = 'test-gateway';
+		$add_gateway = function ( array $gateways ) use ( $gateway ): array {
+			$gateways[ $gateway->id ] = $gateway;
+			return $gateways;
+		};
+		add_filter( 'woocommerce_available_payment_gateways', $add_gateway );
+		$this->sut->register();
+
+		try {
+			$this->render_add_payment_method_template();
+		} finally {
+			remove_filter( 'woocommerce_available_payment_gateways', $add_gateway );
+		}
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-add-payment-method', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox A no-gateway add-payment-method response returns before the form hook.
+	 */
+	public function test_no_gateway_response_does_not_enqueue_scripts(): void {
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		$remove_gateways = '__return_empty_array';
+		add_filter( 'woocommerce_available_payment_gateways', $remove_gateways, PHP_INT_MAX );
+		$this->sut->register();
+
+		try {
+			$this->render_add_payment_method_template();
+		} finally {
+			remove_filter( 'woocommerce_available_payment_gateways', $remove_gateways, PHP_INT_MAX );
+		}
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-add-payment-method', 'enqueued' ) );
+	}
+
+	/**
+	 * Render WooCommerce's add-payment-method template and discard its HTML.
+	 */
+	private function render_add_payment_method_template(): void {
+		ob_start();
+		wc_get_template( 'myaccount/form-add-payment-method.php' );
+		ob_end_clean();
 	}
 
 	/**
@@ -92,7 +193,7 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox register() hooks woocommerce_add_payment_method_form_is_valid and wp_enqueue_scripts.
+	 * @testdox register() hooks verification and the add-payment-method form signal.
 	 */
 	public function test_register_hooks(): void {
 		$this->sut->register();
@@ -101,10 +202,11 @@ class AddPaymentMethodProtectorTest extends FraudProtectionUnitTestCase {
 			has_filter( 'woocommerce_add_payment_method_form_is_valid', array( $this->sut, 'verify_and_block' ) ),
 			'woocommerce_add_payment_method_form_is_valid filter should be registered'
 		);
-		$this->assertNotFalse(
-			has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_add_payment_method_script' ) ),
-			'wp_enqueue_scripts hook should be registered'
+		$this->assertSame(
+			10,
+			has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_add_payment_method_script' ) )
 		);
+		$this->assertFalse( has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_add_payment_method_script' ) ) );
 	}
 
 	/*

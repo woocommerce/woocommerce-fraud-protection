@@ -72,6 +72,10 @@ class UnencodableCartValueIntegrationTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
+		if ( version_compare( WC_VERSION, '10.6.0', '<' ) ) {
+			$this->markTestSkipped( 'The internal cart event hooks used by this test require WooCommerce 10.6.0 or later.' );
+		}
+
 		wc_load_cart();
 		WC()->cart->empty_cart();
 		WC()->session->set( 'fraud_protection_collected_data', null );

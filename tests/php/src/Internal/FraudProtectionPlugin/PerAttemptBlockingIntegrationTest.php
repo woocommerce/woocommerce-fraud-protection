@@ -80,7 +80,7 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->sut = new BlocksCheckoutProtector();
-		$this->sut->init( $session_verifier, new BlockedSessionMessage() );
+		$this->sut->init( $session_verifier, new BlockedSessionMessage(), $this->make_blackbox_script_handler() );
 	}
 
 	/**

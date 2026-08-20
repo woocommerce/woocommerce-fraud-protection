@@ -1,6 +1,7 @@
 ## Requirements
 
 - PHP 8.1+
+- WooCommerce 9.8+
 - Node.js 20
 - Composer
 - MySQL (for the PHP test suite)
@@ -134,7 +135,7 @@ The public code API for this plugin consists of the classes inside the `src/Frau
 
 ### Obtaining the services
 
-Stateful services (`SessionVerifier`, `FraudProtectionReporter`) declare their dependencies through an `init()` method and are wired by WooCommerce's dependency-injection container, so resolve them from the container rather than constructing them directly:
+Stateful services (`SessionVerifier`, `FraudProtectionReporter`, `BlackboxScriptHandler`) declare their dependencies through an `init()` method and are wired by WooCommerce's dependency-injection container, so resolve them from the container rather than constructing them directly:
 
 ```php
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -147,7 +148,7 @@ The remaining public classes are used directly: `BlockedSessionMessage` and `Pay
 
 ### Extension filters
 
-Three hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. All are fail-open: an exception or invalid return falls back to the plugin's default and never blocks a transaction.
+Two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Both are fail-open: an exception or invalid return falls back to the plugin's default and never blocks a transaction.
 
 - **`woocommerce_fraud_protection_resolved_payment_data`** — the primary hook for payment gateways: enrich or replace the resolved payment data included in the fraud-check payload (card brand, last4, transaction mode, and so on). Return a `PaymentMethodData`; an invalid return falls back to the baseline resolved from the WC payment token.
 
@@ -165,12 +166,6 @@ Three hooks let an extension (e.g. a payment gateway with a non-standard checkou
 
   *Since 0.1.6 a truthy return no longer skips. Skipping without saying what the decision was turned every deferral into an allow, so the skip now carries the decision.*
 
-- **`woocommerce_fraud_protection_enqueue_blackbox_scripts`** — return `true` to load the Blackbox scripts on a page the plugin would not otherwise target (e.g. product or cart pages that render express-checkout buttons).
-
-  ```php
-  apply_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts', bool $should_enqueue );
-  ```
-
 ### JavaScript integration
 
 On pages where the Blackbox scripts are loaded, the plugin exposes a small API on `window.wcFraudProtection`:
@@ -180,7 +175,30 @@ On pages where the Blackbox scripts are loaded, the plugin exposes a small API o
 
 `config.sessionIdField` is the only supported entry on `config`; the rest are internal to the plugin's own init script and may change.
 
-Enqueue your integration script with `wc-fraud-protection-blackbox-init` as a dependency so it runs after the API is set up, and use the `woocommerce_fraud_protection_enqueue_blackbox_scripts` filter (above) to ensure the scripts load on your page:
+Request the Blackbox scripts from the hook that renders your payment surface, then enqueue your integration script with `wc-fraud-protection-blackbox-init` as a dependency so it runs after the API is set up. `BlackboxScriptHandler::request_scripts()` enqueues the shared scripts when they are available; on `false`, skip your script because the store has no Jetpack blog ID or the request cannot render a payment page. The server still verifies fail-open:
+
+```php
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+
+add_action(
+	'my_gateway_payment_surface_render',
+	function (): void {
+		if ( ! wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts() ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'my-gateway-fraud-integration',
+			plugins_url( 'js/fraud-integration.js', __FILE__ ),
+			array( 'wc-fraud-protection-blackbox-init' ),
+			'1.0.0',
+			array( 'in_footer' => true )
+		);
+	}
+);
+```
+
+Then, in your integration script:
 
 ```js
 // In your gateway's submit path, immediately before sending the request —
