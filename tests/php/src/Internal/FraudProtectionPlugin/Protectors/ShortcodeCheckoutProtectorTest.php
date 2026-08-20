@@ -408,4 +408,33 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/**
+	 * @testdox Checkout processing skips an integer form key and verifies with valid request data.
+	 */
+	public function test_checkout_process_skips_integer_key_and_verifies_with_valid_data(): void {
+		parse_str( '0=bad&wc_fraud_protection_session_id=checkout-session&gateway_token=valid', $_POST );
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with(
+				'checkout-session',
+				'shortcode_checkout',
+				0,
+				array(
+					'payment_method'  => '',
+					'payment_data'    => array( 'gateway_token' => 'valid' ),
+					'billing_address' => array( 'country' => 'US' ),
+				)
+			)
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->register();
+		do_action( 'woocommerce_checkout_process' );
+
+		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
+
+		$this->assertEmpty( $errors->get_error_codes() );
+	}
+
 }

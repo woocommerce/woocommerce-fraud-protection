@@ -51,6 +51,39 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 		$this->sut->init( $this->mock_collector );
 	}
 
+	/**
+	 * Track a shortcode checkout update and return its event data.
+	 *
+	 * @param string $posted_data Serialized checkout form data.
+	 * @return array Collected event data.
+	 */
+	private function capture_shortcode_update_event( string $posted_data ): array {
+		$this->mock_collector
+			->method( 'get_current_billing_country' )
+			->willReturn( 'CA' );
+
+		$this->mock_collector
+			->method( 'get_current_shipping_country' )
+			->willReturn( null );
+
+		$captured_event_data = null;
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->with( 'checkout_update', $this->isType( 'array' ) )
+			->willReturnCallback(
+				function ( $event_type, $event_data ) use ( &$captured_event_data ): void {
+					$captured_event_data = $event_data;
+				}
+			);
+
+		$this->sut->track_shortcode_checkout_field_update( $posted_data );
+
+		$this->assertIsArray( $captured_event_data );
+
+		return $captured_event_data;
+	}
+
 	// ========================================
 	// Hook Registration Tests
 	// ========================================
@@ -175,36 +208,100 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	// ========================================
 
 	/**
+	 * @testdox The shortcode update callback ignores a non-string post_data value.
+	 */
+	public function test_shortcode_update_callback_ignores_non_string_post_data(): void {
+		$spy = $this->spy_on_controller_logging();
+
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'collect' );
+
+		$this->sut->track_shortcode_checkout_field_update( array( 'billing_country' => 'US' ) );
+
+		$this->assertSame( array(), $spy->entries );
+	}
+
+	/**
+	 * @testdox The shortcode update callback omits an array-valued field and keeps valid fields.
+	 *
+	 * @dataProvider malformed_shortcode_field_provider
+	 *
+	 * @param string $posted_data   Serialized checkout form data.
+	 * @param array  $expected_event Expected collected event data.
+	 */
+	public function test_shortcode_update_callback_omits_malformed_field_and_keeps_valid_fields( string $posted_data, array $expected_event ): void {
+		$spy = $this->spy_on_controller_logging();
+
+		if ( isset( $expected_event['payment'] ) ) {
+			$gateways = WC()->payment_gateways()->payment_gateways();
+			$this->assertArrayHasKey( 'cod', $gateways );
+			$expected_event['payment']['payment_gateway_name'] = $gateways['cod']->get_title();
+		}
+
+		$this->assertSame( $expected_event, $this->capture_shortcode_update_event( $posted_data ) );
+		$this->assertSame( array(), $spy->entries );
+	}
+
+	/**
+	 * Malformed shortcode checkout fields and their expected events.
+	 *
+	 * @return array<string, array{string, array<string, mixed>}>
+	 */
+	public function malformed_shortcode_field_provider(): array {
+		$event_with_payment = array(
+			'action'          => 'field_update',
+			'billing_country' => 'US',
+			'billing_city'    => 'Paris',
+			'payment'         => array( 'payment_gateway_type' => 'cod' ),
+		);
+
+		return array(
+			'array billing email' => array(
+				'billing_email[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
+				$event_with_payment,
+			),
+			'array fallback email' => array(
+				'email[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
+				$event_with_payment,
+			),
+			'array payment method' => array(
+				'billing_email=test%40example.com&billing_country=US&billing_city=Paris&payment_method[]=cod',
+				array(
+					'action'          => 'field_update',
+					'billing_email'   => 'test@example.com',
+					'billing_country' => 'US',
+					'billing_city'    => 'Paris',
+				),
+			),
+			'array mapped text field' => array(
+				'billing_first_name[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
+				$event_with_payment,
+			),
+		);
+	}
+
+	/**
 	 * Test shortcode checkout field update collects data on billing country change.
 	 *
 	 * @testdox track_shortcode_checkout_field_update() collects data when billing country changes.
 	 */
 	public function test_track_shortcode_checkout_field_update_collects_data_on_billing_country_change(): void {
-		$this->mock_collector
-			->method( 'get_current_billing_country' )
-			->willReturn( 'CA' );
+		$gateways = WC()->payment_gateways()->payment_gateways();
+		$this->assertArrayHasKey( 'cod', $gateways );
 
-		$this->mock_collector
-			->method( 'get_current_shipping_country' )
-			->willReturn( null );
-
-		$this->mock_collector
-			->expects( $this->once() )
-			->method( 'collect' )
-			->with(
-				$this->equalTo( 'checkout_update' ),
-				$this->callback(
-					function ( $event_data ) {
-						return isset( $event_data['action'] )
-							&& 'field_update' === $event_data['action']
-							&& isset( $event_data['billing_email'] )
-							&& 'test@example.com' === $event_data['billing_email'];
-					}
-				)
-			);
-
-		$posted_data = 'billing_email=test@example.com&billing_first_name=John&billing_last_name=Doe&billing_country=US';
-		$this->sut->track_shortcode_checkout_field_update( $posted_data );
+		$this->assertSame(
+			array(
+				'action'          => 'field_update',
+				'billing_country' => 'US',
+				'email'           => 'test@example.com',
+				'payment'         => array(
+					'payment_gateway_type' => 'cod',
+					'payment_gateway_name' => $gateways['cod']->get_title(),
+				),
+			),
+			$this->capture_shortcode_update_event( 'email=test%40example.com&billing_country=US&payment_method=cod' )
+		);
 	}
 
 	/**

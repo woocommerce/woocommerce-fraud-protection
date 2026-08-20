@@ -91,10 +91,14 @@ class CheckoutEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param string $posted_data Serialized checkout form data.
+	 * @param mixed $posted_data Serialized checkout form data. Non-string values are ignored.
 	 * @return void
 	 */
 	public function track_shortcode_checkout_field_update( $posted_data ): void {
+		if ( ! is_string( $posted_data ) ) {
+			return;
+		}
+
 		// Parse the posted data to extract relevant fields.
 		$data = array();
 		if ( $posted_data ) {
@@ -177,7 +181,7 @@ class CheckoutEventTracker {
 		$extracted_fields = $this->extract_fields_by_map( $field_map, $posted_data );
 
 		// Store API uses 'email' instead of 'billing_email'.
-		if ( empty( $extracted_fields['billing_email'] ) && ! empty( $posted_data['email'] ) ) {
+		if ( empty( $extracted_fields['billing_email'] ) && is_string( $posted_data['email'] ?? null ) && ! empty( $posted_data['email'] ) ) {
 			$extracted_fields['email'] = sanitize_email( $posted_data['email'] );
 		}
 
@@ -224,8 +228,9 @@ class CheckoutEventTracker {
 		$extracted_fields = array();
 
 		foreach ( $field_map as $field_name => $sanitize_function ) {
-			if ( ! empty( $posted_data[ $field_name ] ) ) {
-				$extracted_fields[ $field_name ] = $sanitize_function( wp_unslash( $posted_data[ $field_name ] ) );
+			$value = $posted_data[ $field_name ] ?? null;
+			if ( is_string( $value ) && ! empty( $value ) ) {
+				$extracted_fields[ $field_name ] = $sanitize_function( wp_unslash( $value ) );
 			}
 		}
 
@@ -242,9 +247,9 @@ class CheckoutEventTracker {
 	 */
 	private function extract_payment_method( array $posted_data ): array {
 		$payment_data = array();
+		$gateway_id   = $posted_data['payment_method'] ?? null;
 
-		if ( ! empty( $posted_data['payment_method'] ) ) {
-			$gateway_id           = $posted_data['payment_method'];
+		if ( is_string( $gateway_id ) && ! empty( $gateway_id ) ) {
 			$gateways             = WC()->payment_gateways()->payment_gateways();
 			$payment_gateway_name = isset( $gateways[ $gateway_id ] ) ? $gateways[ $gateway_id ]->get_title() : $gateway_id;
 

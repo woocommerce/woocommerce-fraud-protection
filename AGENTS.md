@@ -53,6 +53,8 @@ When changing the public API, read the README public API section and inspect all
 
 An error before an actionable decision exists must not create a Block. Continue any independent operation that can still produce a valid decision. Fall back to `FraudDecision::Allow` only when processing ends without a later actionable decision. Transport failures, response parsing failures, invalid decisions, and timeouts fail open. Missing or partial request data does not by itself skip verification.
 
+Treat request data and values received from WordPress or WooCommerce hooks and filters as mixed input, even when the normal caller provides a documented type. Validate their types before operations that require a specific type. On invalid input, preserve the original safe value or skip only the invalid field while keeping usable data.
+
 If the `woocommerce_fraud_protection_automated_decision` filter throws after an actionable decision exists, keep the actionable decision that entered the filter. Apply learning mode afterward. An error fallback must not create a new block.
 
 ### Use FraudDecision
