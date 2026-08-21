@@ -27,10 +27,11 @@ class PluginInitializer {
 	 * requirement is also enforced at runtime in {@see handle_woocommerce_loaded()}.
 	 *
 	 * Before WooCommerce 9.5 the built-in DI container required explicit class
-	 * registration, and thus the class resolutions in handle_woocommerce_loaded
-	 * would fail.
+	 * registration, so the class resolutions in handle_woocommerce_loaded()
+	 * would fail. WooCommerce 9.8 registers the `wc-blocks-checkout-events`
+	 * script handle required by the Blocks checkout protector.
 	 */
-	private const MINIMUM_WC_VERSION = '9.5.0';
+	private const MINIMUM_WC_VERSION = '9.8.0';
 
 	/**
 	 * Bootstrap the plugin at load time (before WooCommerce loads).

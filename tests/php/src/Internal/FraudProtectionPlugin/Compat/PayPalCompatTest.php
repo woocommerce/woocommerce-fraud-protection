@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
@@ -16,6 +17,7 @@ use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
+use Automattic\WooCommerce\Blocks\BlockTypes\AbstractBlock;
 
 /**
  * Tests for the PayPalCompat class.
@@ -53,6 +55,27 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	private $session_id_normalizer;
 
 	/**
+	 * PayPal settings before the test.
+	 *
+	 * @var array<string, array{exists: bool, value: mixed}>
+	 */
+	private array $original_paypal_options = array();
+
+	/**
+	 * Whether the test changed PayPal's smart-button handle.
+	 *
+	 * @var bool
+	 */
+	private bool $touched_smart_button_handle = false;
+
+	/**
+	 * Whether the test registered PayPal's block integration handle.
+	 *
+	 * @var bool
+	 */
+	private bool $registered_block_handle = false;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -61,6 +84,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->session_id_normalizer    = new SessionIdNormalizer();
+		$this->remember_paypal_option( 'woocommerce-ppcp-settings' );
+		$this->remember_paypal_option( 'woocommerce-ppcp-data-styling' );
+		$this->remember_paypal_option( 'woocommerce-ppcp-version' );
 
 		$this->blocked_session_message
 			->method( 'get_plaintext' )
@@ -70,7 +96,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut->init(
 			$this->session_verifier,
 			$this->blocked_session_message,
-			$this->session_id_normalizer
+			$this->session_id_normalizer,
+			$this->make_blackbox_script_handler()
 		);
 	}
 
@@ -78,15 +105,32 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * Tear down after each test.
 	 */
 	public function tearDown(): void {
+		global $wp;
+
 		remove_all_filters( 'wp_doing_ajax' );
 		remove_all_filters( 'wp_die_ajax_handler' );
-		remove_all_filters( 'woocommerce_fraud_protection_enqueue_blackbox_scripts' );
 		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
+		$this->restore_paypal_options();
+		if ( $this->touched_smart_button_handle ) {
+			wp_dequeue_script( 'ppcp-smart-button' );
+			wp_deregister_script( 'ppcp-smart-button' );
+		}
+		if ( $this->registered_block_handle ) {
+			wp_dequeue_script( 'ppcp-checkout-block' );
+			wp_deregister_script( 'ppcp-checkout-block' );
+		}
 		remove_all_actions( 'woocommerce_paypal_payments_create_order_request_started' );
 		remove_all_actions( 'woocommerce_paypal_payments_paypal_order_created' );
-		remove_all_actions( 'wp_enqueue_scripts' );
-		wp_dequeue_script( 'wc-fraud-protection-blackbox-init' );
-		wp_dequeue_script( 'wc-fraud-protection-paypal-express' );
+		foreach ( $this->paypal_button_render_hook_provider() as $case ) {
+			remove_action( $case[0], array( $this->sut, 'enqueue_paypal_script' ), 10 );
+		}
+		remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ), 20 );
+		remove_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ), 20 );
+		remove_action( 'woocommerce_before_mini_cart', array( $this->sut, 'enqueue_paypal_mini_cart_script_if_enabled' ), 10 );
+		remove_filter( 'woocommerce_widget_cart_is_hidden', array( $this->sut, 'enqueue_paypal_script_for_visible_mini_cart_widget' ), 20 );
+		remove_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20 );
+		remove_action( 'before_woocommerce_pay_form', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20 );
+		$this->reset_fraud_protection_scripts();
 
 		if ( WC()->session ) {
 			WC()->session->set( 'ppcp', null );
@@ -95,6 +139,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		}
 
 		unset( $_GET['wc-ajax'] );
+		unset( $wp->query_vars['order-pay'] );
+		unset( $wp->query_vars['order-received'] );
+		set_current_screen( 'front' );
 
 		parent::tearDown();
 	}
@@ -106,7 +153,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox register() hooks the create_order action, enqueue filter, and script action.
+	 * @testdox register() hooks verification and the exact PayPal render signals.
 	 */
 	public function test_register_hooks(): void {
 		$this->sut->register();
@@ -115,14 +162,20 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			has_action( 'woocommerce_paypal_payments_create_order_request_started', array( $this->sut, 'verify_and_block_create_order' ) ),
 			'create_order_request_started action should be registered'
 		);
-		$this->assertNotFalse(
-			has_filter( 'woocommerce_fraud_protection_enqueue_blackbox_scripts', array( $this->sut, 'should_enqueue_blackbox' ) ),
-			'enqueue_blackbox_scripts filter should be registered'
-		);
-		$this->assertNotFalse(
-			has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script' ) ),
-			'wp_enqueue_scripts action should be registered'
-		);
+
+		foreach ( $this->paypal_button_render_hook_provider() as $case ) {
+			$this->assertSame( 10, has_action( $case[0], array( $this->sut, 'enqueue_paypal_script' ) ) );
+		}
+
+		$this->assertSame( 20, has_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ) ) );
+		$this->assertSame( 20, has_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ) ) );
+		$this->assertSame( 10, has_action( 'woocommerce_before_mini_cart', array( $this->sut, 'enqueue_paypal_mini_cart_script_if_enabled' ) ) );
+		$this->assertSame( 20, has_filter( 'woocommerce_widget_cart_is_hidden', array( $this->sut, 'enqueue_paypal_script_for_visible_mini_cart_widget' ) ) );
+		$this->assertSame( 20, has_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ) ) );
+		$this->assertSame( 20, has_action( 'before_woocommerce_pay_form', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ) ) );
+		$this->assertFalse( has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ) ) );
+		$this->assertFalse( has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script' ) ) );
+		$this->assertFalse( has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_mini_cart_script_if_enabled' ) ) );
 		$this->assertNotFalse(
 			has_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->sut, 'supply_decision_for_paypal_express' ) ),
 			'skip_session_verify filter should be registered'
@@ -330,49 +383,527 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 	/*
 	|--------------------------------------------------------------------------
-	| should_enqueue_blackbox() Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox should_enqueue_blackbox() returns true when already set to enqueue.
-	 */
-	public function test_should_enqueue_blackbox_passthrough_when_already_true(): void {
-		$this->assertTrue( $this->sut->should_enqueue_blackbox( true ) );
-	}
-
-	/**
-	 * @testdox should_enqueue_blackbox() returns false when PayPal is not available.
-	 */
-	public function test_should_enqueue_blackbox_false_when_no_paypal(): void {
-		// No PayPal gateways registered by default.
-		$this->assertFalse( $this->sut->should_enqueue_blackbox( false ) );
-	}
-
-	/*
-	|--------------------------------------------------------------------------
 	| enqueue_paypal_script() Tests
 	|--------------------------------------------------------------------------
 	*/
 
 	/**
-	 * @testdox enqueue_paypal_script() enqueues when blackbox-init is already enqueued.
+	 * @testdox Each PayPal button render action requests the shared scripts and enqueues the interceptor.
+	 *
+	 * @dataProvider paypal_button_render_hook_provider
+	 *
+	 * @param string $hook PayPal button render action.
 	 */
-	public function test_enqueue_paypal_script_when_blackbox_init_enqueued(): void {
-		wp_enqueue_script( 'wc-fraud-protection-blackbox-init', 'https://example.com/blackbox-init.js', array(), '1.0', true );
+	public function test_button_render_hooks_enqueue_paypal_script( string $hook ): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->register();
 
-		$this->sut->enqueue_paypal_script();
+		do_action( $hook );
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox A Cart block rendered from template content reaches the PayPal block follower.
+	 */
+	public function test_cart_block_template_render_enqueues_paypal_script(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->register_paypal_block_handle();
+		$this->sut->register();
+		$previous_enqueue_state = $this->set_cart_block_enqueue_state( false );
+
+		try {
+			do_blocks( '<!-- wp:woocommerce/cart --><div class="wp-block-woocommerce-cart"></div><!-- /wp:woocommerce/cart -->' );
+
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		} finally {
+			$this->set_cart_block_enqueue_state( $previous_enqueue_state );
+		}
+	}
+
+	/**
+	 * @testdox A Cart block without the PayPal block integration queues no fraud scripts.
+	 */
+	public function test_cart_block_template_render_without_paypal_skips_scripts(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->register();
+		$previous_enqueue_state = $this->set_cart_block_enqueue_state( false );
+
+		try {
+			do_blocks( '<!-- wp:woocommerce/cart --><div class="wp-block-woocommerce-cart"></div><!-- /wp:woocommerce/cart -->' );
+
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		} finally {
+			$this->set_cart_block_enqueue_state( $previous_enqueue_state );
+		}
+	}
+
+	/**
+	 * PayPal button actions that prove the wrapper rendered.
+	 *
+	 * @return array<string, array{0: string}>
+	 */
+	public function paypal_button_render_hook_provider(): array {
+		return array(
+			'single product' => array( 'woocommerce_paypal_payments_single_product_button_render' ),
+			'cart'           => array( 'woocommerce_paypal_payments_cart_button_render' ),
+			'checkout'       => array( 'woocommerce_paypal_payments_checkout_button_render' ),
+			'pay for order'  => array( 'woocommerce_paypal_payments_payorder_button_render' ),
+			'mini-cart'      => array( 'woocommerce_paypal_payments_minicart_button_render' ),
+		);
+	}
+
+	/**
+	 * @testdox The block follower uses PayPal's registered block integration as its early signal.
+	 */
+	public function test_block_follower_enqueues_when_paypal_block_integration_is_registered(): void {
+		$this->register_paypal_block_handle();
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_block_script_if_registered();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
 
 	/**
-	 * @testdox enqueue_paypal_script() does not enqueue when blackbox-init is absent.
+	 * @testdox The block follower ignores another PPCP gateway without the PayPal block integration.
 	 */
-	public function test_enqueue_paypal_script_skips_when_blackbox_init_absent(): void {
-		$this->sut->enqueue_paypal_script();
+	public function test_block_follower_skips_other_ppcp_gateway_without_paypal_block_integration(): void {
+		$gateway     = $this->getMockBuilder( \WC_Payment_Gateway::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$gateway->id = 'ppcp-applepay';
+		$add_gateway = function ( array $gateways ) use ( $gateway ): array {
+			$gateways[ $gateway->id ] = $gateway;
+			return $gateways;
+		};
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+		add_filter( 'woocommerce_available_payment_gateways', $add_gateway );
+
+		try {
+			$sut->enqueue_paypal_block_script_if_registered();
+		} finally {
+			remove_filter( 'woocommerce_available_payment_gateways', $add_gateway );
+		}
 
 		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox The standard-form follower prepares for a PayPal button that can become eligible later.
+	 */
+	public function test_standard_form_follower_uses_enqueued_smart_button_without_gateway_snapshot(): void {
+		$this->register_and_enqueue_paypal_smart_button();
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_script_if_smart_button_enqueued();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox The standard-form follower requires PayPal's smart-button handle to be registered and enqueued.
+	 *
+	 * @dataProvider unavailable_smart_button_provider
+	 *
+	 * @param bool $registered Whether the handle is registered.
+	 * @param bool $enqueued   Whether the handle is enqueued.
+	 */
+	public function test_standard_form_follower_requires_registered_and_enqueued_smart_button( bool $registered, bool $enqueued ): void {
+		$this->configure_paypal_smart_button( $registered, $enqueued );
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_script_if_smart_button_enqueued();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * Unavailable smart-button handle states.
+	 *
+	 * @return array<string, array{bool, bool}>
+	 */
+	public function unavailable_smart_button_provider(): array {
+		return array(
+			'not registered' => array( false, true ),
+			'not enqueued'   => array( true, false ),
+		);
+	}
+
+	/**
+	 * @testdox The block follower skips Checkout endpoint fallbacks.
+	 *
+	 * @dataProvider checkout_endpoint_provider
+	 *
+	 * @param string $endpoint Endpoint query variable.
+	 */
+	public function test_paypal_block_follower_skips_checkout_endpoint( string $endpoint ): void {
+		global $wp;
+
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+		$wp->query_vars[ $endpoint ] = '123';
+
+		$sut->enqueue_paypal_block_script_if_registered();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox The mini-cart follower loads when PayPal enables and enqueues its fragment-aware script.
+	 */
+	public function test_mini_cart_follower_enqueues_for_paypal_fragment_script(): void {
+		$this->configure_paypal_mini_cart( true, true, true );
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox A visible classic cart widget prepares the page for PayPal fragments without changing visibility.
+	 */
+	public function test_visible_cart_widget_prepares_paypal_fragments(): void {
+		$this->configure_paypal_mini_cart( true, true, true );
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$this->assertFalse( $sut->enqueue_paypal_script_for_visible_mini_cart_widget( false ) );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox A hidden classic cart widget stays hidden and requests no scripts.
+	 */
+	public function test_hidden_cart_widget_requests_nothing(): void {
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$this->assertTrue( $sut->enqueue_paypal_script_for_visible_mini_cart_widget( true ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox Malformed cart widget visibility values pass through without requesting scripts.
+	 *
+	 * @dataProvider malformed_cart_widget_visibility_provider
+	 *
+	 * @param mixed $value Malformed filter value.
+	 */
+	public function test_malformed_cart_widget_visibility_passes_through_without_scripts( $value ): void {
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+		$result = $sut->enqueue_paypal_script_for_visible_mini_cart_widget( $value );
+
+		$this->assertSame( $value, $result );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * Malformed cart widget visibility values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function malformed_cart_widget_visibility_provider(): array {
+		return array(
+			'integer' => array( 0 ),
+			'array'  => array( array() ),
+			'object' => array( new \stdClass() ),
+		);
+	}
+
+	/**
+	 * @testdox An empty real mini-cart requests one idempotent script stack before later PayPal fragments.
+	 */
+	public function test_empty_mini_cart_render_prepares_for_later_paypal_fragment(): void {
+		WC()->cart->empty_cart();
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->configure_paypal_mini_cart( true, true, true );
+		$this->sut->register();
+
+		ob_start();
+		woocommerce_mini_cart();
+		ob_end_clean();
+		do_action( 'woocommerce_paypal_payments_minicart_button_render' );
+
+		$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-blackbox'] );
+		$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-blackbox-init'] );
+		$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-paypal-express'] );
+	}
+
+	/**
+	 * @testdox The mini-cart follower skips when its PayPal location or executable script is absent.
+	 *
+	 * @dataProvider unavailable_mini_cart_provider
+	 *
+	 * @param bool $location_enabled Whether the PayPal mini-cart setting is enabled.
+	 * @param bool $script_registered Whether the PayPal smart-button script is registered.
+	 * @param bool $script_enqueued   Whether the PayPal smart-button script is enqueued.
+	 */
+	public function test_mini_cart_follower_requires_paypal_location_and_script( bool $location_enabled, bool $script_registered, bool $script_enqueued ): void {
+		$this->configure_paypal_mini_cart( $location_enabled, $script_registered, $script_enqueued );
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * Unavailable classic mini-cart cases.
+	 *
+	 * @return array<string, array{bool, bool, bool}>
+	 */
+	public function unavailable_mini_cart_provider(): array {
+		return array(
+			'location disabled'    => array( false, true, true ),
+			'script not registered' => array( true, false, true ),
+			'script not enqueued'   => array( true, true, false ),
+		);
+	}
+
+	/**
+	 * @testdox The mini-cart follower supports the legacy location setting when current styling is absent.
+	 */
+	public function test_mini_cart_follower_supports_legacy_location_setting(): void {
+		update_option( 'woocommerce-ppcp-version', '4.0.0' );
+		delete_option( 'woocommerce-ppcp-data-styling' );
+		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array( 'mini-cart' ) ) );
+		$this->register_and_enqueue_paypal_smart_button();
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox Current disabled mini-cart styling overrides an enabled legacy location.
+	 */
+	public function test_mini_cart_current_styling_overrides_legacy_location(): void {
+		$this->configure_paypal_mini_cart( false, true, true );
+		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array( 'mini-cart' ) ) );
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox PayPal Payments 3.4 uses its enabled legacy mini-cart location over disabled styling data.
+	 */
+	public function test_paypal_34_uses_enabled_legacy_mini_cart_location(): void {
+		$this->configure_paypal_mini_cart( false, true, true );
+		update_option( 'woocommerce-ppcp-version', '3.4.1' );
+		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array( 'mini-cart' ) ) );
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox PayPal Payments 3.4 ignores enabled styling data when its legacy mini-cart location is disabled.
+	 */
+	public function test_paypal_34_uses_disabled_legacy_mini_cart_location(): void {
+		$this->configure_paypal_mini_cart( true, true, true );
+		update_option( 'woocommerce-ppcp-version', '3.4.1' );
+		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array() ) );
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * Checkout endpoint cases.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public function checkout_endpoint_provider(): array {
+		return array(
+			'order pay'      => array( 'order-pay' ),
+			'order received' => array( 'order-received' ),
+		);
+	}
+
+	/**
+	 * @testdox A named PayPal render action still skips the interceptor when shared scripts are unavailable.
+	 */
+	public function test_named_paypal_render_skips_when_shared_scripts_are_unavailable(): void {
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_script();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox enqueue_paypal_script() uses the injected handler before it enqueues the interceptor.
+	 */
+	public function test_enqueue_paypal_script_uses_injected_handler(): void {
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut = $this->make_compat_with_script_handler( $handler );
+
+		$sut->enqueue_paypal_script();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		$script = wp_scripts()->query( 'wc-fraud-protection-paypal-express', 'registered' );
+		$this->assertNotFalse( $script );
+		$this->assertContains( 'wc-fraud-protection-blackbox-init', $script->deps );
+	}
+
+	/**
+	 * Build a PayPal compatibility layer with a controlled script handler.
+	 *
+	 * @param BlackboxScriptHandler $handler Script handler.
+	 * @return PayPalCompat
+	 */
+	private function make_compat_with_script_handler( BlackboxScriptHandler $handler ): PayPalCompat {
+		$sut = new PayPalCompat();
+		$sut->init( $this->session_verifier, $this->blocked_session_message, $this->session_id_normalizer, $handler );
+
+		return $sut;
+	}
+
+	/**
+	 * Configure PayPal's current mini-cart setting and smart-button handle.
+	 *
+	 * @param bool $location_enabled Whether the mini-cart location is enabled.
+	 * @param bool $script_registered Whether the smart-button handle is registered.
+	 * @param bool $script_enqueued   Whether the smart-button handle is enqueued.
+	 */
+	private function configure_paypal_mini_cart( bool $location_enabled, bool $script_registered, bool $script_enqueued ): void {
+		update_option( 'woocommerce-ppcp-version', '4.0.0' );
+		$mini_cart          = new \stdClass();
+		$mini_cart->enabled = $location_enabled;
+		update_option( 'woocommerce-ppcp-data-styling', array( 'mini_cart' => $mini_cart ) );
+
+		if ( $script_registered ) {
+			wp_register_script( 'ppcp-smart-button', 'https://example.com/paypal-button.js', array(), '1.0', true );
+			$this->touched_smart_button_handle = true;
+		}
+
+		if ( $script_enqueued ) {
+			wp_enqueue_script( 'ppcp-smart-button' );
+			$this->touched_smart_button_handle = true;
+		}
+	}
+
+	/**
+	 * Register and enqueue PayPal's smart-button handle.
+	 */
+	private function register_and_enqueue_paypal_smart_button(): void {
+		$this->configure_paypal_smart_button( true, true );
+	}
+
+	/**
+	 * Configure PayPal's smart-button handle state.
+	 *
+	 * @param bool $registered Whether the handle is registered.
+	 * @param bool $enqueued   Whether the handle is enqueued.
+	 */
+	private function configure_paypal_smart_button( bool $registered, bool $enqueued ): void {
+		if ( $registered ) {
+			wp_register_script( 'ppcp-smart-button', 'https://example.com/paypal-button.js', array(), '1.0', true );
+		}
+
+		if ( $enqueued ) {
+			wp_enqueue_script( 'ppcp-smart-button' );
+		}
+
+		$this->touched_smart_button_handle = $registered || $enqueued;
+	}
+
+	/**
+	 * Register PayPal's Checkout block integration handle.
+	 */
+	private function register_paypal_block_handle(): void {
+		wp_register_script( 'ppcp-checkout-block', 'https://example.com/paypal-block.js', array(), '1.0', true );
+		$this->registered_block_handle = true;
+	}
+
+	/**
+	 * Set WooCommerce's shared Cart block enqueue state.
+	 *
+	 * @param bool $state New enqueue state.
+	 * @return bool Previous enqueue state.
+	 */
+	private function set_cart_block_enqueue_state( bool $state ): bool {
+		$block_type = \WP_Block_Type_Registry::get_instance()->get_registered( 'woocommerce/cart' );
+		$this->assertInstanceOf( \WP_Block_Type::class, $block_type );
+		$this->assertIsCallable( $block_type->render_callback );
+		$this->assertIsArray( $block_type->render_callback );
+		$this->assertInstanceOf( AbstractBlock::class, $block_type->render_callback[0] );
+
+		$property = new \ReflectionProperty( AbstractBlock::class, 'enqueued_assets' );
+		$property->setAccessible( true );
+		$previous = (bool) $property->getValue( $block_type->render_callback[0] );
+		$property->setValue( $block_type->render_callback[0], $state );
+
+		return $previous;
+	}
+
+	/**
+	 * Remember a PayPal option so the test can restore it.
+	 *
+	 * @param string $option_name Option name.
+	 */
+	private function remember_paypal_option( string $option_name ): void {
+		$missing = new \stdClass();
+		$value   = get_option( $option_name, $missing );
+
+		$this->original_paypal_options[ $option_name ] = array(
+			'exists' => $missing !== $value,
+			'value'  => $value,
+		);
+	}
+
+	/**
+	 * Restore PayPal options changed by a test.
+	 */
+	private function restore_paypal_options(): void {
+		foreach ( $this->original_paypal_options as $option_name => $original ) {
+			if ( $original['exists'] ) {
+				update_option( $option_name, $original['value'] );
+			} else {
+				delete_option( $option_name );
+			}
+		}
 	}
 
 	/*

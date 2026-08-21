@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
@@ -43,13 +44,37 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	private $blocked_session_message;
 
 	/**
+	 * Mock Blackbox script handler.
+	 *
+	 * @var BlackboxScriptHandler&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $blackbox_script_handler;
+
+	/**
+	 * Product used by checkout render tests.
+	 *
+	 * @var \WC_Product|null
+	 */
+	private $product;
+
+	/**
+	 * Checkout options before each test.
+	 *
+	 * @var array<string, array{exists: bool, value: mixed}>
+	 */
+	private array $original_checkout_options = array();
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
+		$this->remember_checkout_option( 'woocommerce_enable_guest_checkout' );
+		$this->remember_checkout_option( 'woocommerce_enable_signup_and_login_from_checkout' );
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
+		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
 		$this->blocked_session_message
 			->method( 'get_plaintext' )
@@ -58,7 +83,8 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->sut = new ShortcodeCheckoutProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_message
+			$this->blocked_session_message,
+			$this->blackbox_script_handler
 		);
 
 		wc_clear_notices();
@@ -74,10 +100,164 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 		remove_all_actions( 'woocommerce_after_checkout_validation' );
 		remove_all_actions( 'woocommerce_checkout_process' );
-		remove_all_actions( 'wp_enqueue_scripts' );
+		remove_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ), 10 );
 		remove_all_filters( 'woocommerce_add_error' );
+		$this->reset_fraud_protection_scripts();
+		$this->restore_checkout_options();
+
+		if ( $this->product instanceof \WC_Product ) {
+			$this->product->delete( true );
+			$this->product = null;
+		}
 
 		parent::tearDown();
+	}
+
+	/**
+	 * Remember a checkout option so the test can restore it.
+	 *
+	 * @param string $option_name Option name.
+	 */
+	private function remember_checkout_option( string $option_name ): void {
+		$missing = new \stdClass();
+		$value   = get_option( $option_name, $missing );
+
+		$this->original_checkout_options[ $option_name ] = array(
+			'exists' => $missing !== $value,
+			'value'  => $value,
+		);
+	}
+
+	/**
+	 * Restore checkout options changed by a test.
+	 */
+	private function restore_checkout_options(): void {
+		foreach ( $this->original_checkout_options as $option_name => $original ) {
+			if ( $original['exists'] ) {
+				update_option( $option_name, $original['value'] );
+			} else {
+				delete_option( $option_name );
+			}
+		}
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| enqueue_shortcode_checkout_script() Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox enqueue_shortcode_checkout_script() enqueues its script when the shared scripts are available.
+	 */
+	public function test_enqueue_shortcode_checkout_script_when_shared_scripts_are_available(): void {
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+
+		$this->sut->enqueue_shortcode_checkout_script();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
+		$script = wp_scripts()->query( 'wc-fraud-protection-shortcode-checkout', 'registered' );
+		$this->assertNotFalse( $script );
+		$this->assertContains( 'wc-fraud-protection-blackbox-init', $script->deps );
+	}
+
+	/**
+	 * @testdox enqueue_shortcode_checkout_script() does not enqueue when the shared scripts are unavailable.
+	 */
+	public function test_enqueue_shortcode_checkout_script_skips_when_shared_scripts_are_unavailable(): void {
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
+
+		$this->sut->enqueue_shortcode_checkout_script();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox The real checkout shortcode enqueues the protector only after its form opens.
+	 */
+	public function test_checkout_shortcode_form_render_enqueues_protector(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->init(
+			$this->session_verifier,
+			$this->blocked_session_message,
+			$this->make_blackbox_script_handler()
+		);
+		update_option( 'woocommerce_enable_guest_checkout', 'yes' );
+		$this->add_product_to_cart();
+		$this->sut->register();
+
+		$this->render_checkout_shortcode();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox An empty checkout shortcode does not request shared or protector scripts.
+	 */
+	public function test_empty_cart_checkout_does_not_enqueue_scripts(): void {
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		$this->sut->register();
+
+		$this->render_checkout_shortcode();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox Checkout cart errors return before the form hook and enqueue no scripts.
+	 */
+	public function test_cart_error_checkout_does_not_enqueue_scripts(): void {
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		$this->add_product_to_cart();
+		$add_cart_error = function (): void {
+			wc_add_notice( 'Cart error.', 'error' );
+		};
+		add_action( 'woocommerce_check_cart_items', $add_cart_error );
+		$this->sut->register();
+
+		try {
+			$this->render_checkout_shortcode();
+		} finally {
+			remove_action( 'woocommerce_check_cart_items', $add_cart_error );
+		}
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox Registration-required anonymous checkout returns before the form hook and enqueues no scripts.
+	 */
+	public function test_registration_required_checkout_does_not_enqueue_scripts(): void {
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		update_option( 'woocommerce_enable_guest_checkout', 'no' );
+		update_option( 'woocommerce_enable_signup_and_login_from_checkout', 'no' );
+		wp_set_current_user( 0 );
+		$this->add_product_to_cart();
+		$this->sut->register();
+
+		$this->render_checkout_shortcode();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * Add a simple product to the test cart.
+	 */
+	private function add_product_to_cart(): void {
+		$this->product = \WC_Helper_Product::create_simple_product();
+		WC()->cart->add_to_cart( $this->product->get_id() );
+	}
+
+	/**
+	 * Render WooCommerce's checkout shortcode and discard its HTML.
+	 */
+	private function render_checkout_shortcode(): void {
+		ob_start();
+		\WC_Shortcode_Checkout::output( array() );
+		ob_end_clean();
 	}
 
 	/**
@@ -124,7 +304,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox register() waits for the checkout process before registering validation verification.
+	 * @testdox register() waits for checkout processing and hooks the checkout form render signal.
 	 */
 	public function test_register_hooks(): void {
 		$this->sut->register();
@@ -138,10 +318,11 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			has_action( 'woocommerce_after_checkout_validation', array( $this->sut, 'verify_and_block' ) ),
 			'Validation verification should not be registered before checkout processing starts'
 		);
-		$this->assertNotFalse(
-			has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_shortcode_checkout_script' ) ),
-			'wp_enqueue_scripts hook should be registered'
+		$this->assertSame(
+			10,
+			has_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ) )
 		);
+		$this->assertFalse( has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_shortcode_checkout_script' ) ) );
 	}
 
 	/*

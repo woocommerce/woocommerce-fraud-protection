@@ -41,6 +41,13 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	private array $original_server_variables = array();
 
 	/**
+	 * Jetpack option filters added by mock_jetpack_blog_id().
+	 *
+	 * @var callable[]
+	 */
+	private array $jetpack_blog_id_filters = array();
+
+	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
@@ -48,6 +55,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 
 		$this->forwarded_platform_logs = array();
 		$this->original_server_variables = array();
+		$this->jetpack_blog_id_filters = array();
 
 		$this->register_legacy_proxy_function_mocks(
 			array(
@@ -81,9 +89,15 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	 * Runs after each test.
 	 */
 	public function tearDown(): void {
+		foreach ( $this->jetpack_blog_id_filters as $filter ) {
+			remove_filter( 'pre_option_jetpack_options', $filter );
+		}
+		$this->jetpack_blog_id_filters = array();
+
 		$this->restore_server_variables();
 		$this->remove_controller_logging_spy();
 
+		$this->reset_woocommerce_checkout_page_cache();
 		$this->reset_legacy_proxy_mocks();
 		$this->forwarded_platform_logs = array();
 
@@ -143,6 +157,115 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 		}
 
 		$this->original_server_variables = array();
+	}
+
+	/**
+	 * Every script handle the plugin registers on a purchase surface.
+	 *
+	 * @var string[]
+	 */
+	protected const FRAUD_PROTECTION_SCRIPT_HANDLES = array(
+		'wc-fraud-protection-blackbox',
+		'wc-fraud-protection-blackbox-init',
+		'wc-fraud-protection-blocks-checkout',
+		'wc-fraud-protection-shortcode-checkout',
+		'wc-fraud-protection-pay-for-order',
+		'wc-fraud-protection-add-payment-method',
+		'wc-fraud-protection-paypal-express',
+		'wc-fraud-protection-extension-flow',
+	);
+
+	/**
+	 * Mock the Jetpack blog ID via the pre_option_jetpack_options filter.
+	 *
+	 * @param int $blog_id The blog ID to return.
+	 * @return void
+	 */
+	protected function mock_jetpack_blog_id( int $blog_id ): void {
+		$filter = function () use ( $blog_id ) {
+			return array( 'id' => $blog_id );
+		};
+
+		add_filter( 'pre_option_jetpack_options', $filter );
+		$this->jetpack_blog_id_filters[] = $filter;
+	}
+
+	/**
+	 * Build a real BlackboxScriptHandler wired with a mocked session identity manager.
+	 *
+	 * Consumers of the pull API (protectors, compat layers) receive the handler
+	 * through init(); tests use this factory so every consumer asks a working
+	 * handler, whose outcome is then steered per test via the Jetpack option
+	 * filter and the handler's public return value.
+	 *
+	 * @return \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler
+	 */
+	protected function make_blackbox_script_handler(): \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler {
+		$session_manager = $this->createMock( \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager::class );
+		$session_manager->method( 'get_identity_id' )->willReturn( 'mock-session-id' );
+
+		$handler = new \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler();
+		$handler->init( $session_manager );
+
+		return $handler;
+	}
+
+	/**
+	 * Clear WooCommerce's request-lifetime memo of whether this request is the checkout page.
+	 *
+	 * WooCommerce never resets it, so without this a go_to() in one test class leaves a stale
+	 * verdict that silently changes is_checkout() for every later test in the process.
+	 *
+	 * @return void
+	 */
+	protected function reset_woocommerce_checkout_page_cache(): void {
+		$reflection = new \ReflectionClass( \Automattic\WooCommerce\Blocks\Utils\CartCheckoutUtils::class );
+
+		if ( ! $reflection->hasProperty( 'is_checkout_page' ) ) {
+			return;
+		}
+
+		$property = $reflection->getProperty( 'is_checkout_page' );
+		$property->setAccessible( true );
+		$property->setValue( null, null );
+	}
+
+	/**
+	 * Dequeue and deregister every plugin script so queue state cannot leak between tests.
+	 *
+	 * WordPress reports an unregistered handle as enqueued when a queued script declares it
+	 * as a dependency, so a handle left behind by one test can silently satisfy the next.
+	 *
+	 * @return void
+	 */
+	protected function reset_fraud_protection_scripts(): void {
+		foreach ( self::FRAUD_PROTECTION_SCRIPT_HANDLES as $handle ) {
+			wp_dequeue_script( $handle );
+			wp_deregister_script( $handle );
+		}
+
+		$scripts = wp_scripts();
+
+		$scripts->to_do = array_values( array_diff( $scripts->to_do, self::FRAUD_PROTECTION_SCRIPT_HANDLES ) );
+		$scripts->done  = array_values( array_diff( $scripts->done, self::FRAUD_PROTECTION_SCRIPT_HANDLES ) );
+
+		foreach ( self::FRAUD_PROTECTION_SCRIPT_HANDLES as $handle ) {
+			unset( $scripts->groups[ $handle ] );
+		}
+
+		$dependencies_class = new \ReflectionClass( \WP_Dependencies::class );
+
+		if ( $dependencies_class->hasProperty( 'dependencies_with_missing_dependencies' ) ) {
+			$missing = $dependencies_class->getProperty( 'dependencies_with_missing_dependencies' );
+			$missing->setAccessible( true );
+			$missing_dependencies = (array) $missing->getValue( $scripts );
+
+			foreach ( self::FRAUD_PROTECTION_SCRIPT_HANDLES as $handle ) {
+				unset( $missing_dependencies[ $handle ] );
+			}
+
+			$missing->setValue( $scripts, array_values( array_diff( $missing_dependencies, self::FRAUD_PROTECTION_SCRIPT_HANDLES ) ) );
+		}
 	}
 
 	/**

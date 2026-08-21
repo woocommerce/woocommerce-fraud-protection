@@ -41,7 +41,7 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_first_occurrence_is_emitted(): void {
 		$this->assertTrue(
-			$this->invoke_should_emit_bail_notice( 'requires WooCommerce 9.5.0 or later (found 9.4.3); initialization skipped.' ),
+			$this->invoke_should_emit_bail_notice( 'requires WooCommerce 9.8.0 or later (found 9.7.1); initialization skipped.' ),
 			'The first time a reason is seen it should be emitted.'
 		);
 	}
@@ -50,7 +50,7 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	 * @testdox A repeated bail-out reason should be throttled within the window.
 	 */
 	public function test_repeated_reason_is_throttled(): void {
-		$reason = 'requires WooCommerce 9.5.0 or later (found 9.4.3); initialization skipped.';
+		$reason = 'requires WooCommerce 9.8.0 or later (found 9.7.1); initialization skipped.';
 
 		$first  = $this->invoke_should_emit_bail_notice( $reason );
 		$second = $this->invoke_should_emit_bail_notice( $reason );
@@ -63,7 +63,7 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Distinct bail-out reasons should be throttled independently.
 	 */
 	public function test_distinct_reasons_are_throttled_independently(): void {
-		$version_reason    = 'requires WooCommerce 9.5.0 or later (found 9.4.3); initialization skipped.';
+		$version_reason    = 'requires WooCommerce 9.8.0 or later (found 9.7.1); initialization skipped.';
 		$autoloader_reason = 'autoloader is not readable at /var/www/plugin/vendor/autoload.php';
 
 		$this->assertTrue(
@@ -80,7 +80,7 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	 * @testdox A bail-out reason should be emitted again after its throttle window expires.
 	 */
 	public function test_reason_is_emitted_again_after_window_expires(): void {
-		$reason = 'requires WooCommerce 9.5.0 or later (found 9.4.3); initialization skipped.';
+		$reason = 'requires WooCommerce 9.8.0 or later (found 9.7.1); initialization skipped.';
 
 		$this->assertTrue(
 			$this->invoke_should_emit_bail_notice( $reason ),

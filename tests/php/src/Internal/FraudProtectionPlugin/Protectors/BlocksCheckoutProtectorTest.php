@@ -7,6 +7,9 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Protectors;
 
+use Automattic\WooCommerce\Blocks\BlockTypes\AbstractBlock;
+use Automattic\WooCommerce\Blocks\BlockTypes\Checkout;
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
@@ -43,6 +46,13 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	private $blocked_session_message;
 
 	/**
+	 * Mock Blackbox script handler.
+	 *
+	 * @var BlackboxScriptHandler&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $blackbox_script_handler;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -50,6 +60,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
+		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
 		$this->blocked_session_message
 			->method( 'get_plaintext' )
@@ -58,7 +69,189 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->sut = new BlocksCheckoutProtector();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_message
+			$this->blocked_session_message,
+			$this->blackbox_script_handler
+		);
+	}
+
+	/**
+	 * Tear down after each test.
+	 */
+	public function tearDown(): void {
+		remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_blocks_checkout_script' ) );
+		remove_action( 'woocommerce_blocks_checkout_enqueue_data', array( $this->sut, 'enqueue_blocks_checkout_script' ) );
+		$this->reset_fraud_protection_scripts();
+
+		global $wp;
+		unset( $wp->query_vars['order-pay'] );
+		unset( $wp->query_vars['order-received'] );
+		set_current_screen( 'front' );
+
+		parent::tearDown();
+	}
+
+	/*
+	|--------------------------------------------------------------------------
+	| enqueue_blocks_checkout_script() Tests
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox register() uses the frontend pre-assets hook, never the editor-facing checkout-data hook.
+	 */
+	public function test_register_uses_frontend_checkout_block_hook(): void {
+		$this->sut->register();
+
+		$this->assertSame(
+			10,
+			has_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_blocks_checkout_script' ) )
+		);
+		$this->assertFalse(
+			has_action( 'woocommerce_blocks_checkout_enqueue_data', array( $this->sut, 'enqueue_blocks_checkout_script' ) )
+		);
+	}
+
+	/**
+	 * @testdox enqueue_blocks_checkout_script() enqueues its script when the shared scripts are available.
+	 */
+	public function test_enqueue_blocks_checkout_script_when_shared_scripts_are_available(): void {
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+
+		$this->sut->enqueue_blocks_checkout_script();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox enqueue_blocks_checkout_script() does not enqueue when the shared scripts are unavailable.
+	 */
+	public function test_enqueue_blocks_checkout_script_skips_when_shared_scripts_are_unavailable(): void {
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
+
+		$this->sut->enqueue_blocks_checkout_script();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox Real Site Editor bootstrap does not request or enqueue the Blocks protector.
+	 */
+	public function test_site_editor_lifecycle_does_not_enqueue_or_resolve_blocks_protector(): void {
+		$checkout = $this->get_checkout_block_type();
+		$previous_enqueue_state = $this->set_checkout_enqueue_state( $checkout, false );
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		$this->sut->register();
+		set_current_screen( 'site-editor' );
+
+		$checkout_data_runs = 0;
+		$count_data_action  = function () use ( &$checkout_data_runs ): void {
+			++$checkout_data_runs;
+		};
+
+		add_action( 'woocommerce_blocks_checkout_enqueue_data', $count_data_action, PHP_INT_MAX );
+
+		try {
+			do_action( 'enqueue_block_editor_assets' ); // phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Exercising Woo's real editor lifecycle.
+
+			$this->assertGreaterThan( 0, $checkout_data_runs, 'Woo Checkout::enqueue_editor_assets() must reach Checkout::enqueue_data().' );
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+		} finally {
+			remove_action( 'woocommerce_blocks_checkout_enqueue_data', $count_data_action, PHP_INT_MAX );
+			$this->set_checkout_enqueue_state( $checkout, $previous_enqueue_state );
+		}
+	}
+
+	/**
+	 * @testdox Real frontend Checkout lifecycle registers every dependency before queuing the Blocks protector.
+	 */
+	public function test_frontend_checkout_lifecycle_registers_dependencies_before_protector(): void {
+		$checkout = $this->get_checkout_block_type();
+		$previous_enqueue_state = $this->set_checkout_enqueue_state( $checkout, false );
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->init(
+			$this->session_verifier,
+			$this->blocked_session_message,
+			$this->make_blackbox_script_handler()
+		);
+		$this->sut->register();
+
+		$dependencies_ready = false;
+		$probe_dependencies  = function () use ( &$dependencies_ready ): void {
+			$dependencies_ready = wp_script_is( 'wp-data', 'registered' )
+				&& wp_script_is( 'wc-blocks-checkout-events', 'registered' );
+		};
+
+		add_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', $probe_dependencies, 9, 0 );
+
+		try {
+			$checkout->render_callback(
+				array(),
+				'<div class="wp-block-woocommerce-checkout"></div>',
+				null
+			);
+			$resolved = wp_scripts()->all_deps( array( 'wc-fraud-protection-blocks-checkout' ) );
+
+			$this->assertTrue( $dependencies_ready, 'Woo must register wp-data and wc-blocks-checkout-events before the pre-assets hook.' );
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+			$this->assertTrue( $resolved, 'WordPress should resolve every Blocks protector dependency.' );
+		} finally {
+			remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', $probe_dependencies, 9 );
+			$this->set_checkout_enqueue_state( $checkout, $previous_enqueue_state );
+		}
+	}
+
+	/**
+	 * @testdox Real order-received block fallback does not request or enqueue the Blocks protector.
+	 */
+	public function test_order_received_checkout_block_lifecycle_does_not_enqueue_blocks_protector(): void {
+		global $wp;
+
+		$checkout = $this->get_checkout_block_type();
+		$previous_enqueue_state = $this->set_checkout_enqueue_state( $checkout, false );
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		$this->sut->register();
+		$wp->query_vars['order-received'] = '123';
+
+		try {
+			$checkout->render_callback(
+				array(),
+				'<div class="wp-block-woocommerce-checkout"></div>',
+				null
+			);
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+		} finally {
+			$this->set_checkout_enqueue_state( $checkout, $previous_enqueue_state );
+		}
+	}
+
+	/**
+	 * @testdox Blocks protector stays absent on both Checkout endpoint fallbacks.
+	 *
+	 * @dataProvider checkout_endpoint_provider
+	 *
+	 * @param string $endpoint Endpoint query variable.
+	 */
+	public function test_blocks_protector_does_not_enqueue_on_checkout_endpoint( string $endpoint ): void {
+		global $wp;
+
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		$wp->query_vars[ $endpoint ] = '123';
+
+		$this->sut->enqueue_blocks_checkout_script();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * Checkout endpoint cases.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public function checkout_endpoint_provider(): array {
+		return array(
+			'order pay'      => array( 'order-pay' ),
+			'order received' => array( 'order-received' ),
 		);
 	}
 
@@ -359,6 +552,36 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	| Helpers
 	|--------------------------------------------------------------------------
 	*/
+
+	/**
+	 * Get WooCommerce's registered Checkout block type instance.
+	 *
+	 * @return Checkout
+	 */
+	private function get_checkout_block_type(): Checkout {
+		$block_type = \WP_Block_Type_Registry::get_instance()->get_registered( 'woocommerce/checkout' );
+		$this->assertInstanceOf( \WP_Block_Type::class, $block_type );
+		$this->assertIsArray( $block_type->render_callback );
+		$this->assertInstanceOf( Checkout::class, $block_type->render_callback[0] );
+
+		return $block_type->render_callback[0];
+	}
+
+	/**
+	 * Set the request-lifetime enqueue flag on WooCommerce's shared Checkout instance.
+	 *
+	 * @param Checkout $checkout Checkout block type instance.
+	 * @param bool     $state    New enqueue state.
+	 * @return bool Previous enqueue state.
+	 */
+	private function set_checkout_enqueue_state( Checkout $checkout, bool $state ): bool {
+		$property = new \ReflectionProperty( AbstractBlock::class, 'enqueued_assets' );
+		$property->setAccessible( true );
+		$previous = (bool) $property->getValue( $checkout );
+		$property->setValue( $checkout, $state );
+
+		return $previous;
+	}
 
 	/**
 	 * Create a mock WC_Order.

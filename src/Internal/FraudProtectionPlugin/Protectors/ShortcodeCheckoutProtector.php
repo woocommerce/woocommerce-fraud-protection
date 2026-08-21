@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -28,7 +29,6 @@ defined( 'ABSPATH' ) || exit;
  * Fail-open: Delegated to SessionVerifier — all internal errors result in ALLOW.
  */
 class ShortcodeCheckoutProtector {
-
 	use ClassicFormDataExtractionTrait;
 
 	/**
@@ -51,19 +51,29 @@ class ShortcodeCheckoutProtector {
 	private BlockedSessionMessage $blocked_session_message;
 
 	/**
+	 * Blackbox script handler, asked for the shared scripts at enqueue time.
+	 *
+	 * @var BlackboxScriptHandler
+	 */
+	private BlackboxScriptHandler $blackbox_script_handler;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
+	 * @param BlackboxScriptHandler $blackbox_script_handler The shared Blackbox script handler.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionMessage $blocked_session_message
+		BlockedSessionMessage $blocked_session_message,
+		BlackboxScriptHandler $blackbox_script_handler
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
+		$this->blackbox_script_handler = $blackbox_script_handler;
 	}
 
 	/**
@@ -75,7 +85,7 @@ class ShortcodeCheckoutProtector {
 	 */
 	public function register(): void {
 		add_action( 'woocommerce_checkout_process', array( $this, 'register_checkout_validation_verifier' ), PHP_INT_MAX );
-		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_shortcode_checkout_script' ) );
+		add_action( 'woocommerce_checkout_before_order_review', array( $this, 'enqueue_shortcode_checkout_script' ), 10, 0 );
 	}
 
 	/**
@@ -163,17 +173,14 @@ class ShortcodeCheckoutProtector {
 	}
 
 	/**
-	 * Conditionally enqueue the shortcode-checkout.js script.
-	 *
-	 * Only enqueues on the shortcode checkout page (not blocks checkout,
-	 * not the order-received page).
+	 * Enqueue the shortcode checkout protector when the checkout form renders.
 	 *
 	 * @internal
 	 *
 	 * @return void
 	 */
 	public function enqueue_shortcode_checkout_script(): void {
-		if ( ! is_checkout() || is_order_received_page() || is_checkout_pay_page() || has_block( 'woocommerce/checkout' ) ) {
+		if ( ! $this->blackbox_script_handler->request_scripts() ) {
 			return;
 		}
 

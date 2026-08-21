@@ -6,7 +6,7 @@
  * Author: Automattic
  * Requires Plugins: woocommerce
  * Requires PHP: 8.1
- * WC requires at least: 9.5.0
+ * WC requires at least: 9.8.0
  *
  * @package WooCommerce\FraudProtection
  */

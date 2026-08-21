@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -51,19 +52,29 @@ class PayForOrderProtector {
 	private BlockedSessionMessage $blocked_session_message;
 
 	/**
+	 * Blackbox script handler, asked for the shared scripts at enqueue time.
+	 *
+	 * @var BlackboxScriptHandler
+	 */
+	private BlackboxScriptHandler $blackbox_script_handler;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
+	 * @param BlackboxScriptHandler $blackbox_script_handler The shared Blackbox script handler.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
-		BlockedSessionMessage $blocked_session_message
+		BlockedSessionMessage $blocked_session_message,
+		BlackboxScriptHandler $blackbox_script_handler
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
+		$this->blackbox_script_handler = $blackbox_script_handler;
 	}
 
 	/**
@@ -75,7 +86,7 @@ class PayForOrderProtector {
 	 */
 	public function register(): void {
 		add_action( 'woocommerce_before_pay_action', array( $this, 'verify_and_block' ) );
-		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_pay_for_order_script' ) );
+		add_action( 'before_woocommerce_pay_form', array( $this, 'enqueue_pay_for_order_script' ), 10, 0 );
 	}
 
 	/**
@@ -114,16 +125,14 @@ class PayForOrderProtector {
 	}
 
 	/**
-	 * Conditionally enqueue the pay-for-order.js script.
-	 *
-	 * Only enqueues on the pay-for-order page.
+	 * Enqueue the pay-for-order protector when a validated pay form renders.
 	 *
 	 * @internal
 	 *
 	 * @return void
 	 */
 	public function enqueue_pay_for_order_script(): void {
-		if ( ! is_checkout_pay_page() ) {
+		if ( ! $this->blackbox_script_handler->request_scripts() ) {
 			return;
 		}
 
