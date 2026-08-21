@@ -96,23 +96,12 @@ class ApiClient {
 			'full_headers' => $this->get_request_headers(),
 		);
 
-		$log_payload                 = $payload;
-		$log_payload['full_headers'] = sprintf( '(%d headers)', count( $payload['full_headers'] ) );
-
-		FraudProtectionController::log(
-			'info',
-			'Verifying session with Blackbox API',
-			array(
-				'session_id' => $session_id,
-				'payload'    => $log_payload,
-			)
-		);
-
 		$response = $this->make_request(
 			'POST',
 			self::VERIFY_ENDPOINT,
 			$session_id,
-			$payload
+			$payload,
+			'Verifying session with Blackbox API'
 		);
 
 		return $this->process_decision_response( $response, $payload, $session_id );
@@ -135,13 +124,7 @@ class ApiClient {
 			$payload['context'] = $this->filter_empty_values( $payload['context'] );
 		}
 
-		FraudProtectionController::log(
-			'info',
-			'Reporting event to Blackbox API',
-			array( 'payload' => $payload )
-		);
-
-		$response = $this->make_request( 'POST', self::REPORT_ENDPOINT, $session_id, $payload );
+		$response = $this->make_request( 'POST', self::REPORT_ENDPOINT, $session_id, $payload, 'Reporting event to Blackbox API' );
 
 		if ( is_wp_error( $response ) ) {
 			$error_data = $response->get_error_data() ?? array();
@@ -291,21 +274,21 @@ class ApiClient {
 	 * @param string               $path       Endpoint path (relative to Blackbox API base URL).
 	 * @param string               $session_id Session ID for the request.
 	 * @param array<string, mixed> $payload    Request payload.
+	 * @param string               $log_message Fixed request log message.
 	 * @return array<string, mixed>|\WP_Error Parsed JSON response or WP_Error on failure.
 	 */
-	private function make_request( string $method, string $path, string $session_id, array $payload ): array|\WP_Error {
-		$rejected = array();
-		$body     = \wp_json_encode(
-			EncodablePayload::for_wire(
-				array_merge(
-					$payload,
-					array(
-						'session_id' => $session_id,
-					)
-				),
-				$rejected
-			)
+	private function make_request( string $method, string $path, string $session_id, array $payload, string $log_message ): array|\WP_Error {
+		$rejected     = array();
+		$wire_payload = EncodablePayload::for_wire(
+			array_merge(
+				$payload,
+				array(
+					'session_id' => $session_id,
+				)
+			),
+			$rejected
 		);
+		$body         = \wp_json_encode( $wire_payload );
 
 		// Logged once per request rather than once per field, so a payload full of rejected
 		// values cannot flood the log. Paths only, never values.
@@ -324,10 +307,20 @@ class ApiClient {
 		if ( false === $body ) {
 			return new \WP_Error(
 				'json_encode_error',
-				'Failed to encode payload',
-				array( 'payload' => $payload )
+				'Failed to encode payload'
 			);
 		}
+
+		$log_payload = $wire_payload;
+		if ( is_array( $log_payload['full_headers'] ?? null ) ) {
+			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
+		}
+
+		FraudProtectionController::log(
+			'info',
+			$log_message,
+			array( 'payload' => $log_payload )
+		);
 
 		$request_args = array(
 			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . rawurlencode( $session_id ),
