@@ -251,8 +251,6 @@ class WC_Fraud_Protection_Unit_Tests_Bootstrap {
 			throw new \Exception( "Error when trying to get the private 'container' property from the " . \Automattic\WooCommerce\Container::class . ' class using reflection during unit testing bootstrap, has the property been removed or renamed?' );
 		}
 
-		$inner_container_property->setAccessible( true );
-
 		$container       = wc_get_container();
 		$inner_container = $inner_container_property->getValue( $container );
 		$inner_container = new TestingContainer( $inner_container );
