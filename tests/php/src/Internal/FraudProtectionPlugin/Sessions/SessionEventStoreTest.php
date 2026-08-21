@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
@@ -39,7 +40,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->schema_manager = new SchemaManager();
-		$this->schema_manager->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->schema_manager->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ), wc_get_container()->get( FraudProtectionLogger::class ) );
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $this->schema_manager->get_sessions_table_schema() );
@@ -220,5 +221,25 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 1, $deleted );
 		$this->assertNull( $this->latest_row_for( 'old-session' ), 'The old row should have been pruned' );
 		$this->assertNotNull( $this->latest_row_for( 'fresh-session' ), 'The fresh row should have been kept' );
+	}
+
+	/**
+	 * @testdox Should report the partial count when a later prune query fails.
+	 */
+	public function test_prune_throws_on_database_failure(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
+		$wpdb->method( 'query' )->willReturnOnConsecutiveCalls( 1000, false );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'Session event pruning failed after deleting 1000 row(s).' );
+
+		try {
+			$this->sut->prune_older_than( 30 );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
 	}
 }

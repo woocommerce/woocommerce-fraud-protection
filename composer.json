@@ -22,7 +22,8 @@
 		"phpstan/phpstan-phpunit": "^2.0",
 		"szepeviktor/phpstan-wordpress": "^2.0",
 		"php-stubs/woocommerce-stubs": "^9.8",
-		"php-stubs/wordpress-tests-stubs": "^6.8"
+		"php-stubs/wordpress-tests-stubs": "^6.8",
+		"php-stubs/wp-cli-stubs": "^2.12"
 	},
 	"autoload": {
 		"psr-4": {

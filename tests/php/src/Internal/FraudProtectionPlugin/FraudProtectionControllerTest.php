@@ -201,16 +201,14 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox the static log() facade delegates to the active controller instance.
+	 * @testdox The static log facade delegates to the active logger.
 	 */
-	public function test_static_log_facade_delegates_to_active_instance(): void {
-		// Installing the spy as the active instance proves the static log() facade
-		// delegates to it, forwarding every argument to write_log().
+	public function test_static_log_facade_delegates_to_active_logger(): void {
 		$spy = $this->spy_on_controller_logging();
 
 		FraudProtectionController::log( 'warning', 'Routed message', array( 'foo' => 'bar' ), true );
 
-		$this->assertCount( 1, $spy->entries, 'The active instance should receive exactly one write_log() call.' );
+		$this->assertCount( 1, $spy->entries, 'The active logger should receive one log call.' );
 		$this->assertSame( 'warning', $spy->entries[0]['level'] );
 		$this->assertSame( 'Routed message', $spy->entries[0]['message'] );
 		$this->assertSame( array( 'foo' => 'bar' ), $spy->entries[0]['context'] );
@@ -258,9 +256,9 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Install a real WC logger mock that records every logged message.
 	 *
-	 * Used to assert on the final message {@see FraudProtectionController::write_log()}
-	 * produces (e.g. the identity prefix), which only exists once the real logging
-	 * path runs - so these tests use the real logger rather than the controller spy.
+	 * Used to assert on the final message produced by the logger service
+	 * (e.g. the identity prefix), which only exists once the real logging
+	 * path runs, so these tests use the real logger rather than the in-memory logger.
 	 *
 	 * @return \ArrayObject<int, string> Populated with logged messages, in order, as they are recorded.
 	 */
@@ -294,10 +292,6 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		remove_all_filters( 'woocommerce_logging_class' );
 		delete_option( 'woocommerce_feature_fraud_protection_enabled' );
 		delete_option( 'jetpack_activation_source' );
-
-		// Any controller spy installed by a test is restored by the base
-		// tearDown (parent::tearDown above), so the canonical controller is the
-		// facade target again here.
 
 		// Remove any init hooks registered by the controller.
 		remove_all_actions( 'init' );

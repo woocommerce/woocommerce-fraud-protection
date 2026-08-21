@@ -7,15 +7,15 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Bootstraps the plugin.
  *
- * Defines the runtime constants, forces off WooCommerce Core's built-in fraud
- * protection, and once WooCommerce has loaded, resolves the controller from
- * WooCommerce's dependency injection container. The controller in turn wires
- * and registers every plugin component (see {@see FraudProtectionController::handle_init()}).
+ * Defines runtime constants, disables WooCommerce Core's built-in fraud
+ * protection, and registers the plugin after WooCommerce loads.
  */
 class PluginInitializer {
 
@@ -55,7 +55,7 @@ class PluginInitializer {
 	}
 
 	/**
-	 * Resolve and register every plugin component once WooCommerce has loaded.
+	 * Register CLI commands and plugin components after WooCommerce loads.
 	 *
 	 * @internal Hook callback for `woocommerce_loaded`.
 	 *
@@ -83,7 +83,12 @@ class PluginInitializer {
 		// PSR-4 autoloader: classes are loaded lazily on first use.
 		require_once $autoload;
 
-		wc_get_container()->get( FraudProtectionController::class )->register();
+		$container = wc_get_container();
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			$container->get( FraudProtectionCommands::class )->register();
+		}
+
+		$container->get( FraudProtectionController::class )->register();
 	}
 
 	/**

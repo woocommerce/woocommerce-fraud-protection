@@ -127,6 +127,7 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 		$this->sut->register();
 		$first = as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK );
 		$this->assertNotFalse( $first, 'An admin request should schedule the pruning job' );
+		$this->assertSame( $first, $this->sut->get_next_scheduled_action(), 'The status lookup should return the grouped pruning action' );
 
 		$this->sut->register();
 		$this->assertSame( $first, as_next_scheduled_action( SessionEventPruner::PRUNE_ACTION_HOOK ), 'A second admin request must not schedule a duplicate job' );

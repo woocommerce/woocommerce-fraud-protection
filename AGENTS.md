@@ -11,6 +11,7 @@ Before changing code:
 - Read [README.md](README.md) for setup, local testing, and the public API.
 - Read the private `woo-fraud-protection-docs` repository for architecture, roadmap, or cross-repository contracts.
 - Use WooCommerce Core as a read-only reference. Do not modify Core files for work in this repository.
+- For a new feature, evaluate whether operators need a supported WP-CLI diagnostic or maintenance command.
 
 ## Runtime and commands
 

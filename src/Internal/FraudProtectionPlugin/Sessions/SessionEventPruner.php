@@ -105,7 +105,7 @@ class SessionEventPruner {
 		}
 
 		try {
-			$deleted = $this->event_store->prune_older_than( self::RETENTION_DAYS );
+			$deleted = $this->prune_sessions();
 
 			if ( $deleted > 0 ) {
 				$this->logger->log(
@@ -131,6 +131,28 @@ class SessionEventPruner {
 	}
 
 	/**
+	 * Prune session rows with the fixed retention period.
+	 *
+	 * @return int The number of deleted rows.
+	 */
+	public function prune_sessions(): int {
+		return $this->event_store->prune_older_than( self::RETENTION_DAYS );
+	}
+
+	/**
+	 * Get the next scheduled pruning action.
+	 *
+	 * @return int|bool The scheduled Unix timestamp, true when in progress, or false when unavailable.
+	 */
+	public function get_next_scheduled_action(): int|bool {
+		if ( ! function_exists( 'as_next_scheduled_action' ) ) {
+			return false;
+		}
+
+		return as_next_scheduled_action( self::PRUNE_ACTION_HOOK, array(), self::ACTION_GROUP );
+	}
+
+	/**
 	 * Schedule the daily pruning job when the feature is enabled, unschedule
 	 * it when it is not.
 	 */
@@ -140,7 +162,7 @@ class SessionEventPruner {
 		}
 
 		$enabled   = $this->merchant_lists_feature->is_enabled();
-		$scheduled = false !== as_next_scheduled_action( self::PRUNE_ACTION_HOOK, array(), self::ACTION_GROUP );
+		$scheduled = false !== $this->get_next_scheduled_action();
 
 		if ( $enabled && ! $scheduled ) {
 			as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, self::PRUNE_ACTION_HOOK, array(), self::ACTION_GROUP, true );

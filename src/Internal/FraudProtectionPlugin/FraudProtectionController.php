@@ -40,13 +40,11 @@ defined( 'ABSPATH' ) || exit;
 class FraudProtectionController /* implements RegisterHooksInterface */ {
 
 	/**
-	 * The controller instance that the static {@see log()} facade delegates to.
-	 * Set in {@see init()}, so simply resolving the controller from the DI
-	 * container is enough to wire the facade.
+	 * Logger used by the static {@see log()} facade.
 	 *
-	 * @var FraudProtectionController
+	 * @var FraudProtectionLogger
 	 */
-	protected static FraudProtectionController $instance;
+	protected static FraudProtectionLogger $logger;
 
 	/**
 	 * Blocks checkout protector instance.
@@ -119,13 +117,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionEventPruner $session_event_pruner;
 
 	/**
-	 * Fraud Protection logger instance.
-	 *
-	 * @var FraudProtectionLogger
-	 */
-	private FraudProtectionLogger $logger;
-
-	/**
 	 * Register hooks. To be run at `woocommerce_loaded`.
 	 */
 	public function register(): void {
@@ -184,7 +175,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		SessionEventPruner $session_event_pruner,
 		FraudProtectionLogger $logger
 	): void {
-		self::$instance = $this;
+		self::$logger = $logger;
 
 		$this->cart_event_tracker           = $cart_event_tracker;
 		$this->checkout_event_tracker       = $checkout_event_tracker;
@@ -196,7 +187,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->pay_for_order_protector      = $pay_for_order_protector;
 		$this->schema_manager               = $schema_manager;
 		$this->session_event_pruner         = $session_event_pruner;
-		$this->logger                       = $logger;
 	}
 
 	/**
@@ -233,8 +223,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	/**
 	 * Log helper method for consistent logging across all fraud protection components.
 	 *
-	 * Static facade kept for backwards compatibility; delegates to the
-	 * registered instance's {@see write_log()}.
+	 * Static facade kept for backwards compatibility; delegates to the logger
+	 * service installed by {@see init()}.
 	 *
 	 * @param string               $level                   Log level (emergency, alert, critical, error, warning, notice, info, debug).
 	 * @param string               $message                 Log message.
@@ -244,20 +234,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @return void
 	 */
 	public static function log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
-		self::$instance->write_log( $level, $message, $context, $forward_to_platform_log );
-	}
-
-	/**
-	 * Delegate an instance log call to the logger service.
-	 *
-	 * @param string               $level                   Log level (emergency, alert, critical, error, warning, notice, info, debug).
-	 * @param string               $message                 Log message.
-	 * @param array<string, mixed> $context                 Optional context data.
-	 * @param bool                 $forward_to_platform_log Whether to also forward a sanitized copy to the PHP error log. Defaults to false.
-	 *
-	 * @return void
-	 */
-	protected function write_log( string $level, string $message, array $context = array(), bool $forward_to_platform_log = false ): void {
-		$this->logger->log( $level, $message, $context, $forward_to_platform_log );
+		self::$logger->log( $level, $message, $context, $forward_to_platform_log );
 	}
 }

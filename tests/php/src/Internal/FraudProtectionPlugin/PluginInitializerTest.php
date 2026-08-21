@@ -7,8 +7,10 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer;
 
 /**
  * Tests for the PluginInitializer class.
@@ -94,6 +96,29 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 			$this->invoke_should_emit_bail_notice( $reason ),
 			'The reason should be emitted again once the throttle window has expired.'
 		);
+	}
+
+	/**
+	 * @testdox CLI should register commands and the feature controller.
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_cli_registers_commands_and_feature_controller(): void {
+		define( 'WP_CLI', true );
+		$container  = wc_get_container();
+		$commands   = $this->createMock( FraudProtectionCommands::class );
+		$controller = $this->createMock( FraudProtectionController::class );
+		$commands->expects( $this->once() )->method( 'register' );
+		$controller->expects( $this->once() )->method( 'register' );
+		$container->replace( FraudProtectionCommands::class, $commands );
+		$container->replace( FraudProtectionController::class, $controller );
+
+		try {
+			PluginInitializer::handle_woocommerce_loaded();
+		} finally {
+			$container->reset_replacement( FraudProtectionCommands::class );
+			$container->reset_replacement( FraudProtectionController::class );
+		}
 	}
 
 	/**

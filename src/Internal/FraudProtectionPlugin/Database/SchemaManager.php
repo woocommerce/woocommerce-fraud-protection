@@ -110,7 +110,10 @@ class SchemaManager {
 			return;
 		}
 
-		$this->maybe_install_schema();
+		// WP-CLI uses the explicit database install command instead of automatic migrations.
+		if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+			$this->maybe_install_schema();
+		}
 	}
 
 	/**
@@ -150,6 +153,38 @@ class SchemaManager {
 	}
 
 	/**
+	 * Get the installed version, retry state, and expected database tables.
+	 *
+	 * @return array{required_version: int, installed_version: int, install_state: array{attempts: int, last_attempt: int, last_error: string}, complete: bool, tables: array<int, array{name: string, exists: bool}>}
+	 */
+	public function get_schema_status(): array {
+		$complete = $this->is_schema_installed();
+		$tables   = array();
+
+		foreach ( array_keys( $this->get_table_schemas() ) as $table ) {
+			$exists   = $this->table_exists( $table );
+			$complete = $complete && $exists;
+			$tables[] = array(
+				'name'   => $table,
+				'exists' => $exists,
+			);
+		}
+		$install_state = $this->get_schema_retry_state();
+
+		return array(
+			'required_version'  => self::SCHEMA_VERSION,
+			'installed_version' => max( 0, (int) get_option( self::DB_VERSION_OPTION, 0 ) ),
+			'install_state'     => array(
+				'attempts'     => $install_state['attempts'],
+				'last_attempt' => $install_state['last_attempt'],
+				'last_error'   => $install_state['last_error'],
+			),
+			'complete'          => $complete,
+			'tables'            => $tables,
+		);
+	}
+
+	/**
 	 * Run dbDelta when the stored schema version is older than the current one.
 	 *
 	 * Fail-open: any failure is logged and the version option is left
@@ -161,19 +196,23 @@ class SchemaManager {
 	 * A schema version bump resets the state, so a build that fixes the
 	 * migration gets a fresh round of attempts. The state is deleted on
 	 * success.
+	 *
+	 * @internal
+	 *
+	 * @param bool $force Whether to bypass automatic retry limits.
 	 */
-	private function maybe_install_schema(): void {
+	public function maybe_install_schema( bool $force = false ): void {
 		if ( $this->is_schema_installed() ) {
 			return;
 		}
 
-		$state = $this->get_install_state();
+		$state = $this->get_schema_retry_state();
 
-		if ( $state['attempts'] >= self::MAX_INSTALL_ATTEMPTS ) {
+		if ( ! $force && $state['attempts'] >= self::MAX_INSTALL_ATTEMPTS ) {
 			return;
 		}
 
-		if ( time() - $state['last_attempt'] < self::INSTALL_RETRY_INTERVAL ) {
+		if ( ! $force && time() - $state['last_attempt'] < self::INSTALL_RETRY_INTERVAL ) {
 			return;
 		}
 
@@ -187,10 +226,7 @@ class SchemaManager {
 		try {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-			$schemas = array(
-				$this->get_sessions_table_name() => $this->get_sessions_table_schema(),
-				$this->get_rules_table_name()    => $this->get_rules_table_schema(),
-			);
+			$schemas = $this->get_table_schemas();
 
 			// Collect each table's database errors as dbDelta runs:
 			// `$wpdb->last_error` cannot report them afterwards, because every
@@ -204,8 +240,6 @@ class SchemaManager {
 				$this->legacy_proxy->call_function( 'dbDelta', $schema );
 				$db_errors[ $table ] = implode( ' | ', array_filter( array_slice( $this->get_query_errors(), $error_count ) ) );
 			}
-
-			$wpdb = $this->legacy_proxy->get_global( 'wpdb' );
 
 			// dbDelta executes its queries without checking their results, so a
 			// failed CREATE or ALTER is silent: we'll verify the outcome before
@@ -234,7 +268,7 @@ class SchemaManager {
 			// that compares equal on any server.
 			foreach ( $schemas as $table => $schema ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
+				if ( ! $this->table_exists( $table ) ) {
 					$this->record_failed_attempt( $state, $db_errors[ $table ] );
 					$this->logger->log(
 						'error',
@@ -309,11 +343,36 @@ class SchemaManager {
 	}
 
 	/**
+	 * Get the current table names and schema strings.
+	 *
+	 * @return array<string, string> Schema strings keyed by table name.
+	 */
+	private function get_table_schemas(): array {
+		return array(
+			$this->get_sessions_table_name() => $this->get_sessions_table_schema(),
+			$this->get_rules_table_name()    => $this->get_rules_table_schema(),
+		);
+	}
+
+	/**
+	 * Check whether a table exists.
+	 *
+	 * @param string $table The table name.
+	 * @return bool
+	 */
+	private function table_exists( string $table ): bool {
+		$wpdb = $this->legacy_proxy->get_global( 'wpdb' );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) === $table;
+	}
+
+	/**
 	 * Get the schema installation retry state.
 	 *
 	 * @return array{schema_version: int, attempts: int, last_attempt: int, last_error: string}
 	 */
-	private function get_install_state(): array {
+	private function get_schema_retry_state(): array {
 		$state = get_option( self::DB_INSTALL_STATE_OPTION, array() );
 		$state = is_array( $state ) ? $state : array();
 

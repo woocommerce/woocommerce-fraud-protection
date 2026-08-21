@@ -29,8 +29,8 @@ if ( ! class_exists( 'WC_Order' ) ) {
 // Load the plugin's namespaced classes via the Composer autoloader.
 require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
 
-$logging_spy = new Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests();
-Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests::set_facade_target(
+$logging_spy = new Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionLoggerForTests();
+Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests::set_facade_logger(
 	$logging_spy
 );
 
