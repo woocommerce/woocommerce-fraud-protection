@@ -97,7 +97,7 @@ class FraudProtectionCommands {
 	 * @internal
 	 */
 	public function status(): void {
-		global $wpdb;
+		$wpdb = $this->legacy_proxy->get_global( 'wpdb' );
 
 		$schema_status = $this->schema_manager->get_schema_status();
 		$install_state = $schema_status['install_state'];
