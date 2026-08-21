@@ -179,23 +179,21 @@ class SessionVerifier {
 			/**
 			 * Filters whether to skip verification by supplying the fraud decision.
 			 *
-			 * Returning an actionable {@see FraudDecision} applies it as the
-			 * decision and makes no Blackbox call. Any other return — including
-			 * the untouched `false` default — verifies. A consumer with nothing
-			 * to say returns the value it received.
+			 * Returning a {@see SuppliedDecision} with an actionable decision applies
+			 * it and its optional order session ID. Any other return verifies normally.
 			 *
 			 * @since 0.1.0
-			 * @since 0.1.6 Skipping requires returning the FraudDecision to
-			 *              apply; a truthy return no longer skips.
+			 * @since 0.1.6 Skipping requires returning the decision to apply; a truthy return no longer skips.
+			 * @since 0.1.9 The filter value carries the decision and optional response-backed order session ID.
 			 *
-			 * @param FraudDecision|false $decision     The decision to apply, when a consumer supplies one. Default false, which verifies.
-			 * @param string              $source       Source identifier (e.g. 'blocks_checkout').
-			 * @param array               $request_data Request data with payment_method, payment_data, etc.
-			 * @param string              $session_id   The Blackbox session ID being verified.
+			 * @param SuppliedDecision|false $supplied_decision The earlier result to apply. Default false.
+			 * @param string                 $source            Source identifier (e.g. 'blocks_checkout').
+			 * @param array                  $request_data      Request data with payment_method, payment_data, etc.
+			 * @param string                 $session_id        The Blackbox session ID being verified.
 			 */
 			$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $normalized_session_id );
 
-			if ( $supplied instanceof FraudDecision && in_array( $supplied, FraudDecision::ACTIONABLE, true ) ) {
+			if ( $supplied instanceof SuppliedDecision && in_array( $supplied->decision, FraudDecision::ACTIONABLE, true ) ) {
 				FraudProtectionController::log(
 					'info',
 					sprintf( 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source ),
@@ -203,16 +201,24 @@ class SessionVerifier {
 						'event_source' => $source,
 						'session_id'   => $normalized_session_id,
 						'order_id'     => $order_id,
-						'decision'     => $supplied->value,
+						'decision'     => $supplied->decision->value,
 					)
 				);
 
-				return $supplied;
+				if ( null !== $supplied->session_id_for_order && '' !== $supplied->session_id_for_order && $order_id > 0 ) {
+					try {
+						$this->store_session_id_in_order( $supplied->session_id_for_order, $order_id );
+					} catch ( \Throwable ) {
+						return $supplied->decision;
+					}
+				}
+
+				return $supplied->decision;
 			}
 
 			// For the miscall warning below; the declared filter type is a
 			// contract a miscalling consumer can break.
-			$returned = $supplied instanceof FraudDecision ? $supplied->value : get_debug_type( $supplied );
+			$returned = $supplied instanceof SuppliedDecision ? $supplied->decision->value : get_debug_type( $supplied );
 
 			if ( false !== $supplied ) {
 				FraudProtectionController::log(
@@ -234,7 +240,6 @@ class SessionVerifier {
 					'event_source'      => $source,
 					'session_id'        => $normalized_session_id,
 					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
-					'exception'         => $e,
 					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
 					'exception_file'    => $e->getFile(),
@@ -338,11 +343,22 @@ class SessionVerifier {
 		$this->store_session_id_in_session( $session_id );
 
 		if ( $order_id > 0 ) {
-			$order = wc_get_order( $order_id );
-			if ( $order instanceof \WC_Order ) {
-				$order->update_meta_data( self::ORDER_BLACKBOX_SESSION_ID_KEY, $session_id );
-				$order->save_meta_data();
-			}
+			$this->store_session_id_in_order( $session_id, $order_id );
+		}
+	}
+
+	/**
+	 * Store the Blackbox session ID on an existing order.
+	 *
+	 * @param string $session_id The Blackbox session ID.
+	 * @param int    $order_id   The WooCommerce order ID.
+	 */
+	private function store_session_id_in_order( string $session_id, int $order_id ): void {
+		$order = wc_get_order( $order_id );
+
+		if ( $order instanceof \WC_Order ) {
+			$order->update_meta_data( self::ORDER_BLACKBOX_SESSION_ID_KEY, $session_id );
+			$order->save_meta_data();
 		}
 	}
 

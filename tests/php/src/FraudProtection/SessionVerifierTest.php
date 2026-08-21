@@ -16,6 +16,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -834,7 +835,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox verify_session() applies an ALLOW supplied by the filter without calling the API.
+	 * @testdox verify_session() applies a supplied ALLOW and stores its session ID on the order.
 	 */
 	public function test_verify_session_applies_an_allow_supplied_by_the_filter(): void {
 		$order = \WC_Helper_Order::create_order();
@@ -845,7 +846,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
-				return FraudDecision::Allow;
+				return new SuppliedDecision( FraudDecision::Allow, 'response-session-id' );
 			}
 		);
 
@@ -857,7 +858,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertSame( 'prior-session-id', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
-		$this->assertSame( 'prior-order-id', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( 'response-session-id', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
 		$this->assertSame( '', $this->sut->last_verified_session_id() );
 		$this->assertLogged( 'info', 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
 	}
@@ -873,7 +874,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
-				return FraudDecision::Block;
+				return new SuppliedDecision( FraudDecision::Block );
 			}
 		);
 
@@ -1037,6 +1038,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			'null'                            => array( null ),
 			'the decision as a string'        => array( 'allow' ),
 			'a non-actionable decision'       => array( FraudDecision::Challenge ),
+			'a non-actionable supplied result' => array( new SuppliedDecision( FraudDecision::Challenge ) ),
 			'an unrelated object'             => array( new \stdClass() ),
 		);
 	}
@@ -1124,7 +1126,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
 			function () {
-				return FraudDecision::Block;
+				return new SuppliedDecision( FraudDecision::Block );
 			}
 		);
 
