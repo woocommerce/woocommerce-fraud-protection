@@ -14,6 +14,7 @@ use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
+use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
@@ -915,8 +916,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Drive the filter callback the way SessionVerifier does.
 	 *
-	 * Seeds the call with `false`, the filter's default. A deferral passes that
-	 * default through untouched, so it comes back as `false`.
+	 * Seeds the call with an empty carrier. A deferral leaves it empty.
 	 *
 	 * @param string $source         Source identifier.
 	 * @param string $payment_method Gateway id on the request.
@@ -924,12 +924,29 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @return mixed A FraudDecision when answered, false when deferred.
 	 */
 	private function ask( string $source, string $payment_method, string $session_id ) {
-		return $this->sut->supply_decision_for_paypal_express(
-			false,
+		$supplied_decision = $this->ask_with_carrier( $source, $payment_method, $session_id );
+
+		return $supplied_decision->get_decision() ?? false;
+	}
+
+	/**
+	 * Drive the filter callback and inspect the retained carrier.
+	 *
+	 * @param string $source         Source identifier.
+	 * @param string $payment_method Gateway ID on the request.
+	 * @param string $session_id     Blackbox session ID on the request.
+	 * @return SuppliedDecision The retained carrier.
+	 */
+	private function ask_with_carrier( string $source, string $payment_method, string $session_id ): SuppliedDecision {
+		$supplied_decision = new SuppliedDecision();
+		$this->sut->supply_decision_for_paypal_express(
+			$supplied_decision,
 			$source,
 			array( 'payment_method' => $payment_method ),
 			$session_id
 		);
+
+		return $supplied_decision;
 	}
 
 	/**
@@ -975,6 +992,50 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		} catch ( \WPDieException $e ) {
 			unset( $e );
 		}
+	}
+
+	/**
+	 * @testdox Exact-session reuse supplies an order session ID only for the current bound PayPal order.
+	 *
+	 * @dataProvider exact_session_order_association_provider
+	 *
+	 * @param string  $record_order_id              The order bound to the saved record.
+	 * @param ?string $current_order_id             The current PayPal order, if present.
+	 * @param ?string $expected_session_id_for_order The expected supplied session ID.
+	 */
+	public function test_exact_session_order_association( string $record_order_id, ?string $current_order_id, ?string $expected_session_id_for_order ): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id'        => 'stored-response-id',
+				'stand_downs'       => 0,
+				'decision'          => FraudDecision::Block,
+				'order_id'          => $record_order_id,
+				'order_stand_downs' => 0,
+			)
+		);
+		if ( null !== $current_order_id ) {
+			WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( $current_order_id ) ) );
+		}
+
+		$supplied_decision = $this->ask_with_carrier( 'blocks_checkout', 'ppcp-gateway', 'stored-response-id' );
+
+		$this->assertSame( FraudDecision::Block, $supplied_decision->get_decision() );
+		$this->assertSame( $expected_session_id_for_order, $supplied_decision->get_session_id_for_order() );
+	}
+
+	/**
+	 * Exact-session association cases.
+	 *
+	 * @return array<string, array{string, ?string, ?string}>
+	 */
+	public function exact_session_order_association_provider(): array {
+		return array(
+			'current bound order'               => array( 'PP-BOUND', 'PP-BOUND', 'stored-response-id' ),
+			'unbound record'                     => array( '', null, null ),
+			'bound record without current order' => array( 'PP-BOUND', null, null ),
+			'foreign current order'              => array( 'PP-BOUND', 'PP-FOREIGN', null ),
+		);
 	}
 
 	/**
@@ -1118,16 +1179,20 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_supply_does_not_override_an_earlier_block_with_an_unrelated_saved_allow(): void {
 		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$supplied_decision = new SuppliedDecision();
+		$supplied_decision->supply( FraudDecision::Block, 'earlier-session-id' );
 
 		$this->assertSame(
-			FraudDecision::Block,
+			$supplied_decision,
 			$this->sut->supply_decision_for_paypal_express(
-				FraudDecision::Block,
+				$supplied_decision,
 				'shortcode_checkout',
 				array( 'payment_method' => 'ppcp-gateway' ),
 				'different-session'
 			)
 		);
+		$this->assertSame( FraudDecision::Block, $supplied_decision->get_decision() );
+		$this->assertSame( 'earlier-session-id', $supplied_decision->get_session_id_for_order() );
 	}
 
 	/**
@@ -1138,19 +1203,24 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * to say about.
 	 */
 	public function test_supply_passes_an_earlier_decision_through_when_it_defers(): void {
+		$supplied_decision = new SuppliedDecision();
+		$supplied_decision->supply( FraudDecision::Block, 'earlier-session-id' );
+
 		$this->assertSame(
-			FraudDecision::Block,
+			$supplied_decision,
 			$this->sut->supply_decision_for_paypal_express(
-				FraudDecision::Block,
+				$supplied_decision,
 				'blocks_checkout',
 				array( 'payment_method' => 'stripe' ),
 				'some-session-id'
 			)
 		);
+		$this->assertSame( FraudDecision::Block, $supplied_decision->get_decision() );
+		$this->assertSame( 'earlier-session-id', $supplied_decision->get_session_id_for_order() );
 	}
 
 	/**
-	 * @testdox The record answers at this callback's priority, over an earlier consumer's decision.
+	 * @testdox The record replaces an earlier supplied decision at this callback's priority.
 	 *
 	 * Standard filter arbitration: this callback answers from its record at its
 	 * own priority, whatever an earlier consumer returned. A consumer that wants
@@ -1166,33 +1236,57 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->assertSame(
-			FraudDecision::Allow,
-			$this->sut->supply_decision_for_paypal_express(
-				FraudDecision::Block,
-				'blocks_checkout',
-				array( 'payment_method' => 'ppcp-gateway' ),
-				'some-session-id'
-			)
-		);
-	}
+		$supplied_decision = new SuppliedDecision();
+		$supplied_decision->supply( FraudDecision::Block, 'earlier-session-id' );
 
-	/**
-	 * @testdox A malformed value in the chain fails loudly instead of being silently ignored.
-	 *
-	 * The declared parameter type is the warning: an earlier consumer returning
-	 * something that is neither a FraudDecision nor the default raises a
-	 * TypeError, which SessionVerifier logs as a warning and answers with a
-	 * real verify.
-	 */
-	public function test_supply_rejects_a_malformed_earlier_value_loudly(): void {
-		$this->expectException( \TypeError::class );
-
-		$this->sut->supply_decision_for_paypal_express(
-			'allow',
+		$returned = $this->sut->supply_decision_for_paypal_express(
+			$supplied_decision,
 			'blocks_checkout',
 			array( 'payment_method' => 'ppcp-gateway' ),
 			'some-session-id'
+		);
+
+		$this->assertSame( $supplied_decision, $returned );
+		$this->assertSame( FraudDecision::Allow, $supplied_decision->get_decision() );
+		$this->assertNull( $supplied_decision->get_session_id_for_order() );
+	}
+
+	/**
+	 * @testdox Malformed hook input passes through without changing state.
+	 *
+	 * @dataProvider malformed_hook_input_provider
+	 *
+	 * @param mixed $decision     The incoming filter value.
+	 * @param mixed $source       The source argument.
+	 * @param mixed $request_data The request-data argument.
+	 * @param mixed $session_id   The session-ID argument.
+	 */
+	public function test_supply_passes_through_malformed_hook_input( $decision, $source, $request_data, $session_id ): void {
+		$record = array(
+			'session_id'        => 'some-session-id',
+			'stand_downs'       => 0,
+			'decision'          => FraudDecision::Allow,
+			'order_id'          => '',
+			'order_stand_downs' => 0,
+		);
+		WC()->session->set( '_fraud_protection_paypal_verification', $record );
+
+		$this->assertSame( $decision, $this->sut->supply_decision_for_paypal_express( $decision, $source, $request_data, $session_id ) );
+		$this->assertSame( $record, WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/**
+	 * Malformed public-hook input cases.
+	 *
+	 * @return array<string, array{mixed, mixed, mixed, mixed}>
+	 */
+	public function malformed_hook_input_provider(): array {
+		return array(
+			'filter value'           => array( 'allow', 'blocks_checkout', array( 'payment_method' => 'ppcp-gateway' ), 'some-session-id' ),
+			'source'                 => array( new SuppliedDecision(), array(), array( 'payment_method' => 'ppcp-gateway' ), 'some-session-id' ),
+			'request data'           => array( new SuppliedDecision(), 'blocks_checkout', 'ppcp-gateway', 'some-session-id' ),
+			'session ID'             => array( new SuppliedDecision(), 'blocks_checkout', array( 'payment_method' => 'ppcp-gateway' ), array() ),
+			'nested payment method' => array( new SuppliedDecision(), 'blocks_checkout', array( 'payment_method' => array() ), 'some-session-id' ),
 		);
 	}
 
@@ -1590,10 +1684,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
-		$this->assertSame(
-			FraudDecision::Allow,
-			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' )
-		);
+		$supplied_decision = $this->ask_with_carrier( 'blocks_checkout', 'ppcp-gateway', 'post-reset-session' );
+
+		$this->assertSame( FraudDecision::Allow, $supplied_decision->get_decision() );
+		$this->assertSame( 'scored-session', $supplied_decision->get_session_id_for_order() );
 	}
 
 	/**

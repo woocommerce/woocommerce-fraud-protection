@@ -13,6 +13,7 @@ use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
+use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
@@ -385,72 +386,64 @@ class PayPalCompat {
 	 * Answers requests this class already scored with the decision that scoring
 	 * produced, so one payment attempt is not scored twice; everything else is
 	 * deferred and verified normally. Standard filter arbitration: a consumer
-	 * that wants the last word registers with a later priority. The parameter
-	 * type is the contract — anything else in the chain fails loudly and ends
-	 * in a real verify.
+	 * that wants the last word registers with a later priority.
 	 *
 	 * @internal
 	 *
-	 * @param FraudDecision|false $decision     The filter's default (false), or what an earlier consumer returned.
-	 * @param string              $source       Source identifier.
-	 * @param array               $request_data Request data with payment_method, payment_data, etc.
-	 * @param string              $session_id   The Blackbox session ID being verified.
-	 * @return FraudDecision|false A FraudDecision to apply, or the value passed in to defer.
+	 * @param mixed $supplied_decision The earlier filter value. Expected SuppliedDecision.
+	 * @param mixed $source            Source identifier. Expected string.
+	 * @param mixed $request_data      Request data with payment_method, payment_data, etc. Expected array.
+	 * @param mixed $session_id        The Blackbox session ID being verified. Expected string.
+	 * @return mixed The same incoming value.
 	 */
-	public function supply_decision_for_paypal_express( FraudDecision|false $decision, string $source, array $request_data, string $session_id ): FraudDecision|false {
-		// Don't answer for this class's own verification sources.
-		if ( self::ORDER_CREATION_SOURCE === $source ) {
-			return $decision;
+	public function supply_decision_for_paypal_express( mixed $supplied_decision, mixed $source, mixed $request_data, mixed $session_id ): mixed {
+		if ( ! ( $supplied_decision instanceof SuppliedDecision ) || ! is_string( $source ) || ! is_array( $request_data ) || ! is_string( $session_id ) ) {
+			return $supplied_decision;
 		}
 
-		$payment_method = (string) ( $request_data['payment_method'] ?? '' );
+		// Don't answer for this class's own verification sources.
+		if ( self::ORDER_CREATION_SOURCE === $source ) {
+			return $supplied_decision;
+		}
+
+		$payment_method = $request_data['payment_method'] ?? '';
+		if ( ! is_string( $payment_method ) ) {
+			return $supplied_decision;
+		}
 
 		// Not a PayPal gateway — nothing for this filter to do.
 		if ( ! $this->is_paypal_gateway( $payment_method ) ) {
-			return $decision;
+			return $supplied_decision;
 		}
 
 		// Same Blackbox session already scored by ppc-create-order in this flow.
-		if ( $this->take_stand_down_for_verified_session( $session_id ) ) {
-			return $this->decision_for_verified_attempt( $session_id );
+		$accepted_record = $this->take_stand_down_for_verified_session( $session_id );
+		if ( null !== $accepted_record ) {
+			$supplied_decision->supply( $accepted_record['decision'] );
+
+			if ( '' !== $accepted_record['order_id'] && $this->paypal_order_id_in_session() === $accepted_record['order_id'] ) {
+				$supplied_decision->supply( $accepted_record['decision'], $accepted_record['session_id'] );
+			}
+
+			return $supplied_decision;
 		}
 
 		// After express approval: only the order this record's verification
 		// minted answers, with the decision that verification produced.
-		$bound_decision = $this->decision_for_scored_order_in_session();
-		if ( null !== $bound_decision ) {
-			return $bound_decision;
+		$accepted_record = $this->record_for_scored_order_in_session();
+
+		if ( null === $accepted_record ) {
+			// All other ppcp-* flows (Blocks "Place Order" with ppcp-gateway, APMs): defer.
+			return $supplied_decision;
 		}
 
-		// All other ppcp-* flows (Blocks "Place Order" with ppcp-gateway, APMs): defer.
-		return $decision;
+		$supplied_decision->supply( $accepted_record['decision'], $accepted_record['session_id'] );
+
+		return $supplied_decision;
 	}
 
 	/**
-	 * The decision to hand back for a request this class already scored.
-	 *
-	 * The recorded decision on the exact session-ID match the caller confirmed.
-	 * If that record becomes unavailable before this read, fail open.
-	 *
-	 * @param string $session_id The Blackbox session ID being verified.
-	 * @return FraudDecision
-	 */
-	private function decision_for_verified_attempt( string $session_id ): FraudDecision {
-		if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
-			return FraudDecision::Allow;
-		}
-
-		$record = $this->get_verified_session_record();
-
-		if ( null !== $record && $this->session_id_normalizer->normalize_stored( $record['session_id'] ) === $session_id ) {
-			return $record['decision'];
-		}
-
-		return FraudDecision::Allow;
-	}
-
-	/**
-	 * The decision to hand back when the approved order in PayPal's session
+	 * The accepted record when the approved order in PayPal's session
 	 * slot is the one this record's verification minted.
 	 *
 	 * Bound by order identity because session IDs cannot match here: Blackbox
@@ -462,9 +455,9 @@ class PayPalCompat {
 	 * bound. The order's amount can still be patched after scoring, so the one
 	 * replay may honor an allow scored on a since-changed cart.
 	 *
-	 * @return ?FraudDecision The recorded decision, or null to defer.
+	 * @return ?array{session_id: string, stand_downs: int, decision: FraudDecision, order_id: string, order_stand_downs: int} The accepted record, or null to defer.
 	 */
-	private function decision_for_scored_order_in_session(): ?FraudDecision {
+	private function record_for_scored_order_in_session(): ?array {
 		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
 			return null;
 		}
@@ -487,7 +480,7 @@ class PayPalCompat {
 
 		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 
-		return $record['decision'];
+		return $record;
 	}
 
 	/**
@@ -559,28 +552,28 @@ class PayPalCompat {
 	 * Spends one stand-down; past the budget the caller verifies with Blackbox.
 	 *
 	 * @param string $session_id The session ID from the current verify call.
-	 * @return bool Whether this request may be answered from the record.
+	 * @return ?array{session_id: string, stand_downs: int, decision: FraudDecision, order_id: string, order_stand_downs: int} The accepted record after spending its count, or null.
 	 */
-	private function take_stand_down_for_verified_session( string $session_id ): bool {
+	private function take_stand_down_for_verified_session( string $session_id ): ?array {
 		if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
-			return false;
+			return null;
 		}
 
 		$record = $this->get_verified_session_record();
 
 		if ( null === $record || $this->session_id_normalizer->normalize_stored( $record['session_id'] ) !== $session_id ) {
-			return false;
+			return null;
 		}
 
 		if ( $record['stand_downs'] >= self::MAX_STAND_DOWNS_PER_SESSION ) {
-			return false;
+			return null;
 		}
 
 		++$record['stand_downs'];
 
 		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 
-		return true;
+		return $record;
 	}
 
 	/**
