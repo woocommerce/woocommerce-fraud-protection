@@ -146,16 +146,30 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox collect() degrades gracefully when session is unavailable.
+	 * @testdox collect() does not log event data when session is unavailable.
 	 */
-	public function test_graceful_degradation_when_session_unavailable(): void {
-		// This test verifies that collect() doesn't throw exceptions even if session is unavailable.
-		// We can't easily simulate session being unavailable in unit tests without mocking,
-		// but we can verify that calling collect() stores valid event structure.
-		$event = $this->collect_and_get_event();
+	public function test_collect_does_not_log_event_data_when_session_is_unavailable(): void {
+		$spy = $this->spy_on_controller_logging();
+		$this->sut->init( $this->createMock( SessionIdentityManager::class ) );
+		WC()->session = null;
 
-		$this->assertIsArray( $event );
-		$this->assertCount( 3, $event );
+		$this->sut->collect(
+			'checkout_update',
+			array( 'billing_email' => 'unavailable-event-value-marker@example.com' )
+		);
+
+		$this->assertLogged(
+			'error',
+			'no valid WooCommerce session exists',
+			array(
+				'context'    => 'SessionDataCollector::collect',
+				'event_type' => 'checkout_update',
+			),
+			false
+		);
+		$this->assertCount( 1, $spy->entries );
+		$this->assertArrayNotHasKey( 'event_data', $spy->entries[0]['context'] );
+		$this->assertStringNotContainsString( 'unavailable-event-value-marker', (string) wp_json_encode( $spy->entries[0] ) );
 	}
 
 	/**

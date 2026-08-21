@@ -83,7 +83,6 @@ class SessionDataCollector {
 				array(
 					'context'    => 'SessionDataCollector::collect',
 					'event_type' => $event_type,
-					'event_data' => $event_data,
 				)
 			);
 		}

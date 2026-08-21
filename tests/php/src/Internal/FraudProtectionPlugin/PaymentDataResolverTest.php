@@ -86,17 +86,40 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 * @testdox Discards non-PaymentMethodData filter returns and falls back to baseline.
 	 */
 	public function test_discards_invalid_filter_return(): void {
+		$spy     = $this->spy_on_controller_logging();
+		$invalid = (object) array( 'marker' => 'invalid-filter-value' );
+
 		add_filter(
 			'woocommerce_fraud_protection_resolved_payment_data',
-			function () {
-				return 'not a PaymentMethodData object';
+			function () use ( $invalid ) {
+				return $invalid;
 			}
 		);
 
-		$result = $this->sut->resolve( 'test_gateway', array() );
+		$result = $this->sut->resolve( 'test_gateway', array( 'submitted' => 'payment-field-value' ) );
 
 		$this->assertSame( 'test_gateway', $result->to_array()['gateway'] );
 		$this->assertNull( $result->to_array()['payment_type'] );
+		$this->assertLogged(
+			'warning',
+			'returned unexpected type',
+			array(
+				'argument_type'             => 'object',
+				'argument_class'            => \stdClass::class,
+				'pre_resolved_payment_data' => $result->to_array(),
+			),
+			true
+		);
+		$this->assertSame(
+			array(
+				'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
+				'payment_type'              => 'test_gateway',
+				'argument_type'             => 'object',
+				'pre_resolved_payment_data' => $result->to_array(),
+				'argument_class'            => \stdClass::class,
+			),
+			$spy->entries[0]['context']
+		);
 	}
 
 	/**
@@ -104,21 +127,45 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_falls_back_when_filter_throws(): void {
 		$token = $this->create_card_token( 'stripe' );
+		$spy   = $this->spy_on_controller_logging();
+		$error = new \RuntimeException( 'Compat layer crashed with exception-value-marker' );
 
 		add_filter( // @phpstan-ignore return.missing
 			'woocommerce_fraud_protection_resolved_payment_data',
-			function () {
-				throw new \RuntimeException( 'Compat layer crashed' );
+			function () use ( $error ) {
+				throw $error;
 			}
 		);
 
 		$result = $this->sut->resolve( // @phpstan-ignore deadCode.unreachable
 			'stripe',
-			array( 'token' => (string) $token->get_id() )
+			array(
+				'token'                => (string) $token->get_id(),
+				'gateway-value-marker' => 'submitted-payment-value-marker',
+			)
 		);
 
 		// Falls back to token pre-resolution, not baseline.
 		$this->assertSame( 'visa', $result->to_array()['instrument']['brand'] );
+
+		$this->assertLogged(
+			'warning',
+			'woocommerce_fraud_protection_resolved_payment_data` threw',
+			null,
+			true
+		);
+		$this->assertSame(
+			array(
+				'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
+				'payment_type'              => 'stripe',
+				'exception_class'           => \RuntimeException::class,
+				'exception_message'         => $error->getMessage(),
+				'exception_file'            => $error->getFile(),
+				'exception_line'            => $error->getLine(),
+				'pre_resolved_payment_data' => $result->to_array(),
+			),
+			$spy->entries[0]['context']
+		);
 	}
 
 	/**
@@ -135,23 +182,6 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->resolve( 'stripe', array() ); // @phpstan-ignore deadCode.unreachable
 
 		$this->assertSame( 'stripe', $result->to_array()['gateway'] );
-		$this->assertNull( $result->to_array()['payment_type'] );
-	}
-
-	/**
-	 * @testdox Discards array filter returns and falls back to baseline.
-	 */
-	public function test_discards_array_filter_return(): void {
-		add_filter(
-			'woocommerce_fraud_protection_resolved_payment_data',
-			function () {
-				return array( 'payment_type' => 'card' );
-			}
-		);
-
-		$result = $this->sut->resolve( 'test_gateway', array() );
-
-		$this->assertSame( 'test_gateway', $result->to_array()['gateway'] );
 		$this->assertNull( $result->to_array()['payment_type'] );
 	}
 

@@ -324,9 +324,12 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify_session() fails open when payment data resolution throws — verify still runs with null payment.
 	 */
 	public function test_verify_session_fails_open_when_resolver_throws(): void {
+		$spy   = $this->spy_on_controller_logging();
+		$error = new \RuntimeException( 'Compat layer exploded with resolver-exception-marker' );
+
 		$this->payment_data_resolver
 			->method( 'resolve' )
-			->willThrowException( new \RuntimeException( 'Compat layer exploded' ) );
+			->willThrowException( $error );
 
 		$this->data_collector
 			->method( 'get_collected_data' )
@@ -347,23 +350,59 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->method( 'apply_decision' )
 			->willReturn( FraudDecision::Allow );
 
-		$request_data = array( 'payment_method' => 'stripe', 'payment_data' => array() );
+		$request_data = array(
+			'payment_method' => 'stripe',
+			'payment_data'   => array( 'card-token' => 'submitted-payment-value' ),
+		);
 
-		$result = $this->sut->verify_session( 'test-session', 'checkout', 0, $request_data );
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout', 0, $request_data );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged(
 			'warning',
 			'Payment data resolution failed',
+			null,
+			true
+		);
+		$this->assertSame(
 			array(
-				'verify_context' => array(
-					'source'       => 'checkout',
-					'session_id'   => 'test-session',
-					'order_id'     => 0,
-					'request_data' => $request_data,
-				),
+				'event_source'      => 'blocks_checkout',
+				'session_id'        => 'test-session',
+				'order_id'          => 0,
+				'payment_type'      => 'stripe',
+				'hook'              => 'payment_data_resolution',
+				'exception_class'   => \RuntimeException::class,
+				'exception_message' => $error->getMessage(),
+				'exception_file'    => $error->getFile(),
+				'exception_line'    => $error->getLine(),
+			),
+			$spy->entries[0]['context']
+		);
+	}
+
+	/**
+	 * @testdox verify_session() does not copy a malformed payment method into the resolution error log.
+	 */
+	public function test_verify_session_excludes_malformed_payment_method_from_resolution_error_log(): void {
+		$spy = $this->spy_on_controller_logging();
+		$this->stub_successful_verification();
+
+		$result = $this->sut->verify_session(
+			'test-session',
+			'blocks_checkout',
+			0,
+			array(
+				'payment_method' => array( 'gateway' => 'submitted-request-value' ),
+				'payment_data'   => array( 'card-token' => 'submitted-request-value' ),
 			)
 		);
+
+		$this->assertSame( FraudDecision::Allow, $result );
+		$this->assertLogged( 'warning', 'Payment data resolution failed', array( 'payment_type' => '' ), true );
+		$entry = end( $spy->entries );
+		$this->assertIsArray( $entry );
+		$this->assertArrayNotHasKey( 'verify_context', $entry['context'] );
+		$this->assertStringNotContainsString( 'submitted-request-value', (string) wp_json_encode( $entry ) );
 	}
 
 	/*
@@ -376,26 +415,40 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify_session() fails open when api_client->verify() throws.
 	 */
 	public function test_verify_session_fails_open_when_api_throws(): void {
+		$spy   = $this->spy_on_controller_logging();
+		$error = new \RuntimeException( 'API call failed with api-exception-marker' );
+
 		$this->data_collector
 			->method( 'get_collected_data' )
 			->willReturn( array() );
 
 		$this->api_client
 			->method( 'verify' )
-			->willThrowException( new \RuntimeException( 'API call failed' ) );
+			->willThrowException( $error );
 
-		$result = $this->sut->verify_session( 'test-session', 'checkout' );
+		$request_data = array( 'payment_data' => array( 'card-token' => 'submitted-payment-value' ) );
+
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout', 0, $request_data );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged(
 			'error',
 			'Session verification failed, allowing',
+			null,
+			true
+		);
+		$this->assertSame(
 			array(
-				'verify_context' => array(
-					'source'     => 'checkout',
-					'session_id' => 'test-session',
-				),
-			)
+				'event_source'      => 'blocks_checkout',
+				'session_id'        => 'test-session',
+				'order_id'          => 0,
+				'hook'              => 'session_verify',
+				'exception_class'   => \RuntimeException::class,
+				'exception_message' => $error->getMessage(),
+				'exception_file'    => $error->getFile(),
+				'exception_line'    => $error->getLine(),
+			),
+			$spy->entries[0]['context']
 		);
 	}
 
@@ -420,22 +473,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->method( 'apply_decision' )
 			->willThrowException( new \RuntimeException( 'Decision handler exploded' ) );
 
-		$result = $this->sut->verify_session( 'test-session', 'checkout', $order->get_id() );
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout', $order->get_id() );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertSame( '', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
 		$this->assertSame( '', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
 		$this->assertSame( '', $this->sut->last_verified_session_id() );
-		$this->assertLogged(
-			'error',
-			'Session verification failed, allowing',
-			array(
-				'verify_context' => array(
-					'source'     => 'checkout',
-					'session_id' => 'test-session',
-				),
-			)
-		);
+		$this->assertLogged( 'error', 'Session verification failed, allowing' );
 	}
 
 	/*

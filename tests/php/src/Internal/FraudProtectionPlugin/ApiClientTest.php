@@ -124,22 +124,62 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() calls Blackbox API /verify endpoint with the correct payload
 	 */
 	public function test_verify_calls_verify_endpoint(): void {
-		$captured_url  = null;
-		$captured_body = null;
-
-		$sut = $this->api_client_returning(
-			$this->decision_response( 'allow' ),
-			function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body ) {
-				$captured_url  = $request_args['url'];
-				$captured_body = json_decode( $body, true );
-			}
+		$spy            = $this->spy_on_controller_logging();
+		$captured_url   = null;
+		$captured_body  = null;
+		$request_log    = null;
+		$response_data  = array(
+			'data' => array(
+				'decision'   => 'allow',
+				'diagnostic' => 'verify-response-marker',
+			),
+		);
+		$this->visitor_ip_resolver
+			->expects( $this->once() )
+			->method( 'get_ip_address' )
+			->willReturn( '203.0.113.7' );
+		$this->sut->method( 'get_raw_request_headers' )->willReturn(
+			array(
+				'User-Agent'      => 'WooCommerce test client',
+				'Accept-Language' => 'en-US',
+			)
 		);
 
-		$sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+		$this->sut
+			->expects( $this->once() )
+			->method( 'jetpack_remote_request' )
+			->willReturnCallback(
+				function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body, &$request_log, $response_data, $spy ) {
+					$captured_url  = $request_args['url'];
+					$captured_body = json_decode( $body, true );
+					$request_log   = $spy->entries[0] ?? null;
+
+					return array(
+						'response' => array( 'code' => 200 ),
+						'body'     => wp_json_encode( $response_data ),
+					);
+				}
+			);
+
+		$this->sut->verify(
+			'test-session-id',
+			array(
+				'source' => 'blocks_checkout',
+				'events' => array( array( 'event_type' => 'checkout_update' ) ),
+			)
+		);
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
+		$this->assertIsArray( $captured_body );
+		$this->assertIsArray( $request_log );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
-		$this->assertArrayHasKey( 'context', $captured_body );
+		$expected_log_payload                 = $captured_body;
+		$expected_log_payload['full_headers'] = '(2 headers)';
+		$this->assertSame( 'Verifying session with Blackbox API', $request_log['message'] );
+		$this->assertSame( array( 'payload' => $expected_log_payload ), $request_log['context'] );
+		$this->assertFalse( $request_log['forwarded'] );
+		$this->assertLogged( 'info', 'Fraud decision received:', array( 'response' => $response_data ), false );
+		$this->assertCount( 2, $spy->entries );
 	}
 
 	/**
@@ -799,26 +839,48 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox report() calls Blackbox API /report endpoint
 	 */
 	public function test_report_calls_report_endpoint(): void {
+		$spy           = $this->spy_on_controller_logging();
 		$captured_url  = null;
 		$captured_body = null;
-
-		$sut = $this->api_client_returning(
-			array(
-				'response' => array( 'code' => 200 ),
-				'body'     => wp_json_encode( array( 'status' => 'ok' ) ),
-			),
-			function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body ) {
-				$captured_url  = $request_args['url'];
-				$captured_body = json_decode( $body, true );
-			}
+		$request_log   = null;
+		$response_data = array(
+			'status'     => 'ok',
+			'diagnostic' => 'report-response-marker',
 		);
 
-		$sut->report( 'test-session-id', array( 'event_type' => 'payment_success' ) );
+		$this->sut
+			->expects( $this->once() )
+			->method( 'jetpack_remote_request' )
+			->willReturnCallback(
+				function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body, &$request_log, $response_data, $spy ) {
+					$captured_url  = $request_args['url'];
+					$captured_body = json_decode( $body, true );
+					$request_log   = $spy->entries[0] ?? null;
+
+					return array(
+						'response' => array( 'code' => 200 ),
+						'body'     => wp_json_encode( $response_data ),
+					);
+				}
+			);
+
+		$this->sut->report(
+			'test-session-id',
+			array(
+				'event_type' => 'payment_success',
+				'context'    => array( 'result' => 'success' ),
+			)
+		);
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/report/test-session-id', $captured_url );
+		$this->assertIsArray( $captured_body );
+		$this->assertIsArray( $request_log );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
-		$this->assertArrayNotHasKey( 'context', $captured_body );
-		$this->assertSame( 'payment_success', $captured_body['event_type'] );
+		$this->assertSame( 'Reporting event to Blackbox API', $request_log['message'] );
+		$this->assertSame( array( 'payload' => $captured_body ), $request_log['context'] );
+		$this->assertFalse( $request_log['forwarded'] );
+		$this->assertLogged( 'info', 'Event reported successfully', array( 'response' => $response_data ), false );
+		$this->assertCount( 2, $spy->entries );
 	}
 
 	/**
@@ -1031,8 +1093,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() logs the dropped fields once per request, by path and never by value
 	 */
 	public function test_verify_logs_dropped_fields_once(): void {
-		$spy = $this->spy_on_controller_logging();
-		$sut = $this->api_client_returning( $this->decision_response( 'allow' ) );
+		$spy           = $this->spy_on_controller_logging();
+		$captured_body = null;
+		$sut           = $this->api_client_returning(
+			$this->decision_response( 'allow' ),
+			function ( array $request_args, string $body ) use ( &$captured_body ) {
+				$captured_body = json_decode( $body, true );
+			}
+		);
 
 		$sut->verify(
 			'test-session-id',
@@ -1060,6 +1128,16 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			}
 		);
 		$this->assertCount( 1, $matching, 'The drop must be logged once per request, not once per field' );
+
+		$this->assertIsArray( $captured_body );
+		$this->assertIsArray( $captured_body['full_headers'] );
+		$expected_log_payload                 = $captured_body;
+		$expected_log_payload['full_headers'] = sprintf( '(%d headers)', count( $captured_body['full_headers'] ) );
+		$request_log                          = $spy->entries[1];
+		$this->assertSame( 'Verifying session with Blackbox API', $request_log['message'] );
+		$this->assertSame( array( 'payload' => $expected_log_payload ), $request_log['context'] );
+		$this->assertArrayNotHasKey( 'tax_total', $request_log['context']['payload']['context']['order'] );
+		$this->assertArrayNotHasKey( 'cart_item_count', $request_log['context']['payload']['context']['events'][0] );
 	}
 
 	/**
@@ -1070,6 +1148,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * branch must still catch it rather than sending a half-formed body.
 	 */
 	public function test_verify_fails_open_before_transport_when_payload_cannot_be_encoded(): void {
+		$spy              = $this->spy_on_controller_logging();
 		$transport_called = false;
 		$sut              = $this->api_client_returning(
 			$this->decision_response( 'block' ),
@@ -1088,7 +1167,19 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $transport_called, 'An unencodable payload must not be sent' );
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertLogged( 'error', 'Failed to encode payload' );
+		$this->assertLogged(
+			'error',
+			'Failed to encode payload',
+			array(
+				'event_source' => 'api_verify',
+				'session_id'   => 'test-session-id',
+				'api_endpoint' => '/verify',
+				'error_code'   => 'json_encode_error',
+			),
+			true
+		);
+		$this->assertCount( 1, $spy->entries );
+		$this->assertArrayNotHasKey( 'payload', $spy->entries[0]['context'] );
 	}
 }
 

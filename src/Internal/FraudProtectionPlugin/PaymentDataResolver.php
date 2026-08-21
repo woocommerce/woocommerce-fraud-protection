@@ -69,13 +69,11 @@ class PaymentDataResolver {
 				array(
 					'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
 					'payment_type'              => $payment_method,
-					'error'                     => $e,
 					'exception_class'           => $e::class,
 					'exception_message'         => $e->getMessage(),
 					'exception_file'            => $e->getFile(),
 					'exception_line'            => $e->getLine(),
-					'checkout_payment_fields'   => $checkout_payment_fields,
-					'pre_resolved_payment_data' => $pre_resolved_payment_data,
+					'pre_resolved_payment_data' => $pre_resolved_payment_data->to_array(),
 				),
 				true
 			);
@@ -83,20 +81,23 @@ class PaymentDataResolver {
 		}
 
 		if ( ! $resolved_payment_data instanceof PaymentMethodData && null !== $resolved_payment_data ) {
+			$log_context = array(
+				'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
+				'payment_type'              => $payment_method,
+				'argument_type'             => gettype( $resolved_payment_data ),
+				'pre_resolved_payment_data' => $pre_resolved_payment_data->to_array(),
+			);
+			if ( is_object( $resolved_payment_data ) ) {
+				$log_context['argument_class'] = $resolved_payment_data::class;
+			}
+
 			FraudProtectionController::log(
 				'warning',
 				sprintf(
 					'Filter `woocommerce_fraud_protection_resolved_payment_data` returned unexpected type: %s',
 					gettype( $resolved_payment_data )
 				),
-				array(
-					'filter'                    => 'woocommerce_fraud_protection_resolved_payment_data',
-					'payment_type'              => $payment_method,
-					'argument_type'             => gettype( $resolved_payment_data ),
-					'checkout_payment_fields'   => $checkout_payment_fields,
-					'pre_resolved_payment_data' => $pre_resolved_payment_data,
-					'resolved_payment_data'     => $resolved_payment_data,
-				),
+				$log_context,
 				true
 			);
 		}
