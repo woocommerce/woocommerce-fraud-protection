@@ -8,7 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\FraudProtection\Tests;
 
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionControllerForTests;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionLoggerForTests;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use WC_Unit_Test_Case;
 
 /**
@@ -27,9 +28,9 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	protected $forwarded_platform_logs = array();
 
 	/**
-	 * The in-memory controller test double installed by {@see spy_on_controller_logging()}, if any.
+	 * The in-memory logger installed by {@see spy_on_controller_logging()}, if any.
 	 *
-	 * @var ?FraudProtectionControllerForTests
+	 * @var ?FraudProtectionLoggerForTests
 	 */
 	private $logging_spy = null;
 
@@ -269,26 +270,26 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Point the static logging facade at an in-memory spy controller.
+	 * Point the static logging facade at an in-memory logger.
 	 *
 	 * Makes the spy the target of the static `FraudProtectionController::log()`
 	 * facade, so every log call made during the test (by the system under test or
 	 * anything else) is captured by the spy and can be asserted via
 	 * {@see assertLogged()} without touching the real WooCommerce logger or the PHP
-	 * error log. The canonical controller is restored automatically in
+	 * error log. The canonical logger is restored automatically in
 	 * {@see tearDown()}.
 	 *
-	 * @return FraudProtectionControllerForTests The installed test double.
+	 * @return FraudProtectionLoggerForTests The installed test double.
 	 */
-	protected function spy_on_controller_logging(): FraudProtectionControllerForTests {
-		$this->logging_spy = new FraudProtectionControllerForTests();
-		FraudProtectionControllerForTests::set_facade_target( $this->logging_spy );
+	protected function spy_on_controller_logging(): FraudProtectionLoggerForTests {
+		$this->logging_spy = new FraudProtectionLoggerForTests();
+		FraudProtectionControllerForTests::set_facade_logger( $this->logging_spy );
 
 		return $this->logging_spy;
 	}
 
 	/**
-	 * Restore the canonical controller as the facade target after a spy was installed.
+	 * Restore the canonical logger after a spy was installed.
 	 *
 	 * @return void
 	 */
@@ -297,15 +298,13 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 			return;
 		}
 
-		// The container singleton was wired as the facade target by its init();
-		// point the facade back at it.
-		FraudProtectionControllerForTests::set_facade_target( wc_get_container()->get( FraudProtectionController::class ) );
+		FraudProtectionControllerForTests::set_facade_logger( wc_get_container()->get( FraudProtectionLogger::class ) );
 
 		$this->logging_spy = null;
 	}
 
 	/**
-	 * Assert that the installed controller spy captured a matching log entry.
+	 * Assert that the installed logger captured a matching log entry.
 	 *
 	 * @param string                    $level            Expected log level (e.g. 'info', 'warning', 'error').
 	 * @param string                    $substring        Substring expected in the log message.

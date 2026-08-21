@@ -110,6 +110,7 @@ class SessionEventStore {
 	 *
 	 * @param int $days Retention period in days.
 	 * @return int The number of rows deleted.
+	 * @throws \RuntimeException When a delete query fails.
 	 */
 	public function prune_older_than( int $days ): int {
 		global $wpdb;
@@ -122,7 +123,8 @@ class SessionEventStore {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE recorded_at < %s LIMIT 1000", $cutoff ) );
 			if ( false === $deleted ) {
-				break;
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The internal row count is safe in a CLI error.
+				throw new \RuntimeException( sprintf( 'Session event pruning failed after deleting %d row(s).', $total ) );
 			}
 			$total += (int) $deleted;
 		} while ( 1000 <= $deleted );

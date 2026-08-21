@@ -8,6 +8,8 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Database;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -86,6 +88,13 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 	 * @var object
 	 */
 	private $fake_wpdb;
+
+	/**
+	 * Mock logger.
+	 *
+	 * @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $logger;
 
 	/**
 	 * Set up test fixtures.
@@ -173,9 +182,11 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 				},
 			)
 		);
+		$this->logger = $this->createMock( FraudProtectionLogger::class );
+		$this->logger->method( 'log' )->willReturnCallback( array( FraudProtectionController::class, 'log' ) );
 
 		$this->sut = new SchemaManager();
-		$this->sut->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->sut->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ), $this->logger );
 	}
 
 	/**
@@ -195,12 +206,26 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		$disabled_feature->method( 'is_enabled' )->willReturn( false );
 
 		$sut = new SchemaManager();
-		$sut->init( $disabled_feature, wc_get_container()->get( LegacyProxy::class ) );
+		$sut->init( $disabled_feature, wc_get_container()->get( LegacyProxy::class ), $this->logger );
 
 		$sut->register();
 
 		$this->assertEmpty( $this->db_delta_calls, 'dbDelta must not run while the feature is off' );
 		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'The schema version option must not be set' );
+	}
+
+	/**
+	 * @testdox Should not install the schema automatically in WP-CLI.
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_does_not_install_schema_automatically_in_cli(): void {
+		define( 'WP_CLI', true );
+
+		$this->sut->register();
+
+		$this->assertEmpty( $this->db_delta_calls, 'WP-CLI must use the explicit database install command' );
+		$this->assertSame( 0, (int) get_option( SchemaManager::DB_VERSION_OPTION, 0 ), 'Automatic installation must not set the schema version' );
 	}
 
 	/**
@@ -216,6 +241,21 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		$this->fake_wpdb->table_indexes   = array(
 			'wp_wc_fraud_protection_sessions' => self::SESSIONS_INDEXES,
 			'wp_wc_fraud_protection_rules'    => self::RULES_INDEXES,
+		);
+	}
+
+	/**
+	 * Make the mocked dbDelta call restore the complete current schema.
+	 */
+	private function repair_schema_when_db_delta_runs(): void {
+		$this->register_legacy_proxy_function_mocks(
+			array(
+				'dbDelta' => function ( $schema ) {
+					$this->db_delta_calls[] = $schema;
+					$this->mark_tables_as_existing();
+					return array();
+				},
+			)
 		);
 	}
 
@@ -496,5 +536,121 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertEmpty( $this->db_delta_calls, 'A rolled-back build must not re-run dbDelta against a newer schema' );
 		$this->assertSame( SchemaManager::SCHEMA_VERSION + 1, (int) get_option( SchemaManager::DB_VERSION_OPTION ), 'The newer version stamp must be left untouched' );
+	}
+
+	/**
+	 * @testdox Schema status should require the installed version and every expected table.
+	 */
+	public function test_schema_status_reports_version_and_table_presence(): void {
+		$this->mark_tables_as_existing();
+
+		$status = $this->sut->get_schema_status();
+
+		$this->assertFalse( $status['complete'], 'Physical objects alone must not satisfy an old schema version' );
+
+		update_option( SchemaManager::DB_VERSION_OPTION, SchemaManager::SCHEMA_VERSION );
+
+		$status = $this->sut->get_schema_status();
+
+		$this->assertTrue( $status['complete'] );
+		$this->assertSame( SchemaManager::SCHEMA_VERSION, $status['required_version'] );
+		$this->assertSame( SchemaManager::SCHEMA_VERSION, $status['installed_version'] );
+		$this->assertCount( 2, $status['tables'] );
+		$this->assertSame( 'wp_wc_fraud_protection_sessions', $status['tables'][0]['name'] );
+		$this->assertTrue( $status['tables'][0]['exists'] );
+
+		$this->fake_wpdb->existing_tables = array( 'wp_wc_fraud_protection_sessions' );
+		$status = $this->sut->get_schema_status();
+
+		$this->assertFalse( $status['complete'] );
+		$this->assertSame( 'wp_wc_fraud_protection_rules', $status['tables'][1]['name'] );
+		$this->assertFalse( $status['tables'][1]['exists'] );
+	}
+
+	/**
+	 * @testdox Schema status should report the effective current-version retry state.
+	 */
+	public function test_schema_status_reports_retry_state(): void {
+		$this->seed_install_state(
+			array(
+				'attempts'     => 7,
+				'last_attempt' => 123456,
+				'last_error'   => 'Failed statement',
+			)
+		);
+
+		$status = $this->sut->get_schema_status();
+
+		$this->assertSame( 7, $status['install_state']['attempts'] );
+		$this->assertSame( 123456, $status['install_state']['last_attempt'] );
+		$this->assertSame( 'Failed statement', $status['install_state']['last_error'] );
+	}
+
+	/**
+	 * @testdox Forced installation should bypass automatic retry limits.
+	 * @dataProvider forced_retry_state_provider
+	 *
+	 * @param int $attempts     Stored attempt count.
+	 * @param int $last_attempt Stored attempt timestamp.
+	 */
+	public function test_install_schema_bypasses_retry_limits( int $attempts, int $last_attempt ): void {
+		$this->mark_tables_as_existing();
+		$this->fake_wpdb->table_indexes['wp_wc_fraud_protection_sessions'] = array_values( array_diff( self::SESSIONS_INDEXES, array( 'recorded_at' ) ) );
+		$this->seed_install_state(
+			array(
+				'attempts'     => $attempts,
+				'last_attempt' => $last_attempt,
+			)
+		);
+		$this->repair_schema_when_db_delta_runs();
+
+		$this->sut->maybe_install_schema( true );
+
+		$this->assertCount( 2, $this->db_delta_calls );
+		$this->assertFalse( get_option( SchemaManager::DB_INSTALL_STATE_OPTION ), 'A successful manual installation must clear retry state' );
+	}
+
+	/**
+	 * Retry states bypassed by an explicit install.
+	 *
+	 * @return array<string, array{int, int}>
+	 */
+	public function forced_retry_state_provider(): array {
+		return array(
+			'active delay'    => array( 3, time() ),
+			'exhausted state' => array( 24, time() - 2 * HOUR_IN_SECONDS ),
+		);
+	}
+
+	/**
+	 * @testdox Forced installation should not run against a newer stored schema version.
+	 */
+	public function test_forced_install_does_not_run_against_newer_version(): void {
+		update_option( SchemaManager::DB_VERSION_OPTION, SchemaManager::SCHEMA_VERSION + 1 );
+
+		$this->sut->maybe_install_schema( true );
+
+		$this->assertEmpty( $this->db_delta_calls, 'An older build must not repair a newer schema' );
+		$this->assertSame( SchemaManager::SCHEMA_VERSION + 1, (int) get_option( SchemaManager::DB_VERSION_OPTION ) );
+	}
+
+	/**
+	 * @testdox Failed forced installation should preserve retry history.
+	 */
+	public function test_failed_install_schema_preserves_retry_history(): void {
+		$this->fake_wpdb->existing_tables = array();
+		$this->seed_install_state(
+			array(
+				'attempts'     => 24,
+				'last_attempt' => time(),
+			)
+		);
+
+		$this->sut->maybe_install_schema( true );
+
+		$state = get_option( SchemaManager::DB_INSTALL_STATE_OPTION );
+		$this->assertIsArray( $state );
+		$this->assertSame( 25, $state['attempts'] );
+		$this->assertEqualsWithDelta( time(), $state['last_attempt'], 5 );
 	}
 }

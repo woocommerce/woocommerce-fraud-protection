@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Rules;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\ConditionOperatorRegistry;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
@@ -61,7 +62,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->schema_manager = new SchemaManager();
-		$this->schema_manager->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->schema_manager->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ), wc_get_container()->get( FraudProtectionLogger::class ) );
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $this->schema_manager->get_rules_table_schema() );
