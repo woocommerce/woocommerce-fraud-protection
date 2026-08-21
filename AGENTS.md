@@ -39,7 +39,7 @@ Assets under `assets/` are served directly. Most development changes do not requ
 - Internal code belongs under `Automattic\WooCommerce\Internal\FraudProtectionPlugin\` in `src/Internal/FraudProtectionPlugin/`. Internal is the default for new classes.
 - Do not add global functions. The pre-autoloader entry points are the only exception.
 - Stateful public services are resolved through the WooCommerce container. Follow each public DTO's existing constructor or factory contract.
-- Components receive dependencies through a `final public init()` method and register hooks through `register()`. Constructors must not have required parameters. `FraudProtectionController` owns component registration.
+- Application components receive dependencies through a `final public init()` method and register hooks through `register()`. Constructors must not have required parameters. `FraudProtectionController` owns application component registration. Process-specific entry points, such as WP-CLI commands, register from `PluginInitializer` when they must remain outside the feature gate.
 - The bootstrap resolves the controller on `woocommerce_loaded`. First-party components register from `handle_init()` on WordPress `init`; gateway compatibility classes register from the controller at `woocommerce_loaded`.
 - Keep the feature gate at the start of `FraudProtectionController::register()`. Components must not repeat it.
 - Follow the timing and structure of the nearest existing component. Hook timing and priorities are intentional.
