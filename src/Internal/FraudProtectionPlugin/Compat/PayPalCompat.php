@@ -402,7 +402,7 @@ class PayPalCompat {
 			return $supplied_decision;
 		}
 
-		$payment_method = (string) ( $request_data['payment_method'] ?? '' );
+		$payment_method = is_string( $request_data['payment_method'] ?? null ) ? $request_data['payment_method'] : '';
 
 		// Not a PayPal gateway — nothing for this filter to do.
 		if ( ! $this->is_paypal_gateway( $payment_method ) ) {

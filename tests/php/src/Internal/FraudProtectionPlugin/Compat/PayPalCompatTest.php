@@ -1099,6 +1099,23 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A non-string payment method defers and preserves the incoming value.
+	 */
+	public function test_supply_defers_for_non_string_payment_method(): void {
+		$supplied_decision = new SuppliedDecision( FraudDecision::Block );
+
+		$this->assertSame(
+			$supplied_decision,
+			$this->sut->supply_decision_for_paypal_express(
+				$supplied_decision,
+				'blocks_checkout',
+				array( 'payment_method' => array( 'ppcp-gateway' ) ),
+				'some-session-id'
+			)
+		);
+	}
+
+	/**
 	 * @testdox This class does not answer for its own verification source.
 	 */
 	public function test_supply_defers_for_own_source(): void {
