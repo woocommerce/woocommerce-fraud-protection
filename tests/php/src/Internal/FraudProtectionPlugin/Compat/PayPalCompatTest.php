@@ -1227,11 +1227,16 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->assertSame(
-			FraudDecision::Allow,
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' ),
-			'The one stand-down a genuine flow needs must be granted.'
+		$supplied_decision = $this->sut->supply_decision_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-credit-card-gateway' ),
+			'reused-session'
 		);
+
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
+		$this->assertSame( FraudDecision::Allow, $supplied_decision->decision, 'The one stand-down a genuine flow needs must be granted.' );
+		$this->assertNull( $supplied_decision->session_id_for_order );
 
 		$this->assertFalse(
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' ),

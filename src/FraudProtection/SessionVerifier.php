@@ -183,13 +183,13 @@ class SessionVerifier {
 			 * it and its optional order session ID. Any other return verifies normally.
 			 *
 			 * @since 0.1.0
-			 * @since 0.1.6 Skipping requires returning the FraudDecision to apply; a truthy return no longer skips.
+			 * @since 0.1.6 Skipping requires returning the decision to apply; a truthy return no longer skips.
 			 * @since 0.1.9 The filter value carries the decision and optional response-backed order session ID.
 			 *
-			 * @param SuppliedDecision|false $decision     The earlier result to apply. Default false.
-			 * @param string                 $source       Source identifier (e.g. 'blocks_checkout').
-			 * @param array                  $request_data Request data with payment_method, payment_data, etc.
-			 * @param string                 $session_id   The Blackbox session ID being verified.
+			 * @param SuppliedDecision|false $supplied_decision The earlier result to apply. Default false.
+			 * @param string                 $source            Source identifier (e.g. 'blocks_checkout').
+			 * @param array                  $request_data      Request data with payment_method, payment_data, etc.
+			 * @param string                 $session_id        The Blackbox session ID being verified.
 			 */
 			$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $normalized_session_id );
 
