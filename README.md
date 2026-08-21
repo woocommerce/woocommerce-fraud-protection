@@ -144,11 +144,11 @@ $verifier = wc_get_container()->get( SessionVerifier::class );
 $decision = $verifier->verify_session( $session_id, $source, $order_id, $request_data );
 ```
 
-The remaining public classes are used directly: `BlockedSessionMessage` and `PaymentMethodData` have public constructors (`new`), while the other DTOs have private constructors and are built via their static factories (`ReportContextData::from_array()`, `PaymentInstrumentData::from_array()` / `::empty()`). `SuppliedDecision` is the request-local value received by the skip-verification filter. The enums are used as cases (e.g. `MessageContext::Purchase`).
+The remaining public classes are used directly: `BlockedSessionMessage`, `PaymentMethodData`, and `SuppliedDecision` have public constructors (`new`), while the other DTOs have private constructors and are built via their static factories (`ReportContextData::from_array()`, `PaymentInstrumentData::from_array()` / `::empty()`). The enums are used as cases (e.g. `MessageContext::Purchase`).
 
 ### Extension filters
 
-Two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Errors before an actionable decision fail open. An error after a callback supplies an actionable decision does not erase that result.
+Two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Errors fail open.
 
 - **`woocommerce_fraud_protection_resolved_payment_data`** — the primary hook for payment gateways: enrich or replace the resolved payment data included in the fraud-check payload (card brand, last4, transaction mode, and so on). Return a `PaymentMethodData`; an invalid return falls back to the baseline resolved from the WC payment token.
 
@@ -156,17 +156,17 @@ Two hooks let an extension (e.g. a payment gateway with a non-standard checkout 
   apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMethodData $resolved, array $checkout_payment_fields );
   ```
 
-- **`woocommerce_fraud_protection_skip_session_verify`** — update the received `SuppliedDecision` to skip verification and have the built-in checkout protectors apply an earlier result. Use it for a flow that verified earlier in the same payment attempt, so the attempt is not scored twice.
+- **`woocommerce_fraud_protection_skip_session_verify`** — return a `SuppliedDecision` to skip verification and have the built-in checkout protectors apply an earlier result. Use it for a flow that verified earlier in the same payment attempt, so the attempt is not scored twice.
 
-  Call `supply()` with the decision the attempt received and its response-backed session ID only when that ID can be stored on the current order. Never use a submitted or stale session ID. Pass null when the earlier result has no authorized order association. Only `FraudDecision::Allow` and `FraudDecision::Block` are accepted. A non-string or empty session ID becomes null. A later valid `supply()` call replaces the complete pair.
+  Construct the result with the decision the attempt received and its response-backed session ID only when that ID can be stored on the current order. Never use a submitted or stale session ID. Pass null when the earlier result has no authorized order association. Only `FraudDecision::Allow` and `FraudDecision::Block` are accepted. A later callback can return another result.
 
-  Return the same `SuppliedDecision` instance that the callback received. A callback with nothing to supply returns it unchanged. Do not create a replacement carrier. An invalid return or exception does not erase an actionable pair that an earlier callback supplied.
+  A callback with nothing to supply returns the value it received. A final value other than `SuppliedDecision`, or a `SuppliedDecision` with a non-actionable decision, runs normal verification. If a callback throws, verification also continues normally.
 
   ```php
-  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecision $supplied_decision, string $source, array $request_data, string $session_id );
+  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecision|false $supplied_decision, string $source, array $request_data, string $session_id );
   ```
 
-  `SuppliedDecision::supply()` updates the pair. `get_decision()` and `get_session_id_for_order()` read it.
+  `SuppliedDecision::$decision` and `SuppliedDecision::$session_id_for_order` are read-only.
 
 ### JavaScript integration
 

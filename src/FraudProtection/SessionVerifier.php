@@ -175,64 +175,78 @@ class SessionVerifier {
 		$this->last_verified_session_id = '';
 		$normalized_session_id          = $this->session_id_normalizer->normalize( $session_id );
 
-		$supplied_decision = new SuppliedDecision();
-
 		try {
 			/**
 			 * Filters whether to skip verification by supplying the fraud decision.
 			 *
-			 * A callback supplies an earlier result by updating and returning the
-			 * received {@see SuppliedDecision}. An empty carrier verifies normally.
+			 * Returning a {@see SuppliedDecision} with an actionable decision applies
+			 * it and its optional order session ID. Any other return verifies normally.
 			 *
 			 * @since 0.1.0
 			 * @since 0.1.6 Skipping requires returning the FraudDecision to apply; a truthy return no longer skips.
 			 * @since 0.1.9 The filter value carries the decision and optional response-backed order session ID.
 			 *
-			 * @param SuppliedDecision $supplied_decision The request-local supplied decision carrier.
-			 * @param string           $source            Source identifier (e.g. 'blocks_checkout').
-			 * @param array            $request_data      Request data with payment_method, payment_data, etc.
-			 * @param string           $session_id        The Blackbox session ID being verified.
+			 * @param SuppliedDecision|false $decision     The earlier result to apply. Default false.
+			 * @param string                 $source       Source identifier (e.g. 'blocks_checkout').
+			 * @param array                  $request_data Request data with payment_method, payment_data, etc.
+			 * @param string                 $session_id   The Blackbox session ID being verified.
 			 */
-			apply_filters(
-				'woocommerce_fraud_protection_skip_session_verify',
-				$supplied_decision,
-				$source,
-				$request_data,
-				$normalized_session_id
-			);
-		} catch ( \Throwable $e ) {
-			if ( null === $supplied_decision->get_decision() ) {
+			$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, $normalized_session_id );
+
+			if ( $supplied instanceof SuppliedDecision && in_array( $supplied->decision, FraudDecision::ACTIONABLE, true ) ) {
+				FraudProtectionController::log(
+					'info',
+					sprintf( 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: %s', $source ),
+					array(
+						'event_source' => $source,
+						'session_id'   => $normalized_session_id,
+						'order_id'     => $order_id,
+						'decision'     => $supplied->decision->value,
+					)
+				);
+
+				if ( null !== $supplied->session_id_for_order && '' !== $supplied->session_id_for_order && $order_id > 0 ) {
+					try {
+						$this->store_session_id_in_order( $supplied->session_id_for_order, $order_id );
+					} catch ( \Throwable ) {
+						return $supplied->decision;
+					}
+				}
+
+				return $supplied->decision;
+			}
+
+			// For the miscall warning below; the declared filter type is a
+			// contract a miscalling consumer can break.
+			$returned = $supplied instanceof SuppliedDecision ? $supplied->decision->value : get_debug_type( $supplied );
+
+			if ( false !== $supplied ) {
 				FraudProtectionController::log(
 					'warning',
-					'`woocommerce_fraud_protection_skip_session_verify` filter threw',
+					'`woocommerce_fraud_protection_skip_session_verify` filter returned a non-decision; verifying',
 					array(
-						'event_source'      => $source,
-						'session_id'        => $normalized_session_id,
-						'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
-						'exception_class'   => $e::class,
-						'exception_message' => $e->getMessage(),
-						'exception_file'    => $e->getFile(),
-						'exception_line'    => $e->getLine(),
-					),
-					true
+						'event_source' => $source,
+						'session_id'   => $normalized_session_id,
+						'filter'       => 'woocommerce_fraud_protection_skip_session_verify',
+						'returned'     => $returned,
+					)
 				);
 			}
-		}
-
-		$decision = $supplied_decision->get_decision();
-
-		if ( null !== $decision ) {
-			$session_id_for_order = $supplied_decision->get_session_id_for_order();
-
-			if ( null !== $session_id_for_order && $order_id > 0 ) {
-				try {
-					$this->store_session_id_in_order( $session_id_for_order, $order_id );
-				} catch ( \Throwable ) {
-					return $decision;
-				}
-			}
-
-			return $decision;
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'`woocommerce_fraud_protection_skip_session_verify` filter threw',
+				array(
+					'event_source'      => $source,
+					'session_id'        => $normalized_session_id,
+					'filter'            => 'woocommerce_fraud_protection_skip_session_verify',
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+				),
+				true
+			);
 		}
 
 		// Resolve payment data (fail-open).

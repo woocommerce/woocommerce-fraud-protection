@@ -7,8 +7,6 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\FraudProtection;
 
-use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
-use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
@@ -19,10 +17,8 @@ use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 
 /**
  * Tests for the SessionVerifier class.
@@ -101,24 +97,9 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		if ( WC()->session ) {
 			WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, null );
-			WC()->session->set( '_fraud_protection_paypal_verification', null );
-			WC()->session->set( 'ppcp', null );
 		}
 		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
-		remove_all_filters( 'woocommerce_widget_cart_is_hidden' );
 		remove_all_actions( 'woocommerce_checkout_order_created' );
-		remove_all_actions( 'woocommerce_paypal_payments_create_order_request_started' );
-		remove_all_actions( 'woocommerce_paypal_payments_paypal_order_created' );
-		remove_all_actions( 'woocommerce_paypal_payments_single_product_button_render' );
-		remove_all_actions( 'woocommerce_paypal_payments_cart_button_render' );
-		remove_all_actions( 'woocommerce_paypal_payments_checkout_button_render' );
-		remove_all_actions( 'woocommerce_paypal_payments_payorder_button_render' );
-		remove_all_actions( 'woocommerce_paypal_payments_minicart_button_render' );
-		remove_all_actions( 'woocommerce_before_mini_cart' );
-		remove_all_actions( 'woocommerce_blocks_enqueue_checkout_block_scripts_before' );
-		remove_all_actions( 'woocommerce_blocks_enqueue_cart_block_scripts_before' );
-		remove_all_actions( 'woocommerce_checkout_before_order_review' );
-		remove_all_actions( 'before_woocommerce_pay_form' );
 
 		parent::tearDown();
 	}
@@ -847,30 +828,6 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->willReturn( $decision );
 	}
 
-	/**
-	 * Add a filter callback that supplies one earlier decision and optional order session ID.
-	 *
-	 * @param FraudDecision $decision             The decision to supply.
-	 * @param ?string       $session_id_for_order The response-backed session ID for the order.
-	 * @param int           $priority             The filter priority.
-	 */
-	private function add_decision_for_order_filter( FraudDecision $decision, ?string $session_id_for_order = null, int $priority = 10 ): void {
-		add_filter(
-			'woocommerce_fraud_protection_skip_session_verify',
-			function ( $supplied_decision, $source, $request_data, $session_id ) use ( $decision, $session_id_for_order ) {
-				unset( $source, $request_data, $session_id );
-
-				if ( $supplied_decision instanceof SuppliedDecision ) {
-					$supplied_decision->supply( $decision, $session_id_for_order );
-				}
-
-				return $supplied_decision;
-			},
-			$priority,
-			4
-		);
-	}
-
 	/*
 	|--------------------------------------------------------------------------
 	| Should Verify Filter Tests
@@ -878,56 +835,46 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox verify_session() applies an ALLOW supplied by the filter without calling the API.
+	 * @testdox verify_session() applies a supplied ALLOW and stores its session ID on the order.
 	 */
 	public function test_verify_session_applies_an_allow_supplied_by_the_filter(): void {
 		$order = \WC_Helper_Order::create_order();
-		$request_data = array( 'payment_method' => 'stripe' );
 		$order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-order-id' );
 		$order->save_meta_data();
 		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
 
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
-			function ( $supplied_decision, $source, $received_request_data, $session_id ) use ( $request_data ) {
-				$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
-				$this->assertNull( $supplied_decision->get_decision() );
-				$this->assertSame( 'blocks_checkout', $source );
-				$this->assertSame( $request_data, $received_request_data );
-				$this->assertSame( str_repeat( 'a', 255 ), $session_id );
-
-				$supplied_decision->supply( FraudDecision::Allow );
-
-				return $supplied_decision;
-			},
-			10,
-			4
+			function () {
+				return new SuppliedDecision( FraudDecision::Allow, 'response-session-id' );
+			}
 		);
 
 		$this->api_client
 			->expects( $this->never() )
 			->method( 'verify' );
 
-		$result = $this->sut->verify_session( str_repeat( 'a', 256 ), 'blocks_checkout', $order->get_id(), $request_data );
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout', $order->get_id() );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertSame( 'prior-session-id', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
-		$this->assertSame( 'prior-order-id', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$this->assertSame( 'response-session-id', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
 		$this->assertSame( '', $this->sut->last_verified_session_id() );
+		$this->assertLogged( 'info', 'Decision supplied by `woocommerce_fraud_protection_skip_session_verify` filter for source: blocks_checkout' );
 	}
 
 	/**
 	 * @testdox verify_session() applies a BLOCK supplied by the filter without calling the API.
 	 *
-	 * A consumer that already received a block for this attempt must preserve it.
+	 * The whole reason this filter carries a decision rather than a boolean: a
+	 * consumer that already scored this attempt and got a block must be able to say
+	 * so. A boolean could only ever mean "do not verify", which reads as allow.
 	 */
 	public function test_verify_session_applies_a_block_supplied_by_the_filter(): void {
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
-			function ( SuppliedDecision $supplied_decision ): SuppliedDecision {
-				$supplied_decision->supply( FraudDecision::Block );
-
-				return $supplied_decision;
+			function () {
+				return new SuppliedDecision( FraudDecision::Block );
 			}
 		);
 
@@ -941,7 +888,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() verifies normally when the filter passes its empty carrier through.
+	 * @testdox verify_session() verifies normally when the filter passes its default through.
 	 *
 	 * The standard WordPress shape for a consumer with nothing to say: return the
 	 * value received. Skipping takes a decision; not skipping takes nothing.
@@ -949,8 +896,8 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	public function test_verify_session_proceeds_when_filter_passes_the_default_through(): void {
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
-			function ( $supplied_decision ) {
-				return $supplied_decision;
+			function ( $decision ) {
+				return $decision;
 			}
 		);
 
@@ -975,8 +922,10 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox verify_session() ignores a malformed filter return and verifies.
 	 *
-	 * A replacement value cannot replace the request-local carrier retained by
-	 * SessionVerifier.
+	 * A bool is the shape this filter's pre-0.1.6 contract used. It must not be
+	 * honoured: `true` would otherwise mean "allow", which is the conflation the
+	 * decision-carrying contract removed. Null is not a signal either — a
+	 * consumer with nothing to say passes the default through instead.
 	 *
 	 * @dataProvider malformed_filter_returns
 	 *
@@ -1007,14 +956,90 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() warns about a malformed filter return, wherever in the chain it was made.
+	 *
+	 * The typed PayPalCompat callback already fails loudly for garbage put in
+	 * the chain before it; this warning covers the rest of the chain, so a
+	 * miscalling consumer is named in the log regardless of its priority.
+	 */
+	public function test_verify_session_warns_about_a_malformed_filter_return(): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function () {
+				return 'allow';
+			}
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$this->assertLogged(
+			'warning',
+			'`woocommerce_fraud_protection_skip_session_verify` filter returned a non-decision',
+			array( 'returned' => 'string' )
+		);
+	}
+
+	/**
+	 * @testdox verify_session() does not warn when the filter chain passes the default through.
+	 *
+	 * The untouched `false` seed is the one non-decision that is not a miscall;
+	 * warning on it would flag every unfiltered checkout.
+	 */
+	public function test_verify_session_does_not_warn_about_the_untouched_default(): void {
+		$spy = $this->spy_on_controller_logging();
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
+
+		$this->decision_handler
+			->method( 'apply_decision' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'test-session', 'blocks_checkout' );
+
+		$warnings = array_filter(
+			$spy->entries,
+			function ( array $entry ): bool {
+				return false !== strpos( $entry['message'], 'returned a non-decision' );
+			}
+		);
+
+		$this->assertSame( array(), $warnings, 'The false seed must not be reported as a miscall.' );
+	}
+
+	/**
 	 * Returns that must never stand in for a verdict.
 	 *
 	 * @return array<string, array{mixed}>
 	 */
 	public function malformed_filter_returns(): array {
 		return array(
-			'false'               => array( false ),
-			'replacement carrier' => array( new SuppliedDecision() ),
+			'true (the pre-0.1.6 skip shape)' => array( true ),
+			'false'                           => array( false ),
+			'null'                            => array( null ),
+			'the decision as a string'        => array( 'allow' ),
+			'a non-actionable decision'       => array( FraudDecision::Challenge ),
+			'a non-actionable supplied result' => array( new SuppliedDecision( FraudDecision::Challenge ) ),
+			'an unrelated object'             => array( new \stdClass() ),
 		);
 	}
 
@@ -1046,109 +1071,6 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'warning', '`woocommerce_fraud_protection_skip_session_verify` filter threw' );
-	}
-
-	/**
-	 * @testdox A supplied result keeps or clears its order session ID according to later filter output.
-	 *
-	 * @dataProvider supplied_result_arbitration_provider
-	 *
-	 * @param callable        $later_callback              A later filter callback.
-	 * @param FraudDecision   $expected_decision           The final decision.
-	 * @param string          $expected_order_session_id   The expected order session ID.
-	 */
-	public function test_supplied_result_arbitration( callable $later_callback, FraudDecision $expected_decision, string $expected_order_session_id ): void {
-		$order = \WC_Helper_Order::create_order();
-		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
-
-		$this->add_decision_for_order_filter( FraudDecision::Block, 'response-session-id' );
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', $later_callback, 20, 4 );
-
-		$this->api_client->expects( $this->never() )->method( 'verify' );
-
-		$result = $this->sut->verify_session( 'later-submitted-id', 'blocks_checkout', $order->get_id() );
-
-		$this->assertSame( $expected_decision, $result );
-		$this->assertSame( $expected_order_session_id, wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
-		$this->assertSame( 'prior-session-id', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
-		$this->assertSame( '', $this->sut->last_verified_session_id() );
-	}
-
-	/**
-	 * Supplied-result arbitration cases.
-	 *
-	 * @return array<string, array{callable, FraudDecision, string}>
-	 */
-	public function supplied_result_arbitration_provider(): array {
-		return array(
-			'later different actionable decision' => array(
-				static function ( SuppliedDecision $supplied_decision ): SuppliedDecision {
-					$supplied_decision->supply( FraudDecision::Allow );
-
-					return $supplied_decision;
-				},
-				FraudDecision::Allow,
-				'',
-			),
-			'later invalid return'                 => array( static fn() => false, FraudDecision::Block, 'response-session-id' ),
-			'later exception'                      => array(
-				static function () {
-					throw new \RuntimeException( 'Later filter threw' );
-				},
-				FraudDecision::Block,
-				'response-session-id',
-			),
-		);
-	}
-
-	/**
-	 * @testdox A supplied order session ID is not stored without a positive order ID.
-	 */
-	public function test_supplied_order_session_id_requires_positive_order_id(): void {
-		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
-		$this->add_decision_for_order_filter( FraudDecision::Allow, 'response-session-id' );
-
-		$this->api_client->expects( $this->never() )->method( 'verify' );
-
-		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'submitted-id', 'shortcode_checkout', 0 ) );
-		$this->assertSame( 'prior-session-id', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
-		$this->assertSame( '', $this->sut->last_verified_session_id() );
-	}
-
-	/**
-	 * @testdox A PayPal saved decision stores its response ID on the final order.
-	 */
-	public function test_paypal_saved_decision_stores_response_id_on_order(): void {
-		$order  = \WC_Helper_Order::create_order();
-		$paypal = new PayPalCompat();
-		$paypal->init( $this->sut, new BlockedSessionMessage(), $this->session_id_normalizer, $this->createMock( BlackboxScriptHandler::class ) );
-
-		$paypal->register();
-		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'prior-session-id' );
-		WC()->session->set(
-			'_fraud_protection_paypal_verification',
-			array(
-				'session_id'        => 'response-id-from-create-order',
-				'stand_downs'       => 0,
-				'decision'          => FraudDecision::Allow,
-				'order_id'          => 'PP-123',
-				'order_stand_downs' => 0,
-			)
-		);
-		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
-
-		$this->api_client->expects( $this->never() )->method( 'verify' );
-
-		$result = $this->sut->verify_session(
-			'later-submitted-id',
-			'blocks_checkout',
-			$order->get_id(),
-			array( 'payment_method' => 'ppcp-gateway' )
-		);
-
-		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertSame( 'response-id-from-create-order', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
-		$this->assertSame( 'prior-session-id', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
 	}
 
 	/*
@@ -1203,10 +1125,8 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
-			function ( SuppliedDecision $supplied_decision ): SuppliedDecision {
-				$supplied_decision->supply( FraudDecision::Block );
-
-				return $supplied_decision;
+			function () {
+				return new SuppliedDecision( FraudDecision::Block );
 			}
 		);
 
