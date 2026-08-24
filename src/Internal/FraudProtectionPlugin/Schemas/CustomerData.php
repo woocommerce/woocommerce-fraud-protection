@@ -74,6 +74,29 @@ class CustomerData {
 	}
 
 	/**
+	 * Build from a WC_Order and pre-built Address objects.
+	 *
+	 * @param \WC_Order $order   WooCommerce order.
+	 * @param Address   $billing  Billing address.
+	 * @param Address   $shipping Shipping address.
+	 * @return self
+	 */
+	public static function from_wc_order( \WC_Order $order, Address $billing, Address $shipping ): self {
+		$lifetime_order_count = 0;
+		$customer_id          = $order->get_customer_id();
+		if ( $customer_id > 0 ) {
+			$lifetime_order_count = ( new \WC_Customer( $customer_id ) )->get_order_count();
+		}
+
+		return new self(
+			\sanitize_email( $order->get_billing_email() ),
+			$lifetime_order_count,
+			$billing,
+			$shipping,
+		);
+	}
+
+	/**
 	 * Build an empty CustomerData for graceful degradation.
 	 *
 	 * @return self

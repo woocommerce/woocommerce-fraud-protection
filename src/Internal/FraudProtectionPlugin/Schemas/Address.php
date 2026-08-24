@@ -80,6 +80,46 @@ class Address {
 	}
 
 	/**
+	 * Build from WC_Order billing fields.
+	 *
+	 * @param \WC_Order $order WooCommerce order object.
+	 * @return self
+	 */
+	public static function from_wc_order_billing( \WC_Order $order ): self {
+		return new self(
+			\sanitize_text_field( $order->get_billing_first_name() ),
+			\sanitize_text_field( $order->get_billing_last_name() ),
+			\sanitize_text_field( $order->get_billing_address_1() ),
+			\sanitize_text_field( $order->get_billing_address_2() ),
+			\sanitize_text_field( $order->get_billing_city() ),
+			\sanitize_text_field( $order->get_billing_state() ),
+			\sanitize_text_field( $order->get_billing_postcode() ),
+			\sanitize_text_field( $order->get_billing_country() ),
+			\sanitize_text_field( $order->get_billing_phone() ),
+		);
+	}
+
+	/**
+	 * Build from WC_Order shipping fields (phone is null).
+	 *
+	 * @param \WC_Order $order WooCommerce order object.
+	 * @return self
+	 */
+	public static function from_wc_order_shipping( \WC_Order $order ): self {
+		return new self(
+			\sanitize_text_field( $order->get_shipping_first_name() ),
+			\sanitize_text_field( $order->get_shipping_last_name() ),
+			\sanitize_text_field( $order->get_shipping_address_1() ),
+			\sanitize_text_field( $order->get_shipping_address_2() ),
+			\sanitize_text_field( $order->get_shipping_city() ),
+			\sanitize_text_field( $order->get_shipping_state() ),
+			\sanitize_text_field( $order->get_shipping_postcode() ),
+			\sanitize_text_field( $order->get_shipping_country() ),
+			null,
+		);
+	}
+
+	/**
 	 * Build an empty address (all nulls) for graceful degradation.
 	 *
 	 * @return self

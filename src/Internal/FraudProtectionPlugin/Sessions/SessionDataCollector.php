@@ -111,13 +111,24 @@ class SessionDataCollector {
 	 * @return array Array of collected fraud protection event data.
 	 */
 	public function get_collected_data( int $order_id = 0 ): array {
-		$wc = function_exists( 'WC' ) ? WC() : null;
+		$wc    = function_exists( 'WC' ) ? WC() : null;
+		$order = null;
+		if ( $order_id > 0 ) {
+			try {
+				$loaded_order = \wc_get_order( $order_id );
+				if ( $loaded_order instanceof \WC_Order ) {
+					$order = $loaded_order;
+				}
+			} catch ( \Throwable $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+				// Graceful degradation.
+			}
+		}
 
 		$data = array(
 			'wc_version'       => isset( $wc->version ) ? (string) $wc->version : '',
 			'session'          => $this->get_session_data()->to_array(),
-			'customer'         => $this->get_customer_data()->to_array(),
-			'order'            => $this->get_order_data( $order_id )->to_array(),
+			'customer'         => $this->get_customer_data( $order )->to_array(),
+			'order'            => $this->get_order_data( $order )->to_array(),
 			'collected_events' => array(),
 		);
 
@@ -169,10 +180,16 @@ class SessionDataCollector {
 	/**
 	 * Get customer data as a CustomerData schema object.
 	 *
+	 * @param ?\WC_Order $order Selected order, if any.
 	 * @return CustomerData
 	 */
-	private function get_customer_data(): CustomerData {
+	private function get_customer_data( ?\WC_Order $order = null ): CustomerData {
 		try {
+			if ( $order instanceof \WC_Order ) {
+				$billing  = Address::from_wc_order_billing( $order );
+				$shipping = Address::from_wc_order_shipping( $order );
+				return CustomerData::from_wc_order( $order, $billing, $shipping );
+			}
 			if ( WC()->customer instanceof \WC_Customer ) {
 				$customer = WC()->customer;
 				$billing  = Address::from_wc_customer_billing( $customer );
@@ -220,19 +237,23 @@ class SessionDataCollector {
 	/**
 	 * Get order data as an OrderData schema object.
 	 *
-	 * @param int $order_id_from_event Optional order ID from event data.
+	 * @param ?\WC_Order $order Selected order, if any.
 	 * @return OrderData
 	 */
-	private function get_order_data( int $order_id_from_event = 0 ): OrderData {
+	private function get_order_data( ?\WC_Order $order = null ): OrderData {
+		$order_id = 0;
 		try {
-			if ( WC()->cart instanceof \WC_Cart && WC()->customer instanceof \WC_Customer ) {
-				return OrderData::from_cart( $order_id_from_event, WC()->cart, WC()->customer );
+			if ( $order instanceof \WC_Order ) {
+				$order_id = $order->get_id();
+				return OrderData::from_order( $order );
 			}
-			return OrderData::empty( $order_id_from_event );
+			if ( WC()->cart instanceof \WC_Cart && WC()->customer instanceof \WC_Customer ) {
+				return OrderData::from_cart( 0, WC()->cart, WC()->customer );
+			}
 		} catch ( \Throwable $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
 			// Graceful degradation.
 		}
-		return OrderData::empty( $order_id_from_event );
+		return OrderData::empty( $order_id );
 	}
 
 	/**

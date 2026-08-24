@@ -120,6 +120,55 @@ class OrderData {
 	}
 
 	/**
+	 * Build from a WooCommerce order.
+	 *
+	 * @param \WC_Order $order WooCommerce order.
+	 * @return self
+	 */
+	public static function from_order( \WC_Order $order ): self {
+		$customer_id       = $order->get_customer_id() ? $order->get_customer_id() : 'guest';
+		$items_total       = self::finite_number( $order->get_subtotal() );
+		$shipping_total    = self::finite_number( $order->get_shipping_total( 'view' ) );
+		$tax_total         = self::finite_number( $order->get_cart_tax( 'view' ) );
+		$discount_total    = self::finite_number( $order->get_discount_total( 'view' ) );
+		$total             = self::finite_number( $order->get_total( 'view' ) );
+		$shipping_tax      = self::finite_number( $order->get_shipping_tax( 'view' ) );
+		$shipping_tax_rate = ( null !== $shipping_total && null !== $shipping_tax && $shipping_total > 0 && $shipping_tax > 0 )
+			? self::finite_number( $shipping_tax / $shipping_total )
+			: null;
+
+		$items = array();
+		foreach ( $order->get_items( 'line_item' ) as $order_item ) {
+			try {
+				if ( ! $order_item instanceof \WC_Order_Item_Product ) {
+					continue;
+				}
+				$items[] = CartItem::from_order_item( $order_item );
+			} catch ( \Throwable $e ) {
+				FraudProtectionController::log(
+					'warning',
+					'Failed to build order item for order data; item dropped',
+					array( 'event_source' => 'order_data_from_order' )
+				);
+			}
+		}
+
+		return new self(
+			$order->get_id(),
+			$customer_id,
+			$total,
+			$items_total,
+			$shipping_total,
+			$tax_total,
+			$shipping_tax_rate,
+			$discount_total,
+			$order->get_currency( 'view' ),
+			$order->get_cart_hash( 'view' ),
+			$items,
+		);
+	}
+
+	/**
 	 * Build an empty OrderData for graceful degradation.
 	 *
 	 * @param int $order_id Order ID (0 when not yet created).

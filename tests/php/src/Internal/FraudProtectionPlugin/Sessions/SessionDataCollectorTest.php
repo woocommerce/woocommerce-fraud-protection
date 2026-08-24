@@ -394,28 +394,80 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Order totals are collected from cart when order_id is provided.
+	 * @testdox Order totals and items are collected from the selected order when order_id is provided.
 	 */
-	public function test_order_totals_collected_from_cart(): void {
+	public function test_order_totals_collected_from_selected_order(): void {
 		WC()->cart->empty_cart();
-
-		$product = \WC_Helper_Product::create_simple_product();
-		$product->set_regular_price( '50.00' );
-		$product->save();
-
-		WC()->cart->add_to_cart( $product->get_id(), 2 );
+		$selected_product = \WC_Helper_Product::create_simple_product();
+		$selected_product->set_name( 'Selected product' );
+		$selected_product->set_sku( 'SELECTED-SKU' );
+		$selected_product->set_regular_price( '20.00' );
+		$selected_product->save();
+		$current_product = \WC_Helper_Product::create_simple_product();
+		$current_product->set_regular_price( '100.00' );
+		$current_product->save();
+		WC()->cart->add_to_cart( $current_product->get_id(), 3 );
 		WC()->cart->calculate_totals();
-
-		$order = wc_create_order();
-		$this->assertInstanceOf( \WC_Order::class, $order );
+		$current_user_id  = $this->factory->user->create( array( 'user_email' => 'ambient@example.com' ) );
+		$selected_user_id = $this->factory->user->create( array( 'user_email' => 'selected@example.com' ) );
+		wp_set_current_user( $current_user_id );
+		WC()->customer = new \WC_Customer( $current_user_id, true );
+		WC()->customer->set_billing_email( 'ambient-billing@example.com' );
+		WC()->customer->set_billing_address_1( 'Ambient billing address' );
+		$history = wc_create_order( array( 'customer_id' => $selected_user_id ) );
+		$history->set_status( 'completed' );
+		$history->save();
+		$order = wc_create_order( array( 'customer_id' => $selected_user_id ) );
+		$order->set_currency( 'EUR' );
+		$order->set_cart_hash( 'selected-order-hash' );
+		$order->set_shipping_total( 4 );
+		$order->set_shipping_tax( 1 );
+		$order->set_cart_tax( 2 );
+		$order->set_discount_total( 5 );
+		$order->set_total( 35 );
+		$billing = array(
+			'first_name' => '<b>Selected</b>', 'last_name' => '<i>Customer</i>', 'email' => 'selected-order@example.com',
+			'address_1' => '<strong>Selected billing address</strong>', 'address_2' => '<em>Selected unit</em>', 'city' => '<span>Selected City</span>',
+			'state' => 'SC', 'postcode' => '12345', 'country' => 'US', 'phone' => '555-0100',
+		);
+		$shipping = array(
+			'first_name' => '<b>Shipping</b>', 'last_name' => '<i>Customer</i>', 'address_1' => '<strong>Selected shipping address</strong>',
+			'address_2' => '<em>Shipping unit</em>', 'city' => '<span>Shipping City</span>', 'state' => 'CA', 'postcode' => '54321', 'country' => 'US',
+		);
+		foreach ( $billing as $field => $value ) {
+			$order->{'set_billing_' . $field}( $value );
+		}
+		foreach ( $shipping as $field => $value ) {
+			$order->{'set_shipping_' . $field}( $value );
+		}
+		$item = new \WC_Order_Item_Product();
+		$item->set_product_id( $selected_product->get_id() );
+		$item->set_name( 'Stored line' );
+		$item->set_quantity( 2 );
+		$item->set_subtotal( '30.00' );
+		$item->set_total( '24.00' );
+		$item->set_total_tax( '0.00' );
+		$order->add_item( $item );
 		$order->save();
 
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data( $order->get_id() );
 
-		$this->assertArrayHasKey( 'items_total', $result['order'] );
-		$this->assertArrayHasKey( 'total', $result['order'] );
-		$this->assertEquals( 100.00, $result['order']['items_total'] );
+		$this->assertSame( 'ambient@example.com', $result['session']['email'] );
+		$this->assertSame( $order->get_id(), $result['order']['order_id'] );
+		$this->assertSame( $selected_user_id, $result['order']['customer_id'] );
+		$this->assertSame( array( 35.0, 30.0, 4.0, 2.0, 0.25, 5.0, 'EUR', 'selected-order-hash' ), array_values( array_intersect_key( $result['order'], array_flip( array( 'total', 'items_total', 'shipping_total', 'tax_total', 'shipping_tax_rate', 'discount_total', 'currency', 'cart_hash' ) ) ) ) );
+		$item_data = $result['order']['items'][0];
+		$this->assertSame( array( $selected_product->get_id(), 'Stored line', 2, 15.0, 0.0, 3.0, 'SELECTED-SKU' ), array( $item_data['product_id'], $item_data['name'], $item_data['quantity'], $item_data['unit_price'], $item_data['unit_tax_amount'], $item_data['unit_discount_amount'], $item_data['sku'] ) );
+		$this->assertSame( 'selected-order@example.com', $result['customer']['billing_email'] );
+		$this->assertSame( 2, $result['customer']['lifetime_order_count'] );
+		$this->assertSame( array( 'first_name' => 'Selected', 'last_name' => 'Customer', 'address_1' => 'Selected billing address', 'address_2' => 'Selected unit', 'city' => 'Selected City', 'state' => 'SC', 'postcode' => '12345', 'country' => 'US', 'phone' => '555-0100' ), $result['customer']['billing_address'] );
+		$this->assertSame( array( 'first_name' => 'Shipping', 'last_name' => 'Customer', 'address_1' => 'Selected shipping address', 'address_2' => 'Shipping unit', 'city' => 'Shipping City', 'state' => 'CA', 'postcode' => '54321', 'country' => 'US', 'phone' => null ), $result['customer']['shipping_address'] );
+		$this->assertSame( 'Uncategorized', $item_data['category'] );
+		$this->assertSame( 'simple', $item_data['product_type'] );
+		$this->assertFalse( $item_data['is_virtual'] );
+		$this->assertFalse( $item_data['is_downloadable'] );
+		$this->assertSame( array(), $item_data['attributes'] );
 	}
 
 	/**
@@ -454,6 +506,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		$order = wc_create_order();
 		$this->assertInstanceOf( \WC_Order::class, $order );
+		$order->add_product( $product, 2 );
 		$order->save();
 
 		$this->sut->collect();
@@ -482,6 +535,37 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertEquals( 'TEST-SKU-123', $item['sku'] );
 		$this->assertEquals( 2, $item['quantity'] );
 		$this->assertEquals( 'simple', $item['product_type'] );
+	}
+
+	/**
+	 * @testdox An invalid positive order ID uses the current cart and customer.
+	 */
+	public function test_invalid_order_id_falls_back_to_cart_and_customer(): void {
+		WC()->cart->empty_cart();
+		$user_id = $this->factory->user->create( array( 'user_email' => 'ambient@example.com' ) );
+		wp_set_current_user( $user_id );
+		WC()->customer = new \WC_Customer( $user_id, true );
+		$product = \WC_Helper_Product::create_simple_product();
+		$product->set_regular_price( '12.50' );
+		$product->save();
+		WC()->cart->add_to_cart( $product->get_id(), 1 );
+		WC()->cart->calculate_totals();
+		WC()->customer->set_billing_email( 'current@example.com' );
+		WC()->customer->set_billing_address_1( 'Current address' );
+		$cart_total = (float) WC()->cart->get_total( 'edit' );
+		$this->sut->collect( 'checkout_started' );
+		$result = $this->sut->get_collected_data( PHP_INT_MAX );
+
+		$this->assertSame( 0, $result['order']['order_id'] );
+		$this->assertSame( $cart_total, (float) $result['order']['total'] );
+		$this->assertSame( get_woocommerce_currency(), $result['order']['currency'] );
+		$this->assertSame( 'ambient@example.com', $result['session']['email'] );
+		$this->assertNotEmpty( $result['session']['wc_identity_id'] );
+		$this->assertSame( 'current@example.com', $result['customer']['billing_email'] );
+		$this->assertSame( 'Current address', $result['customer']['billing_address']['address_1'] );
+		$this->assertCount( 1, $result['order']['items'] );
+		$this->assertSame( $product->get_id(), $result['order']['items'][0]['product_id'] );
+		$this->assertCount( 1, $result['collected_events'] );
 	}
 
 	/**
@@ -615,6 +699,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		$order = wc_create_order();
 		$this->assertInstanceOf( \WC_Order::class, $order );
+		$order->set_customer_id( $user_id );
 		$order->save();
 
 		$this->sut->collect();
@@ -703,12 +788,6 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertIsInt( $user_id );
 		wp_set_current_user( $user_id );
 
-		$existing_order = wc_create_order();
-		$this->assertInstanceOf( \WC_Order::class, $existing_order );
-		$existing_order->set_customer_id( $user_id );
-		$existing_order->set_status( 'completed' );
-		$existing_order->save();
-
 		WC()->customer = new \WC_Customer( $user_id, true );
 		WC()->customer->set_billing_first_name( 'John' );
 		WC()->customer->set_billing_last_name( 'Doe' );
@@ -739,12 +818,8 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		WC()->cart->add_to_cart( $product2->get_id(), 1 );
 		WC()->cart->calculate_totals();
 
-		$new_order = wc_create_order();
-		$this->assertInstanceOf( \WC_Order::class, $new_order );
-		$new_order->save();
-
 		$this->sut->collect( 'payment_attempt', array( 'gateway' => 'stripe' ) );
-		$result = $this->sut->get_collected_data( $new_order->get_id() );
+		$result = $this->sut->get_collected_data( 0 );
 
 		$this->assertArrayHasKey( 'wc_version', $result );
 		$this->assertArrayHasKey( 'collected_events', $result );
@@ -834,12 +909,8 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$product = \WC_Helper_Product::create_simple_product();
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
 
-		$order = wc_create_order();
-		$this->assertInstanceOf( \WC_Order::class, $order );
-		$order->save();
-
 		$this->sut->collect();
-		$result = $this->sut->get_collected_data( $order->get_id() );
+		$result = $this->sut->get_collected_data( 0 );
 
 		$this->assertIsArray( $result );
 		$this->assertCount( 1, $result['order']['items'] );

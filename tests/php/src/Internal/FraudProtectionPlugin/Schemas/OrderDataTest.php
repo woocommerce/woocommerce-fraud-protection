@@ -67,6 +67,82 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox from_order() observes view filters for the order total.
+	 */
+	public function test_from_order_uses_filtered_view_total(): void {
+		$order = wc_create_order();
+		$order->set_total( '10.00' );
+		$order->save();
+		$filter = static function ( $total ) {
+			return '0.00';
+		};
+		add_filter( 'woocommerce_order_get_total', $filter );
+
+		try {
+			$arr = OrderData::from_order( $order )->to_array();
+		} finally {
+			remove_filter( 'woocommerce_order_get_total', $filter );
+		}
+
+		$this->assertSame( 0.0, $arr['total'] );
+	}
+
+	/**
+	 * @testdox from_order() keeps usable items when another item fails.
+	 */
+	public function test_from_order_drops_failing_item_and_keeps_usable_item(): void {
+		$product = \WC_Helper_Product::create_simple_product();
+		$usable_item = new \WC_Order_Item_Product();
+		$usable_item->set_product_id( $product->get_id() );
+		$usable_item->set_name( 'Deleted usable item' );
+		$usable_item->set_quantity( 1 );
+		$usable_item->set_subtotal( '10.00' );
+		$usable_item->set_total( '10.00' );
+		$usable_item->set_total_tax( '0.00' );
+		$product_id = $product->get_id();
+		wp_delete_post( $product_id, true );
+
+		$failing_item = $this->createMock( \WC_Order_Item_Product::class );
+		$failing_item->method( 'get_quantity' )->willReturn( 1 );
+		$failing_item->method( 'get_subtotal' )->willReturn( '10.00' );
+		$failing_item->method( 'get_total' )->willReturn( '10.00' );
+		$failing_item->method( 'get_total_tax' )->willReturn( '0.00' );
+		$failing_item->method( 'get_product' )->willThrowException( new \RuntimeException( 'item failure' ) );
+
+		$order = $this->createMock( \WC_Order::class );
+		$order->method( 'get_customer_id' )->willReturn( 0 );
+		$order->method( 'get_subtotal' )->willReturn( '20.00' );
+		$order->method( 'get_shipping_total' )->willReturn( '0.00' );
+		$order->method( 'get_cart_tax' )->willReturn( '0.00' );
+		$order->method( 'get_discount_total' )->willReturn( '0.00' );
+		$order->method( 'get_total' )->willReturn( '20.00' );
+		$order->method( 'get_shipping_tax' )->willReturn( '0.00' );
+		$order->method( 'get_items' )->willReturn( array( $failing_item, $usable_item ) );
+		$order->method( 'get_id' )->willReturn( 123 );
+		$order->method( 'get_currency' )->willReturn( 'USD' );
+		$order->method( 'get_cart_hash' )->willReturn( 'order-hash' );
+
+		$arr = OrderData::from_order( $order )->to_array();
+
+		$this->assertCount( 1, $arr['items'] );
+		$this->assertSame( $product_id, $arr['items'][0]['product_id'] );
+		$this->assertSame( 'Deleted usable item', $arr['items'][0]['name'] );
+		$this->assertSame( 10.0, $arr['items'][0]['unit_price'] );
+		$this->assertNull( $arr['items'][0]['category'] );
+		$this->assertNull( $arr['items'][0]['sku'] );
+		$this->assertNull( $arr['items'][0]['product_type'] );
+		$this->assertFalse( $arr['items'][0]['is_virtual'] );
+		$this->assertFalse( $arr['items'][0]['is_downloadable'] );
+		$this->assertSame( array(), $arr['items'][0]['attributes'] );
+		$this->assertLogged(
+			'warning',
+			'Failed to build order item for order data; item dropped',
+			array( 'event_source' => 'order_data_from_order' ),
+			false
+		);
+	}
+
+	/**
 	 * @testdox from_cart() sets customer_id to 'guest' for guest users.
 	 */
 	public function test_guest_customer_id(): void {

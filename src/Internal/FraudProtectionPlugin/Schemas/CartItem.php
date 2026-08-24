@@ -63,7 +63,7 @@ class CartItem {
 
 		$unit_price    = self::finite_number( $product->get_price() );
 		$line_tax      = $cart_item['line_tax'] ?? 0;
-		$line_discount = self::line_discount( $cart_item );
+		$line_discount = self::line_discount( $cart_item['line_subtotal'] ?? 0, $cart_item['line_total'] ?? 0 );
 		$unit_tax      = self::per_unit_amount( $line_tax, $quantity_number );
 		$unit_discount = self::per_unit_amount( $line_discount, $quantity_number );
 
@@ -86,6 +86,39 @@ class CartItem {
 	}
 
 	/**
+	 * Build from a stored WooCommerce order line.
+	 *
+	 * @param \WC_Order_Item_Product $item Order line item.
+	 * @return self
+	 */
+	public static function from_order_item( \WC_Order_Item_Product $item ): self {
+		$quantity        = $item->get_quantity();
+		$quantity_number = QuantityValue::as_finite_float( $quantity );
+		$subtotal        = $item->get_subtotal();
+		$total           = $item->get_total();
+		$line_discount   = self::line_discount( $subtotal, $total );
+
+		$product    = $item->get_product();
+		$variation  = $item->get_variation_id();
+		$product_id = $variation > 0 ? $variation : $item->get_product_id();
+
+		return new self(
+			$product_id,
+			$item->get_name() ? $item->get_name() : null,
+			$product instanceof \WC_Product ? self::get_product_category_names( $product ) : null,
+			$product instanceof \WC_Product && $product->get_sku() ? $product->get_sku() : null,
+			$quantity,
+			self::per_unit_amount( $subtotal, $quantity_number ),
+			self::per_unit_amount( $item->get_total_tax(), $quantity_number ),
+			self::per_unit_amount( $line_discount, $quantity_number ),
+			$product instanceof \WC_Product && $product->get_type() ? $product->get_type() : null,
+			$product instanceof \WC_Product && $product->is_virtual(),
+			$product instanceof \WC_Product && $product->is_downloadable(),
+			$product instanceof \WC_Product && $product->get_attributes() ? $product->get_attributes() : array(),
+		);
+	}
+
+	/**
 	 * Read the discount on a line as what it would have cost minus what it did.
 	 *
 	 * Both operands are read as numbers first: core keeps these amounts as int|float, but they
@@ -93,13 +126,11 @@ class CartItem {
 	 * reading raises a TypeError that the caller's per-item guard turns into a dropped order
 	 * line — the whole item for one unreadable field.
 	 *
-	 * @param array<string, mixed> $cart_item Raw cart entry.
+	 * @param mixed $subtotal Line subtotal.
+	 * @param mixed $total    Line total.
 	 * @return float|null The discount, or null when either amount has no numeric reading.
 	 */
-	private static function line_discount( array $cart_item ): ?float {
-		$subtotal = $cart_item['line_subtotal'] ?? 0;
-		$total    = $cart_item['line_total'] ?? 0;
-
+	private static function line_discount( mixed $subtotal, mixed $total ): ?float {
 		if ( ! is_numeric( $subtotal ) || ! is_numeric( $total ) ) {
 			return null;
 		}
