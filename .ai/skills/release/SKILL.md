@@ -39,7 +39,7 @@ Prepare a release pull request and use the protected GitHub Actions workflow to 
    > Keep this pull request open until the GitHub release is published. After publication, merge it with a merge commit. Do not squash or rebase it.
    ```
 
-   Wait for CI to pass, approval, and confirmation that the pull request is ready to merge. Do not merge it yet.
+   Wait for CI to pass and confirmation that the pull request is ready for publication. Do not merge it yet.
 
 9. Start the `Release` workflow on the release branch with the approved version:
 
@@ -55,7 +55,7 @@ Prepare a release pull request and use the protected GitHub Actions workflow to 
 
 - Product pull requests own their changelog entries. The release pass checks wording and coverage; it does not draft the release from scratch.
 - The release pull request replaces the placeholder date, so the published changelog starts with the released version.
-- The release pull request must use `release/<version>`. It must be approved and ready to merge before the workflow runs, then merged with a merge commit after publication.
+- The release pull request must use `release/<version>`. It must be ready to merge before the workflow runs, then merged with a merge commit after publication.
 - The target branch must use a GitHub ruleset that defines the required status checks. The release workflow stops if the target branch has no required checks or any required check has not passed.
 - `vendor/` must remain in the ZIP because the plugin bootstrap requires its autoloader.
 - Configure the GitHub `release` environment with required reviewers before using this workflow.
