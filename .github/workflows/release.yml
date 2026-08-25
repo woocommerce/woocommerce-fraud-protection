@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the v prefix
+        required: true
+        type: string
+      target_branch:
+        description: Branch that will receive the release pull request
+        required: true
+        default: trunk
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  build-and-test:
+    name: Build and test release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.1'
+          tools: composer:2.9.1
+          coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock', 'composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Validate release metadata
+        env:
+          RELEASE_BRANCH: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: bin/validate-release.sh "$RELEASE_VERSION"
+
+      - name: Build plugin zip
+        run: |
+          npm ci
+          npm run build:qit
+
+      - name: Validate plugin zip
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: bin/validate-release.sh "$RELEASE_VERSION" woocommerce-fraud-protection.zip
+
+      - name: Upload release files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ inputs.version }}-${{ github.sha }}
+          path: |
+            woocommerce-fraud-protection.zip
+            release-notes.txt
+          retention-days: 30
+
+      - name: Install QIT CLI
+        run: |
+          composer global config bin-dir --absolute >> "$GITHUB_PATH"
+          composer global require woocommerce/qit-cli --no-interaction --no-progress
+
+      - name: Authenticate QIT
+        run: qit partner:add --user='${{ secrets.QIT_USER }}' --application_password='${{ secrets.QIT_APP_PASS }}'
+
+      - name: Run QIT activation test
+        run: qit run:activation woocommerce-fraud-protection --zip=woocommerce-fraud-protection-qit.zip --wait
+
+      - name: Run QIT security test
+        run: qit run:security woocommerce-fraud-protection --zip=woocommerce-fraud-protection-qit.zip --wait
+
+  publish:
+    name: Publish release
+    needs: build-and-test
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      checks: read
+      contents: write
+      pull-requests: read
+      statuses: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate release pull request
+        id: release-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          release_pr_url=$(bin/validate-release-pr.sh "$RELEASE_BRANCH" "$RELEASE_SHA" "$TARGET_BRANCH")
+          echo "url=$release_pr_url" >> "$GITHUB_OUTPUT"
+
+      - name: Download release files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ inputs.version }}-${{ github.sha }}
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: bin/prepare-github-release.sh "$RELEASE_VERSION" "$RELEASE_SHA" woocommerce-fraud-protection.zip release-notes.txt
+
+      - name: Verify and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+          RELEASE_PR_URL: ${{ steps.release-pr.outputs.url }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          bin/validate-release-pr.sh "$RELEASE_BRANCH" "$RELEASE_SHA" "$TARGET_BRANCH" >/dev/null
+          bin/publish-github-release.sh "$RELEASE_VERSION" "$RELEASE_SHA" woocommerce-fraud-protection.zip "$RELEASE_PR_URL"

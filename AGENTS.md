@@ -141,6 +141,8 @@ Run focused tests during development. Before handoff, run the checks that match 
 
 Fraud Protection issues use the `WOOFP` identifier in Linear. Fetch the complete issue and any linked Slack, P2, design, or architecture context needed for the task.
 
+Merchant-facing and developer-facing pull requests must add a concise entry under the `YYYY-xx-xx` placeholder release at the top of `changelog.txt`. If no placeholder exists after a release, the first such pull request adds one for the next patch version. Use the existing `Added`, `Updated`, `Fixed`, or `Dev` category and describe observable plugin behavior. Pull requests limited to tests, CI, documentation, or internal refactoring do not need an entry. The release process reviews the complete block and replaces the placeholder date.
+
 Prefix pull-request titles with `Fraud Protection:`. Before drafting a description, inspect recent repository pull requests and follow their current structure. Explain why the change is needed and how it solves the issue. Include useful manual tests that a reviewer can run on a generic test site. Do not add manual steps that only repeat automated checks.
 
 Do not disclose private service behavior in source comments, commit messages, or pull-request text.

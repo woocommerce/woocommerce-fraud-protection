@@ -62,6 +62,7 @@ tmp/
 coverage/
 woocommerce-fraud-protection.zip
 woocommerce-fraud-protection-qit.zip
+release-notes.txt
 build/
 .DS_Store
 

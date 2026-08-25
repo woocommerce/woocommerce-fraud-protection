@@ -17,10 +17,17 @@ npm install
 
 ```bash
 npm run build           # development build of the JS/CSS assets
+npm run build:qit       # release ZIP plus a QIT ZIP with dependency manifests
 npm run build:release   # production build plus a distributable plugin zip
 ```
 
 The assets in `assets/` are served as-is, so a build step is not required for everyday development.
+
+## Releases
+
+Merchant-facing and developer-facing pull requests add a concise entry under the placeholder release at the top of `changelog.txt`. Changes limited to tests, CI, documentation, or internal refactoring do not need an entry.
+
+The release pull request reviews the complete placeholder block, sets its date, and updates the version files on `release/<version>`. After the pull request is approved and ready to merge, run the `Release` GitHub Actions workflow from that release branch. The workflow builds the release ZIP and a QIT copy with dependency manifests for audits. It runs the QIT activation and security tests against the QIT copy, waits for approval through the `release` environment, and publishes the release ZIP from the tested commit. Merge the release pull request with a merge commit after publication.
 
 ## Local dev site (wp-env)
 

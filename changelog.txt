@@ -1,5 +1,7 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.1.9
+
 2026-08-18 - version 0.1.8
 * Fixed - PayPal validation requests no longer start an early fraud check that could interrupt it.
 * Fixed - Checkout and add-payment-method forms no longer fail when another extension supplies an unexpected validation value.
