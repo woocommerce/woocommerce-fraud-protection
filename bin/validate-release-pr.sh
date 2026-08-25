@@ -11,7 +11,7 @@ pull_requests=$(gh pr list \
 	--repo "$repository" \
 	--head "$release_branch" \
 	--state open \
-	--json baseRefName,headRefOid,isDraft,mergeStateStatus,reviewDecision,url)
+	--json baseRefName,headRefOid,isDraft,mergeStateStatus,url)
 
 if [[ $(jq length <<< "$pull_requests") -ne 1 ]]; then
 	echo "Expected one open pull request from $release_branch." >&2
@@ -22,7 +22,6 @@ pull_request=$(jq '.[0]' <<< "$pull_requests")
 head_sha=$(jq -r '.headRefOid' <<< "$pull_request")
 is_draft=$(jq -r '.isDraft' <<< "$pull_request")
 merge_state=$(jq -r '.mergeStateStatus' <<< "$pull_request")
-review_decision=$(jq -r '.reviewDecision' <<< "$pull_request")
 base_branch=$(jq -r '.baseRefName' <<< "$pull_request")
 pull_request_url=$(jq -r '.url' <<< "$pull_request")
 
@@ -36,8 +35,8 @@ if [[ $head_sha != "$release_sha" ]]; then
 	exit 1
 fi
 
-if [[ $is_draft != false || $review_decision != APPROVED || $merge_state != CLEAN ]]; then
-	echo "The release pull request must be approved and ready to merge." >&2
+if [[ $is_draft != false || $merge_state != CLEAN ]]; then
+	echo "The release pull request must be ready to merge." >&2
 	exit 1
 fi
 

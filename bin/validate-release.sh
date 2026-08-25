@@ -79,6 +79,11 @@ if [[ -n $archive_path ]]; then
 		exit 1
 	fi
 
+	if zipinfo -1 "$archive_path" | grep -E '^woocommerce-fraud-protection/(package\.json|README\.md)$' >/dev/null; then
+		echo "Release archive contains files excluded from production." >&2
+		exit 1
+	fi
+
 	unzip -p "$archive_path" woocommerce-fraud-protection/vendor/autoload.php >/dev/null
 
 	packaged_version=$(unzip -p "$archive_path" woocommerce-fraud-protection/woocommerce-fraud-protection.php | sed -n 's/^ \* Version: //p')
