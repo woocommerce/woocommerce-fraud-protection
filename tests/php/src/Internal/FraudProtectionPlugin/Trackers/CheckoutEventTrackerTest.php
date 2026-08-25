@@ -61,15 +61,6 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Do not install the controller logging spy. The tracker receives its logger directly.
-	 *
-	 * @return bool
-	 */
-	protected function uses_logging_spy(): bool {
-		return false;
-	}
-
-	/**
 	 * Track a shortcode checkout update and return its event data.
 	 *
 	 * @param string $posted_data Serialized checkout form data.
@@ -100,6 +91,31 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 		$this->assertIsArray( $captured_event_data );
 
 		return $captured_event_data;
+	}
+
+	/**
+	 * Make event collection fail.
+	 */
+	private function make_collection_fail(): void {
+		$this->mock_collector
+			->expects( $this->once() )
+			->method( 'collect' )
+			->willThrowException( new \RuntimeException( 'collector failed' ) );
+	}
+
+	/**
+	 * Assert the tracker logged a contained callback failure.
+	 *
+	 * @param string $hook Registered hook name.
+	 */
+	private function assert_tracker_failure_logged( string $hook ): void {
+		$this->assertCount( 1, $this->logger->entries );
+		$entry = $this->logger->entries[0];
+		$this->assertSame( 'error', $entry['level'] );
+		$this->assertTrue( $entry['forwarded'] );
+		$this->assertSame( 'checkout_event_tracker', $entry['context']['event_source'] );
+		$this->assertSame( $hook, $entry['context']['hook'] );
+		$this->assertSame( \RuntimeException::class, $entry['context']['exception_class'] );
 	}
 
 	// ========================================
@@ -222,79 +238,76 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Checkout callbacks and their registered hooks.
-	 *
-	 * @return array<string, array{string, string}>
+	 * @testdox The checkout page callback contains a collector failure.
 	 */
-	public function checkout_tracker_callbacks(): array {
-		return array(
-			'checkout page loaded'       => array( 'track_checkout_page_loaded', 'template_redirect' ),
-			'blocks checkout update'     => array( 'track_blocks_checkout_update', 'woocommerce_store_api_checkout_update_customer_from_request' ),
-			'shortcode field update'     => array( 'track_shortcode_checkout_field_update', 'woocommerce_checkout_update_order_review' ),
-			'shortcode order processed'  => array( 'track_order_placed_from_shortcode', 'woocommerce_checkout_order_processed' ),
-			'store api order processed'  => array( 'track_order_placed_from_store_api', 'woocommerce_store_api_checkout_order_processed' ),
-			'successful payment status'  => array( 'clear_events_on_successful_payment', 'woocommerce_order_status_changed' ),
-		);
+	public function test_checkout_page_callback_contains_collector_failure(): void {
+		add_filter( 'woocommerce_is_checkout', '__return_true' );
+		$this->make_collection_fail();
+
+		$this->sut->track_checkout_page_loaded();
+
+		remove_filter( 'woocommerce_is_checkout', '__return_true' );
+		$this->assert_tracker_failure_logged( 'template_redirect' );
 	}
 
 	/**
-	 * @testdox Every checkout tracker callback contains a collector failure.
-	 * @dataProvider checkout_tracker_callbacks
-	 *
-	 * @param string $callback Callback method name.
-	 * @param string $hook     Registered hook name.
+	 * @testdox The Blocks checkout update callback contains a collector failure.
 	 */
-	public function test_tracker_callbacks_contain_failures( string $callback, string $hook ): void {
-		$exception = new \RuntimeException( 'collector failed' );
+	public function test_blocks_checkout_update_callback_contains_collector_failure(): void {
+		$this->make_collection_fail();
+
+		$this->sut->track_blocks_checkout_update();
+
+		$this->assert_tracker_failure_logged( 'woocommerce_store_api_checkout_update_customer_from_request' );
+	}
+
+	/**
+	 * @testdox The shortcode checkout update callback contains a collector failure.
+	 */
+	public function test_shortcode_checkout_update_callback_contains_collector_failure(): void {
+		$this->make_collection_fail();
+
+		$this->sut->track_shortcode_checkout_field_update( 'billing_country=US' );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_checkout_update_order_review' );
+	}
+
+	/**
+	 * @testdox The shortcode order callback contains a collector failure.
+	 */
+	public function test_shortcode_order_callback_contains_collector_failure(): void {
+		$order = wc_create_order();
+		$this->make_collection_fail();
+
+		$this->sut->track_order_placed_from_shortcode( $order->get_id(), array(), $order );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_checkout_order_processed' );
+	}
+
+	/**
+	 * @testdox The Store API order callback contains a collector failure.
+	 */
+	public function test_store_api_order_callback_contains_collector_failure(): void {
+		$order = wc_create_order();
+		$this->make_collection_fail();
+
+		$this->sut->track_order_placed_from_store_api( $order );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_store_api_checkout_order_processed' );
+	}
+
+	/**
+	 * @testdox The successful payment callback contains a collector failure.
+	 */
+	public function test_successful_payment_callback_contains_collector_failure(): void {
 		$this->mock_collector
-			->method( 'collect' )
-			->willThrowException( $exception );
-		$this->mock_collector
+			->expects( $this->once() )
 			->method( 'clear_collected_events' )
-			->willThrowException( $exception );
+			->willThrowException( new \RuntimeException( 'collector failed' ) );
 
-		switch ( $callback ) {
-			case 'track_checkout_page_loaded':
-				add_filter( 'woocommerce_is_checkout', '__return_true' );
-				$this->sut->track_checkout_page_loaded();
-				remove_filter( 'woocommerce_is_checkout', '__return_true' );
-				break;
-			case 'track_blocks_checkout_update':
-				$this->sut->track_blocks_checkout_update();
-				break;
-			case 'track_shortcode_checkout_field_update':
-				$this->mock_collector
-					->method( 'get_current_billing_country' )
-					->willReturn( 'CA' );
-				$this->mock_collector
-					->method( 'get_current_shipping_country' )
-					->willReturn( null );
-				$this->sut->track_shortcode_checkout_field_update( 'billing_country=US' );
-				break;
-			case 'track_order_placed_from_shortcode':
-				$order = wc_create_order();
-				$this->assertInstanceOf( \WC_Order::class, $order );
-				$this->sut->track_order_placed_from_shortcode( $order->get_id(), array(), $order );
-				$order->delete( true );
-				break;
-			case 'track_order_placed_from_store_api':
-				$order = wc_create_order();
-				$this->assertInstanceOf( \WC_Order::class, $order );
-				$this->sut->track_order_placed_from_store_api( $order );
-				$order->delete( true );
-				break;
-			case 'clear_events_on_successful_payment':
-				$this->sut->clear_events_on_successful_payment( 1, 'pending', 'processing' );
-				break;
-		}
+		$this->sut->clear_events_on_successful_payment( 1, 'pending', 'processing' );
 
-		$this->assertCount( 1, $this->logger->entries );
-		$entry = $this->logger->entries[0];
-		$this->assertSame( 'error', $entry['level'] );
-		$this->assertTrue( $entry['forwarded'] );
-		$this->assertSame( 'checkout_event_tracker', $entry['context']['event_source'] );
-		$this->assertSame( $hook, $entry['context']['hook'] );
-		$this->assertSame( \RuntimeException::class, $entry['context']['exception_class'] );
+		$this->assert_tracker_failure_logged( 'woocommerce_order_status_changed' );
 	}
 
 	/**
@@ -620,8 +633,7 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	 * @testdox track_order_placed() collects session data with order details.
 	 */
 	public function test_track_order_placed_collects_data(): void {
-		$order = wc_create_order();
-		$this->assertInstanceOf( \WC_Order::class, $order );
+		$order = \WC_Helper_Order::create_order();
 
 		$this->mock_collector
 			->expects( $this->once() )
