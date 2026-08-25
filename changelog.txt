@@ -1,6 +1,15 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-YYYY-xx-xx - version 0.1.9
+2026-08-25 - version 0.1.9
+* Added - WP-CLI commands to check plugin status, install or repair the database schema, and prune expired sessions.
+* Fixed - Classic checkout and checkout field tracking ignore unexpected field names and values while preserving valid data.
+* Fixed - Fraud Protection scripts load for supported payment forms and buttons, including checkout forms added by templates, and do not load on unrelated pages.
+* Fixed - PayPal Express now stores the returned session ID on an existing order when checkout reuses an earlier decision.
+* Fixed - Verification requests with an order ID now use that order's totals, items, customer, and addresses instead of the current cart.
+* Updated - Diagnostic error logs no longer include complete checkout, request, or event data.
+* Updated - WooCommerce 9.8 or newer is now required.
+* Dev - The woocommerce_fraud_protection_enqueue_blackbox_scripts filter was removed; payment gateway integrations now call BlackboxScriptHandler::request_scripts() to load the scripts.
+* Dev - The woocommerce_fraud_protection_skip_session_verify filter now uses SuppliedDecision objects, which can include an optional session ID for an existing order.
 
 2026-08-18 - version 0.1.8
 * Fixed - PayPal validation requests no longer start an early fraud check that could interrupt it.
