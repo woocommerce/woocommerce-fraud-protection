@@ -8,8 +8,9 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionLoggerForTests;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
 
 /**
  * Tests for CheckoutEventTracker.
@@ -33,6 +34,13 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	private $mock_collector;
 
 	/**
+	 * In-memory logger injected into the system under test.
+	 *
+	 * @var FraudProtectionLoggerForTests
+	 */
+	private FraudProtectionLoggerForTests $logger;
+
+	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
@@ -45,10 +53,20 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 
 		// Create mock.
 		$this->mock_collector = $this->createMock( SessionDataCollector::class );
+		$this->logger         = new FraudProtectionLoggerForTests();
 
 		// Create system under test.
 		$this->sut = new CheckoutEventTracker();
-		$this->sut->init( $this->mock_collector );
+		$this->sut->init( $this->mock_collector, $this->logger );
+	}
+
+	/**
+	 * Do not install the controller logging spy. The tracker receives its logger directly.
+	 *
+	 * @return bool
+	 */
+	protected function uses_logging_spy(): bool {
+		return false;
 	}
 
 	/**
@@ -203,6 +221,98 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 		$this->sut->track_blocks_checkout_update();
 	}
 
+	/**
+	 * Checkout callbacks and their registered hooks.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function checkout_tracker_callbacks(): array {
+		return array(
+			'checkout page loaded'       => array( 'track_checkout_page_loaded', 'template_redirect' ),
+			'blocks checkout update'     => array( 'track_blocks_checkout_update', 'woocommerce_store_api_checkout_update_customer_from_request' ),
+			'shortcode field update'     => array( 'track_shortcode_checkout_field_update', 'woocommerce_checkout_update_order_review' ),
+			'shortcode order processed'  => array( 'track_order_placed_from_shortcode', 'woocommerce_checkout_order_processed' ),
+			'store api order processed'  => array( 'track_order_placed_from_store_api', 'woocommerce_store_api_checkout_order_processed' ),
+			'successful payment status'  => array( 'clear_events_on_successful_payment', 'woocommerce_order_status_changed' ),
+		);
+	}
+
+	/**
+	 * @testdox Every checkout tracker callback contains a collector failure.
+	 * @dataProvider checkout_tracker_callbacks
+	 *
+	 * @param string $callback Callback method name.
+	 * @param string $hook     Registered hook name.
+	 */
+	public function test_tracker_callbacks_contain_failures( string $callback, string $hook ): void {
+		$exception = new \RuntimeException( 'collector failed' );
+		$this->mock_collector
+			->method( 'collect' )
+			->willThrowException( $exception );
+		$this->mock_collector
+			->method( 'clear_collected_events' )
+			->willThrowException( $exception );
+
+		switch ( $callback ) {
+			case 'track_checkout_page_loaded':
+				add_filter( 'woocommerce_is_checkout', '__return_true' );
+				$this->sut->track_checkout_page_loaded();
+				remove_filter( 'woocommerce_is_checkout', '__return_true' );
+				break;
+			case 'track_blocks_checkout_update':
+				$this->sut->track_blocks_checkout_update();
+				break;
+			case 'track_shortcode_checkout_field_update':
+				$this->mock_collector
+					->method( 'get_current_billing_country' )
+					->willReturn( 'CA' );
+				$this->mock_collector
+					->method( 'get_current_shipping_country' )
+					->willReturn( null );
+				$this->sut->track_shortcode_checkout_field_update( 'billing_country=US' );
+				break;
+			case 'track_order_placed_from_shortcode':
+				$order = wc_create_order();
+				$this->assertInstanceOf( \WC_Order::class, $order );
+				$this->sut->track_order_placed_from_shortcode( $order->get_id(), array(), $order );
+				$order->delete( true );
+				break;
+			case 'track_order_placed_from_store_api':
+				$order = wc_create_order();
+				$this->assertInstanceOf( \WC_Order::class, $order );
+				$this->sut->track_order_placed_from_store_api( $order );
+				$order->delete( true );
+				break;
+			case 'clear_events_on_successful_payment':
+				$this->sut->clear_events_on_successful_payment( 1, 'pending', 'processing' );
+				break;
+		}
+
+		$this->assertCount( 1, $this->logger->entries );
+		$entry = $this->logger->entries[0];
+		$this->assertSame( 'error', $entry['level'] );
+		$this->assertTrue( $entry['forwarded'] );
+		$this->assertSame( 'checkout_event_tracker', $entry['context']['event_source'] );
+		$this->assertSame( $hook, $entry['context']['hook'] );
+		$this->assertSame( \RuntimeException::class, $entry['context']['exception_class'] );
+	}
+
+	/**
+	 * @testdox A checkout tracker failure before collection is contained and logged.
+	 */
+	public function test_tracker_pre_collection_failure_is_contained(): void {
+		$this->mock_collector
+			->method( 'get_current_billing_country' )
+			->willThrowException( new \RuntimeException( 'country lookup failed' ) );
+
+		$this->sut->track_shortcode_checkout_field_update( 'billing_country=US' );
+
+		$this->assertCount( 1, $this->logger->entries );
+		$this->assertSame( 'woocommerce_checkout_update_order_review', $this->logger->entries[0]['context']['hook'] );
+		$this->assertSame( \RuntimeException::class, $this->logger->entries[0]['context']['exception_class'] );
+		$this->assertTrue( $this->logger->entries[0]['forwarded'] );
+	}
+
 	// ========================================
 	// Shortcode Checkout Tests
 	// ========================================
@@ -211,15 +321,13 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	 * @testdox The shortcode update callback ignores a non-string post_data value.
 	 */
 	public function test_shortcode_update_callback_ignores_non_string_post_data(): void {
-		$spy = $this->spy_on_controller_logging();
-
 		$this->mock_collector
 			->expects( $this->never() )
 			->method( 'collect' );
 
 		$this->sut->track_shortcode_checkout_field_update( array( 'billing_country' => 'US' ) );
 
-		$this->assertSame( array(), $spy->entries );
+		$this->assertSame( array(), $this->logger->entries );
 	}
 
 	/**
@@ -231,8 +339,6 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	 * @param array  $expected_event Expected collected event data.
 	 */
 	public function test_shortcode_update_callback_omits_malformed_field_and_keeps_valid_fields( string $posted_data, array $expected_event ): void {
-		$spy = $this->spy_on_controller_logging();
-
 		if ( isset( $expected_event['payment'] ) ) {
 			$gateways = WC()->payment_gateways()->payment_gateways();
 			$this->assertArrayHasKey( 'cod', $gateways );
@@ -240,7 +346,7 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 		}
 
 		$this->assertSame( $expected_event, $this->capture_shortcode_update_event( $posted_data ) );
-		$this->assertSame( array(), $spy->entries );
+		$this->assertSame( array(), $this->logger->entries );
 	}
 
 	/**
@@ -514,7 +620,8 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	 * @testdox track_order_placed() collects session data with order details.
 	 */
 	public function test_track_order_placed_collects_data(): void {
-		$order = \WC_Helper_Order::create_order();
+		$order = wc_create_order();
+		$this->assertInstanceOf( \WC_Order::class, $order );
 
 		$this->mock_collector
 			->expects( $this->once() )

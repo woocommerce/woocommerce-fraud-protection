@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -19,6 +20,15 @@ defined( 'ABSPATH' ) || exit;
  * handles session data storage internally.
  */
 class PaymentMethodEventTracker {
+	/**
+	 * Failure log message.
+	 */
+	private const FAILURE_MESSAGE = 'Payment method event tracker callback failed';
+
+	/**
+	 * Event source for failure logs.
+	 */
+	private const EVENT_SOURCE = 'payment_method_event_tracker';
 
 	/**
 	 * Session data collector instance.
@@ -28,14 +38,23 @@ class PaymentMethodEventTracker {
 	private SessionDataCollector $session_data_collector;
 
 	/**
+	 * Fraud Protection logger instance.
+	 *
+	 * @var FraudProtectionLogger
+	 */
+	private FraudProtectionLogger $logger;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionDataCollector $session_data_collector The session data collector instance.
+	 * @param SessionDataCollector  $session_data_collector The session data collector instance.
+	 * @param FraudProtectionLogger $logger                 The Fraud Protection logger instance.
 	 */
-	final public function init( SessionDataCollector $session_data_collector ): void {
+	final public function init( SessionDataCollector $session_data_collector, FraudProtectionLogger $logger ): void {
 		$this->session_data_collector = $session_data_collector;
+		$this->logger                 = $logger;
 	}
 
 	/**
@@ -58,7 +77,11 @@ class PaymentMethodEventTracker {
 	 * @return void
 	 */
 	public function track_add_payment_method_page_loaded(): void {
-		$this->session_data_collector->collect( 'add_payment_method_page_loaded', array() );
+		try {
+			$this->session_data_collector->collect( 'add_payment_method_page_loaded', array() );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'before_woocommerce_add_payment_method', $e );
+		}
 	}
 
 	/**
@@ -72,9 +95,13 @@ class PaymentMethodEventTracker {
 	 * @param \WC_Payment_Token $token    The payment token object.
 	 */
 	public function track_payment_method_added( $token_id, $token ): void {
-		$event_data = $this->build_payment_method_event_data( 'added', $token );
+		try {
+			$event_data = $this->build_payment_method_event_data( 'added', $token );
 
-		$this->session_data_collector->collect( 'payment_method_added', $event_data );
+			$this->session_data_collector->collect( 'payment_method_added', $event_data );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_new_payment_token', $e );
+		}
 	}
 
 	/**
@@ -107,5 +134,28 @@ class PaymentMethodEventTracker {
 		}
 
 		return $event_data;
+	}
+
+	/**
+	 * Log a tracker callback failure.
+	 *
+	 * @param string     $hook The WordPress hook the failing callback is registered on.
+	 * @param \Throwable $e    The caught throwable.
+	 * @return void
+	 */
+	private function log_tracker_failure( string $hook, \Throwable $e ): void {
+		$this->logger->log(
+			'error',
+			self::FAILURE_MESSAGE,
+			array(
+				'event_source'      => self::EVENT_SOURCE,
+				'hook'              => $hook,
+				'exception_class'   => $e::class,
+				'exception_message' => $e->getMessage(),
+				'exception_file'    => $e->getFile(),
+				'exception_line'    => $e->getLine(),
+			),
+			true
+		);
 	}
 }
