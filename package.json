@@ -14,7 +14,8 @@
 	],
 	"scripts": {
 		"build": "wp-scripts build",
-		"build:release": "wp-scripts build --mode=production && npm run plugin-zip",
+		"build:qit": "npm run build:release && bin/package-qit-zip.sh woocommerce-fraud-protection.zip woocommerce-fraud-protection-qit.zip",
+		"build:release": "composer install --prefer-dist --no-dev --no-interaction --no-progress && wp-scripts build --mode=production && wp-scripts plugin-zip",
 		"start": "wp-scripts start",
 		"env": "wp-env",
 		"env:start": "wp-env start",
@@ -31,7 +32,6 @@
 		"lint:php": "vendor/bin/phpcs",
 		"lint:php:autofix": "vendor/bin/phpcbf",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
-		"plugin-zip": "composer install --no-dev && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip woocommerce-fraud-protection/package.json woocommerce-fraud-protection/README.md && composer install",
 		"test": "npm run test:smoke && npm run test:php && npm run test:js",
 		"test:js": "wp-scripts test-unit-js",
 		"test:php": "vendor/bin/phpunit",

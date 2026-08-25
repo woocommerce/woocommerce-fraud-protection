@@ -61,6 +61,7 @@ tmp/
 .phpunit.result.cache
 coverage/
 woocommerce-fraud-protection.zip
+woocommerce-fraud-protection-qit.zip
 build/
 .DS_Store
 
