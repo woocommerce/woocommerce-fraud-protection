@@ -134,14 +134,7 @@ jobs:
         with:
           name: release-${{ inputs.version }}-${{ github.sha }}
 
-      - name: Create or update draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ github.sha }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: bin/prepare-github-release.sh "$RELEASE_VERSION" "$RELEASE_SHA" woocommerce-fraud-protection.zip release-notes.txt
-
-      - name: Verify and publish release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_BRANCH: ${{ github.ref_name }}
@@ -151,4 +144,4 @@ jobs:
           TARGET_BRANCH: ${{ inputs.target_branch }}
         run: |
           bin/validate-release-pr.sh "$RELEASE_BRANCH" "$RELEASE_SHA" "$TARGET_BRANCH" >/dev/null
-          bin/publish-github-release.sh "$RELEASE_VERSION" "$RELEASE_SHA" woocommerce-fraud-protection.zip "$RELEASE_PR_URL"
+          bin/publish-github-release.sh "$RELEASE_VERSION" "$RELEASE_SHA" woocommerce-fraud-protection.zip release-notes.txt "$RELEASE_PR_URL"
