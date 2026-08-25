@@ -38,11 +38,6 @@ if ! grep -Eq "^[0-9]{4}-[0-9]{2}-[0-9]{2} - version $version$" "$repository_dir
 	exit 1
 fi
 
-if git -C "$repository_dir" rev-parse --verify --quiet "refs/tags/v$version" >/dev/null 2>&1; then
-	echo "Tag v$version already exists." >&2
-	exit 1
-fi
-
 extract_release_notes() {
 	awk -v version="$version" '
 		$0 ~ "^[0-9]{4}-[0-9]{2}-[0-9]{2} - version " version "$" {

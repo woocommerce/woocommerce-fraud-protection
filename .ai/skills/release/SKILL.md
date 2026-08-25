@@ -14,7 +14,7 @@ Prepare a release pull request and use the protected GitHub Actions workflow to 
 
 ## Instructions
 
-1. Read the version from the `YYYY-xx-xx` block at the top of `changelog.txt`, the current package version, and the latest `v*` tag. Use the requested version when supplied. Otherwise, propose the placeholder version. Stop if the tag already exists or the requested version does not match the placeholder.
+1. Read the version from the `YYYY-xx-xx` block at the top of `changelog.txt`, the current package version, and the latest published release. Use the requested version when supplied. Otherwise, propose the placeholder version. Stop if the version is already published or the requested version does not match the placeholder. A matching draft release can be resumed.
 
 2. Review commits and pull requests since the latest release. Confirm that every merchant-facing or developer-facing change has an accurate entry in the placeholder block. Do not add entries for tests, CI, documentation, internal refactoring, or a defect introduced and fixed within this release cycle.
 
