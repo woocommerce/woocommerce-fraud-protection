@@ -15,7 +15,7 @@
 	"scripts": {
 		"build": "wp-scripts build",
 		"build:qit": "npm run build:release && bin/package-qit-zip.sh woocommerce-fraud-protection.zip woocommerce-fraud-protection-qit.zip",
-		"build:release": "wp-scripts build --mode=production && wp-scripts plugin-zip",
+		"build:release": "wp-scripts build --mode=production && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip woocommerce-fraud-protection/package.json woocommerce-fraud-protection/README.md",
 		"start": "wp-scripts start",
 		"env": "wp-env",
 		"env:start": "wp-env start",

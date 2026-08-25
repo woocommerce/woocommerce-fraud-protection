@@ -25,6 +25,7 @@ fi
 unzip -q "$release_archive" -d "$temporary_dir"
 cp "$repository_dir/composer.json" "$temporary_dir/$plugin_root/composer.json"
 cp "$repository_dir/composer.lock" "$temporary_dir/$plugin_root/composer.lock"
+cp "$repository_dir/package.json" "$temporary_dir/$plugin_root/package.json"
 cp "$repository_dir/package-lock.json" "$temporary_dir/$plugin_root/package-lock.json"
 
 (cd "$temporary_dir" && zip -qr "$qit_archive" "$plugin_root")
