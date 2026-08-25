@@ -5,25 +5,35 @@ on:
   push:
     branches: [trunk]
 
+permissions:
+  contents: read
+
 jobs:
   qit-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           ref: ${{ github.ref }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: '8.1'
-          tools: composer
+          tools: composer:2.9.1
           coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
 
       - name: Get Composer cache directory
         id: composer-cache
-        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Composer dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -33,40 +43,34 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-composer-
 
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-dev --no-progress
+      - name: Install production Composer dependencies
+        run: composer install --prefer-dist --no-dev --no-interaction --no-progress
 
       - name: Build plugin zip
         run: |
-          # Create a clean build directory
-          mkdir -p build
+          npm ci
+          npm run build:qit
 
-          # Copy plugin files (excluding dev files)
-          rsync -av --progress . build/woocommerce-fraud-protection \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='.ai' \
-            --exclude='build' \
-            --exclude='tests' \
-            --exclude='node_modules' \
-            --exclude='.phpunit.result.cache' \
-            --exclude='phpunit.xml' \
-            --exclude='phpcs.xml' \
-            --exclude='composer.lock' \
-            --exclude='coverage' \
-            --exclude='*.md'
-
-          # Create the zip file
-          cd build && zip -r ../woocommerce-fraud-protection.zip woocommerce-fraud-protection
+      - name: Upload plugin zip
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: woocommerce-fraud-protection-${{ github.sha }}
+          path: |
+            woocommerce-fraud-protection.zip
+            woocommerce-fraud-protection-qit.zip
+          retention-days: 7
 
       - name: Install QIT CLI
-        run: composer require woocommerce/qit-cli
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Authenticate QIT
-        run: ./vendor/bin/qit partner:add --user='${{ secrets.QIT_USER }}' --application_password='${{ secrets.QIT_APP_PASS }}'
+        env:
+          QIT_APP_PASS: ${{ secrets.QIT_APP_PASS }}
+          QIT_USER: ${{ secrets.QIT_USER }}
+        run: vendor/bin/qit partner:add --user="$QIT_USER" --application_password="$QIT_APP_PASS"
 
       - name: Run Activation Test
-        run: ./vendor/bin/qit run:activation woocommerce-fraud-protection --zip=woocommerce-fraud-protection.zip --wait
+        run: vendor/bin/qit run:activation woocommerce-fraud-protection --zip=woocommerce-fraud-protection-qit.zip --wait
 
       - name: Run Security Test
-        run: ./vendor/bin/qit run:security woocommerce-fraud-protection --zip=woocommerce-fraud-protection.zip --wait
+        run: vendor/bin/qit run:security woocommerce-fraud-protection --zip=woocommerce-fraud-protection-qit.zip --wait
