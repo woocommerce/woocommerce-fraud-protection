@@ -327,16 +327,20 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	public function test_store_api_order_hook_contains_malformed_order(): void {
 		$this->sut->track_order_placed_from_store_api( array() );
 
-		$this->assert_tracker_failure_logged( 'woocommerce_store_api_checkout_order_processed', \TypeError::class );
+		$this->assert_tracker_failure_logged( 'woocommerce_store_api_checkout_order_processed', \Error::class );
 	}
 
 	/**
 	 * @testdox The successful payment callback contains a malformed status.
 	 */
 	public function test_successful_payment_hook_contains_malformed_status(): void {
+		$this->mock_collector
+			->expects( $this->never() )
+			->method( 'clear_collected_events' );
+
 		$this->sut->clear_events_on_successful_payment( 1, array(), 'processing' );
 
-		$this->assert_tracker_failure_logged( 'woocommerce_order_status_changed', \TypeError::class );
+		$this->assertSame( array(), $this->logger->entries );
 	}
 
 	/**

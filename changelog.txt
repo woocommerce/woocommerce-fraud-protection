@@ -1,7 +1,7 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.1.10
-* Fixed - Checkout and payment-method requests now continue when event tracking fails.
+* Fixed - Prevent event tracking failures from interrupting checkout and payment-method requests.
 
 2026-08-25 - version 0.1.9
 * Added - WP-CLI commands to check plugin status, install or repair the database schema, and prune expired sessions.
