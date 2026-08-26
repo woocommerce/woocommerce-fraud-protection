@@ -142,15 +142,23 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox with_merchant_identifier() and with_transaction_mode() preserve the identifier pair.
 	 */
 	public function test_copy_methods_preserve_merchant_identifier_pair(): void {
-		$data = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Unknown );
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242' ) );
+		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument, PaymentMode::Live );
 
-		$result = $data
-			->with_merchant_identifier( 'acct_123', 'account' )
-			->with_transaction_mode( PaymentMode::Test )
-			->to_array();
+		$with_identifier = $data->with_merchant_identifier( 'acct_123', 'account' )->to_array();
+		$result          = $data->with_merchant_identifier( 'acct_123', 'account' )
+			->with_transaction_mode( PaymentMode::Test )->to_array();
 
-		$this->assertSame( 'acct_123', $result['merchant_identifier'] );
-		$this->assertSame( 'account', $result['merchant_identifier_type'] );
+		foreach ( array( $with_identifier, $result ) as $array ) {
+			$this->assertSame( 'card', $array['payment_type'] );
+			$this->assertTrue( $array['is_saved_payment_method'] );
+			$this->assertSame( 'visa', $array['instrument']['brand'] );
+			$this->assertSame( '4242', $array['instrument']['last4'] );
+			$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+			$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		}
+
+		$this->assertSame( PaymentMode::Live->value, $with_identifier['transaction_mode'] );
 		$this->assertSame( PaymentMode::Test->value, $result['transaction_mode'] );
 	}
 

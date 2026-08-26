@@ -295,6 +295,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Handles 'stripe_sepa_debit' gateway ID.
 	 */
 	public function test_handles_stripe_sepa_debit_gateway_id(): void {
+		WC_Stripe_Account_Stub::set_account_data( array( 'id' => 'acct_123' ) );
 		$response       = new \stdClass();
 		$response->type = 'sepa_debit';
 
@@ -308,6 +309,8 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array = $result->to_array();
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
 		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -331,6 +334,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Resolves card details from mocked API response.
 	 */
 	public function test_resolves_card_via_api(): void {
+		WC_Stripe_Account_Stub::set_account_data( array( 'id' => 'acct_123' ) );
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
 		$result = $this->sut->resolve(
@@ -360,6 +364,8 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'avs_postcode_check' => null,
 				),
 				'transaction_mode'        => PaymentMode::Live->value,
+				'merchant_identifier'     => 'acct_123',
+				'merchant_identifier_type' => 'account',
 			),
 			$result->to_array()
 		);

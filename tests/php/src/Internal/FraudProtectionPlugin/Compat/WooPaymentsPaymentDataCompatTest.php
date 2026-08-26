@@ -342,13 +342,17 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_matches_apm_gateway(): void {
 		\WC_Payments::set_live( false );
+		WC_Payments_Account_Service_Stub::set_stripe_account_id( 'acct_123' );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments_bancontact' ),
 			array()
 		);
 
-		$this->assertSame( PaymentMode::Test->value, $result->to_array()['transaction_mode'] );
+		$array = $result->to_array();
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -400,6 +404,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_resolves_card_via_api(): void {
 		\WC_Payments::set_live( false );
+		WC_Payments_Account_Service_Stub::set_stripe_account_id( 'acct_123' );
 
 		$this->mock_api_response( $this->create_card_response() );
 
@@ -430,6 +435,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'avs_postcode_check' => CheckResult::Unchecked->value,
 				),
 				'transaction_mode'        => PaymentMode::Test->value,
+				'merchant_identifier'     => 'acct_123',
+				'merchant_identifier_type' => 'account',
 			),
 			$result->to_array()
 		);
@@ -732,6 +739,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_skips_resolution_when_woopay_enabled(): void {
 		\WC_Payments::set_live( false );
 		\WC_Payments_Features::set_woopay_enabled( true );
+		WC_Payments_Account_Service_Stub::set_stripe_account_id( 'acct_123' );
 
 		$this->mock_api_response( $this->create_card_response() );
 
@@ -744,6 +752,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( $array['payment_type'] );
 		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**

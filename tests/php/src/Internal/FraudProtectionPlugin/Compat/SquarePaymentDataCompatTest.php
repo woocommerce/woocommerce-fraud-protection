@@ -141,6 +141,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Saved card with empty card keys preserves token data.
 	 */
 	public function test_saved_card_with_empty_keys_preserves_token_data(): void {
+		\WC_Square_Settings_Stub::set_location_id( 'location_123' );
 		$token_data = new PaymentMethodData(
 			'square_credit_card',
 			'card',
@@ -161,6 +162,8 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( $array['is_saved_payment_method'] );
 		$this->assertSame( 'visa', $array['instrument']['brand'] );
 		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertSame( 'location_123', $array['merchant_identifier'] );
+		$this->assertSame( 'location', $array['merchant_identifier_type'] );
 	}
 
 	/**
