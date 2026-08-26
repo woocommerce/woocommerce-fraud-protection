@@ -25,4 +25,9 @@ class Settings {
 	 * @return bool
 	 */
 	public function is_sandbox(): bool {}
+
+	/**
+	 * @return string
+	 */
+	public function get_location_id(): string {}
 }

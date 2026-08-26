@@ -25,6 +25,20 @@ class WC_Square_Settings_Stub {
 	private static bool $sandbox = false;
 
 	/**
+	 * Square location identifier.
+	 *
+	 * @var mixed
+	 */
+	private static $location_id;
+
+	/**
+	 * Whether getting the location ID should throw.
+	 *
+	 * @var bool
+	 */
+	private static bool $location_id_throws = false;
+
+	/**
 	 * Set the sandbox state for testing.
 	 *
 	 * @param bool $sandbox True = sandbox, false = production.
@@ -35,12 +49,45 @@ class WC_Square_Settings_Stub {
 	}
 
 	/**
+	 * Set the location identifier for testing.
+	 *
+	 * @param mixed $location_id Location identifier.
+	 * @return void
+	 */
+	public static function set_location_id( $location_id ): void {
+		self::$location_id = $location_id;
+	}
+
+	/**
+	 * Set whether getting the location ID throws.
+	 *
+	 * @param bool $throws Whether to throw.
+	 * @return void
+	 */
+	public static function set_location_id_throws( bool $throws ): void {
+		self::$location_id_throws = $throws;
+	}
+
+	/**
 	 * Whether Square is in sandbox mode.
 	 *
 	 * @return bool
 	 */
 	public function is_sandbox(): bool {
 		return self::$sandbox;
+	}
+
+	/**
+	 * Get the configured location identifier.
+	 *
+	 * @return mixed
+	 */
+	public function get_location_id() {
+		if ( self::$location_id_throws ) {
+			throw new \RuntimeException( 'Location lookup failed' );
+		}
+
+		return self::$location_id;
 	}
 }
 

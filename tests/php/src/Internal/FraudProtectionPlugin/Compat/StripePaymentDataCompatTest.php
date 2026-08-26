@@ -94,6 +94,70 @@ if ( ! class_exists( '\WC_Stripe_Mode', false ) ) {
 	class_alias( __NAMESPACE__ . '\WC_Stripe_Mode_Stub', 'WC_Stripe_Mode' );
 }
 
+// Stub WC_Stripe and its account service if the real class isn't loaded.
+if ( ! class_exists( '\WC_Stripe', false ) ) {
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WC_Stripe_Account_Stub {
+
+		/**
+		 * Mock account response.
+		 *
+		 * @var mixed
+		 */
+		private static $account_data;
+
+		/**
+		 * Whether the account lookup should throw.
+		 *
+		 * @var bool
+		 */
+		private static bool $throws = false;
+
+		public static function set_account_data( $account_data ): void {
+			self::$account_data = $account_data;
+		}
+
+		public static function set_throws( bool $throws ): void {
+			self::$throws = $throws;
+		}
+
+		public static function reset(): void {
+			self::$account_data = null;
+			self::$throws       = false;
+		}
+
+		public function get_cached_account_data() {
+			if ( self::$throws ) {
+				throw new \RuntimeException( 'Account lookup failed' );
+			}
+
+			return self::$account_data;
+		}
+	}
+
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WC_Stripe_Stub {
+		public WC_Stripe_Account_Stub $account;
+
+		public function __construct() {
+			$this->account = new WC_Stripe_Account_Stub();
+		}
+
+		public static function get_instance(): self {
+			static $instance;
+
+			if ( ! $instance ) {
+				$instance = new self();
+			}
+
+			return $instance;
+		}
+	}
+
+	class_alias( __NAMESPACE__ . '\WC_Stripe_Account_Stub', 'WC_Stripe_Account' );
+	class_alias( __NAMESPACE__ . '\WC_Stripe_Stub', 'WC_Stripe' );
+}
+
 /**
  * Tests for the StripePaymentDataCompat class.
  *
@@ -122,6 +186,9 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		\WC_Stripe_API::reset();
+		if ( class_exists( __NAMESPACE__ . '\\WC_Stripe_Account_Stub', false ) ) {
+			WC_Stripe_Account_Stub::reset();
+		}
 		WC_Stripe_Mode_Stub::set_live( true );
 		parent::tearDown();
 	}
@@ -182,6 +249,46 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertSame( 'card', $result->to_array()['payment_type'] );
+	}
+
+	/**
+	 * @testdox Includes the connected account identifier for a Stripe gateway.
+	 */
+	public function test_includes_account_identifier(): void {
+		WC_Stripe_Account_Stub::set_account_data( array( 'id' => ' acct_123 ' ) );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
+
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox Omits the account identifier when Stripe account data is invalid or throws.
+	 *
+	 * @dataProvider invalid_account_data_provider
+	 *
+	 * @param mixed $account_data Account data.
+	 * @param bool  $throws Whether the lookup throws.
+	 */
+	public function test_omits_invalid_account_identifier( $account_data, bool $throws ): void {
+		WC_Stripe_Account_Stub::set_account_data( $account_data );
+		WC_Stripe_Account_Stub::set_throws( $throws );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
+
+		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+	}
+
+	/**
+	 * @return array<string, array{mixed, bool}>
+	 */
+	public function invalid_account_data_provider(): array {
+		return array(
+			'empty'     => array( array( 'id' => '' ), false ),
+			'malformed' => array( array( 'id' => array() ), false ),
+			'throwing'  => array( null, true ),
+		);
 	}
 
 	/**

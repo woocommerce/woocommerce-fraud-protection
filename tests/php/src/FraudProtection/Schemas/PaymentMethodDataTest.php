@@ -104,6 +104,57 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox to_array() includes a complete merchant identifier pair.
+	 */
+	public function test_to_array_includes_merchant_identifier_pair(): void {
+		$data = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Live, 'acct_123', 'account' );
+
+		$this->assertSame( 'acct_123', $data->to_array()['merchant_identifier'] );
+		$this->assertSame( 'account', $data->to_array()['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox to_array() omits an incomplete merchant identifier pair.
+	 *
+	 * @dataProvider incomplete_merchant_identifier_provider
+	 */
+	public function test_to_array_omits_incomplete_merchant_identifier_pair( ?string $identifier, ?string $type ): void {
+		$data  = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Unknown, $identifier, $type );
+		$array = $data->to_array();
+
+		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+		$this->assertArrayNotHasKey( 'merchant_identifier_type', $array );
+	}
+
+	/**
+	 * @return array<string, array{?string, ?string}>
+	 */
+	public function incomplete_merchant_identifier_provider(): array {
+		return array(
+			'missing identifier' => array( null, 'account' ),
+			'missing type'       => array( 'acct_123', null ),
+			'empty identifier'   => array( '', 'account' ),
+			'empty type'         => array( 'acct_123', '' ),
+		);
+	}
+
+	/**
+	 * @testdox with_merchant_identifier() and with_transaction_mode() preserve the identifier pair.
+	 */
+	public function test_copy_methods_preserve_merchant_identifier_pair(): void {
+		$data = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Unknown );
+
+		$result = $data
+			->with_merchant_identifier( 'acct_123', 'account' )
+			->with_transaction_mode( PaymentMode::Test )
+			->to_array();
+
+		$this->assertSame( 'acct_123', $result['merchant_identifier'] );
+		$this->assertSame( 'account', $result['merchant_identifier_type'] );
+		$this->assertSame( PaymentMode::Test->value, $result['transaction_mode'] );
+	}
+
+	/**
 	 * @testdox with_transaction_mode() preserves all other fields.
 	 */
 	public function test_with_transaction_mode_preserves_fields(): void {

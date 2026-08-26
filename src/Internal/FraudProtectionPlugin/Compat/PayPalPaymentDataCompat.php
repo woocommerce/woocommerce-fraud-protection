@@ -50,7 +50,33 @@ class PayPalPaymentDataCompat {
 			return $resolved;
 		}
 
-		return $resolved->with_transaction_mode( $this->resolve_transaction_mode() );
+		$merchant_identifier = $this->resolve_merchant_identifier();
+		$result              = $resolved->with_transaction_mode( $this->resolve_transaction_mode() );
+
+		return null !== $merchant_identifier
+			? $result->with_merchant_identifier( $merchant_identifier, 'account' )
+			: $result;
+	}
+
+	/**
+	 * Resolve the PayPal merchant identifier.
+	 *
+	 * @return ?string The merchant identifier, if available.
+	 */
+	private function resolve_merchant_identifier(): ?string {
+		if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP' ) ) {
+			return null;
+		}
+
+		try {
+			$merchant_identifier = \WooCommerce\PayPalCommerce\PPCP::container()->get( 'api.merchant_id' );
+
+			return is_string( $merchant_identifier ) && '' !== trim( $merchant_identifier )
+				? trim( $merchant_identifier )
+				: null;
+		} catch ( \Throwable $e ) {
+			return null;
+		}
 	}
 
 	/**
