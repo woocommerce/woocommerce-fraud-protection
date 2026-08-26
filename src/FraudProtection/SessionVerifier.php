@@ -166,14 +166,17 @@ class SessionVerifier {
 	 * Fail-open: Never throws. Returns ALLOW on any internal error.
 	 *
 	 * @param mixed  $session_id   The submitted Blackbox session ID.
-	 * @param string $source       Identifies the caller (e.g. 'blocks_checkout').
+	 * @param string $source       Stable application-defined ASCII caller identifier, capped at 32 characters.
 	 * @param int    $order_id     The WooCommerce order ID (0 for pre-order flows).
 	 * @param array  $request_data Request data containing payment_method and payment_data.
 	 * @return FraudDecision The final decision: Allow or Block.
 	 */
 	public function verify_session( mixed $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
 		$this->last_verified_session_id = '';
-		$normalized_session_id          = $this->session_id_normalizer->normalize( $session_id );
+		// Reuse the bounded source so filters, logs, requests, and stored rows agree.
+		$source = mb_substr( $source, 0, 32 );
+
+		$normalized_session_id = $this->session_id_normalizer->normalize( $session_id );
 
 		try {
 			/**

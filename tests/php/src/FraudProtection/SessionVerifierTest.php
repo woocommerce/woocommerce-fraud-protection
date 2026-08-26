@@ -171,6 +171,51 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() caps the source consistently at 32 characters.
+	 */
+	public function test_verify_session_caps_source_consistently(): void {
+		$source          = str_repeat( 'a', 32 ) . 'b';
+		$expected_source = str_repeat( 'a', 32 );
+		$filter_source   = null;
+
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			function ( $supplied, string $filtered_source ) use ( &$filter_source ) {
+				$filter_source = $filtered_source;
+				return $supplied;
+			},
+			10,
+			2
+		);
+
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array() );
+
+		$expected_payload = array(
+			'source'  => $expected_source,
+			'payment' => array(),
+		);
+		$verify_result    = VerifyResult::create( FraudDecision::Allow, 'test-session' );
+
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->with( 'test-session', $expected_payload )
+			->willReturn( $verify_result );
+
+		$this->decision_handler
+			->expects( $this->once() )
+			->method( 'apply_decision' )
+			->with( $verify_result, $expected_payload )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( 'test-session', $source );
+
+		$this->assertSame( $expected_source, $filter_source );
+	}
+
+	/**
 	 * @testdox verify_session() passes the normalized submitted value to the API
 	 */
 	public function test_verify_session_uses_normalized_submitted_input(): void {
