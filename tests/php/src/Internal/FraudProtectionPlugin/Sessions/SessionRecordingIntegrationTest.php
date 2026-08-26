@@ -195,6 +195,30 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A complete Subscriptions source is identical in the request and recorded row.
+	 */
+	public function test_complete_source_is_sent_and_recorded(): void {
+		$captured_body = null;
+		$source        = 'subscriptions_change_payment';
+		$verifier      = $this->a_session_verifier_receiving(
+			array(
+				'session_id' => 'integration-source-session',
+				'decision'   => 'allow',
+			),
+			function ( array $request_args, string $body ) use ( &$captured_body ): void {
+				$captured_body = json_decode( $body, true );
+			}
+		);
+
+		$verifier->verify_session( 'integration-source-session', $source );
+
+		$row = $this->latest_row_for( 'integration-source-session' );
+		$this->assertNotNull( $row );
+		$this->assertSame( $source, $captured_body['context']['source'] );
+		$this->assertSame( $source, $row['source'] );
+	}
+
+	/**
 	 * @testdox An enforced block decision is recorded as blocked.
 	 */
 	public function test_enforced_block_decision_is_recorded_as_blocked(): void {

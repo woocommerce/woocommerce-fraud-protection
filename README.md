@@ -151,6 +151,8 @@ $verifier = wc_get_container()->get( SessionVerifier::class );
 $decision = $verifier->verify_session( $session_id, $source, $order_id, $request_data );
 ```
 
+Use a stable application-defined ASCII source identifier of 32 characters or fewer. The verifier shortens longer values to 32 characters at ingestion before it applies filters, sends the request, or records the local event.
+
 The remaining public classes are used directly: `BlockedSessionMessage`, `PaymentMethodData`, and `SuppliedDecision` have public constructors (`new`), while the other DTOs have private constructors and are built via their static factories (`ReportContextData::from_array()`, `PaymentInstrumentData::from_array()` / `::empty()`). The enums are used as cases (e.g. `MessageContext::Purchase`).
 
 ### Extension filters

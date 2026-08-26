@@ -43,8 +43,9 @@ class SubscriptionsChangePaymentCompat {
 
 	/**
 	 * Source identifier for verify requests from this compat layer.
+	 * Historical rows can contain `subscriptions_change_payment_met`; future session readers must group both values.
 	 */
-	private const SOURCE = 'subscriptions_change_payment_method';
+	private const SOURCE = 'subscriptions_change_payment';
 
 	/**
 	 * Session verifier instance.
