@@ -133,7 +133,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'test-session-123', 'subscriptions_change_payment_method', 42, $this->isType( 'array' ) )
+			->with( 'test-session-123', 'subscriptions_change_payment', 42, $this->isType( 'array' ) )
 			->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block( $subscription );
@@ -196,7 +196,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 			->method( 'verify_session' )
 			->with(
 				'sess-abc',
-				'subscriptions_change_payment_method',
+				'subscriptions_change_payment',
 				1,
 				$this->callback(
 					function ( array $request_data ): bool {

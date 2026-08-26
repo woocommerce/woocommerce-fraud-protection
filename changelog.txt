@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.1.10
+* Fixed - Verification source names are capped consistently at 32 characters across filters, requests, and session records. Subscription payment changes now use a complete source name within that limit.
+
 2026-08-25 - version 0.1.9
 * Added - WP-CLI commands to check plugin status, install or repair the database schema, and prune expired sessions.
 * Fixed - Classic checkout and checkout field tracking ignore unexpected field names and values while preserving valid data.
