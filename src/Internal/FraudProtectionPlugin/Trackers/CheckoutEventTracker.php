@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 
 defined( 'ABSPATH' ) || exit;
@@ -20,6 +21,15 @@ defined( 'ABSPATH' ) || exit;
  */
 class CheckoutEventTracker {
 	/**
+	 * Failure log message.
+	 */
+	private const FAILURE_MESSAGE = 'Checkout event tracker callback failed';
+
+	/**
+	 * Event source for failure logs.
+	 */
+	private const EVENT_SOURCE = 'checkout_event_tracker';
+	/**
 	 * Session data collector instance.
 	 *
 	 * @var SessionDataCollector
@@ -27,14 +37,23 @@ class CheckoutEventTracker {
 	private SessionDataCollector $session_data_collector;
 
 	/**
+	 * Fraud Protection logger instance.
+	 *
+	 * @var FraudProtectionLogger
+	 */
+	private FraudProtectionLogger $logger;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionDataCollector $session_data_collector    The session data collector instance.
+	 * @param SessionDataCollector  $session_data_collector The session data collector instance.
+	 * @param FraudProtectionLogger $logger                 The Fraud Protection logger instance.
 	 */
-	final public function init( SessionDataCollector $session_data_collector ): void {
+	final public function init( SessionDataCollector $session_data_collector, FraudProtectionLogger $logger ): void {
 		$this->session_data_collector = $session_data_collector;
+		$this->logger                 = $logger;
 	}
 
 	/**
@@ -61,12 +80,16 @@ class CheckoutEventTracker {
 	 * @return void
 	 */
 	public function track_checkout_page_loaded(): void {
-		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_order_received_page() ) {
-			return;
-		}
+		try {
+			if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_order_received_page() ) {
+				return;
+			}
 
-		$event_name = is_checkout_pay_page() ? 'pay_for_order_page_loaded' : 'checkout_page_loaded';
-		$this->session_data_collector->collect( $event_name, array() );
+			$event_name = is_checkout_pay_page() ? 'pay_for_order_page_loaded' : 'checkout_page_loaded';
+			$this->session_data_collector->collect( $event_name, array() );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'template_redirect', $e );
+		}
 	}
 
 	/**
@@ -79,8 +102,12 @@ class CheckoutEventTracker {
 	 * @return void
 	 */
 	public function track_blocks_checkout_update(): void {
-		// At this point we don't have any payment or shipping data, so we pass an empty array.
-		$this->session_data_collector->collect( 'checkout_update', array() );
+		try {
+			// At this point we don't have any payment or shipping data, so we pass an empty array.
+			$this->session_data_collector->collect( 'checkout_update', array() );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_store_api_checkout_update_customer_from_request', $e );
+		}
 	}
 
 	/**
@@ -95,43 +122,47 @@ class CheckoutEventTracker {
 	 * @return void
 	 */
 	public function track_shortcode_checkout_field_update( $posted_data ): void {
-		if ( ! is_string( $posted_data ) ) {
-			return;
-		}
+		try {
+			if ( ! is_string( $posted_data ) ) {
+				return;
+			}
 
-		// Parse the posted data to extract relevant fields.
-		$data = array();
-		if ( $posted_data ) {
-			parse_str( $posted_data, $data );
-		}
+			// Parse the posted data to extract relevant fields.
+			$data = array();
+			if ( $posted_data ) {
+				parse_str( $posted_data, $data );
+			}
 
-		// Get current customer countries using SessionDataCollector.
-		$current_billing_country  = $this->session_data_collector->get_current_billing_country();
-		$current_shipping_country = $this->session_data_collector->get_current_shipping_country();
+			// Get current customer countries using SessionDataCollector.
+			$current_billing_country  = $this->session_data_collector->get_current_billing_country();
+			$current_shipping_country = $this->session_data_collector->get_current_shipping_country();
 
-		// Get posted countries.
-		$posted_billing_country  = $data['billing_country'] ?? '';
-		$posted_shipping_country = $data['shipping_country'] ?? '';
+			// Get posted countries.
+			$posted_billing_country  = $data['billing_country'] ?? '';
+			$posted_shipping_country = $data['shipping_country'] ?? '';
 
-		// Check if billing country changed.
-		$billing_changed = ! empty( $posted_billing_country ) && $posted_billing_country !== $current_billing_country;
+			// Check if billing country changed.
+			$billing_changed = ! empty( $posted_billing_country ) && $posted_billing_country !== $current_billing_country;
 
-		// Check if shipping country changed.
-		$ship_to_different = ! empty( $data['ship_to_different_address'] );
-		if ( $ship_to_different ) {
-			// User wants different shipping address - check if shipping country changed.
-			$shipping_changed = ! empty( $posted_shipping_country ) && $posted_shipping_country !== $current_shipping_country;
-		} else {
-			// User wants same address for billing and shipping.
-			// If current shipping country exists and differs from billing country, it's a change.
-			$effective_billing_country = ! empty( $posted_billing_country ) ? $posted_billing_country : $current_billing_country;
-			$shipping_changed          = ! empty( $current_shipping_country ) && $current_shipping_country !== $effective_billing_country;
-		}
+			// Check if shipping country changed.
+			$ship_to_different = ! empty( $data['ship_to_different_address'] );
+			if ( $ship_to_different ) {
+				// User wants different shipping address - check if shipping country changed.
+				$shipping_changed = ! empty( $posted_shipping_country ) && $posted_shipping_country !== $current_shipping_country;
+			} else {
+				// User wants same address for billing and shipping.
+				// If current shipping country exists and differs from billing country, it's a change.
+				$effective_billing_country = ! empty( $posted_billing_country ) ? $posted_billing_country : $current_billing_country;
+				$shipping_changed          = ! empty( $current_shipping_country ) && $current_shipping_country !== $effective_billing_country;
+			}
 
-		// Only dispatch if either country changed.
-		if ( $billing_changed || $shipping_changed ) {
-			$event_data = $this->format_checkout_event_data( 'field_update', $data );
-			$this->session_data_collector->collect( 'checkout_update', $event_data );
+			// Only dispatch if either country changed.
+			if ( $billing_changed || $shipping_changed ) {
+				$event_data = $this->format_checkout_event_data( 'field_update', $data );
+				$this->session_data_collector->collect( 'checkout_update', $event_data );
+			}
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_checkout_update_order_review', $e );
 		}
 	}
 
@@ -298,8 +329,12 @@ class CheckoutEventTracker {
 	 * @param \WC_Order $order       The order object.
 	 * @return void
 	 */
-	public function track_order_placed_from_shortcode( int $order_id, array $posted_data, \WC_Order $order ): void {
-		$this->track_order_placed( $order_id, $order );
+	public function track_order_placed_from_shortcode( $order_id, $posted_data, $order ): void {
+		try {
+			$this->track_order_placed( $order_id, $order );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_checkout_order_processed', $e );
+		}
 	}
 
 	/**
@@ -312,8 +347,12 @@ class CheckoutEventTracker {
 	 * @param \WC_Order $order The order object.
 	 * @return void
 	 */
-	public function track_order_placed_from_store_api( \WC_Order $order ): void {
-		$this->track_order_placed( $order->get_id(), $order );
+	public function track_order_placed_from_store_api( $order ): void {
+		try {
+			$this->track_order_placed( $order->get_id(), $order );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_store_api_checkout_order_processed', $e );
+		}
 	}
 
 	/**
@@ -336,20 +375,47 @@ class CheckoutEventTracker {
 	 * @param string $new_status The new order status.
 	 * @return void
 	 */
-	public function clear_events_on_successful_payment( int $order_id, string $old_status, string $new_status ): void {
-		$initial_checkout_statuses               = array( 'checkout-draft', 'pending', 'failed' );
-		$successful_checkout_transition_statuses = array( 'processing', 'completed', 'on-hold' );
+	public function clear_events_on_successful_payment( $order_id, $old_status, $new_status ): void {
+		try {
+			$initial_checkout_statuses               = array( 'checkout-draft', 'pending', 'failed' );
+			$successful_checkout_transition_statuses = array( 'processing', 'completed', 'on-hold' );
 
-		// Skip for transitions starting on non initial checkout statuses.
-		if ( ! in_array( $old_status, $initial_checkout_statuses, true ) ) {
-			return;
+			// Skip for transitions starting on non initial checkout statuses.
+			if ( ! in_array( $old_status, $initial_checkout_statuses, true ) ) {
+				return;
+			}
+
+			// Skip for transitions ending on non checkout success statuses (e.g., 'failed' or 'cancelled').
+			if ( ! in_array( $new_status, $successful_checkout_transition_statuses, true ) ) {
+				return;
+			}
+
+			$this->session_data_collector->clear_collected_events();
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_order_status_changed', $e );
 		}
+	}
 
-		// Skip for transitions ending on non checkout success statuses (e.g., 'failed' or 'cancelled').
-		if ( ! in_array( $new_status, $successful_checkout_transition_statuses, true ) ) {
-			return;
-		}
-
-		$this->session_data_collector->clear_collected_events();
+	/**
+	 * Log a tracker callback failure.
+	 *
+	 * @param string     $hook The WordPress hook the failing callback is registered on.
+	 * @param \Throwable $e    The caught throwable.
+	 * @return void
+	 */
+	private function log_tracker_failure( string $hook, \Throwable $e ): void {
+		$this->logger->log(
+			'error',
+			self::FAILURE_MESSAGE,
+			array(
+				'event_source'      => self::EVENT_SOURCE,
+				'hook'              => $hook,
+				'exception_class'   => $e::class,
+				'exception_message' => $e->getMessage(),
+				'exception_file'    => $e->getFile(),
+				'exception_line'    => $e->getLine(),
+			),
+			true
+		);
 	}
 }

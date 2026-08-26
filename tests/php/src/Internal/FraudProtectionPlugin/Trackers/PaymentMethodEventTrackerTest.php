@@ -10,8 +10,9 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Trackers;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\PaymentMethodEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FraudProtectionLoggerForTests;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\PaymentMethodEventTracker;
 
 /**
  * Tests for the PaymentMethodEventTracker class.
@@ -35,6 +36,13 @@ class PaymentMethodEventTrackerTest extends FraudProtectionUnitTestCase {
 	private $mock_collector;
 
 	/**
+	 * In-memory logger injected into the system under test.
+	 *
+	 * @var FraudProtectionLoggerForTests
+	 */
+	private FraudProtectionLoggerForTests $logger;
+
+	/**
 	 * Setup test.
 	 */
 	public function setUp(): void {
@@ -42,10 +50,26 @@ class PaymentMethodEventTrackerTest extends FraudProtectionUnitTestCase {
 
 		// Create mock.
 		$this->mock_collector = $this->createMock( SessionDataCollector::class );
+		$this->logger         = new FraudProtectionLoggerForTests();
 
 		// Create system under test with mock.
 		$this->sut = new PaymentMethodEventTracker();
-		$this->sut->init( $this->mock_collector );
+		$this->sut->init( $this->mock_collector, $this->logger );
+	}
+
+	/**
+	 * Assert that a tracker failure was logged.
+	 *
+	 * @param string $hook Hook that invoked the tracker.
+	 */
+	private function assert_tracker_failure_logged( string $hook ): void {
+		$this->assertCount( 1, $this->logger->entries );
+		$entry = $this->logger->entries[0];
+		$this->assertSame( 'error', $entry['level'] );
+		$this->assertTrue( $entry['forwarded'] );
+		$this->assertSame( 'payment_method_event_tracker', $entry['context']['event_source'] );
+		$this->assertSame( $hook, $entry['context']['hook'] );
+		$this->assertSame( \RuntimeException::class, $entry['context']['exception_class'] );
 	}
 
 	/**
@@ -79,6 +103,47 @@ class PaymentMethodEventTrackerTest extends FraudProtectionUnitTestCase {
 			);
 
 		$this->sut->track_add_payment_method_page_loaded();
+	}
+
+	/**
+	 * @testdox The add payment method page callback contains a collector failure.
+	 */
+	public function test_add_payment_method_page_callback_contains_collector_failure(): void {
+		$this->mock_collector
+			->method( 'collect' )
+			->willThrowException( new \RuntimeException( 'collector failed' ) );
+
+		$this->sut->track_add_payment_method_page_loaded();
+
+		$this->assert_tracker_failure_logged( 'before_woocommerce_add_payment_method' );
+	}
+
+	/**
+	 * @testdox The payment method added callback contains a collector failure.
+	 */
+	public function test_payment_method_added_callback_contains_collector_failure(): void {
+		$this->mock_collector
+			->method( 'collect' )
+			->willThrowException( new \RuntimeException( 'collector failed' ) );
+		$token = new \WC_Payment_Token_CC();
+
+		$this->sut->track_payment_method_added( 1, $token );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_new_payment_token' );
+	}
+
+	/**
+	 * @testdox A payment method tracker failure before collection is contained and logged.
+	 */
+	public function test_tracker_pre_collection_failure_is_contained(): void {
+		$token = $this->createMock( \WC_Payment_Token::class );
+		$token
+			->method( 'get_id' )
+			->willThrowException( new \RuntimeException( 'token read failed' ) );
+
+		$this->sut->track_payment_method_added( 1, $token );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_new_payment_token' );
 	}
 
 	/**
@@ -166,5 +231,34 @@ class PaymentMethodEventTrackerTest extends FraudProtectionUnitTestCase {
 		$this->sut->track_payment_method_added( $token->get_id(), $token );
 
 		$token->delete();
+	}
+
+	/**
+	 * @testdox Saving a payment token succeeds when its tracker fails.
+	 */
+	public function test_payment_token_save_continues_when_tracker_fails(): void {
+		$user_id = $this->factory->user->create();
+		$this->assertIsInt( $user_id );
+
+		$this->mock_collector
+			->method( 'collect' )
+			->willThrowException( new \RuntimeException( 'collector failed' ) );
+		$this->sut->register();
+
+		$token = new \WC_Payment_Token_CC();
+		$token->set_token( 'test_token_persistence' );
+		$token->set_gateway_id( 'stripe' );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '4242' );
+		$token->set_expiry_month( '12' );
+		$token->set_expiry_year( '2027' );
+		$token->set_user_id( $user_id );
+		$token_id = $token->save();
+
+		$this->assertIsInt( $token_id );
+		$this->assertGreaterThan( 0, $token_id );
+		$this->assertInstanceOf( \WC_Payment_Token_CC::class, \WC_Payment_Tokens::get( $token_id ) );
+		$this->assertSame( 'woocommerce_new_payment_token', $this->logger->entries[0]['context']['hook'] );
+		$this->assertTrue( $this->logger->entries[0]['forwarded'] );
 	}
 }
