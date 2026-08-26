@@ -108,14 +108,14 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @param string $hook Registered hook name.
 	 */
-	private function assert_tracker_failure_logged( string $hook ): void {
+	private function assert_tracker_failure_logged( string $hook, string $exception_class = \RuntimeException::class ): void {
 		$this->assertCount( 1, $this->logger->entries );
 		$entry = $this->logger->entries[0];
 		$this->assertSame( 'error', $entry['level'] );
 		$this->assertTrue( $entry['forwarded'] );
 		$this->assertSame( 'checkout_event_tracker', $entry['context']['event_source'] );
 		$this->assertSame( $hook, $entry['context']['hook'] );
-		$this->assertSame( \RuntimeException::class, $entry['context']['exception_class'] );
+		$this->assertSame( $exception_class, $entry['context']['exception_class'] );
 	}
 
 	// ========================================
@@ -308,6 +308,35 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 		$this->sut->clear_events_on_successful_payment( 1, 'pending', 'processing' );
 
 		$this->assert_tracker_failure_logged( 'woocommerce_order_status_changed' );
+	}
+
+	/**
+	 * @testdox The shortcode order callback contains a malformed order ID.
+	 */
+	public function test_shortcode_order_hook_contains_malformed_order_id(): void {
+		$order = $this->createMock( \WC_Order::class );
+
+		$this->sut->track_order_placed_from_shortcode( 'invalid-order-id', array(), $order );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_checkout_order_processed', \TypeError::class );
+	}
+
+	/**
+	 * @testdox The Store API order callback contains a malformed order.
+	 */
+	public function test_store_api_order_hook_contains_malformed_order(): void {
+		$this->sut->track_order_placed_from_store_api( array() );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_store_api_checkout_order_processed', \TypeError::class );
+	}
+
+	/**
+	 * @testdox The successful payment callback contains a malformed status.
+	 */
+	public function test_successful_payment_hook_contains_malformed_status(): void {
+		$this->sut->clear_events_on_successful_payment( 1, array(), 'processing' );
+
+		$this->assert_tracker_failure_logged( 'woocommerce_order_status_changed', \TypeError::class );
 	}
 
 	/**

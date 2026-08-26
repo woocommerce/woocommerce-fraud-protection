@@ -324,12 +324,12 @@ class CheckoutEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param int       $order_id    The order ID.
-	 * @param array     $posted_data The posted checkout data (unused).
-	 * @param \WC_Order $order       The order object.
+	 * @param mixed $order_id    The order ID.
+	 * @param mixed $posted_data The posted checkout data (unused).
+	 * @param mixed $order       The order object.
 	 * @return void
 	 */
-	public function track_order_placed_from_shortcode( int $order_id, array $posted_data, \WC_Order $order ): void {
+	public function track_order_placed_from_shortcode( $order_id, $posted_data, $order ): void {
 		try {
 			$this->track_order_placed( $order_id, $order );
 		} catch ( \Throwable $e ) {
@@ -344,15 +344,25 @@ class CheckoutEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param \WC_Order $order The order object.
+	 * @param mixed $order The order object.
 	 * @return void
 	 */
-	public function track_order_placed_from_store_api( \WC_Order $order ): void {
+	public function track_order_placed_from_store_api( $order ): void {
 		try {
-			$this->track_order_placed( $order->get_id(), $order );
+			$this->track_store_api_order_placed( $order );
 		} catch ( \Throwable $e ) {
 			$this->log_tracker_failure( 'woocommerce_store_api_checkout_order_processed', $e );
 		}
+	}
+
+	/**
+	 * Track a Store API order after validating its type.
+	 *
+	 * @param \WC_Order $order The order object.
+	 * @return void
+	 */
+	private function track_store_api_order_placed( \WC_Order $order ): void {
+		$this->track_order_placed( $order->get_id(), $order );
 	}
 
 	/**
@@ -370,30 +380,41 @@ class CheckoutEventTracker {
 	 *
 	 * @internal
 	 *
-	 * @param int    $order_id   The order ID.
+	 * @param mixed $order_id   The order ID.
+	 * @param mixed $old_status The old order status.
+	 * @param mixed $new_status The new order status.
+	 * @return void
+	 */
+	public function clear_events_on_successful_payment( $order_id, $old_status, $new_status ): void {
+		try {
+			$this->clear_events_for_successful_payment( $old_status, $new_status );
+		} catch ( \Throwable $e ) {
+			$this->log_tracker_failure( 'woocommerce_order_status_changed', $e );
+		}
+	}
+
+	/**
+	 * Clear events after a successful payment status transition.
+	 *
 	 * @param string $old_status The old order status.
 	 * @param string $new_status The new order status.
 	 * @return void
 	 */
-	public function clear_events_on_successful_payment( int $order_id, string $old_status, string $new_status ): void {
-		try {
-			$initial_checkout_statuses               = array( 'checkout-draft', 'pending', 'failed' );
-			$successful_checkout_transition_statuses = array( 'processing', 'completed', 'on-hold' );
+	private function clear_events_for_successful_payment( string $old_status, string $new_status ): void {
+		$initial_checkout_statuses               = array( 'checkout-draft', 'pending', 'failed' );
+		$successful_checkout_transition_statuses = array( 'processing', 'completed', 'on-hold' );
 
-			// Skip for transitions starting on non initial checkout statuses.
-			if ( ! in_array( $old_status, $initial_checkout_statuses, true ) ) {
-				return;
-			}
-
-			// Skip for transitions ending on non checkout success statuses (e.g., 'failed' or 'cancelled').
-			if ( ! in_array( $new_status, $successful_checkout_transition_statuses, true ) ) {
-				return;
-			}
-
-			$this->session_data_collector->clear_collected_events();
-		} catch ( \Throwable $e ) {
-			$this->log_tracker_failure( 'woocommerce_order_status_changed', $e );
+		// Skip for transitions starting on non initial checkout statuses.
+		if ( ! in_array( $old_status, $initial_checkout_statuses, true ) ) {
+			return;
 		}
+
+		// Skip for transitions ending on non checkout success statuses (e.g., 'failed' or 'cancelled').
+		if ( ! in_array( $new_status, $successful_checkout_transition_statuses, true ) ) {
+			return;
+		}
+
+		$this->session_data_collector->clear_collected_events();
 	}
 
 	/**
