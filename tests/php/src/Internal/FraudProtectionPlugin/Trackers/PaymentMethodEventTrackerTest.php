@@ -58,16 +58,6 @@ class PaymentMethodEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Remove tracker hooks added by tests.
-	 */
-	public function tearDown(): void {
-		remove_action( 'woocommerce_new_payment_token', array( $this->sut, 'track_payment_method_added' ) );
-		remove_action( 'before_woocommerce_add_payment_method', array( $this->sut, 'track_add_payment_method_page_loaded' ) );
-
-		parent::tearDown();
-	}
-
-	/**
 	 * Assert that a tracker failure was logged.
 	 *
 	 * @param string $hook Hook that invoked the tracker.
