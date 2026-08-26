@@ -17,6 +17,7 @@ concurrency:
 jobs:
   compatibility:
     name: WP ${{ matrix.wp }} / WC ${{ matrix.wc }} / PHP ${{ matrix.php }}
+    timeout-minutes: 10
     runs-on: ubuntu-latest
 
     strategy:

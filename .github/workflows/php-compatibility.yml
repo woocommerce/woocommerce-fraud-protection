@@ -11,6 +11,7 @@ concurrency:
 jobs:
   php-compatibility:
     name: PHP ${{ matrix.php }} Compatibility
+    timeout-minutes: 10
     runs-on: ubuntu-latest
 
     strategy:
