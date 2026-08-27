@@ -113,7 +113,7 @@ class FraudProtectionCommands {
 		 * Filter learning mode for local status output.
 		 *
 		 * @since 0.1.0
-		 * @since 0.1.10 The nullable context argument was added.
+		 * @since 0.2.0 The nullable context argument was added.
 		 *
 		 * @param bool                     $learning_mode Whether learning mode is active. Default true.
 		 * @param LearningModeContext|null $context      Always null for status output.

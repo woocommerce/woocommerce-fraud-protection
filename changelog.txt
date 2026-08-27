@@ -1,11 +1,11 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-YYYY-xx-xx - version 0.1.10
-* Fixed - Verification source names are capped consistently at 32 characters across filters, requests, and session records. Subscription payment changes now use a complete source name within that limit.
-* Fixed - Prevent event tracking failures from interrupting checkout and payment-method requests.
+2026-08-27 - version 0.2.0
+* Fixed - Verification source names are limited to 32 characters across filters, requests, and session records. Subscription payment changes now use a complete source name within that limit.
+* Fixed - Event tracking failures no longer interrupt checkout and payment-method requests.
 * Fixed - Managed installations now use a reachable plugin asset URL.
-* Updated - Verification requests include an available merchant account or payment location identifier for supported payment gateways.
-* Added - Add typed verification context to the learning-mode filter, and list registered callbacks in the status command.
+* Updated - Verification requests now include the merchant account or payment location identifier for supported payment gateways.
+* Added - The learning-mode filter now receives typed verification context, and the status command lists registered callbacks.
 
 2026-08-25 - version 0.1.9
 * Added - WP-CLI commands to check plugin status, install or repair the database schema, and prune expired sessions.
