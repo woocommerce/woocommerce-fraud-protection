@@ -8,7 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
-use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -81,7 +80,7 @@ class WooPaymentsPaymentDataCompat {
 		if ( $this->is_woopay_enabled() ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$token_key   = 'wc-' . $resolved->get_gateway() . '-payment-token';
@@ -100,14 +99,14 @@ class WooPaymentsPaymentDataCompat {
 		if ( empty( $pm_id ) ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$api_client = \WC_Payments::get_payments_api_client();
 		if ( null === $api_client ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		try {
@@ -129,13 +128,13 @@ class WooPaymentsPaymentDataCompat {
 			);
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		if ( ! isset( $pm_details['type'] ) ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$type       = $pm_details['type'];
@@ -148,7 +147,7 @@ class WooPaymentsPaymentDataCompat {
 			$instrument,
 			$transaction_mode,
 			$merchant_identifier,
-			MerchantIdentifierType::Account
+			'account'
 		);
 	}
 

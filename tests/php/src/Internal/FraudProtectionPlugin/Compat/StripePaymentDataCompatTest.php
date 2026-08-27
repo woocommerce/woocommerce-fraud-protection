@@ -8,7 +8,6 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
-use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -261,7 +260,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
 
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-		$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -279,7 +278,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
 
 		$this->assertNull( $array['merchant_identifier'] );
-		$this->assertNull( $array['merchant_identifier_type'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -312,7 +311,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
 		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-		$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -367,7 +366,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 				),
 				'transaction_mode'        => PaymentMode::Live->value,
 				'merchant_identifier'     => 'acct_123',
-				'merchant_identifier_type' => MerchantIdentifierType::Account->value,
+				'merchant_identifier_type' => 'account',
 			),
 			$result->to_array()
 		);

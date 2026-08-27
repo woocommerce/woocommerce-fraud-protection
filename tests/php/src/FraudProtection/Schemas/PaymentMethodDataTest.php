@@ -7,7 +7,6 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\FraudProtection\Schemas;
 
-use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -110,33 +109,21 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox to_array() includes a complete merchant identifier pair.
 	 */
 	public function test_to_array_includes_merchant_identifier_pair(): void {
-		$data = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Live, 'acct_123', MerchantIdentifierType::Account );
+		$data = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Live, 'acct_123', 'account' );
 
 		$this->assertSame( 'acct_123', $data->to_array()['merchant_identifier'] );
-		$this->assertSame( MerchantIdentifierType::Account->value, $data->to_array()['merchant_identifier_type'] );
+		$this->assertSame( 'account', $data->to_array()['merchant_identifier_type'] );
 	}
 
 	/**
-	 * @testdox to_array() normalizes an unavailable merchant identifier pair to null.
-	 *
-	 * @dataProvider incomplete_merchant_identifier_provider
+	 * @testdox to_array() retains the merchant identifier type when the identifier is unavailable.
 	 */
-	public function test_to_array_normalizes_unavailable_merchant_identifier_pair( ?string $identifier ): void {
-		$data  = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Unknown, $identifier, MerchantIdentifierType::Account );
+	public function test_to_array_retains_merchant_identifier_type_when_identifier_is_unavailable(): void {
+		$data  = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Unknown, null, 'account' );
 		$array = $data->to_array();
 
 		$this->assertNull( $array['merchant_identifier'] );
-		$this->assertNull( $array['merchant_identifier_type'] );
-	}
-
-	/**
-	 * @return array<string, array{?string}>
-	 */
-	public function incomplete_merchant_identifier_provider(): array {
-		return array(
-			'missing identifier' => array( null ),
-			'empty identifier'   => array( '' ),
-		);
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -146,8 +133,8 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242' ) );
 		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument, PaymentMode::Live );
 
-		$with_identifier = $data->with_merchant_identifier( 'acct_123', MerchantIdentifierType::Account )->to_array();
-		$result          = $data->with_merchant_identifier( 'acct_123', MerchantIdentifierType::Account )
+		$with_identifier = $data->with_merchant_identifier( 'acct_123', 'account' )->to_array();
+		$result          = $data->with_merchant_identifier( 'acct_123', 'account' )
 			->with_transaction_mode( PaymentMode::Test )->to_array();
 
 		foreach ( array( $with_identifier, $result ) as $array ) {
@@ -156,7 +143,7 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 			$this->assertSame( 'visa', $array['instrument']['brand'] );
 			$this->assertSame( '4242', $array['instrument']['last4'] );
 			$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-			$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
+			$this->assertSame( 'account', $array['merchant_identifier_type'] );
 		}
 
 		$this->assertSame( PaymentMode::Live->value, $with_identifier['transaction_mode'] );

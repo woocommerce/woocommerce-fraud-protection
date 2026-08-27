@@ -247,6 +247,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 				'keep_array'   => array(),
 				'drop_null'    => null,
 				'drop_empty'   => '',
+				'merchant_identifier'      => null,
+				'merchant_identifier_type' => 'account',
 				'nested'       => array(
 					'keep'  => 'yes',
 					'drop'  => null,
@@ -264,6 +266,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array(), $context['keep_array'] );
 		$this->assertArrayNotHasKey( 'drop_null', $context );
 		$this->assertArrayNotHasKey( 'drop_empty', $context );
+		$this->assertArrayNotHasKey( 'merchant_identifier', $context );
+		$this->assertSame( 'account', $context['merchant_identifier_type'] );
 		$this->assertSame( 'yes', $context['nested']['keep'] );
 		$this->assertArrayNotHasKey( 'drop', $context['nested'] );
 

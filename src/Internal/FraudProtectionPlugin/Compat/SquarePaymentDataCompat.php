@@ -8,7 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
-use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 
@@ -64,7 +63,7 @@ class SquarePaymentDataCompat {
 		if ( empty( $brand ) && empty( $last4 ) ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Location );
+				->with_merchant_identifier( $merchant_identifier, 'location' );
 		}
 
 		return new PaymentMethodData(
@@ -82,7 +81,7 @@ class SquarePaymentDataCompat {
 			),
 			$transaction_mode,
 			$merchant_identifier,
-			MerchantIdentifierType::Location
+			'location'
 		);
 	}
 

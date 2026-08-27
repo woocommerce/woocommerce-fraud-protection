@@ -26,29 +26,15 @@ class PaymentMethodData {
 	private readonly PaymentInstrumentData $instrument;
 
 	/**
-	 * Merchant account or location identifier, if available.
-	 *
-	 * @var ?string
-	 */
-	private readonly ?string $merchant_identifier;
-
-	/**
-	 * Merchant identifier type, if available.
-	 *
-	 * @var ?MerchantIdentifierType
-	 */
-	private readonly ?MerchantIdentifierType $merchant_identifier_type;
-
-	/**
 	 * Constructor.
 	 *
-	 * @param string                  $gateway                 Gateway ID that originated this payment method (e.g. 'stripe', 'square_credit_card').
-	 * @param ?string                 $payment_type            Payment type (e.g. 'card', 'sepa_debit', 'ideal', 'link'), or null when unresolved by a compat layer.
-	 * @param bool                    $is_saved_payment_method Whether this is a saved/tokenized payment method.
-	 * @param ?PaymentInstrumentData  $instrument              Instrument details, if applicable.
-	 * @param PaymentMode             $transaction_mode        Transaction mode, resolved by gateway compat layers (Stripe WC_Stripe_Mode, Square settings handler, PayPal ConnectionState).
-	 * @param ?string                 $merchant_identifier     Merchant account or location identifier, if available.
-	 * @param ?MerchantIdentifierType $merchant_identifier_type Merchant identifier type, if available.
+	 * @param string                 $gateway                 Gateway ID that originated this payment method (e.g. 'stripe', 'square_credit_card').
+	 * @param ?string                $payment_type            Payment type (e.g. 'card', 'sepa_debit', 'ideal', 'link'), or null when unresolved by a compat layer.
+	 * @param bool                   $is_saved_payment_method Whether this is a saved/tokenized payment method.
+	 * @param ?PaymentInstrumentData $instrument              Instrument details, if applicable.
+	 * @param PaymentMode            $transaction_mode        Transaction mode, resolved by gateway compat layers (Stripe WC_Stripe_Mode, Square settings handler, PayPal ConnectionState).
+	 * @param ?string                $merchant_identifier     Merchant account or location identifier, if available.
+	 * @param ?string                $merchant_identifier_type Merchant identifier type, if available.
 	 */
 	public function __construct(
 		private readonly string $gateway,
@@ -56,16 +42,10 @@ class PaymentMethodData {
 		private readonly bool $is_saved_payment_method = false,
 		?PaymentInstrumentData $instrument = null,
 		private readonly PaymentMode $transaction_mode = PaymentMode::Unknown,
-		?string $merchant_identifier = null,
-		?MerchantIdentifierType $merchant_identifier_type = null
+		private readonly ?string $merchant_identifier = null,
+		private readonly ?string $merchant_identifier_type = null
 	) {
 		$this->instrument = $instrument ? $instrument : PaymentInstrumentData::empty();
-
-		$merchant_identifier            = is_string( $merchant_identifier ) && '' !== trim( $merchant_identifier )
-			? trim( $merchant_identifier )
-			: null;
-		$this->merchant_identifier      = null !== $merchant_identifier && null !== $merchant_identifier_type ? $merchant_identifier : null;
-		$this->merchant_identifier_type = null !== $this->merchant_identifier ? $merchant_identifier_type : null;
 	}
 
 	/**
@@ -101,11 +81,11 @@ class PaymentMethodData {
 	/**
 	 * Return a copy with the merchant identifier pair.
 	 *
-	 * @param ?string                $merchant_identifier      Merchant account or location identifier.
-	 * @param MerchantIdentifierType $merchant_identifier_type Merchant identifier type.
+	 * @param ?string $merchant_identifier      Merchant account or location identifier.
+	 * @param ?string $merchant_identifier_type Merchant identifier type.
 	 * @return self
 	 */
-	public function with_merchant_identifier( ?string $merchant_identifier, MerchantIdentifierType $merchant_identifier_type ): self {
+	public function with_merchant_identifier( ?string $merchant_identifier, ?string $merchant_identifier_type ): self {
 		return new self(
 			$this->gateway,
 			$this->payment_type,
@@ -130,7 +110,7 @@ class PaymentMethodData {
 			'instrument'               => $this->instrument->to_array(),
 			'transaction_mode'         => $this->transaction_mode->value,
 			'merchant_identifier'      => $this->merchant_identifier,
-			'merchant_identifier_type' => $this->merchant_identifier_type?->value,
+			'merchant_identifier_type' => $this->merchant_identifier_type,
 		);
 	}
 }

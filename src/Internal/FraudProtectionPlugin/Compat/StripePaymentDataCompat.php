@@ -7,7 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -59,7 +58,7 @@ class StripePaymentDataCompat {
 		if ( empty( $pm_id ) ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$token_value = $checkout_payment_fields['wc-stripe-payment-token'] ?? '';
@@ -68,7 +67,7 @@ class StripePaymentDataCompat {
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$pm_details = \WC_Stripe_API::get_payment_method( $pm_id );
@@ -76,7 +75,7 @@ class StripePaymentDataCompat {
 		if ( is_wp_error( $pm_details ) || ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
 			return $resolved
 				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		if ( 'card' !== $pm_details->type || ! isset( $pm_details->card ) ) {
@@ -87,7 +86,7 @@ class StripePaymentDataCompat {
 				null,
 				$transaction_mode,
 				$merchant_identifier,
-				MerchantIdentifierType::Account
+				'account'
 			);
 		}
 
@@ -111,7 +110,7 @@ class StripePaymentDataCompat {
 			),
 			$transaction_mode,
 			$merchant_identifier,
-			MerchantIdentifierType::Account
+			'account'
 		);
 	}
 
