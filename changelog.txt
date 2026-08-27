@@ -5,6 +5,7 @@ YYYY-xx-xx - version 0.1.10
 * Fixed - Prevent event tracking failures from interrupting checkout and payment-method requests.
 * Fixed - Managed installations now use a reachable plugin asset URL.
 * Updated - Verification requests include an available merchant account or payment location identifier for supported payment gateways.
+* Added - The learning-mode filter receives typed verification context, and the status command lists its registered callbacks.
 
 2026-08-25 - version 0.1.9
 * Added - WP-CLI commands to check plugin status, install or repair the database schema, and prune expired sessions.

@@ -7,7 +7,9 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\LearningModeContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
@@ -274,6 +276,12 @@ class DecisionHandler {
 			);
 		}
 
+		$payment_data = is_array( $session_data['payment'] ?? null ) ? $session_data['payment'] : array();
+		$gateway      = is_string( $payment_data['gateway'] ?? null ) ? $payment_data['gateway'] : '';
+		$source       = is_string( $session_data['source'] ?? null ) ? $session_data['source'] : '';
+		$mode         = is_string( $payment_data['transaction_mode'] ?? null ) ? PaymentMode::tryFrom( $payment_data['transaction_mode'] ) : null;
+		$context      = new LearningModeContext( $gateway, $source, $mode ?? PaymentMode::Unknown );
+
 		/**
 		 * Filters whether learning mode is active.
 		 *
@@ -287,10 +295,12 @@ class DecisionHandler {
 		 * `add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );`
 		 *
 		 * @since 0.1.0
+		 * @since 0.1.10 The nullable context argument was added.
 		 *
-		 * @param bool $learning_mode Whether learning mode is active. Default true.
+		 * @param bool                     $learning_mode Whether learning mode is active. Default true.
+		 * @param LearningModeContext|null $context      Verification context, or null outside a verification attempt.
 		 */
-		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true );
+		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true, $context );
 
 		if ( $learning_mode && FraudDecision::Block === $decision ) {
 			FraudProtectionController::log(

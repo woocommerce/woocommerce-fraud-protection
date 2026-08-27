@@ -7,7 +7,9 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\LearningModeContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
@@ -400,6 +402,70 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
+	}
+
+	/**
+	 * @testdox Learning mode receives the typed context for a verification attempt.
+	 */
+	public function test_learning_mode_receives_typed_context(): void {
+		$received_context = null;
+		add_filter(
+			'woocommerce_fraud_protection_learning_mode',
+			function ( $learning_mode, $context ) use ( &$received_context ) {
+				$received_context = $context;
+				return $learning_mode;
+			},
+			10,
+			2
+		);
+
+		$this->sut->apply_decision(
+			VerifyResult::create( FraudDecision::Allow, 'test-session' ),
+			array(
+				'source'  => 'checkout',
+				'payment' => array(
+					'gateway'          => 'stripe',
+					'transaction_mode' => 'live',
+				),
+			)
+		);
+
+		$this->assertInstanceOf( LearningModeContext::class, $received_context );
+		$this->assertSame( 'stripe', $received_context->gateway );
+		$this->assertSame( 'checkout', $received_context->verify_source );
+		$this->assertSame( PaymentMode::Live, $received_context->transaction_mode );
+	}
+
+	/**
+	 * @testdox Learning mode receives safe fallback values when payload context is invalid.
+	 */
+	public function test_learning_mode_receives_safe_fallback_context(): void {
+		$received_context = null;
+		add_filter(
+			'woocommerce_fraud_protection_learning_mode',
+			function ( $learning_mode, $context ) use ( &$received_context ) {
+				$received_context = $context;
+				return $learning_mode;
+			},
+			10,
+			2
+		);
+
+		$this->sut->apply_decision(
+			VerifyResult::create( FraudDecision::Allow, 'test-session' ),
+			array(
+				'source'  => array( 'invalid' ),
+				'payment' => array(
+					'gateway'          => 123,
+					'transaction_mode' => 'invalid',
+				),
+			)
+		);
+
+		$this->assertInstanceOf( LearningModeContext::class, $received_context );
+		$this->assertSame( '', $received_context->gateway );
+		$this->assertSame( '', $received_context->verify_source );
+		$this->assertSame( PaymentMode::Unknown, $received_context->transaction_mode );
 	}
 
 	/**
