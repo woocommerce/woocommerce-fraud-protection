@@ -12,33 +12,10 @@
 ( function ( $ ) {
 	'use strict';
 
-	const cleanupTimers = new WeakMap();
-
 	const findSessionIdFields = function ( $form, sessionIdField ) {
 		return $form.find( 'input' ).filter( function () {
 			return this.id === sessionIdField || this.name === sessionIdField;
 		} );
-	};
-
-	const scheduleCleanup = function (
-		$form,
-		sessionIdField,
-		fraudProtection
-	) {
-		const form = $form[ 0 ];
-
-		if ( cleanupTimers.has( form ) ) {
-			return;
-		}
-
-		cleanupTimers.set(
-			form,
-			setTimeout( function () {
-				cleanupTimers.delete( form );
-				findSessionIdFields( $form, sessionIdField ).remove();
-				fraudProtection.reset();
-			}, 0 )
-		);
 	};
 
 	$( 'form.checkout' ).on( 'checkout_place_order', function () {
@@ -54,7 +31,10 @@
 		// Re-entry: field present, let through. Deferred cleanup removes
 		// the field and resets so the next attempt gets a fresh session.
 		if ( findSessionIdFields( $form, sessionIdField ).length ) {
-			scheduleCleanup( $form, sessionIdField, fraudProtection );
+			setTimeout( function () {
+				findSessionIdFields( $form, sessionIdField ).remove();
+				fraudProtection.reset();
+			}, 0 );
 			return true;
 		}
 
@@ -74,7 +54,6 @@
 			}
 
 			$form.trigger( 'submit' );
-			scheduleCleanup( $form, sessionIdField, fraudProtection );
 		} );
 
 		return false;

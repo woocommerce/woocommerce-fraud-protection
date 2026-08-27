@@ -178,18 +178,20 @@ describe( 'shortcode-checkout', () => {
 		);
 		expect( $fields.length ).toBe( 1 );
 		expect( $fields.val() ).toBe( 'sess-first' );
-
-		jest.advanceTimersByTime( 0 );
-		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
-		expect( mockReset ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'only cleans up the form that owns the field', async () => {
+	it( 'only cleans up the form that owns the field', () => {
 		document.body.innerHTML =
 			'<form class="checkout" id="first"></form>' +
 			'<form class="checkout" id="second"></form>';
 		$form = $( '#first' );
 		const $secondForm = $( '#second' );
+		$( '<input>', {
+			type: 'hidden',
+			id: SESSION_ID_FIELD,
+			name: SESSION_ID_FIELD,
+			value: 'owned-form',
+		} ).appendTo( $form );
 		$( '<input>', {
 			type: 'hidden',
 			id: SESSION_ID_FIELD,
@@ -200,12 +202,12 @@ describe( 'shortcode-checkout', () => {
 		loadScript();
 
 		$form.triggerHandler( 'checkout_place_order' );
-		await flushPromises();
 		jest.advanceTimersByTime( 0 );
 
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
 		expect( $secondForm.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
 			'other-form'
 		);
+		expect( mockReset ).toHaveBeenCalledTimes( 1 );
 	} );
 } );
