@@ -21,24 +21,6 @@ use WP_CLI;
 class WPCLIErrorException extends \RuntimeException {}
 
 /**
- * Invokable callback used to verify status callback reporting.
- */
-class LearningModeInvokableCallback {
-
-	/**
-	 * Return the learning-mode value unchanged.
-	 *
-	 * @param bool                     $learning_mode Learning-mode value.
-	 * @param LearningModeContext|null $context      Learning-mode context.
-	 * @return bool
-	 */
-	public function __invoke( $learning_mode, $context = null ): bool {
-		unset( $context );
-		return (bool) $learning_mode;
-	}
-}
-
-/**
  * Tests for FraudProtectionCommands.
  */
 class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
@@ -247,7 +229,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_true', 5 );
 		add_filter( 'woocommerce_fraud_protection_learning_mode', array( self::class, 'learning_mode_static_callback' ), 10 );
 		add_filter( 'woocommerce_fraud_protection_learning_mode', array( $this, 'learning_mode_instance_callback' ), 10 );
-		add_filter( 'woocommerce_fraud_protection_learning_mode', new LearningModeInvokableCallback(), 20 );
+		add_filter( 'woocommerce_fraud_protection_learning_mode', $this, 20 );
 		add_filter(
 			'woocommerce_fraud_protection_learning_mode',
 			function ( $learning_mode, $context = null ) {
@@ -262,7 +244,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Learning mode: Enabled', $output );
-		$this->assertMatchesRegularExpression( '/Learning mode callback: __return_true \(priority 5\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_static_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_instance_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( LearningModeInvokableCallback::class, '/' ) . ' \(priority 20\).*Learning mode callback: Closure \([^)]*FraudProtectionCommandsTest\.php:[0-9]+\) \(priority 30\)/s', $output );
+		$this->assertMatchesRegularExpression( '/Learning mode callback: __return_true \(priority 5\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_static_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_instance_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class, '/' ) . ' \(priority 20\).*Learning mode callback: Closure \([^)]*FraudProtectionCommandsTest\.php:[0-9]+\) \(priority 30\)/s', $output );
 		$this->assertStringNotContainsString( getcwd(), $output );
 	}
 
@@ -295,6 +277,18 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @return bool
 	 */
 	public function learning_mode_instance_callback( $learning_mode ): bool {
+		return (bool) $learning_mode;
+	}
+
+	/**
+	 * Return the learning-mode value unchanged.
+	 *
+	 * @param bool                     $learning_mode Learning-mode value.
+	 * @param LearningModeContext|null $context      Learning-mode context.
+	 * @return bool
+	 */
+	public function __invoke( $learning_mode, $context = null ): bool {
+		unset( $context );
 		return (bool) $learning_mode;
 	}
 
