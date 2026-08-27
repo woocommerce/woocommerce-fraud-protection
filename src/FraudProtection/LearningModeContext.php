@@ -19,11 +19,11 @@ final class LearningModeContext {
 	/**
 	 * Create a learning-mode context.
 	 *
-	 * @since 0.1.10
-	 *
 	 * @param string      $gateway          Payment gateway identifier.
 	 * @param string      $verify_source    Verification source identifier.
 	 * @param PaymentMode $transaction_mode Transaction mode.
+	 *
+	 * @since 0.1.10
 	 */
 	public function __construct(
 		public readonly string $gateway,

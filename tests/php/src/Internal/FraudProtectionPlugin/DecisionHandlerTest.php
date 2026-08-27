@@ -440,11 +440,11 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Learning mode receives safe fallback values when payload context is invalid.
 	 */
 	public function test_learning_mode_receives_safe_fallback_context(): void {
-		$received_context = null;
+		$received_contexts = array();
 		add_filter(
 			'woocommerce_fraud_protection_learning_mode',
-			function ( $learning_mode, $context ) use ( &$received_context ) {
-				$received_context = $context;
+			function ( $learning_mode, $context ) use ( &$received_contexts ) {
+				$received_contexts[] = $context;
 				return $learning_mode;
 			},
 			10,
@@ -462,10 +462,16 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->assertInstanceOf( LearningModeContext::class, $received_context );
-		$this->assertSame( '', $received_context->gateway );
-		$this->assertSame( '', $received_context->verify_source );
-		$this->assertSame( PaymentMode::Unknown, $received_context->transaction_mode );
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+
+		$this->assertCount( 2, $received_contexts );
+		$this->assertInstanceOf( LearningModeContext::class, $received_contexts[0] );
+		$this->assertSame( '', $received_contexts[0]->gateway );
+		$this->assertSame( '', $received_contexts[0]->verify_source );
+		$this->assertSame( PaymentMode::Unknown, $received_contexts[0]->transaction_mode );
+		$this->assertSame( '', $received_contexts[1]->gateway );
+		$this->assertSame( '', $received_contexts[1]->verify_source );
+		$this->assertSame( PaymentMode::Unknown, $received_contexts[1]->transaction_mode );
 	}
 
 	/**

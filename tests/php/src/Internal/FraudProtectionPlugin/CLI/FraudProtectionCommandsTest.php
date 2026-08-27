@@ -180,11 +180,12 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		);
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( 1724198400 );
 		$received_context = 'not-called';
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 		add_filter(
 			'woocommerce_fraud_protection_learning_mode',
 			function ( $learning_mode, $context = null ) use ( &$received_context ) {
 				$received_context = $context;
-				return false;
+				return $learning_mode;
 			},
 			10,
 			2
@@ -227,12 +228,14 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
 
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_true', 5 );
-		add_filter( 'woocommerce_fraud_protection_learning_mode', array( self::class, 'learning_mode_static_callback' ), 10 );
+		add_filter( 'woocommerce_fraud_protection_learning_mode', self::class . '::learning_mode_static_callback', 10 );
 		add_filter( 'woocommerce_fraud_protection_learning_mode', array( $this, 'learning_mode_instance_callback' ), 10 );
 		add_filter( 'woocommerce_fraud_protection_learning_mode', $this, 20 );
+		$closure_calls = 0;
 		add_filter(
 			'woocommerce_fraud_protection_learning_mode',
-			function ( $learning_mode, $context = null ) {
+			function ( $learning_mode, $context = null ) use ( &$closure_calls ) {
+				++$closure_calls;
 				unset( $context );
 				return $learning_mode;
 			},
@@ -244,6 +247,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Learning mode: Enabled', $output );
+		$this->assertSame( 1, $closure_calls );
 		$this->assertMatchesRegularExpression( '/Learning mode callback: __return_true \(priority 5\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_static_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_instance_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class, '/' ) . ' \(priority 20\).*Learning mode callback: Closure \([^)]*FraudProtectionCommandsTest\.php:[0-9]+\) \(priority 30\)/s', $output );
 		$this->assertStringNotContainsString( getcwd(), $output );
 	}

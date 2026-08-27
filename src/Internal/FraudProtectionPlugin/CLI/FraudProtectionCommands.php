@@ -112,11 +112,11 @@ class FraudProtectionCommands {
 		/**
 		 * Filter learning mode for local status output.
 		 *
-		 * @since 0.1.0
-		 * @since 0.1.10 The nullable context argument was added.
-		 *
 		 * @param bool                     $learning_mode Whether learning mode is active. Default true.
 		 * @param LearningModeContext|null $context      Always null for status output.
+		 *
+		 * @since 0.1.0
+		 * @since 0.1.10 The nullable context argument was added.
 		 */
 		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true, null );
 
@@ -319,8 +319,20 @@ class FraudProtectionCommands {
 			return 'Closure';
 		}
 
-		if ( is_string( $callback ) && function_exists( $callback ) ) {
-			return $callback;
+		if ( is_string( $callback ) ) {
+			if ( function_exists( $callback ) ) {
+				return $callback;
+			}
+
+			$separator = strrpos( $callback, '::' );
+			if ( false !== $separator ) {
+				$class  = substr( $callback, 0, $separator );
+				$method = substr( $callback, $separator + 2 );
+
+				if ( self::is_safe_class_name( $class ) && preg_match( '/\A[A-Za-z_][A-Za-z0-9_]*\z/', $method ) ) {
+					return $callback;
+				}
+			}
 		}
 
 		if ( is_array( $callback ) && 2 === count( $callback ) && is_string( $callback[1] ) ) {
