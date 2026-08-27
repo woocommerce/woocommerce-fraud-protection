@@ -157,7 +157,7 @@ The remaining public classes are used directly: `BlockedSessionMessage`, `Learni
 
 ### Extension filters
 
-The first two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Errors fail open for those hooks.
+Three hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Callback errors in the first two hooks fail open.
 
 - **`woocommerce_fraud_protection_resolved_payment_data`** — the primary hook for payment gateways: enrich or replace the resolved payment data included in the fraud-check payload (card brand, last4, transaction mode, and so on). Return a `PaymentMethodData`; an invalid return falls back to the baseline resolved from the WC payment token.
 
