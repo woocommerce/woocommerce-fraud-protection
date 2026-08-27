@@ -13,11 +13,10 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Resolves PayPal Payments transaction mode into PaymentMethodData.
+ * Resolves the PayPal Payments merchant identifier and transaction mode into PaymentMethodData.
  *
  * PayPal does not expose structured card/instrument data, so this compat
- * only resolves the test/live transaction mode based on the gateway's
- * ConnectionState API.
+ * resolves the merchant identifier and test/live transaction mode.
  */
 class PayPalPaymentDataCompat {
 
@@ -50,7 +49,30 @@ class PayPalPaymentDataCompat {
 			return $resolved;
 		}
 
-		return $resolved->with_transaction_mode( $this->resolve_transaction_mode() );
+		return $resolved
+			->with_transaction_mode( $this->resolve_transaction_mode() )
+			->with_merchant_identifier( $this->resolve_merchant_identifier(), 'account' );
+	}
+
+	/**
+	 * Resolve the PayPal merchant identifier.
+	 *
+	 * @return ?string The merchant identifier, if available.
+	 */
+	private function resolve_merchant_identifier(): ?string {
+		if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP' ) ) {
+			return null;
+		}
+
+		try {
+			$merchant_identifier = \WooCommerce\PayPalCommerce\PPCP::container()->get( 'api.merchant_id' );
+
+			return is_string( $merchant_identifier ) && '' !== trim( $merchant_identifier )
+				? trim( $merchant_identifier )
+				: null;
+		} catch ( \Throwable $e ) {
+			return null;
+		}
 	}
 
 	/**

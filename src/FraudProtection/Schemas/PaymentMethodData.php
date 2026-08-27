@@ -33,13 +33,17 @@ class PaymentMethodData {
 	 * @param bool                   $is_saved_payment_method Whether this is a saved/tokenized payment method.
 	 * @param ?PaymentInstrumentData $instrument              Instrument details, if applicable.
 	 * @param PaymentMode            $transaction_mode        Transaction mode, resolved by gateway compat layers (Stripe WC_Stripe_Mode, Square settings handler, PayPal ConnectionState).
+	 * @param ?string                $merchant_identifier     Merchant account or location identifier, if available.
+	 * @param ?string                $merchant_identifier_type Merchant identifier type, if available.
 	 */
 	public function __construct(
 		private readonly string $gateway,
 		private readonly ?string $payment_type = null,
 		private readonly bool $is_saved_payment_method = false,
 		?PaymentInstrumentData $instrument = null,
-		private readonly PaymentMode $transaction_mode = PaymentMode::Unknown
+		private readonly PaymentMode $transaction_mode = PaymentMode::Unknown,
+		private readonly ?string $merchant_identifier = null,
+		private readonly ?string $merchant_identifier_type = null
 	) {
 		$this->instrument = $instrument ? $instrument : PaymentInstrumentData::empty();
 	}
@@ -68,7 +72,28 @@ class PaymentMethodData {
 			$this->payment_type,
 			$this->is_saved_payment_method,
 			$this->instrument,
-			$transaction_mode
+			$transaction_mode,
+			$this->merchant_identifier,
+			$this->merchant_identifier_type
+		);
+	}
+
+	/**
+	 * Return a copy with the merchant identifier pair.
+	 *
+	 * @param ?string $merchant_identifier      Merchant account or location identifier.
+	 * @param ?string $merchant_identifier_type Merchant identifier type.
+	 * @return self
+	 */
+	public function with_merchant_identifier( ?string $merchant_identifier, ?string $merchant_identifier_type ): self {
+		return new self(
+			$this->gateway,
+			$this->payment_type,
+			$this->is_saved_payment_method,
+			$this->instrument,
+			$this->transaction_mode,
+			$merchant_identifier,
+			$merchant_identifier_type
 		);
 	}
 
@@ -79,11 +104,13 @@ class PaymentMethodData {
 	 */
 	public function to_array(): array {
 		return array(
-			'gateway'                 => $this->gateway,
-			'payment_type'            => $this->payment_type,
-			'is_saved_payment_method' => $this->is_saved_payment_method,
-			'instrument'              => $this->instrument->to_array(),
-			'transaction_mode'        => $this->transaction_mode->value,
+			'gateway'                  => $this->gateway,
+			'payment_type'             => $this->payment_type,
+			'is_saved_payment_method'  => $this->is_saved_payment_method,
+			'instrument'               => $this->instrument->to_array(),
+			'transaction_mode'         => $this->transaction_mode->value,
+			'merchant_identifier'      => $this->merchant_identifier,
+			'merchant_identifier_type' => $this->merchant_identifier_type,
 		);
 	}
 }

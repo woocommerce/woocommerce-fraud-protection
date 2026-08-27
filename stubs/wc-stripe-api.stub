@@ -23,3 +23,22 @@ class WC_Stripe_API {
 	 */
 	public static function get_payment_method( string $payment_method_id ) {}
 }
+
+class WC_Stripe {
+	/**
+	 * @return self
+	 */
+	public static function get_instance(): self {}
+
+	/**
+	 * @var WC_Stripe_Account
+	 */
+	public WC_Stripe_Account $account;
+}
+
+class WC_Stripe_Account {
+	/**
+	 * @return mixed
+	 */
+	public function get_cached_account_data() {}
+}

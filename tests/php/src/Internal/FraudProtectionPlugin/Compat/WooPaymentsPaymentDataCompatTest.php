@@ -17,6 +17,84 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 // Stub WooPayments classes if not loaded. Tests inject API mocks via \WC_Payments::set_api_client().
 if ( ! class_exists( '\WC_Payments', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WC_Payments_Account_Service_Stub {
+		/**
+		 * Account identifier returned by the account service.
+		 *
+		 * @var mixed
+		 */
+		private static $stripe_account_id;
+
+		/**
+		 * Account data returned by refresh_account_data().
+		 *
+		 * @var mixed
+		 */
+		private static $account_data;
+		private static int $stripe_account_id_calls = 0;
+		private static int $refresh_account_data_calls = 0;
+
+		/**
+		 * Whether account methods should throw.
+		 *
+		 * @var bool
+		 */
+		private static bool $throws = false;
+		private static bool $refresh_throws = false;
+
+		public static function set_stripe_account_id( $account_id ): void {
+			self::$stripe_account_id = $account_id;
+		}
+
+		public static function set_account_data( $account_data ): void {
+			self::$account_data = $account_data;
+		}
+
+		public static function set_throws( bool $throws ): void {
+			self::$throws = $throws;
+		}
+
+		public static function set_refresh_throws( bool $throws ): void {
+			self::$refresh_throws = $throws;
+		}
+
+		public static function reset(): void {
+			self::$stripe_account_id = null;
+			self::$account_data      = null;
+			self::$throws            = false;
+			self::$refresh_throws    = false;
+			self::$stripe_account_id_calls   = 0;
+			self::$refresh_account_data_calls = 0;
+		}
+
+		public static function get_stripe_account_id_calls(): int {
+			return self::$stripe_account_id_calls;
+		}
+
+		public static function get_refresh_account_data_calls(): int {
+			return self::$refresh_account_data_calls;
+		}
+
+		public function get_stripe_account_id() {
+			++self::$stripe_account_id_calls;
+			if ( self::$throws ) {
+				throw new \RuntimeException( 'Account lookup failed' );
+			}
+
+			return self::$stripe_account_id;
+		}
+
+		public function refresh_account_data() {
+			++self::$refresh_account_data_calls;
+			if ( self::$throws || self::$refresh_throws ) {
+				throw new \RuntimeException( 'Account refresh failed' );
+			}
+
+			return self::$account_data;
+		}
+	}
+
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 	class WC_Payments_API_Client_Stub {
 		public function get_payment_method( string $payment_method_id ): array {
 			return array();
@@ -53,6 +131,10 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		public static function set_api_client( ?\WC_Payments_API_Client $client ): void {
 			self::$api_client     = $client;
 			self::$api_client_set = true;
+		}
+
+		public static function get_account_service(): object {
+			return new WC_Payments_Account_Service_Stub();
 		}
 
 		public static function get_payments_api_client(): ?\WC_Payments_API_Client {
@@ -118,6 +200,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		\WC_Payments::reset();
 		\WC_Payments_Features::reset();
+		remove_filter( 'wp_doing_ajax', '__return_true' );
+		WC_Payments_Account_Service_Stub::reset();
 		parent::tearDown();
 	}
 
@@ -161,17 +245,108 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Includes the connected account identifier from the account service.
+	 */
+	public function test_includes_account_identifier(): void {
+		WC_Payments_Account_Service_Stub::set_stripe_account_id( ' acct_123 ' );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_stripe_account_id_calls() );
+		$this->assertSame( 0, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
+	}
+
+	/**
+	 * @testdox Does not refresh a null account result outside classic Ajax.
+	 */
+	public function test_does_not_refresh_null_account_result_outside_ajax(): void {
+		WC_Payments_Account_Service_Stub::set_account_data( array( 'account_id' => 'acct_123' ) );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_stripe_account_id_calls() );
+		$this->assertSame( 0, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
+	}
+
+	/**
+	 * @testdox Refreshes once for a null account result during classic Ajax.
+	 */
+	public function test_refreshes_once_for_null_account_result_during_ajax(): void {
+		WC_Payments_Account_Service_Stub::set_account_data( array( 'account_id' => ' acct_123 ' ) );
+		add_filter( 'wp_doing_ajax', '__return_true' );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_stripe_account_id_calls() );
+		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
+	}
+
+	/**
+	 * @testdox Omits the account identifier when account lookup fails.
+	 */
+	public function test_omits_account_identifier_when_lookup_throws(): void {
+		WC_Payments_Account_Service_Stub::set_throws( true );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( PaymentMode::Live->value, $array['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Omits the account identifier when the classic Ajax refresh result is invalid.
+	 *
+	 * @dataProvider invalid_refresh_data_provider
+	 *
+	 * @param mixed $account_data Refreshed account data.
+	 * @param bool  $throws Whether the refresh throws.
+	 */
+	public function test_omits_invalid_ajax_refresh_account_identifier( $account_data, bool $throws ): void {
+		WC_Payments_Account_Service_Stub::set_account_data( $account_data );
+		WC_Payments_Account_Service_Stub::set_refresh_throws( $throws );
+		add_filter( 'wp_doing_ajax', '__return_true' );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
+	}
+
+	/**
+	 * @return array<string, array{mixed, bool}>
+	 */
+	public function invalid_refresh_data_provider(): array {
+		return array(
+			'false'     => array( false, false ),
+			'malformed' => array( array( 'id' => 'acct_123' ), false ),
+			'throwing'  => array( null, true ),
+		);
+	}
+
+	/**
 	 * @testdox Matches APM gateways like woocommerce_payments_bancontact.
 	 */
 	public function test_matches_apm_gateway(): void {
 		\WC_Payments::set_live( false );
+		WC_Payments_Account_Service_Stub::set_stripe_account_id( 'acct_123' );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments_bancontact' ),
 			array()
 		);
 
-		$this->assertSame( PaymentMode::Test->value, $result->to_array()['transaction_mode'] );
+		$array = $result->to_array();
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -223,6 +398,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_resolves_card_via_api(): void {
 		\WC_Payments::set_live( false );
+		WC_Payments_Account_Service_Stub::set_stripe_account_id( 'acct_123' );
 
 		$this->mock_api_response( $this->create_card_response() );
 
@@ -253,6 +429,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'avs_postcode_check' => CheckResult::Unchecked->value,
 				),
 				'transaction_mode'        => PaymentMode::Test->value,
+				'merchant_identifier'     => 'acct_123',
+				'merchant_identifier_type' => 'account',
 			),
 			$result->to_array()
 		);
@@ -555,6 +733,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_skips_resolution_when_woopay_enabled(): void {
 		\WC_Payments::set_live( false );
 		\WC_Payments_Features::set_woopay_enabled( true );
+		WC_Payments_Account_Service_Stub::set_stripe_account_id( 'acct_123' );
 
 		$this->mock_api_response( $this->create_card_response() );
 
@@ -567,6 +746,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( $array['payment_type'] );
 		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**

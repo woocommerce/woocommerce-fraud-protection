@@ -21,8 +21,8 @@ defined( 'ABSPATH' ) || exit;
  * Handles the main gateway ('woocommerce_payments') and APM gateways
  * ('woocommerce_payments_*'). When WooPay is disabled, resolves full
  * payment details (card data, bank data, payment type) via the
- * WooPayments API. When WooPay is enabled, only transaction mode is
- * resolved because pm_ IDs are platform-scoped and unresolvable.
+ * WooPayments API. When WooPay is enabled, only transaction mode and the
+ * merchant identifier are resolved because pm_ IDs are platform-scoped and unresolvable.
  */
 class WooPaymentsPaymentDataCompat {
 
@@ -72,12 +72,15 @@ class WooPaymentsPaymentDataCompat {
 			return $resolved;
 		}
 
-		$transaction_mode = $this->resolve_transaction_mode();
+		$transaction_mode    = $this->resolve_transaction_mode();
+		$merchant_identifier = $this->resolve_merchant_identifier();
 
 		// When WooPay is enabled, pm_ IDs are platform-scoped and cannot be
-		// resolved through the connected account API. Only resolve mode.
+		// resolved through the connected account API. Resolve mode and merchant identifier.
 		if ( $this->is_woopay_enabled() ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$token_key   = 'wc-' . $resolved->get_gateway() . '-payment-token';
@@ -94,12 +97,16 @@ class WooPaymentsPaymentDataCompat {
 		}
 
 		if ( empty( $pm_id ) ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$api_client = \WC_Payments::get_payments_api_client();
 		if ( null === $api_client ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		try {
@@ -119,11 +126,15 @@ class WooPaymentsPaymentDataCompat {
 					$e->getMessage()
 				)
 			);
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		if ( ! isset( $pm_details['type'] ) ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$type       = $pm_details['type'];
@@ -134,8 +145,37 @@ class WooPaymentsPaymentDataCompat {
 			$type,
 			$is_saved,
 			$instrument,
-			$transaction_mode
+			$transaction_mode,
+			$merchant_identifier,
+			'account'
 		);
+	}
+
+	/**
+	 * Resolve the WooPayments Stripe account identifier.
+	 *
+	 * @return ?string The account identifier, if available.
+	 */
+	private function resolve_merchant_identifier(): ?string {
+		try {
+			$account_service = \WC_Payments::get_account_service();
+			$identifier      = $account_service->get_stripe_account_id();
+
+			if ( is_string( $identifier ) && '' !== trim( $identifier ) ) {
+				return trim( $identifier );
+			}
+
+			if ( null !== $identifier || ! function_exists( 'wp_doing_ajax' ) || ! wp_doing_ajax() ) {
+				return null;
+			}
+
+			$account_data = $account_service->refresh_account_data();
+			$identifier   = is_array( $account_data ) ? ( $account_data['account_id'] ?? null ) : null;
+
+			return is_string( $identifier ) && '' !== trim( $identifier ) ? trim( $identifier ) : null;
+		} catch ( \Throwable $e ) {
+			return null;
+		}
 	}
 
 	/**

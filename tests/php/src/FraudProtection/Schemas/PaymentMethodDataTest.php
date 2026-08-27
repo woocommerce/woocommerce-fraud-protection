@@ -85,6 +85,8 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 					'avs_postcode_check' => null,
 				),
 				'transaction_mode'        => PaymentMode::Unknown->value,
+				'merchant_identifier'     => null,
+				'merchant_identifier_type' => null,
 			),
 			$data->to_array()
 		);
@@ -101,6 +103,51 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( PaymentMode::Test->value, $test->to_array()['transaction_mode'] );
 		$this->assertSame( PaymentMode::Live->value, $live->to_array()['transaction_mode'] );
 		$this->assertSame( PaymentMode::Unknown->value, $unknown->to_array()['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox to_array() includes a complete merchant identifier pair.
+	 */
+	public function test_to_array_includes_merchant_identifier_pair(): void {
+		$data = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Live, 'acct_123', 'account' );
+
+		$this->assertSame( 'acct_123', $data->to_array()['merchant_identifier'] );
+		$this->assertSame( 'account', $data->to_array()['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox to_array() retains the merchant identifier type when the identifier is unavailable.
+	 */
+	public function test_to_array_retains_merchant_identifier_type_when_identifier_is_unavailable(): void {
+		$data  = new PaymentMethodData( 'stripe', 'card', false, null, PaymentMode::Unknown, null, 'account' );
+		$array = $data->to_array();
+
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox with_merchant_identifier() and with_transaction_mode() preserve the identifier pair.
+	 */
+	public function test_copy_methods_preserve_merchant_identifier_pair(): void {
+		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242' ) );
+		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument, PaymentMode::Live );
+
+		$with_identifier = $data->with_merchant_identifier( 'acct_123', 'custom_gateway' )->to_array();
+		$result          = $data->with_merchant_identifier( 'acct_123', 'custom_gateway' )
+			->with_transaction_mode( PaymentMode::Test )->to_array();
+
+		foreach ( array( $with_identifier, $result ) as $array ) {
+			$this->assertSame( 'card', $array['payment_type'] );
+			$this->assertTrue( $array['is_saved_payment_method'] );
+			$this->assertSame( 'visa', $array['instrument']['brand'] );
+			$this->assertSame( '4242', $array['instrument']['last4'] );
+			$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+			$this->assertSame( 'custom_gateway', $array['merchant_identifier_type'] );
+		}
+
+		$this->assertSame( PaymentMode::Live->value, $with_identifier['transaction_mode'] );
+		$this->assertSame( PaymentMode::Test->value, $result['transaction_mode'] );
 	}
 
 	/**

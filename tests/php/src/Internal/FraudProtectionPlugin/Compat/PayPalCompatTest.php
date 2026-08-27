@@ -225,6 +225,28 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_and_block_create_order() forwards a complete PayPal payment request unchanged.
+	 */
+	public function test_verify_forwards_complete_paypal_payment_request(): void {
+		$data = array(
+			SessionVerifier::SESSION_ID_FIELD => 'test-session-abc',
+			'payment_method'                  => 'ppcp-credit-card-gateway',
+			'payment_data'                    => array( 'card_number' => 'tokenized-value' ),
+		);
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( 'test-session-abc', 'paypal_express_order_creation', 0, $data )
+			->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'test-session-abc' );
+
+		$this->sut->verify_and_block_create_order( $data );
+
+		$this->assertSame( FraudDecision::Allow, WC()->session->get( '_fraud_protection_paypal_verification' )['decision'] );
+	}
+
+	/**
 	 * @testdox verify_and_block_create_order() removes a prior record when no response-backed ID exists.
 	 */
 	public function test_verify_removes_prior_record_without_response_session_id(): void {

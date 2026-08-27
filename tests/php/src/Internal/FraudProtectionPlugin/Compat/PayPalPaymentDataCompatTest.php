@@ -58,12 +58,47 @@ if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
 	class PPCP_Container_Stub {
 
 		/**
+		 * PayPal merchant identifier.
+		 *
+		 * @var mixed
+		 */
+		private static $merchant_id;
+
+		/**
+		 * Whether the merchant identifier lookup should throw.
+		 *
+		 * @var bool
+		 */
+		private static bool $merchant_id_throws = false;
+
+		public static function set_merchant_id( $merchant_id ): void {
+			self::$merchant_id = $merchant_id;
+		}
+
+		public static function set_merchant_id_throws( bool $throws ): void {
+			self::$merchant_id_throws = $throws;
+		}
+
+		public static function reset(): void {
+			self::$merchant_id        = null;
+			self::$merchant_id_throws = false;
+		}
+
+		/**
 		 * Get a service by ID.
 		 *
 		 * @param string $id Service ID.
 		 * @return PPCP_ConnectionState_Stub
 		 */
-		public function get( string $id ): PPCP_ConnectionState_Stub {
+		public function get( string $id ) {
+			if ( 'api.merchant_id' === $id ) {
+				if ( self::$merchant_id_throws ) {
+					throw new \RuntimeException( 'Merchant ID lookup failed' );
+				}
+
+				return self::$merchant_id;
+			}
+
 			return new PPCP_ConnectionState_Stub();
 		}
 	}
@@ -112,6 +147,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		PPCP_ConnectionState_Stub::set_sandbox( null );
+		PPCP_Container_Stub::reset();
 		parent::tearDown();
 	}
 
@@ -175,6 +211,51 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertSame( PaymentMode::Test->value, $result->to_array()['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Includes the merchant account identifier for a prefixed PayPal gateway.
+	 */
+	public function test_includes_merchant_identifier(): void {
+		PPCP_ConnectionState_Stub::set_sandbox( true );
+		PPCP_Container_Stub::set_merchant_id( ' merchant_123 ' );
+
+		$result = $this->sut->resolve( new PaymentMethodData( 'ppcp-card-button-gateway' ) );
+		$array  = $result->to_array();
+
+		$this->assertSame( 'merchant_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox Omits the merchant account identifier when the PayPal source is invalid or throws.
+	 *
+	 * @dataProvider invalid_merchant_identifier_provider
+	 *
+	 * @param mixed $merchant_id Merchant identifier source.
+	 * @param bool  $throws Whether the source throws.
+	 */
+	public function test_omits_invalid_merchant_identifier( $merchant_id, bool $throws ): void {
+		PPCP_ConnectionState_Stub::set_sandbox( true );
+		PPCP_Container_Stub::set_merchant_id( $merchant_id );
+		PPCP_Container_Stub::set_merchant_id_throws( $throws );
+
+		$array = $this->sut->resolve( new PaymentMethodData( 'ppcp-gateway' ) )->to_array();
+
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+	}
+
+	/**
+	 * @return array<string, array{mixed, bool}>
+	 */
+	public function invalid_merchant_identifier_provider(): array {
+		return array(
+			'empty'     => array( '', false ),
+			'malformed' => array( array( 'merchant_id' ), false ),
+			'throwing'  => array( null, true ),
+		);
 	}
 
 	/**

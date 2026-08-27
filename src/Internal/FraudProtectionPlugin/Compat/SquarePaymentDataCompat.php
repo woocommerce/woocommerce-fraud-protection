@@ -56,11 +56,14 @@ class SquarePaymentDataCompat {
 			: null;
 		$postcode    = $checkout_payment_fields['wc-square-credit-card-payment-postcode'] ?? null;
 
-		$transaction_mode = $this->resolve_transaction_mode();
+		$transaction_mode    = $this->resolve_transaction_mode();
+		$merchant_identifier = $this->resolve_merchant_identifier();
 
 		// Saved cards have empty card keys — pass through the token-based data.
 		if ( empty( $brand ) && empty( $last4 ) ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'location' );
 		}
 
 		return new PaymentMethodData(
@@ -76,8 +79,29 @@ class SquarePaymentDataCompat {
 					'billing_postcode' => $postcode,
 				)
 			),
-			$transaction_mode
+			$transaction_mode,
+			$merchant_identifier,
+			'location'
 		);
+	}
+
+	/**
+	 * Resolve the configured Square location identifier.
+	 *
+	 * @return ?string The location identifier, if available.
+	 */
+	private function resolve_merchant_identifier(): ?string {
+		if ( ! function_exists( 'wc_square' ) ) {
+			return null;
+		}
+
+		try {
+			$identifier = wc_square()->get_settings_handler()->get_location_id();
+
+			return is_string( $identifier ) && '' !== trim( $identifier ) ? trim( $identifier ) : null;
+		} catch ( \Throwable $e ) {
+			return null;
+		}
 	}
 
 	/**

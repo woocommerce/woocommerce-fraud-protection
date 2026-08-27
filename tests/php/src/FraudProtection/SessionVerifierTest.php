@@ -13,6 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -330,7 +331,10 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			'stripe',
 			'card',
 			false,
-			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) )
+			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) ),
+			PaymentMode::Live,
+			'acct_123',
+			'account'
 		);
 
 		$request_data = array(

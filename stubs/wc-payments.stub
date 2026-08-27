@@ -14,6 +14,9 @@ namespace {
 		/** @return ?\WCPay\Core\Mode */
 		public static function mode(): ?\WCPay\Core\Mode {}
 
+		/** @return WC_Payments_Account_Service */
+		public static function get_account_service(): WC_Payments_Account_Service {}
+
 		/** @return ?WC_Payments_API_Client */
 		public static function get_payments_api_client(): ?WC_Payments_API_Client {}
 
@@ -27,6 +30,14 @@ namespace {
 		public static function set_api_client( ?WC_Payments_API_Client $client ): void {}
 
 		public static function reset(): void {}
+	}
+
+	class WC_Payments_Account_Service {
+		/** @return mixed */
+		public function get_stripe_account_id() {}
+
+		/** @return mixed */
+		public function refresh_account_data() {}
 	}
 
 	class WC_Payments_API_Client {

@@ -51,24 +51,31 @@ class StripePaymentDataCompat {
 			return $resolved;
 		}
 
-		$transaction_mode = $this->resolve_transaction_mode();
+		$transaction_mode    = $this->resolve_transaction_mode();
+		$merchant_identifier = $this->resolve_merchant_identifier();
 
 		$pm_id = $checkout_payment_fields['wc-stripe-payment-method'] ?? ( $checkout_payment_fields['stripe_source'] ?? '' );
 		if ( empty( $pm_id ) ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$token_value = $checkout_payment_fields['wc-stripe-payment-token'] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		$pm_details = \WC_Stripe_API::get_payment_method( $pm_id );
 
 		if ( is_wp_error( $pm_details ) || ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
-			return $resolved->with_transaction_mode( $transaction_mode );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'account' );
 		}
 
 		if ( 'card' !== $pm_details->type || ! isset( $pm_details->card ) ) {
@@ -77,7 +84,9 @@ class StripePaymentDataCompat {
 				$pm_details->type,
 				$is_saved,
 				null,
-				$transaction_mode
+				$transaction_mode,
+				$merchant_identifier,
+				'account'
 			);
 		}
 
@@ -99,8 +108,30 @@ class StripePaymentDataCompat {
 					'billing_postcode' => $postcode,
 				)
 			),
-			$transaction_mode
+			$transaction_mode,
+			$merchant_identifier,
+			'account'
 		);
+	}
+
+	/**
+	 * Resolve the Stripe account identifier.
+	 *
+	 * @return ?string The account identifier, if available.
+	 */
+	private function resolve_merchant_identifier(): ?string {
+		if ( ! class_exists( '\WC_Stripe' ) ) {
+			return null;
+		}
+
+		try {
+			$account_data = \WC_Stripe::get_instance()->account->get_cached_account_data();
+			$identifier   = is_array( $account_data ) ? ( $account_data['id'] ?? null ) : null;
+
+			return is_string( $identifier ) && '' !== trim( $identifier ) ? trim( $identifier ) : null;
+		} catch ( \Throwable $e ) {
+			return null;
+		}
 	}
 
 	/**

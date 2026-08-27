@@ -44,6 +44,8 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		\WC_Square_Settings_Stub::set_sandbox( false );
+		\WC_Square_Settings_Stub::set_location_id( null );
+		\WC_Square_Settings_Stub::set_location_id_throws( false );
 		parent::tearDown();
 	}
 
@@ -98,6 +100,8 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'avs_postcode_check' => null,
 				),
 				'transaction_mode'        => PaymentMode::Live->value,
+				'merchant_identifier'     => null,
+				'merchant_identifier_type' => 'location',
 			),
 			$result->to_array()
 		);
@@ -139,6 +143,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Saved card with empty card keys preserves token data.
 	 */
 	public function test_saved_card_with_empty_keys_preserves_token_data(): void {
+		\WC_Square_Settings_Stub::set_location_id( 'location_123' );
 		$token_data = new PaymentMethodData(
 			'square_credit_card',
 			'card',
@@ -159,6 +164,8 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( $array['is_saved_payment_method'] );
 		$this->assertSame( 'visa', $array['instrument']['brand'] );
 		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertSame( 'location_123', $array['merchant_identifier'] );
+		$this->assertSame( 'location', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -220,5 +227,60 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertSame( PaymentMode::Live->value, $result->to_array()['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Includes the configured location identifier for a full instrument result.
+	 */
+	public function test_includes_location_identifier(): void {
+		\WC_Square_Settings_Stub::set_location_id( ' location_123 ' );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'square_credit_card' ),
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+			)
+		)->to_array();
+
+		$this->assertSame( 'location_123', $array['merchant_identifier'] );
+		$this->assertSame( 'location', $array['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox Preserves saved-card data when the location lookup fails.
+	 */
+	public function test_preserves_saved_card_when_location_lookup_fails(): void {
+		\WC_Square_Settings_Stub::set_location_id_throws( true );
+		$resolved = new PaymentMethodData( 'square_credit_card', 'card', true, PaymentInstrumentData::from_array( array( 'last4' => '4242' ) ) );
+
+		$array = $this->sut->resolve(
+			$resolved,
+			array( 'wc-square-credit-card-payment-token' => 'token_123' )
+		)->to_array();
+
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertSame( PaymentMode::Live->value, $array['transaction_mode'] );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertSame( 'location', $array['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox Omits a malformed location identifier while preserving payment data.
+	 */
+	public function test_omits_malformed_location_identifier(): void {
+		\WC_Square_Settings_Stub::set_location_id( array( 'location_id' ) );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'square_credit_card' ),
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+			)
+		)->to_array();
+
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertSame( 'location', $array['merchant_identifier_type'] );
 	}
 }
