@@ -91,7 +91,7 @@ describe( 'blocks-checkout', () => {
 			);
 		} );
 
-		it( 'does not set extension data when session ID is empty', async () => {
+		it( 'replaces extension data when session ID is empty', async () => {
 			mockAcquireSessionId.mockReturnValue( Promise.resolve( '' ) );
 			setupFraudProtection();
 			loadScript();
@@ -100,7 +100,11 @@ describe( 'blocks-checkout', () => {
 			const result = await validationCallback();
 
 			expect( result ).toBe( true );
-			expect( mockSetExtensionData ).not.toHaveBeenCalled();
+			expect( mockSetExtensionData ).toHaveBeenCalledWith(
+				'woocommerce/fraud-protection',
+				{ blackbox_session_id: '' },
+				true
+			);
 		} );
 
 		it( 'returns true when wcFraudProtection is missing (fail-open)', async () => {

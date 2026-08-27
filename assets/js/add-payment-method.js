@@ -45,12 +45,20 @@
 			e.stopImmediatePropagation();
 
 			fraudProtection.acquireSessionId().then( function ( sessionId ) {
-				$( '<input>', {
-					type: 'hidden',
-					name: sessionIdField,
-					id: sessionIdField,
-					value: sessionId,
-				} ).appendTo( form );
+				let $sessionIdField = $( form )
+					.find( 'input[name="' + sessionIdField + '"]' )
+					.first();
+
+				if ( $sessionIdField.length ) {
+					$sessionIdField.val( sessionId );
+				} else {
+					$sessionIdField = $( '<input>', {
+						type: 'hidden',
+						name: sessionIdField,
+						id: sessionIdField,
+						value: sessionId,
+					} ).appendTo( form );
+				}
 
 				// Re-fire submit so gateway handlers (Stripe, etc.) can
 				// intercept. If no handler prevents, fall back to native POST.
@@ -60,6 +68,14 @@
 				} );
 				if ( form.dispatchEvent( submitEvent ) ) {
 					form.submit();
+				}
+
+				if ( ! sessionId ) {
+					setTimeout( function () {
+						if ( $sessionIdField.val() === '' ) {
+							$sessionIdField.remove();
+						}
+					}, 0 );
 				}
 			} );
 		},

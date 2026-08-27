@@ -20,26 +20,37 @@
 		}
 
 		const sessionIdField = fraudProtection.config.sessionIdField;
+		const $form = $( this );
+		const $field = $form
+			.find( 'input[name="' + sessionIdField + '"]' )
+			.first();
 
 		// Re-entry: field present, let through. Deferred cleanup removes
 		// the field and resets so the next attempt gets a fresh session.
-		if ( $( '#' + sessionIdField ).length ) {
+		if ( $field.length ) {
 			setTimeout( function () {
-				$( '#' + sessionIdField ).remove();
+				$field.remove();
 				fraudProtection.reset();
 			}, 0 );
 			return true;
 		}
 
-		const $form = $( this );
-
 		fraudProtection.acquireSessionId().then( function ( sessionId ) {
-			$( '<input>', {
-				type: 'hidden',
-				name: sessionIdField,
-				id: sessionIdField,
-				value: sessionId,
-			} ).appendTo( $form );
+			const $existingField = $form
+				.find( 'input[name="' + sessionIdField + '"]' )
+				.first();
+
+			if ( $existingField.length ) {
+				$existingField.val( sessionId );
+			} else {
+				$( '<input>', {
+					type: 'hidden',
+					name: sessionIdField,
+					id: sessionIdField,
+					value: sessionId,
+				} ).appendTo( $form );
+			}
+
 			$form.trigger( 'submit' );
 		} );
 

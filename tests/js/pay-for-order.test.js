@@ -113,11 +113,19 @@ describe( 'pay-for-order', () => {
 
 		// Simulate a gateway handler (e.g. Stripe) that prevents default
 		// to handle submission itself (tokenize, then submit).
-		form.addEventListener( 'submit', ( e ) => e.preventDefault() );
+		let fieldDuringGatewaySubmit;
+		form.addEventListener( 'submit', ( e ) => {
+			fieldDuringGatewaySubmit = document.getElementById(
+				SESSION_ID_FIELD
+			);
+			e.preventDefault();
+		} );
 
 		dispatchSubmit();
 		await flushPromises();
 
+		expect( fieldDuringGatewaySubmit ).not.toBeNull();
+		expect( fieldDuringGatewaySubmit.value ).toBe( 'sess-pay-order' );
 		expect( form.submit ).not.toHaveBeenCalled();
 	} );
 
@@ -151,5 +159,125 @@ describe( 'pay-for-order', () => {
 		expect( notCancelled ).toBe( true );
 		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	it( 'keeps one field with the latest completed value', async () => {
+		let resolveFirst;
+		let resolveSecond;
+		mockAcquireSessionId
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveFirst = resolve;
+				} )
+			)
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveSecond = resolve;
+				} )
+			);
+		setupFraudProtection();
+		loadScript();
+
+		dispatchSubmit();
+		dispatchSubmit();
+		resolveSecond( 'sess-second' );
+		await flushPromises();
+
+		let fields = form.querySelectorAll(
+			'input[name="' + SESSION_ID_FIELD + '"]'
+		);
+		expect( fields ).toHaveLength( 1 );
+		expect( fields[ 0 ].value ).toBe( 'sess-second' );
+		const field = fields[ 0 ];
+
+		resolveFirst( 'sess-first' );
+		await flushPromises();
+
+		fields = form.querySelectorAll(
+			'input[name="' + SESSION_ID_FIELD + '"]'
+		);
+		expect( fields ).toHaveLength( 1 );
+		expect( fields[ 0 ] ).toBe( field );
+		expect( field.value ).toBe( 'sess-first' );
+	} );
+
+	it( 'keeps a later nonempty value after empty cleanup', async () => {
+		let resolveEmpty;
+		let resolveNonempty;
+		mockAcquireSessionId
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveEmpty = resolve;
+				} )
+			)
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveNonempty = resolve;
+				} )
+			);
+		setupFraudProtection();
+		loadScript();
+
+		dispatchSubmit();
+		dispatchSubmit();
+		resolveEmpty( '' );
+		await flushPromises();
+		const field = document.getElementById( SESSION_ID_FIELD );
+		expect( field.value ).toBe( '' );
+
+		resolveNonempty( 'sess-valid' );
+		await flushPromises();
+		expect( field.value ).toBe( 'sess-valid' );
+
+		jest.advanceTimersByTime( 0 );
+		expect( field.isConnected ).toBe( true );
+	} );
+
+	it( 'removes an empty temporary field after replay and acquires again later', async () => {
+		mockAcquireSessionId
+			.mockReturnValueOnce( Promise.resolve( '' ) )
+			.mockReturnValueOnce( Promise.resolve( 'sess-later' ) );
+		setupFraudProtection();
+		loadScript();
+
+		let fieldDuringReplay;
+		let fieldDuringNativeSubmit;
+		form.addEventListener( 'submit', () => {
+			fieldDuringReplay = document.getElementById( SESSION_ID_FIELD );
+		} );
+		form.submit = jest.fn( () => {
+			fieldDuringNativeSubmit = document.getElementById(
+				SESSION_ID_FIELD
+			);
+		} );
+
+		const notCancelled = dispatchSubmit();
+		expect( notCancelled ).toBe( false );
+		await flushPromises();
+
+		expect( fieldDuringReplay ).not.toBeNull();
+		expect( fieldDuringReplay.value ).toBe( '' );
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
+		expect( fieldDuringNativeSubmit ).toBe( fieldDuringReplay );
+		expect( fieldDuringNativeSubmit.value ).toBe( '' );
+
+		const temporaryField = fieldDuringReplay;
+		const otherField = document.createElement( 'input' );
+		otherField.id = SESSION_ID_FIELD;
+		otherField.name = SESSION_ID_FIELD;
+		form.appendChild( otherField );
+
+		jest.advanceTimersByTime( 0 );
+		expect( temporaryField.isConnected ).toBe( false );
+		expect( otherField.isConnected ).toBe( true );
+		otherField.remove();
+
+		expect( dispatchSubmit() ).toBe( false );
+		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+		await flushPromises();
+
+		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+			'sess-later'
+		);
 	} );
 } );
