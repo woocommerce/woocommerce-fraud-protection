@@ -13,11 +13,10 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Resolves PayPal Payments transaction mode into PaymentMethodData.
+ * Resolves the PayPal Payments merchant identifier and transaction mode into PaymentMethodData.
  *
  * PayPal does not expose structured card/instrument data, so this compat
- * only resolves the test/live transaction mode based on the gateway's
- * ConnectionState API.
+ * resolves the merchant identifier and test/live transaction mode.
  */
 class PayPalPaymentDataCompat {
 
