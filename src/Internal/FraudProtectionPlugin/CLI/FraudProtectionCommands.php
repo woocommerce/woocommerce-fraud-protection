@@ -112,11 +112,11 @@ class FraudProtectionCommands {
 		/**
 		 * Filter learning mode for local status output.
 		 *
-		 * @param bool                     $learning_mode Whether learning mode is active. Default true.
-		 * @param LearningModeContext|null $context      Always null for status output.
-		 *
 		 * @since 0.1.0
 		 * @since 0.1.10 The nullable context argument was added.
+		 *
+		 * @param bool                     $learning_mode Whether learning mode is active. Default true.
+		 * @param LearningModeContext|null $context      Always null for status output.
 		 */
 		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true, null );
 
