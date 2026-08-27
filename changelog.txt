@@ -3,6 +3,7 @@
 YYYY-xx-xx - version 0.1.10
 * Fixed - Verification source names are capped consistently at 32 characters across filters, requests, and session records. Subscription payment changes now use a complete source name within that limit.
 * Fixed - Prevent event tracking failures from interrupting checkout and payment-method requests.
+* Fixed - Managed installations now use a reachable plugin asset URL.
 
 2026-08-25 - version 0.1.9
 * Added - WP-CLI commands to check plugin status, install or repair the database schema, and prune expired sessions.
