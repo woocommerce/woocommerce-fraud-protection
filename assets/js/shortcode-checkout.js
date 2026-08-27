@@ -12,12 +12,6 @@
 ( function ( $ ) {
 	'use strict';
 
-	const findSessionIdFields = function ( $form, sessionIdField ) {
-		return $form.find( 'input' ).filter( function () {
-			return this.id === sessionIdField || this.name === sessionIdField;
-		} );
-	};
-
 	$( 'form.checkout' ).on( 'checkout_place_order', function () {
 		const fraudProtection = window.wcFraudProtection;
 
@@ -27,23 +21,27 @@
 
 		const sessionIdField = fraudProtection.config.sessionIdField;
 		const $form = $( this );
+		const $field = $form
+			.find( 'input[name="' + sessionIdField + '"]' )
+			.first();
 
 		// Re-entry: field present, let through. Deferred cleanup removes
 		// the field and resets so the next attempt gets a fresh session.
-		if ( findSessionIdFields( $form, sessionIdField ).length ) {
+		if ( $field.length ) {
 			setTimeout( function () {
-				findSessionIdFields( $form, sessionIdField ).remove();
+				$field.remove();
 				fraudProtection.reset();
 			}, 0 );
 			return true;
 		}
 
 		fraudProtection.acquireSessionId().then( function ( sessionId ) {
-			const $fields = findSessionIdFields( $form, sessionIdField );
+			const $existingField = $form
+				.find( 'input[name="' + sessionIdField + '"]' )
+				.first();
 
-			if ( $fields.length ) {
-				$fields.first().val( sessionId );
-				$fields.slice( 1 ).remove();
+			if ( $existingField.length ) {
+				$existingField.val( sessionId );
 			} else {
 				$( '<input>', {
 					type: 'hidden',

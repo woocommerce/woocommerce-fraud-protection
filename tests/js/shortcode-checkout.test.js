@@ -155,19 +155,6 @@ describe( 'shortcode-checkout', () => {
 		$form.triggerHandler( 'checkout_place_order' );
 		$form.triggerHandler( 'checkout_place_order' );
 
-		$( '<input>', {
-			type: 'hidden',
-			id: SESSION_ID_FIELD,
-			name: SESSION_ID_FIELD,
-			value: 'stale-first',
-		} ).appendTo( $form );
-		$( '<input>', {
-			type: 'hidden',
-			id: SESSION_ID_FIELD,
-			name: SESSION_ID_FIELD,
-			value: 'stale-second',
-		} ).appendTo( $form );
-
 		resolveSecond( 'sess-second' );
 		await flushPromises();
 		let $fields = $form.find(
@@ -175,6 +162,7 @@ describe( 'shortcode-checkout', () => {
 		);
 		expect( $fields.length ).toBe( 1 );
 		expect( $fields.val() ).toBe( 'sess-second' );
+		const field = $fields[ 0 ];
 
 		resolveFirst( 'sess-first' );
 		await flushPromises();
@@ -184,6 +172,7 @@ describe( 'shortcode-checkout', () => {
 		);
 		expect( $fields.length ).toBe( 1 );
 		expect( $fields.val() ).toBe( 'sess-first' );
+		expect( $fields[ 0 ] ).toBe( field );
 	} );
 
 	it( 'only cleans up the form that owns the field', () => {
