@@ -153,6 +153,78 @@ describe( 'add-payment-method', () => {
 		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
 	} );
 
+	it( 'keeps one field with the latest completed value', async () => {
+		let resolveFirst;
+		let resolveSecond;
+		mockAcquireSessionId
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveFirst = resolve;
+				} )
+			)
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveSecond = resolve;
+				} )
+			);
+		setupFraudProtection();
+		loadScript();
+
+		dispatchSubmit();
+		dispatchSubmit();
+		resolveSecond( 'sess-second' );
+		await flushPromises();
+
+		let fields = form.querySelectorAll(
+			'input[name="' + SESSION_ID_FIELD + '"]'
+		);
+		expect( fields ).toHaveLength( 1 );
+		expect( fields[ 0 ].value ).toBe( 'sess-second' );
+		const field = fields[ 0 ];
+
+		resolveFirst( 'sess-first' );
+		await flushPromises();
+
+		fields = form.querySelectorAll(
+			'input[name="' + SESSION_ID_FIELD + '"]'
+		);
+		expect( fields ).toHaveLength( 1 );
+		expect( fields[ 0 ] ).toBe( field );
+		expect( field.value ).toBe( 'sess-first' );
+	} );
+
+	it( 'keeps a later nonempty value after empty cleanup', async () => {
+		let resolveEmpty;
+		let resolveNonempty;
+		mockAcquireSessionId
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveEmpty = resolve;
+				} )
+			)
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveNonempty = resolve;
+				} )
+			);
+		setupFraudProtection();
+		loadScript();
+
+		dispatchSubmit();
+		dispatchSubmit();
+		resolveEmpty( '' );
+		await flushPromises();
+		const field = document.getElementById( SESSION_ID_FIELD );
+		expect( field.value ).toBe( '' );
+
+		resolveNonempty( 'sess-valid' );
+		await flushPromises();
+		expect( field.value ).toBe( 'sess-valid' );
+
+		jest.advanceTimersByTime( 0 );
+		expect( field.isConnected ).toBe( true );
+	} );
+
 	it( 'removes an empty temporary field after replay and acquires again later', async () => {
 		mockAcquireSessionId
 			.mockReturnValueOnce( Promise.resolve( '' ) )
