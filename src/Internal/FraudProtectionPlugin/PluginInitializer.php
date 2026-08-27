@@ -44,7 +44,9 @@ class PluginInitializer {
 	public static function run( string $plugin_file ): void {
 		define( 'WC_FRAUD_PROTECTION_VERSION', '0.1.9' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', dirname( $plugin_file ) );
-		define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( $plugin_file ) );
+		if ( ! defined( 'WC_FRAUD_PROTECTION_PLUGIN_URL' ) ) {
+			define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', plugin_dir_url( $plugin_file ) );
+		}
 
 		// Force-disable WC Core's built-in fraud protection feature to prevent
 		// session and script conflicts with this plugin's implementation.

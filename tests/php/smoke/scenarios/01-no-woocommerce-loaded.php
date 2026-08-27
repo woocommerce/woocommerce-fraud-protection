@@ -16,6 +16,11 @@ require_once __DIR__ . '/../stubs/wp.php';
 require_once dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection.php';
 
 wfp_smoke_assert(
+	defined( 'WC_FRAUD_PROTECTION_PLUGIN_URL' ) && 'https://example.test/wp-content/plugins/woocommerce-fraud-protection/' === WC_FRAUD_PROTECTION_PLUGIN_URL,
+	'Plugin should define its regular installation asset URL.'
+);
+
+wfp_smoke_assert(
 	isset( $GLOBALS['wfp_smoke_hooks']['woocommerce_loaded'] ),
 	'Plugin should register a woocommerce_loaded closure.'
 );
