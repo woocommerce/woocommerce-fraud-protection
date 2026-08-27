@@ -45,7 +45,7 @@
 			e.stopImmediatePropagation();
 
 			fraudProtection.acquireSessionId().then( function ( sessionId ) {
-				$( '<input>', {
+				const $sessionIdField = $( '<input>', {
 					type: 'hidden',
 					name: sessionIdField,
 					id: sessionIdField,
@@ -60,6 +60,12 @@
 				} );
 				if ( form.dispatchEvent( submitEvent ) ) {
 					form.submit();
+				}
+
+				if ( ! sessionId ) {
+					setTimeout( function () {
+						$sessionIdField.remove();
+					}, 0 );
 				}
 			} );
 		},

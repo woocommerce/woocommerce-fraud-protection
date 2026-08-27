@@ -33,14 +33,12 @@
 		return fraudProtection
 			.acquireSessionId()
 			.then( function ( sessionId ) {
-				if ( sessionId ) {
-					const checkout = wp.data.dispatch( STORE_KEY );
-					checkout.setExtensionData(
-						NAMESPACE,
-						{ blackbox_session_id: sessionId },
-						true
-					);
-				}
+				const checkout = wp.data.dispatch( STORE_KEY );
+				checkout.setExtensionData(
+					NAMESPACE,
+					{ blackbox_session_id: sessionId },
+					true
+				);
 
 				return true;
 			} )

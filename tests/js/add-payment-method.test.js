@@ -152,4 +152,36 @@ describe( 'add-payment-method', () => {
 		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
 	} );
+
+	it( 'removes an empty temporary field after replay and acquires again later', async () => {
+		mockAcquireSessionId
+			.mockReturnValueOnce( Promise.resolve( '' ) )
+			.mockReturnValueOnce( Promise.resolve( 'sess-later' ) );
+		setupFraudProtection();
+		loadScript();
+
+		let fieldDuringReplay;
+		form.addEventListener( 'submit', () => {
+			fieldDuringReplay = document.getElementById( SESSION_ID_FIELD );
+		} );
+
+		const notCancelled = dispatchSubmit();
+		expect( notCancelled ).toBe( false );
+		await flushPromises();
+
+		expect( fieldDuringReplay ).not.toBeNull();
+		expect( fieldDuringReplay.value ).toBe( '' );
+		expect( document.getElementById( SESSION_ID_FIELD ) ).not.toBeNull();
+
+		jest.advanceTimersByTime( 0 );
+		expect( document.getElementById( SESSION_ID_FIELD ) ).toBeNull();
+
+		expect( dispatchSubmit() ).toBe( false );
+		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+		await flushPromises();
+
+		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+			'sess-later'
+		);
+	} );
 } );

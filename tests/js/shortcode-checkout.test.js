@@ -134,4 +134,63 @@ describe( 'shortcode-checkout', () => {
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
 		expect( mockReset ).toHaveBeenCalledTimes( 1 );
 	} );
+
+	it( 'keeps one field with the latest completed value', async () => {
+		let resolveFirst;
+		let resolveSecond;
+		mockAcquireSessionId
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveFirst = resolve;
+				} )
+			)
+			.mockImplementationOnce(
+				() => new Promise( ( resolve ) => {
+					resolveSecond = resolve;
+				} )
+			);
+		setupFraudProtection();
+		loadScript();
+
+		$form.triggerHandler( 'checkout_place_order' );
+		$form.triggerHandler( 'checkout_place_order' );
+
+		resolveFirst( 'sess-first' );
+		await flushPromises();
+		resolveSecond( 'sess-second' );
+		await flushPromises();
+
+		const $fields = $form.find( '#' + SESSION_ID_FIELD );
+		expect( $fields.length ).toBe( 1 );
+		expect( $fields.val() ).toBe( 'sess-second' );
+
+		jest.advanceTimersByTime( 0 );
+		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+		expect( mockReset ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	it( 'only cleans up the form that owns the field', async () => {
+		document.body.innerHTML =
+			'<form class="checkout" id="first"></form>' +
+			'<form class="checkout" id="second"></form>';
+		$form = $( '#first' );
+		const $secondForm = $( '#second' );
+		$( '<input>', {
+			type: 'hidden',
+			id: SESSION_ID_FIELD,
+			name: SESSION_ID_FIELD,
+			value: 'other-form',
+		} ).appendTo( $secondForm );
+		setupFraudProtection();
+		loadScript();
+
+		$form.triggerHandler( 'checkout_place_order' );
+		await flushPromises();
+		jest.advanceTimersByTime( 0 );
+
+		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+		expect( $secondForm.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
+			'other-form'
+		);
+	} );
 } );
