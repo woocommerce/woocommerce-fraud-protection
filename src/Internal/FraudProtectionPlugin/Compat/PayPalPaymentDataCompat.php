@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 
@@ -50,12 +51,9 @@ class PayPalPaymentDataCompat {
 			return $resolved;
 		}
 
-		$merchant_identifier = $this->resolve_merchant_identifier();
-		$result              = $resolved->with_transaction_mode( $this->resolve_transaction_mode() );
-
-		return null !== $merchant_identifier
-			? $result->with_merchant_identifier( $merchant_identifier, 'account' )
-			: $result;
+		return $resolved
+			->with_transaction_mode( $this->resolve_transaction_mode() )
+			->with_merchant_identifier( $this->resolve_merchant_identifier(), MerchantIdentifierType::Account );
 	}
 
 	/**

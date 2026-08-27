@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
+use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -78,7 +79,9 @@ class WooPaymentsPaymentDataCompat {
 		// When WooPay is enabled, pm_ IDs are platform-scoped and cannot be
 		// resolved through the connected account API. Only resolve mode.
 		if ( $this->is_woopay_enabled() ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		$token_key   = 'wc-' . $resolved->get_gateway() . '-payment-token';
@@ -95,12 +98,16 @@ class WooPaymentsPaymentDataCompat {
 		}
 
 		if ( empty( $pm_id ) ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		$api_client = \WC_Payments::get_payments_api_client();
 		if ( null === $api_client ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		try {
@@ -120,25 +127,28 @@ class WooPaymentsPaymentDataCompat {
 					$e->getMessage()
 				)
 			);
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		if ( ! isset( $pm_details['type'] ) ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		$type       = $pm_details['type'];
 		$instrument = $this->build_instrument( $type, $pm_details );
 
-		return $this->add_merchant_identifier(
-			new PaymentMethodData(
-				$resolved->get_gateway(),
-				$type,
-				$is_saved,
-				$instrument,
-				$transaction_mode
-			),
-			$merchant_identifier
+		return new PaymentMethodData(
+			$resolved->get_gateway(),
+			$type,
+			$is_saved,
+			$instrument,
+			$transaction_mode,
+			$merchant_identifier,
+			MerchantIdentifierType::Account
 		);
 	}
 
@@ -148,6 +158,10 @@ class WooPaymentsPaymentDataCompat {
 	 * @return ?string The account identifier, if available.
 	 */
 	private function resolve_merchant_identifier(): ?string {
+		if ( ! class_exists( '\WC_Payments' ) ) {
+			return null;
+		}
+
 		try {
 			$account_service = \WC_Payments::get_account_service();
 			$identifier      = $account_service->get_stripe_account_id();
@@ -167,17 +181,6 @@ class WooPaymentsPaymentDataCompat {
 		} catch ( \Throwable $e ) {
 			return null;
 		}
-	}
-
-	/**
-	 * Add the merchant identifier when it was resolved.
-	 *
-	 * @param PaymentMethodData $data Payment data.
-	 * @param ?string           $merchant_identifier Merchant account identifier.
-	 * @return PaymentMethodData Payment data.
-	 */
-	private function add_merchant_identifier( PaymentMethodData $data, ?string $merchant_identifier ): PaymentMethodData {
-		return null !== $merchant_identifier ? $data->with_merchant_identifier( $merchant_identifier, 'account' ) : $data;
 	}
 
 	/**

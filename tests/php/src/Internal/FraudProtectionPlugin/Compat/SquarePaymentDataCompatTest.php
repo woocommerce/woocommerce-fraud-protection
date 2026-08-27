@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -100,6 +101,8 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'avs_postcode_check' => null,
 				),
 				'transaction_mode'        => PaymentMode::Live->value,
+				'merchant_identifier'     => null,
+				'merchant_identifier_type' => null,
 			),
 			$result->to_array()
 		);
@@ -163,7 +166,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'visa', $array['instrument']['brand'] );
 		$this->assertSame( '4242', $array['instrument']['last4'] );
 		$this->assertSame( 'location_123', $array['merchant_identifier'] );
-		$this->assertSame( 'location', $array['merchant_identifier_type'] );
+		$this->assertSame( MerchantIdentifierType::Location->value, $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -242,7 +245,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		)->to_array();
 
 		$this->assertSame( 'location_123', $array['merchant_identifier'] );
-		$this->assertSame( 'location', $array['merchant_identifier_type'] );
+		$this->assertSame( MerchantIdentifierType::Location->value, $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -259,7 +262,8 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( '4242', $array['instrument']['last4'] );
 		$this->assertSame( PaymentMode::Live->value, $array['transaction_mode'] );
-		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertNull( $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -277,6 +281,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		)->to_array();
 
 		$this->assertSame( '4242', $array['instrument']['last4'] );
-		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertNull( $array['merchant_identifier_type'] );
 	}
 }

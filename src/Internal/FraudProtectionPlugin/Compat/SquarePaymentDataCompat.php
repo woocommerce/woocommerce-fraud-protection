@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 
@@ -61,26 +62,27 @@ class SquarePaymentDataCompat {
 
 		// Saved cards have empty card keys — pass through the token-based data.
 		if ( empty( $brand ) && empty( $last4 ) ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Location );
 		}
 
-		return $this->add_merchant_identifier(
-			new PaymentMethodData(
-				'square_credit_card',
-				'card',
-				$is_saved,
-				PaymentInstrumentData::from_array(
-					array(
-						'brand'            => $brand,
-						'last4'            => $last4,
-						'exp_month'        => $exp_month,
-						'exp_year'         => $exp_year,
-						'billing_postcode' => $postcode,
-					)
-				),
-				$transaction_mode
+		return new PaymentMethodData(
+			'square_credit_card',
+			'card',
+			$is_saved,
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'            => $brand,
+					'last4'            => $last4,
+					'exp_month'        => $exp_month,
+					'exp_year'         => $exp_year,
+					'billing_postcode' => $postcode,
+				)
 			),
-			$merchant_identifier
+			$transaction_mode,
+			$merchant_identifier,
+			MerchantIdentifierType::Location
 		);
 	}
 
@@ -101,17 +103,6 @@ class SquarePaymentDataCompat {
 		} catch ( \Throwable $e ) {
 			return null;
 		}
-	}
-
-	/**
-	 * Add the merchant identifier when it was resolved.
-	 *
-	 * @param PaymentMethodData $data Payment data.
-	 * @param ?string           $merchant_identifier Merchant location identifier.
-	 * @return PaymentMethodData Payment data.
-	 */
-	private function add_merchant_identifier( PaymentMethodData $data, ?string $merchant_identifier ): PaymentMethodData {
-		return null !== $merchant_identifier ? $data->with_merchant_identifier( $merchant_identifier, 'location' ) : $data;
 	}
 
 	/**

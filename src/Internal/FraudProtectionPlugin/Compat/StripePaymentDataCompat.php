@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -56,57 +57,61 @@ class StripePaymentDataCompat {
 
 		$pm_id = $checkout_payment_fields['wc-stripe-payment-method'] ?? ( $checkout_payment_fields['stripe_source'] ?? '' );
 		if ( empty( $pm_id ) ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		$token_value = $checkout_payment_fields['wc-stripe-payment-token'] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		$pm_details = \WC_Stripe_API::get_payment_method( $pm_id );
 
 		if ( is_wp_error( $pm_details ) || ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
-			return $this->add_merchant_identifier( $resolved->with_transaction_mode( $transaction_mode ), $merchant_identifier );
+			return $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, MerchantIdentifierType::Account );
 		}
 
 		if ( 'card' !== $pm_details->type || ! isset( $pm_details->card ) ) {
-			return $this->add_merchant_identifier(
-				new PaymentMethodData(
-					$resolved->get_gateway(),
-					$pm_details->type,
-					$is_saved,
-					null,
-					$transaction_mode
-				),
-				$merchant_identifier
+			return new PaymentMethodData(
+				$resolved->get_gateway(),
+				$pm_details->type,
+				$is_saved,
+				null,
+				$transaction_mode,
+				$merchant_identifier,
+				MerchantIdentifierType::Account
 			);
 		}
 
 		$postcode = $pm_details->billing_details->address->postal_code ?? null;
 
-		return $this->add_merchant_identifier(
-			new PaymentMethodData(
-				$resolved->get_gateway(),
-				'card',
-				$is_saved,
-				PaymentInstrumentData::from_array(
-					array(
-						'brand'            => $pm_details->card->brand ?? null,
-						'funding'          => $pm_details->card->funding ?? null,
-						'last4'            => $pm_details->card->last4 ?? null,
-						'fingerprint'      => $pm_details->card->fingerprint ?? null,
-						'country'          => $pm_details->card->country ?? null,
-						'exp_month'        => $pm_details->card->exp_month ?? null,
-						'exp_year'         => $pm_details->card->exp_year ?? null,
-						'billing_postcode' => $postcode,
-					)
-				),
-				$transaction_mode
+		return new PaymentMethodData(
+			$resolved->get_gateway(),
+			'card',
+			$is_saved,
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'            => $pm_details->card->brand ?? null,
+					'funding'          => $pm_details->card->funding ?? null,
+					'last4'            => $pm_details->card->last4 ?? null,
+					'fingerprint'      => $pm_details->card->fingerprint ?? null,
+					'country'          => $pm_details->card->country ?? null,
+					'exp_month'        => $pm_details->card->exp_month ?? null,
+					'exp_year'         => $pm_details->card->exp_year ?? null,
+					'billing_postcode' => $postcode,
+				)
 			),
-			$merchant_identifier
+			$transaction_mode,
+			$merchant_identifier,
+			MerchantIdentifierType::Account
 		);
 	}
 
@@ -128,17 +133,6 @@ class StripePaymentDataCompat {
 		} catch ( \Throwable $e ) {
 			return null;
 		}
-	}
-
-	/**
-	 * Add the merchant identifier when it was resolved.
-	 *
-	 * @param PaymentMethodData $data Payment data.
-	 * @param ?string           $merchant_identifier Merchant account identifier.
-	 * @return PaymentMethodData Payment data.
-	 */
-	private function add_merchant_identifier( PaymentMethodData $data, ?string $merchant_identifier ): PaymentMethodData {
-		return null !== $merchant_identifier ? $data->with_merchant_identifier( $merchant_identifier, 'account' ) : $data;
 	}
 
 	/**

@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
+use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -107,7 +108,6 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		private static bool $mode_available                = true;
 		private static ?\WC_Payments_API_Client $api_client = null;
 		private static bool $api_client_set                = false;
-		private static ?object $account_service            = null;
 
 		public static function set_live( bool $live ): void {
 			self::$live = $live;
@@ -134,12 +134,8 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 			self::$api_client_set = true;
 		}
 
-		public static function set_account_service( object $account_service ): void {
-			self::$account_service = $account_service;
-		}
-
 		public static function get_account_service(): object {
-			return self::$account_service ?? new WC_Payments_Account_Service_Stub();
+			return new WC_Payments_Account_Service_Stub();
 		}
 
 		public static function get_payments_api_client(): ?\WC_Payments_API_Client {
@@ -151,7 +147,6 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 			self::$mode_available = true;
 			self::$api_client     = null;
 			self::$api_client_set = false;
-			self::$account_service = null;
 		}
 	}
 
@@ -173,7 +168,6 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 	}
 
 	class_alias( __NAMESPACE__ . '\WC_Payments_API_Client_Stub', 'WC_Payments_API_Client' );
-	class_alias( __NAMESPACE__ . '\WC_Payments_Account_Service_Stub', 'WC_Payments_Account_Service' );
 	class_alias( __NAMESPACE__ . '\WC_Payments_Stub', 'WC_Payments' );
 	class_alias( __NAMESPACE__ . '\WC_Payments_Features_Stub', 'WC_Payments_Features' );
 }
@@ -208,9 +202,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		\WC_Payments::reset();
 		\WC_Payments_Features::reset();
 		remove_filter( 'wp_doing_ajax', '__return_true' );
-		if ( class_exists( __NAMESPACE__ . '\\WC_Payments_Account_Service_Stub', false ) ) {
-			WC_Payments_Account_Service_Stub::reset();
-		}
+		WC_Payments_Account_Service_Stub::reset();
 		parent::tearDown();
 	}
 
@@ -262,7 +254,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
 		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_stripe_account_id_calls() );
 		$this->assertSame( 0, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
 	}
@@ -275,7 +267,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
-		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertNull( $array['merchant_identifier_type'] );
 		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_stripe_account_id_calls() );
 		$this->assertSame( 0, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
 	}
@@ -290,7 +283,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
 		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_stripe_account_id_calls() );
 		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
 	}
@@ -303,7 +296,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
-		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertNull( $array['merchant_identifier_type'] );
 		$this->assertSame( PaymentMode::Live->value, $array['transaction_mode'] );
 	}
 
@@ -322,7 +316,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
-		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertNull( $array['merchant_identifier_type'] );
 		$this->assertSame( 1, WC_Payments_Account_Service_Stub::get_refresh_account_data_calls() );
 	}
 
@@ -352,7 +347,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array = $result->to_array();
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -436,7 +431,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 				),
 				'transaction_mode'        => PaymentMode::Test->value,
 				'merchant_identifier'     => 'acct_123',
-				'merchant_identifier_type' => 'account',
+				'merchant_identifier_type' => MerchantIdentifierType::Account->value,
 			),
 			$result->to_array()
 		);
@@ -753,7 +748,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
 	}
 
 	/**

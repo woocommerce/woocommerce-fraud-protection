@@ -165,7 +165,7 @@ Two hooks let an extension (e.g. a payment gateway with a non-standard checkout 
   apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMethodData $resolved, array $checkout_payment_fields );
   ```
 
-  `PaymentMethodData` can include the optional `merchant_identifier` and `merchant_identifier_type` pair. The type is `account` for PayPal, Stripe, and WooPayments, and `location` for Square. Both fields are included together when the selected gateway can resolve them and are omitted together when the identifier is unavailable.
+  `PaymentMethodData` can include the optional `merchant_identifier` and `merchant_identifier_type` pair. The type is `MerchantIdentifierType::Account` for PayPal, Stripe, and WooPayments, and `MerchantIdentifierType::Location` for Square. Both fields are included together in the verification request when the selected gateway can resolve them. Unavailable values are represented as null in `PaymentMethodData::to_array()` and removed before the request is sent.
 
 - **`woocommerce_fraud_protection_skip_session_verify`** — return a `SuppliedDecision` to skip verification and have the built-in checkout protectors apply an earlier result. Use it for a flow that verified earlier in the same payment attempt, so the attempt is not scored twice.
 

@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Schemas\MerchantIdentifierType;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -224,7 +225,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array  = $result->to_array();
 
 		$this->assertSame( 'merchant_123', $array['merchant_identifier'] );
-		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+		$this->assertSame( MerchantIdentifierType::Account->value, $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -242,7 +243,8 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$array = $this->sut->resolve( new PaymentMethodData( 'ppcp-gateway' ) )->to_array();
 
-		$this->assertArrayNotHasKey( 'merchant_identifier', $array );
+		$this->assertNull( $array['merchant_identifier'] );
+		$this->assertNull( $array['merchant_identifier_type'] );
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 	}
 
