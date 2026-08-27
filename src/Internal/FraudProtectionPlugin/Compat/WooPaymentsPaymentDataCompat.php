@@ -157,10 +157,6 @@ class WooPaymentsPaymentDataCompat {
 	 * @return ?string The account identifier, if available.
 	 */
 	private function resolve_merchant_identifier(): ?string {
-		if ( ! class_exists( '\WC_Payments' ) ) {
-			return null;
-		}
-
 		try {
 			$account_service = \WC_Payments::get_account_service();
 			$identifier      = $account_service->get_stripe_account_id();
