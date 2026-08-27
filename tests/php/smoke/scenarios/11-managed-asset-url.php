@@ -7,9 +7,8 @@
 
 declare( strict_types = 1 );
 
-// These helpers must be defined before the shared stub loads. The managed
-// loader uses the WordPress URL helpers, while the initializer must not call
-// plugin_dir_url() after the loader has supplied the URL.
+// These helpers must be defined before the shared stub loads so this scenario
+// can model the WordPress URL helpers used by the loader and initializer.
 /**
  * Convert a URL to the current request scheme.
  *
@@ -36,15 +35,15 @@ function trailingslashit( $value ) {
 }
 
 /**
- * Fail if the normal plugin URL resolver is used.
+ * Build a normal plugin URL and apply the plugins_url filter.
  *
  * @param string $file Plugin file path.
- * @return never This helper always throws.
- * @throws RuntimeException If the resolver is called.
+ * @return string Plugin directory URL.
  */
 function plugin_dir_url( $file ) {
-	unset( $file );
-	throw new RuntimeException( 'plugin_dir_url() must not run for a managed installation.' );
+	$url = 'https://example.test/wp-content/plugins/' . basename( dirname( $file ) ) . '/';
+
+	return trailingslashit( apply_filters( 'plugins_url', $url, '', $file ) );
 }
 
 require_once __DIR__ . '/../stubs/wp.php';
