@@ -155,14 +155,29 @@ describe( 'shortcode-checkout', () => {
 		$form.triggerHandler( 'checkout_place_order' );
 		$form.triggerHandler( 'checkout_place_order' );
 
-		resolveFirst( 'sess-first' );
-		await flushPromises();
+		$( '<input>', {
+			type: 'hidden',
+			id: SESSION_ID_FIELD,
+			name: SESSION_ID_FIELD,
+			value: 'stale-first',
+		} ).appendTo( $form );
+		$( '<input>', {
+			type: 'hidden',
+			id: SESSION_ID_FIELD,
+			name: SESSION_ID_FIELD,
+			value: 'stale-second',
+		} ).appendTo( $form );
+
 		resolveSecond( 'sess-second' );
 		await flushPromises();
+		resolveFirst( 'sess-first' );
+		await flushPromises();
 
-		const $fields = $form.find( '#' + SESSION_ID_FIELD );
+		const $fields = $form.find(
+			'input[name="' + SESSION_ID_FIELD + '"]'
+		);
 		expect( $fields.length ).toBe( 1 );
-		expect( $fields.val() ).toBe( 'sess-second' );
+		expect( $fields.val() ).toBe( 'sess-first' );
 
 		jest.advanceTimersByTime( 0 );
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );

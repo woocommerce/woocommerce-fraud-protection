@@ -171,10 +171,18 @@ describe( 'add-payment-method', () => {
 
 		expect( fieldDuringReplay ).not.toBeNull();
 		expect( fieldDuringReplay.value ).toBe( '' );
-		expect( document.getElementById( SESSION_ID_FIELD ) ).not.toBeNull();
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
+
+		const temporaryField = fieldDuringReplay;
+		const otherField = document.createElement( 'input' );
+		otherField.id = SESSION_ID_FIELD;
+		otherField.name = SESSION_ID_FIELD;
+		form.appendChild( otherField );
 
 		jest.advanceTimersByTime( 0 );
-		expect( document.getElementById( SESSION_ID_FIELD ) ).toBeNull();
+		expect( temporaryField.isConnected ).toBe( false );
+		expect( otherField.isConnected ).toBe( true );
+		otherField.remove();
 
 		expect( dispatchSubmit() ).toBe( false );
 		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
