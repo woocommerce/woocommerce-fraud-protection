@@ -170,10 +170,16 @@ describe( 'shortcode-checkout', () => {
 
 		resolveSecond( 'sess-second' );
 		await flushPromises();
+		let $fields = $form.find(
+			'input[name="' + SESSION_ID_FIELD + '"]'
+		);
+		expect( $fields.length ).toBe( 1 );
+		expect( $fields.val() ).toBe( 'sess-second' );
+
 		resolveFirst( 'sess-first' );
 		await flushPromises();
 
-		const $fields = $form.find(
+		$fields = $form.find(
 			'input[name="' + SESSION_ID_FIELD + '"]'
 		);
 		expect( $fields.length ).toBe( 1 );
