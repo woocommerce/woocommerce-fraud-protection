@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\LearningModeContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
@@ -178,7 +179,17 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			)
 		);
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( 1724198400 );
+		$received_context = 'not-called';
 		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		add_filter(
+			'woocommerce_fraud_protection_learning_mode',
+			function ( $learning_mode, $context = null ) use ( &$received_context ) {
+				$received_context = $context;
+				return $learning_mode;
+			},
+			10,
+			2
+		);
 
 		update_option( SchemaManager::DB_VERSION_OPTION, 91 );
 		update_option( SchemaManager::DB_INSTALL_STATE_OPTION, array( 'sentinel' => true ) );
@@ -190,6 +201,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
 		$this->assertStringContainsString( 'Learning mode: Disabled', $output );
+		$this->assertNull( $received_context );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
 		$this->assertStringContainsString( 'Required schema version:', $output );
 		$this->assertStringContainsString( 'Installed schema version:', $output );
@@ -206,6 +218,82 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( 'Database default collation:', $output );
 		$this->assertStringContainsString( 'Next session pruning action:', $output );
 		$this->assertEmpty( $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox Status should list learning-mode callbacks in execution order.
+	 */
+	public function test_status_lists_learning_mode_callbacks(): void {
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_true', 5 );
+		add_filter( 'woocommerce_fraud_protection_learning_mode', self::class . '::learning_mode_static_callback', 10 );
+		add_filter( 'woocommerce_fraud_protection_learning_mode', array( $this, 'learning_mode_instance_callback' ), 10 );
+		add_filter( 'woocommerce_fraud_protection_learning_mode', $this, 20 );
+		$closure_calls = 0;
+		add_filter(
+			'woocommerce_fraud_protection_learning_mode',
+			function ( $learning_mode, $context = null ) use ( &$closure_calls ) {
+				++$closure_calls;
+				unset( $context );
+				return $learning_mode;
+			},
+			30,
+			2
+		);
+
+		$this->sut->status();
+
+		$output = implode( "\n", $this->wp_cli_lines );
+		$this->assertStringContainsString( 'Learning mode: Enabled', $output );
+		$this->assertSame( 1, $closure_calls );
+		$this->assertMatchesRegularExpression( '/Learning mode callback: __return_true \(priority 5\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_static_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_instance_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class, '/' ) . ' \(priority 20\).*Learning mode callback: Closure \([^)]*FraudProtectionCommandsTest\.php:[0-9]+\) \(priority 30\)/s', $output );
+		$this->assertStringNotContainsString( getcwd(), $output );
+	}
+
+	/**
+	 * @testdox Status reports no learning-mode callbacks when none are registered.
+	 */
+	public function test_status_reports_no_learning_mode_callbacks(): void {
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+
+		$this->sut->status();
+
+		$this->assertContains( 'Learning mode callbacks: None', $this->wp_cli_lines );
+	}
+
+	/**
+	 * Return the learning-mode value unchanged.
+	 *
+	 * @param bool $learning_mode Learning-mode value.
+	 * @return bool
+	 */
+	public static function learning_mode_static_callback( $learning_mode ): bool {
+		return (bool) $learning_mode;
+	}
+
+	/**
+	 * Return the learning-mode value unchanged.
+	 *
+	 * @param bool $learning_mode Learning-mode value.
+	 * @return bool
+	 */
+	public function learning_mode_instance_callback( $learning_mode ): bool {
+		return (bool) $learning_mode;
+	}
+
+	/**
+	 * Return the learning-mode value unchanged.
+	 *
+	 * @param bool                     $learning_mode Learning-mode value.
+	 * @param LearningModeContext|null $context      Learning-mode context.
+	 * @return bool
+	 */
+	public function __invoke( $learning_mode, $context = null ): bool {
+		unset( $context );
+		return (bool) $learning_mode;
 	}
 
 	/**

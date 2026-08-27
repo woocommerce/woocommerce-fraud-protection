@@ -10,6 +10,7 @@
 
 declare( strict_types = 1 );
 
+defined( 'ABSPATH' ) || exit;
 $woocommerce_fraud_protection_target = WPMU_PLUGIN_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection.php';
 
 if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
