@@ -312,12 +312,6 @@ class ApiClient {
 		}
 
 		$log_payload = $wire_payload;
-		if ( is_array( $log_payload['context']['payment'] ?? null ) ) {
-			unset(
-				$log_payload['context']['payment']['merchant_identifier'],
-				$log_payload['context']['payment']['merchant_identifier_type']
-			);
-		}
 		if ( is_array( $log_payload['full_headers'] ?? null ) ) {
 			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
 		}

@@ -165,10 +165,6 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			'test-session-id',
 			array(
 				'source' => 'blocks_checkout',
-				'payment' => array(
-					'merchant_identifier'      => 'acct_123',
-					'merchant_identifier_type' => 'account',
-				),
 				'events' => array( array( 'event_type' => 'checkout_update' ) ),
 			)
 		);
@@ -177,18 +173,10 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertIsArray( $captured_body );
 		$this->assertIsArray( $request_log );
 		$this->assertSame( 'test-session-id', $captured_body['session_id'] );
-		$this->assertSame( 'acct_123', $captured_body['context']['payment']['merchant_identifier'] );
-		$this->assertSame( 'account', $captured_body['context']['payment']['merchant_identifier_type'] );
 		$expected_log_payload                 = $captured_body;
-		unset(
-			$expected_log_payload['context']['payment']['merchant_identifier'],
-			$expected_log_payload['context']['payment']['merchant_identifier_type']
-		);
 		$expected_log_payload['full_headers'] = '(2 headers)';
 		$this->assertSame( 'Verifying session with Blackbox API', $request_log['message'] );
 		$this->assertSame( array( 'payload' => $expected_log_payload ), $request_log['context'] );
-		$this->assertArrayNotHasKey( 'merchant_identifier', $request_log['context']['payload']['context']['payment'] );
-		$this->assertArrayNotHasKey( 'merchant_identifier_type', $request_log['context']['payload']['context']['payment'] );
 		$this->assertFalse( $request_log['forwarded'] );
 		$this->assertLogged( 'info', 'Fraud decision received:', array( 'response' => $response_data ), false );
 		$this->assertCount( 2, $spy->entries );

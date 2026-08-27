@@ -21,8 +21,8 @@ defined( 'ABSPATH' ) || exit;
  * Handles the main gateway ('woocommerce_payments') and APM gateways
  * ('woocommerce_payments_*'). When WooPay is disabled, resolves full
  * payment details (card data, bank data, payment type) via the
- * WooPayments API. When WooPay is enabled, transaction mode and the merchant
- * identifier are resolved because pm_ IDs are platform-scoped and unresolvable.
+ * WooPayments API. When WooPay is enabled, only transaction mode and the
+ * merchant identifier are resolved because pm_ IDs are platform-scoped and unresolvable.
  */
 class WooPaymentsPaymentDataCompat {
 
