@@ -123,17 +123,14 @@ class PaymentMethodData {
 	 * @return array
 	 */
 	public function to_array(): array {
-		$data = array(
-			'gateway'                 => $this->gateway,
-			'payment_type'            => $this->payment_type,
-			'is_saved_payment_method' => $this->is_saved_payment_method,
-			'instrument'              => $this->instrument->to_array(),
-			'transaction_mode'        => $this->transaction_mode->value,
+		return array(
+			'gateway'                  => $this->gateway,
+			'payment_type'             => $this->payment_type,
+			'is_saved_payment_method'  => $this->is_saved_payment_method,
+			'instrument'               => $this->instrument->to_array(),
+			'transaction_mode'         => $this->transaction_mode->value,
+			'merchant_identifier'      => $this->merchant_identifier,
+			'merchant_identifier_type' => $this->merchant_identifier_type?->value,
 		);
-
-		$data['merchant_identifier']      = $this->merchant_identifier;
-		$data['merchant_identifier_type'] = $this->merchant_identifier_type?->value;
-
-		return $data;
 	}
 }
