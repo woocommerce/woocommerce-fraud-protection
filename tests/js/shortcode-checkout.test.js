@@ -175,7 +175,7 @@ describe( 'shortcode-checkout', () => {
 		expect( $fields[ 0 ] ).toBe( field );
 	} );
 
-	it( 'only cleans up the form that owns the field', () => {
+	it( 'scopes carrier updates and cleanup to the owned form', async () => {
 		document.body.innerHTML =
 			'<form class="checkout" id="first"></form>' +
 			'<form class="checkout" id="second"></form>';
@@ -185,18 +185,23 @@ describe( 'shortcode-checkout', () => {
 			type: 'hidden',
 			id: SESSION_ID_FIELD,
 			name: SESSION_ID_FIELD,
-			value: 'owned-form',
-		} ).appendTo( $form );
-		$( '<input>', {
-			type: 'hidden',
-			id: SESSION_ID_FIELD,
-			name: SESSION_ID_FIELD,
 			value: 'other-form',
 		} ).appendTo( $secondForm );
 		setupFraudProtection();
 		loadScript();
 
-		$form.triggerHandler( 'checkout_place_order' );
+		expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe( false );
+		await flushPromises();
+
+		expect( $form.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
+			'sess-shortcode'
+		);
+		expect( $secondForm.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
+			'other-form'
+		);
+		expect( mockReset ).not.toHaveBeenCalled();
+
+		expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe( true );
 		jest.advanceTimersByTime( 0 );
 
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
