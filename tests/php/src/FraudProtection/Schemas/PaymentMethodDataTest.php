@@ -133,8 +133,8 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242' ) );
 		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument, PaymentMode::Live );
 
-		$with_identifier = $data->with_merchant_identifier( 'acct_123', 'account' )->to_array();
-		$result          = $data->with_merchant_identifier( 'acct_123', 'account' )
+		$with_identifier = $data->with_merchant_identifier( 'acct_123', 'custom_gateway' )->to_array();
+		$result          = $data->with_merchant_identifier( 'acct_123', 'custom_gateway' )
 			->with_transaction_mode( PaymentMode::Test )->to_array();
 
 		foreach ( array( $with_identifier, $result ) as $array ) {
@@ -143,7 +143,7 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 			$this->assertSame( 'visa', $array['instrument']['brand'] );
 			$this->assertSame( '4242', $array['instrument']['last4'] );
 			$this->assertSame( 'acct_123', $array['merchant_identifier'] );
-			$this->assertSame( 'account', $array['merchant_identifier_type'] );
+			$this->assertSame( 'custom_gateway', $array['merchant_identifier_type'] );
 		}
 
 		$this->assertSame( PaymentMode::Live->value, $with_identifier['transaction_mode'] );
