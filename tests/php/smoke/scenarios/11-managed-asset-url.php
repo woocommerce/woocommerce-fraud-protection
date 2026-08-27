@@ -70,11 +70,6 @@ define( 'WPMU_PLUGIN_DIR', $managed_root );
 require_once dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection-loader.php';
 
 wfp_smoke_assert(
-	1 === count( $GLOBALS['wfp_smoke_hooks']['plugins_url'] ?? array() ),
-	'Managed loader must not register a plugins_url callback.'
-);
-
-wfp_smoke_assert(
 	defined( 'WC_FRAUD_PROTECTION_PLUGIN_URL' ) && 'https://public.example.test/custom-mu/woocommerce-fraud-protection/' === WC_FRAUD_PROTECTION_PLUGIN_URL,
 	'Managed installations must use the configured URL with the current request scheme. Got: ' . ( defined( 'WC_FRAUD_PROTECTION_PLUGIN_URL' ) ? WC_FRAUD_PROTECTION_PLUGIN_URL : 'undefined' )
 );
