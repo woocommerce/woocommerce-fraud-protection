@@ -113,11 +113,19 @@ describe( 'add-payment-method', () => {
 
 		// Simulate a gateway handler (e.g. Stripe) that prevents default
 		// to handle submission itself (tokenize, then submit).
-		form.addEventListener( 'submit', ( e ) => e.preventDefault() );
+		let fieldDuringGatewaySubmit;
+		form.addEventListener( 'submit', ( e ) => {
+			fieldDuringGatewaySubmit = document.getElementById(
+				SESSION_ID_FIELD
+			);
+			e.preventDefault();
+		} );
 
 		dispatchSubmit();
 		await flushPromises();
 
+		expect( fieldDuringGatewaySubmit ).not.toBeNull();
+		expect( fieldDuringGatewaySubmit.value ).toBe( 'sess-add-pm' );
 		expect( form.submit ).not.toHaveBeenCalled();
 	} );
 
@@ -233,8 +241,14 @@ describe( 'add-payment-method', () => {
 		loadScript();
 
 		let fieldDuringReplay;
+		let fieldDuringNativeSubmit;
 		form.addEventListener( 'submit', () => {
 			fieldDuringReplay = document.getElementById( SESSION_ID_FIELD );
+		} );
+		form.submit = jest.fn( () => {
+			fieldDuringNativeSubmit = document.getElementById(
+				SESSION_ID_FIELD
+			);
 		} );
 
 		const notCancelled = dispatchSubmit();
@@ -244,6 +258,8 @@ describe( 'add-payment-method', () => {
 		expect( fieldDuringReplay ).not.toBeNull();
 		expect( fieldDuringReplay.value ).toBe( '' );
 		expect( form.submit ).toHaveBeenCalledTimes( 1 );
+		expect( fieldDuringNativeSubmit ).toBe( fieldDuringReplay );
+		expect( fieldDuringNativeSubmit.value ).toBe( '' );
 
 		const temporaryField = fieldDuringReplay;
 		const otherField = document.createElement( 'input' );
