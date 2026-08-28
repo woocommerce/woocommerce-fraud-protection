@@ -18,6 +18,12 @@ define( 'WPMU_PLUGIN_DIR', $managed_root );
 
 require_once dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection-loader.php';
 
+$invalid_asset_url = array( 'unexpected' );
+wfp_smoke_assert(
+	$invalid_asset_url === apply_filters( 'plugins_url', $invalid_asset_url ),
+	'Managed filter must preserve a non-string URL value.'
+);
+
 $unrelated_asset_url = 'https://example.test/store/wp-content/plugins/other-plugin/1.0.0/assets/js/other.js';
 wfp_smoke_assert(
 	$unrelated_asset_url === apply_filters( 'plugins_url', $unrelated_asset_url, 'assets/js/other.js', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/other.php' ),

@@ -15,10 +15,14 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Correct Fraud Protection asset URLs for managed installations.
  *
- * @param string $url The URL being filtered.
- * @return string Filtered URL.
+ * @param mixed $url The URL being filtered.
+ * @return mixed Filtered URL.
  */
 function woocommerce_fraud_protection_symlinked_plugins_url( $url ) {
+	if ( ! is_string( $url ) ) {
+		return $url;
+	}
+
 	return preg_replace(
 		'#((?<!/)/[^/]+)*/wp-content/plugins/wordpress/plugins/woocommerce-fraud-protection/([^/]+)/?#',
 		'/wp-content/mu-plugins/woocommerce-fraud-protection/',
