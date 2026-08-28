@@ -145,7 +145,7 @@ class AddPaymentMethodProtector {
 
 		wp_enqueue_script(
 			'wc-fraud-protection-add-payment-method',
-			WC_FRAUD_PROTECTION_PLUGIN_URL . 'assets/js/add-payment-method.js',
+			plugins_url( 'assets/js/add-payment-method.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
 			array( 'wc-fraud-protection-blackbox-init', 'jquery' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )

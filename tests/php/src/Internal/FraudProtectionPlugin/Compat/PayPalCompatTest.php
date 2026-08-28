@@ -807,6 +807,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 		$script = wp_scripts()->query( 'wc-fraud-protection-paypal-express', 'registered' );
 		$this->assertNotFalse( $script );
+		$this->assertSame(
+			plugins_url( 'assets/js/paypal-express.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
+			$script->src
+		);
 		$this->assertContains( 'wc-fraud-protection-blackbox-init', $script->deps );
 	}
 

@@ -28,11 +28,6 @@ wfp_smoke_assert(
 	'Loader must NOT include the plugin file when target is missing.'
 );
 
-wfp_smoke_assert(
-	! defined( 'WC_FRAUD_PROTECTION_PLUGIN_URL' ),
-	'Loader must NOT define the asset URL when target is missing.'
-);
-
 $logs = file_get_contents( $error_log_path );
 wfp_smoke_assert(
 	is_string( $logs ) && false !== strpos( $logs, 'target plugin file is not readable' ),

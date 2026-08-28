@@ -120,6 +120,10 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-pay-for-order', 'enqueued' ) );
 		$script = wp_scripts()->query( 'wc-fraud-protection-pay-for-order', 'registered' );
 		$this->assertNotFalse( $script );
+		$this->assertSame(
+			plugins_url( 'assets/js/pay-for-order.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
+			$script->src
+		);
 		$this->assertContains( 'wc-fraud-protection-blackbox-init', $script->deps );
 	}
 

@@ -87,6 +87,10 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 
 		$init_script = wp_scripts()->query( 'wc-fraud-protection-blackbox-init', 'registered' );
 		$this->assertNotFalse( $init_script );
+		$this->assertSame(
+			plugins_url( 'assets/js/blackbox-init.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
+			$init_script->src
+		);
 		$this->assertSame( array( 'wc-fraud-protection-blackbox' ), $init_script->deps );
 
 		$data = (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
@@ -94,6 +98,24 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( '"identityKey":"mock-session-id"', $data );
 		$this->assertStringContainsString( '"timeout":3000', $data );
 		$this->assertStringContainsString( '"sessionIdField":"wc_fraud_protection_session_id"', $data );
+	}
+
+	/**
+	 * @testdox A managed URL correction registered after bootstrap applies when scripts are requested.
+	 */
+	public function test_request_scripts_resolves_init_url_after_a_late_url_correction(): void {
+		$this->mock_jetpack_blog_id( 42 );
+		$correction = function ( $url, $path, $plugin_file ) {
+			unset( $plugin_file );
+
+			return 'assets/js/blackbox-init.js' === $path ? 'https://managed.example.test/woocommerce-fraud-protection/assets/js/blackbox-init.js' : $url;
+		};
+		add_filter( 'plugins_url', $correction, 10, 3 );
+
+		$this->assertTrue( $this->sut->request_scripts() );
+		$init_script = wp_scripts()->query( 'wc-fraud-protection-blackbox-init', 'registered' );
+		$this->assertNotFalse( $init_script );
+		$this->assertSame( 'https://managed.example.test/woocommerce-fraud-protection/assets/js/blackbox-init.js', $init_script->src );
 	}
 
 	/**

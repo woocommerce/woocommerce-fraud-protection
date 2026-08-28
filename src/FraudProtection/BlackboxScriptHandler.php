@@ -108,7 +108,7 @@ class BlackboxScriptHandler {
 
 		wp_enqueue_script(
 			'wc-fraud-protection-blackbox-init',
-			WC_FRAUD_PROTECTION_PLUGIN_URL . 'assets/js/blackbox-init.js',
+			plugins_url( 'assets/js/blackbox-init.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
 			array( 'wc-fraud-protection-blackbox' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )
