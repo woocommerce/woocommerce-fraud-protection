@@ -36,6 +36,19 @@ wfp_smoke_assert(
 	'https://example.test/wp-content/mu-plugins/woocommerce-fraud-protection/assets/js/blackbox-init.js' === $asset_url,
 	'Managed loader must correct the package URL and preserve the asset suffix. Got: ' . $asset_url
 );
+
+$query_url = plugins_url( 'assets/js/blackbox-init.js?ver=0.2.0', WC_FRAUD_PROTECTION_PLUGIN_FILE );
+wfp_smoke_assert(
+	'https://example.test/wp-content/mu-plugins/woocommerce-fraud-protection/assets/js/blackbox-init.js?ver=0.2.0' === $query_url,
+	'Managed filter must preserve query strings. Got: ' . $query_url
+);
+
+$fragment_url = plugins_url( 'assets/js/blackbox-init.js#checkout', WC_FRAUD_PROTECTION_PLUGIN_FILE );
+wfp_smoke_assert(
+	'https://example.test/wp-content/mu-plugins/woocommerce-fraud-protection/assets/js/blackbox-init.js#checkout' === $fragment_url,
+	'Managed filter must preserve fragments. Got: ' . $fragment_url
+);
+
 wfp_smoke_assert( ! defined( 'WC_FRAUD_PROTECTION_PLUGIN_URL' ), 'Managed loader must not define the obsolete URL constant.' );
 
 unlink( $target );
