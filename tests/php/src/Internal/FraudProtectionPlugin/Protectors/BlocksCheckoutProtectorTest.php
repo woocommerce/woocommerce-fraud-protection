@@ -120,6 +120,12 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->sut->enqueue_blocks_checkout_script();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+		$script = wp_scripts()->query( 'wc-fraud-protection-blocks-checkout', 'registered' );
+		$this->assertNotFalse( $script );
+		$this->assertSame(
+			plugins_url( 'assets/js/blocks-checkout.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
+			$script->src
+		);
 	}
 
 	/**

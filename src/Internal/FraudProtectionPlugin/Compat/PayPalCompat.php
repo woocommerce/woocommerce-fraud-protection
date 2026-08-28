@@ -302,7 +302,7 @@ class PayPalCompat {
 
 		wp_enqueue_script(
 			'wc-fraud-protection-paypal-express',
-			WC_FRAUD_PROTECTION_PLUGIN_URL . 'assets/js/paypal-express.js',
+			plugins_url( 'assets/js/paypal-express.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
 			array( 'wc-fraud-protection-blackbox-init' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )

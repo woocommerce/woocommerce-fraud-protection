@@ -11,6 +11,23 @@
 declare( strict_types = 1 );
 
 defined( 'ABSPATH' ) || exit;
+
+/**
+ * Correct Fraud Protection asset URLs for managed installations.
+ *
+ * @param string $url The URL being filtered.
+ * @return string Filtered URL.
+ */
+function woocommerce_fraud_protection_symlinked_plugins_url( $url ) {
+	return preg_replace(
+		'#((?<!/)/[^/]+)*/wp-content/plugins/wordpress/plugins/woocommerce-fraud-protection/([^/]+)/?#',
+		'/wp-content/mu-plugins/woocommerce-fraud-protection/',
+		$url
+	);
+}
+
+add_filter( 'plugins_url', 'woocommerce_fraud_protection_symlinked_plugins_url', 0, 1 );
+
 $woocommerce_fraud_protection_target = WPMU_PLUGIN_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection.php';
 
 if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
@@ -18,7 +35,5 @@ if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
 	error_log( 'WooCommerce Fraud Protection: target plugin file is not readable at ' . $woocommerce_fraud_protection_target ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log, QITStandard.PHP.DebugCode.DebugFunctionFound -- Last-resort logging on broken rollout symlink, before the plugin's own logger is available.
 	return;
 }
-
-define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', trailingslashit( set_url_scheme( WPMU_PLUGIN_URL ) ) . 'woocommerce-fraud-protection/' );
 
 require_once $woocommerce_fraud_protection_target;

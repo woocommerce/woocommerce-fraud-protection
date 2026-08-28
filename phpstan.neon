@@ -25,13 +25,5 @@ parameters:
 	treatPhpDocTypesAsCertain: false
 	ignoreErrors:
 		- identifier: missingType.iterableValue
-		# The Composer autoloader path is built at runtime from a stubbed
-		# constant (WC_FRAUD_PROTECTION_PLUGIN_DIR = ''), so PHPStan sees a
-		# literal "/vendor/autoload.php" that does not exist at analysis time.
-		# The file exists in a real install, and the runtime is_readable()
-		# guard handles the missing-vendor case.
-		-
-			identifier: requireOnce.fileNotFound
-			message: '#vendor/autoload\.php#'
 	parallel:
 		maximumNumberOfProcesses: 4

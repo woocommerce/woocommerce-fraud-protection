@@ -205,7 +205,7 @@ class BlocksCheckoutProtector {
 
 		wp_enqueue_script(
 			'wc-fraud-protection-blocks-checkout',
-			WC_FRAUD_PROTECTION_PLUGIN_URL . 'assets/js/blocks-checkout.js',
+			plugins_url( 'assets/js/blocks-checkout.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
 			array( 'wc-fraud-protection-blackbox-init', 'wp-data', 'wc-blocks-checkout-events' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )

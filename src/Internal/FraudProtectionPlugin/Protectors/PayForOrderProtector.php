@@ -138,7 +138,7 @@ class PayForOrderProtector {
 
 		wp_enqueue_script(
 			'wc-fraud-protection-pay-for-order',
-			WC_FRAUD_PROTECTION_PLUGIN_URL . 'assets/js/pay-for-order.js',
+			plugins_url( 'assets/js/pay-for-order.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
 			array( 'wc-fraud-protection-blackbox-init', 'jquery' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )

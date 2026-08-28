@@ -9,5 +9,4 @@
  */
 
 define( 'WC_FRAUD_PROTECTION_VERSION', '' );
-define( 'WC_FRAUD_PROTECTION_PLUGIN_DIR', '' );
-define( 'WC_FRAUD_PROTECTION_PLUGIN_URL', '' );
+define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', '' );
