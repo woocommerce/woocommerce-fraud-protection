@@ -2196,6 +2196,19 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A create-order association does not bind a vault-order record for the same session.
+	 */
+	public function test_bind_ignores_a_record_from_another_origin(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->set_verification_record( origin: 'paypal_vault_order_creation' );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+
+		$this->assertSame( $record, WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/**
 	 * @testdox A bound record's decision is what the bound route replays, whatever it is.
 	 *
 	 * A bound Block cannot be produced today — a blocked create-order dies
