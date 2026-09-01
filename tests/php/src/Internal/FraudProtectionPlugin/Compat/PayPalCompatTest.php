@@ -2410,8 +2410,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/** @testdox Non-string plan metadata does not prevent an otherwise eligible setup record. */
-	public function test_array_plan_metadata_does_not_prevent_setup_record(): void {
+	/** @testdox Nonempty array plan metadata prevents setup record storage. */
+	public function test_array_plan_metadata_prevents_setup_record(): void {
 		$product = $this->createMock( \WC_Product::class );
 		$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( array( 'plan-id' ) );
 		$this->set_setup_cart( 'cart-hash', array( array( 'data' => $product ) ) );
@@ -2421,9 +2421,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
 
-		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
-		$this->assertIsArray( $record );
-		$this->assertSame( 'cart-hash', $record['cart_hash'] );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
 	/** @testdox Setup record storage initializes the cart before checking its payment requirement. */

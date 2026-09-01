@@ -714,7 +714,7 @@ class PayPalCompat {
 		foreach ( $cart->get_cart() as $cart_item ) {
 			$product           = is_array( $cart_item ) ? ( $cart_item['data'] ?? null ) : null;
 			$subscription_plan = is_object( $product ) && method_exists( $product, 'get_meta' ) ? $product->get_meta( 'ppcp_subscription_plan' ) : null;
-			if ( is_string( $subscription_plan ) && '' !== $subscription_plan ) {
+			if ( ! empty( $subscription_plan ) ) {
 				return '';
 			}
 		}
