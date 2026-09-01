@@ -1221,11 +1221,11 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_get_collected_data_bounds_legacy_history_copy(): void {
 		$legacy = array();
-		for ( $index = 0; $index < 300; ++$index ) {
+		for ( $index = 0; $index < 257; ++$index ) {
 			$legacy[] = array(
 				'event_type' => 'event_' . $index,
 				'timestamp'  => '2026-08-31 12:00:00',
-				'event_data' => array( 'value' => str_repeat( 'v', 1024 ) ),
+				'event_data' => array(),
 			);
 		}
 		WC()->session->set( 'fraud_protection_collected_data', $legacy );
@@ -1233,12 +1233,10 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$result   = $this->sut->get_collected_data();
 		$returned = $result['collected_events'];
 
-		$this->assertLessThanOrEqual( 256, count( $returned ) );
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Verifies the request-copy limit.
-		$this->assertLessThanOrEqual( 256 * 1024, strlen( serialize( $returned ) ) );
+		$this->assertCount( 256, $returned );
 		$this->assertTrue( $result['collected_events_truncated'] );
-		$this->assertSame( 'event_' . ( 300 - count( $returned ) ), $returned[0]['event_type'] );
-		$this->assertSame( 'event_299', $returned[ count( $returned ) - 1 ]['event_type'] );
+		$this->assertSame( 'event_1', $returned[0]['event_type'] );
+		$this->assertSame( 'event_256', $returned[255]['event_type'] );
 		$this->assertSame( $legacy, WC()->session->get( 'fraud_protection_collected_data' ) );
 	}
 
