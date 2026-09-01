@@ -408,22 +408,6 @@ describe( 'paypal-express fetch interceptor', () => {
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'continues when reset throws', async () => {
-			originalFetch.mockResolvedValueOnce(
-				paypalResponse( false, { success: false } )
-			);
-			setupAndLoad();
-			window.wcFraudProtection.reset.mockImplementation( () => {
-				throw new Error( 'Reset failed' );
-			} );
-
-			await expect(
-				window.fetch( 'https://store.test/?wc-ajax=ppc-create-order', {
-					body: '{}',
-				} )
-			).resolves.toMatchObject( { ok: false } );
-		} );
-
 		it( 'inspects a clone and preserves the original response', async () => {
 			const response = {
 				ok: true,

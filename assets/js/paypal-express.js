@@ -27,13 +27,9 @@
 		);
 	}
 
-	function resetSessionSafely( fp ) {
-		try {
-			if ( typeof fp.reset === 'function' ) {
-				fp.reset();
-			}
-		} catch ( e ) {
-			// Fail open.
+	function resetSession( fp ) {
+		if ( typeof fp.reset === 'function' ) {
+			fp.reset();
 		}
 	}
 
@@ -57,7 +53,7 @@
 		init
 	) {
 		if ( resetBeforeNextPayPalRequest ) {
-			resetSessionSafely( fp );
+			resetSession( fp );
 			resetBeforeNextPayPalRequest = false;
 		}
 
@@ -74,13 +70,13 @@
 		try {
 			response = await originalFetch.call( thisArg, resource, init );
 		} catch ( e ) {
-			resetSessionSafely( fp );
+			resetSession( fp );
 			throw e;
 		}
 
 		const result = await classifyResponse( response );
 		if ( 'failure' === result ) {
-			resetSessionSafely( fp );
+			resetSession( fp );
 		} else {
 			resetBeforeNextPayPalRequest = true;
 		}
