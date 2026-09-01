@@ -4,7 +4,7 @@
 /* eslint jsdoc/check-tag-names: off */
 
 /**
- * Tests for paypal-express.js — Fetch interceptor for PayPal CreateOrder AJAX.
+ * Tests for paypal-express.js — Fetch interceptor for supported PayPal artifact requests.
  *
  * paypal-express.js is an IIFE. We test it by setting up global mocks,
  * requiring the file (which executes the IIFE), and asserting on mocks.
@@ -134,6 +134,28 @@ describe( 'paypal-express fetch interceptor', () => {
 	} );
 
 	describe( 'fail-open', () => {
+		it( 'runs the original request unchanged when session acquisition rejects', async () => {
+			mockAcquireSessionId.mockRejectedValueOnce(
+				new Error( 'Acquisition failed' )
+			);
+			setupAndLoad();
+			const resource =
+				'https://store.test/?wc-ajax=ppc-create-setup-token';
+			const init = {
+				method: 'POST',
+				body: JSON.stringify( { nonce: 'abc' } ),
+			};
+
+			await window.fetch( resource, init );
+
+			expect( originalFetch ).toHaveBeenCalledTimes( 1 );
+			expect( originalFetch ).toHaveBeenCalledWith( resource, init );
+			expect( fetchCalls[ 0 ].init ).toBe( init );
+			expect( fetchCalls[ 0 ].init.body ).toBe(
+				JSON.stringify( { nonce: 'abc' } )
+			);
+		} );
+
 		it( 'sends request without session_id when body is not valid JSON', async () => {
 			setupAndLoad();
 

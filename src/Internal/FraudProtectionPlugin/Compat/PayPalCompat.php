@@ -163,7 +163,11 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function verify_and_block_create_order( $data ): void {
-		$this->verify_and_block_artifact( is_array( $data ) ? $data : array(), self::ORDER_CREATION_SOURCE, true );
+		$request_data      = is_array( $data ) ? $data : array();
+		$submitted_carrier = $request_data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
+		$record_allowed    = '' !== $this->session_id_normalizer->normalize_stored( $submitted_carrier );
+
+		$this->verify_and_block_artifact( $request_data, self::ORDER_CREATION_SOURCE, $record_allowed );
 	}
 
 	/**
@@ -518,9 +522,10 @@ class PayPalCompat {
 		$submitted_session_id = array_key_exists( SessionVerifier::SESSION_ID_FIELD, $data ) ? $data[ SessionVerifier::SESSION_ID_FIELD ] : '';
 		$decision             = $this->session_verifier->verify_session( $submitted_session_id, $origin, 0, $data );
 		$resolved_session_id  = $this->session_verifier->last_verified_session_id();
+		$record_stored        = false;
 
 		try {
-			$this->update_verification_record( $origin, $resolved_session_id, $decision, $record_allowed );
+			$record_stored = $this->update_verification_record( $origin, $resolved_session_id, $decision, $record_allowed );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
@@ -541,7 +546,7 @@ class PayPalCompat {
 			);
 		}
 
-		if ( $record_allowed && in_array( $origin, array( self::ORDER_CREATION_SOURCE, self::VAULT_ORDER_CREATION_SOURCE ), true ) ) {
+		if ( $record_stored && in_array( $origin, array( self::ORDER_CREATION_SOURCE, self::VAULT_ORDER_CREATION_SOURCE ), true ) ) {
 			$this->session_recorded_this_request = $resolved_session_id;
 			$this->origin_recorded_this_request  = $origin;
 		}
@@ -580,10 +585,11 @@ class PayPalCompat {
 	 * @param string        $session_id     Response-backed session ID.
 	 * @param FraudDecision $decision       Applied decision.
 	 * @param bool          $record_allowed Whether this result can be matched by the browser carrier.
+	 * @return bool Whether the current actionable record was stored.
 	 */
-	private function update_verification_record( string $origin, string $session_id, FraudDecision $decision, bool $record_allowed ): void {
+	private function update_verification_record( string $origin, string $session_id, FraudDecision $decision, bool $record_allowed ): bool {
 		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
+			return false;
 		}
 
 		$record = null;
@@ -604,6 +610,8 @@ class PayPalCompat {
 		}
 
 		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
+
+		return null !== $record;
 	}
 
 	/**
@@ -704,8 +712,9 @@ class PayPalCompat {
 		}
 
 		foreach ( $cart->get_cart() as $cart_item ) {
-			$product = is_array( $cart_item ) ? ( $cart_item['data'] ?? null ) : null;
-			if ( is_object( $product ) && method_exists( $product, 'get_meta' ) && '' !== (string) $product->get_meta( 'ppcp_subscription_plan' ) ) {
+			$product           = is_array( $cart_item ) ? ( $cart_item['data'] ?? null ) : null;
+			$subscription_plan = is_object( $product ) && method_exists( $product, 'get_meta' ) ? $product->get_meta( 'ppcp_subscription_plan' ) : null;
+			if ( is_string( $subscription_plan ) && '' !== $subscription_plan ) {
 				return '';
 			}
 		}
