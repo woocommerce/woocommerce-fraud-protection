@@ -527,6 +527,7 @@ class PayPalCompat {
 		try {
 			$record_stored = $this->update_verification_record( $origin, $resolved_session_id, $decision, $record_allowed );
 		} catch ( \Throwable $e ) {
+			$this->retire_verification_record();
 			FraudProtectionController::log(
 				'warning',
 				'Recording the PayPal artifact verification failed; final request will verify',

@@ -458,20 +458,18 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertLogged( 'warning', 'Recording the PayPal artifact verification failed' );
 	}
 
-	/** @testdox A failed current record write cannot bind a new order to an older record. */
+	/** @testdox A failed current record write retires an older record and leaves no order binding marker. */
 	public function test_failed_record_write_leaves_no_order_binding_marker(): void {
 		$original_session = WC()->session;
-		$original_session->set(
-			'_fraud_protection_paypal_verification',
-			array(
-				'origin'     => 'paypal_express_order_creation',
-				'session_id' => 'response-session',
-				'decision'   => FraudDecision::Allow,
-				'used'       => false,
-				'order_id'   => '',
-				'cart_hash'  => '',
-			)
+		$record           = array(
+			'origin'     => 'paypal_express_order_creation',
+			'session_id' => 'response-session',
+			'decision'   => FraudDecision::Allow,
+			'used'       => false,
+			'order_id'   => '',
+			'cart_hash'  => '',
 		);
+		$original_session->set( '_fraud_protection_paypal_verification', $record );
 		WC()->session = new class( $original_session ) {
 			/** @var mixed */
 			private $session;
@@ -500,6 +498,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		try {
 			$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+			$this->assertNull( $original_session->get( '_fraud_protection_paypal_verification' ) );
+			$original_session->set( '_fraud_protection_paypal_verification', $record );
 			$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-NEW' ) );
 		} finally {
 			WC()->session = $original_session;
@@ -508,6 +508,38 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$record = $original_session->get( '_fraud_protection_paypal_verification' );
 		$this->assertIsArray( $record );
 		$this->assertSame( '', $record['order_id'] );
+		$this->assertLogged( 'warning', 'Recording the PayPal artifact verification failed' );
+	}
+
+	/** @testdox A record update failure before storage retires an older reusable record. */
+	public function test_record_update_failure_retires_an_older_reusable_record(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'origin'     => 'paypal_setup_token_creation',
+				'session_id' => 'old-session',
+				'decision'   => FraudDecision::Allow,
+				'used'       => false,
+				'order_id'   => '',
+				'cart_hash'  => 'old-cart',
+			)
+		);
+		$cart = $this->getMockBuilder( \WC_Cart::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'is_empty' ) )
+			->getMock();
+		$cart->method( 'is_empty' )->willThrowException( new \RuntimeException( 'cart unavailable' ) );
+		WC()->cart = $cart;
+
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'new-session' );
+
+		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
+		$this->set_setup_cart( 'old-cart' );
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'old-session' ) );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 		$this->assertLogged( 'warning', 'Recording the PayPal artifact verification failed' );
 	}
 
