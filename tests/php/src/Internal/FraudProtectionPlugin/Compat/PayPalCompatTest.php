@@ -1427,9 +1427,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
-				'session_id'  => '',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow,
+				'origin'     => 'paypal_express_order_creation',
+				'session_id' => '',
+				'decision'   => FraudDecision::Allow,
+				'used'       => false,
+				'order_id'   => 'PP-123',
+				'cart_hash'  => '',
 			)
 		);
 
@@ -1443,9 +1446,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
-				'session_id'  => 'old-session',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow,
+				'origin'     => 'paypal_express_order_creation',
+				'session_id' => 'old-session',
+				'decision'   => FraudDecision::Allow,
+				'used'       => false,
+				'order_id'   => 'PP-123',
+				'cart_hash'  => '',
 			)
 		);
 
@@ -1598,6 +1604,91 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertInstanceOf( SuppliedDecision::class, $returned );
 		$this->assertSame( FraudDecision::Allow, $returned->decision );
+	}
+
+	/** @testdox A final record read failure preserves the incoming decision and retires stored state. */
+	public function test_supply_read_failure_preserves_incoming_decision_and_retires(): void {
+		$request          = $this->create_artifact_record( 'create' );
+		$original_session = WC()->session;
+		$session          = new class( $original_session ) {
+			/** @var mixed */
+			private $session;
+
+			public bool $retired = false;
+
+			public function __construct( $session ) { // phpcs:ignore
+				$this->session = $session;
+			}
+
+			public function get( $key, $default = null ) { // phpcs:ignore
+				throw new \RuntimeException( 'session read unavailable' );
+			}
+
+			public function set( $key, $value = null ): void { // phpcs:ignore
+				$this->retired = null === $value;
+				$this->session->set( $key, $value );
+			}
+		};
+		WC()->session     = $session;
+		$incoming         = new SuppliedDecision( FraudDecision::Block );
+		$returned         = null;
+
+		try {
+			$returned = $this->sut->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
+		} finally {
+			WC()->session = $original_session;
+		}
+
+		$this->assertSame( $incoming, $returned );
+		$this->assertTrue( $session->retired );
+		$this->assertNull( $original_session->get( '_fraud_protection_paypal_verification' ) );
+		$this->assertLogged( 'warning', 'Reading or consuming the PayPal verification record failed' );
+	}
+
+	/** @testdox A final used-state write failure preserves the incoming decision and retires stored state. */
+	public function test_supply_write_failure_preserves_incoming_decision_and_retires(): void {
+		$request          = $this->create_artifact_record( 'create' );
+		$original_session = WC()->session;
+		$session          = new class( $original_session ) {
+			/** @var mixed */
+			private $session;
+
+			private bool $fail_next_write = true;
+
+			public bool $retired = false;
+
+			public function __construct( $session ) { // phpcs:ignore
+				$this->session = $session;
+			}
+
+			public function get( $key, $default = null ) { // phpcs:ignore
+				return $this->session->get( $key, $default );
+			}
+
+			public function set( $key, $value = null ): void { // phpcs:ignore
+				if ( $this->fail_next_write ) {
+					$this->fail_next_write = false;
+					throw new \RuntimeException( 'session write unavailable' );
+				}
+
+				$this->retired = null === $value;
+				$this->session->set( $key, $value );
+			}
+		};
+		WC()->session     = $session;
+		$incoming         = new SuppliedDecision( FraudDecision::Block );
+		$returned         = null;
+
+		try {
+			$returned = $this->sut->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
+		} finally {
+			WC()->session = $original_session;
+		}
+
+		$this->assertSame( $incoming, $returned );
+		$this->assertTrue( $session->retired );
+		$this->assertNull( $original_session->get( '_fraud_protection_paypal_verification' ) );
+		$this->assertLogged( 'warning', 'Reading or consuming the PayPal verification record failed' );
 	}
 
 	/**
@@ -1905,9 +1996,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
-				'session_id'  => 'a-different-blocked-session',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Block,
+				'origin'     => 'paypal_express_order_creation',
+				'session_id' => 'a-different-blocked-session',
+				'decision'   => FraudDecision::Block,
+				'used'       => false,
+				'order_id'   => 'PP-FOREIGN',
+				'cart_hash'  => '',
 			)
 		);
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-FOREIGN' ) ) );
@@ -2013,20 +2107,32 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/** @testdox An explicit final order ID takes precedence over the WC PayPal session order. */
+	public function test_explicit_final_order_mismatch_defers_and_retires(): void {
+		$request = $this->create_artifact_record( 'create' );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+		$request['payment_data']['paypal_order_id'] = 'PP-OTHER';
+
+		$this->assert_incoming_decision_is_preserved( 'blocks_checkout', $request, 'response-session' );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
 	/**
 	 * @testdox An unbound record does not answer for an approved order.
 	 *
-	 * Records written before the binding existed lack the order_id key; they
-	 * stay valid for the session-keyed reads but name no order, so the
-	 * approved-order route defers.
+	 * The record is current and valid, but names no order, so the approved-order
+	 * route defers.
 	 */
 	public function test_supply_defers_for_an_unbound_record_with_an_approved_order(): void {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
-				'session_id'  => 'scored-session',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow,
+				'origin'     => 'paypal_express_order_creation',
+				'session_id' => 'scored-session',
+				'decision'   => FraudDecision::Allow,
+				'used'       => false,
+				'order_id'   => '',
+				'cart_hash'  => '',
 			)
 		);
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
@@ -2080,10 +2186,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
-				'session_id'  => 'scored-session',
-				'stand_downs' => 0,
-				'decision'    => FraudDecision::Allow,
-				'order_id'    => '',
+				'origin'     => 'paypal_express_order_creation',
+				'session_id' => 'scored-session',
+				'decision'   => FraudDecision::Allow,
+				'used'       => false,
+				'order_id'   => '',
+				'cart_hash'  => '',
 			)
 		);
 
@@ -2133,10 +2241,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		// The record was replaced before the order was created.
 		$replaced = array(
-			'session_id'  => 'another-session',
-			'stand_downs' => 0,
-			'decision'    => FraudDecision::Allow,
-			'order_id'    => '',
+			'origin'     => 'paypal_express_order_creation',
+			'session_id' => 'another-session',
+			'decision'   => FraudDecision::Allow,
+			'used'       => false,
+			'order_id'   => '',
+			'cart_hash'  => '',
 		);
 		WC()->session->set( '_fraud_protection_paypal_verification', $replaced );
 
@@ -2325,6 +2435,28 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			'vault subscription'   => array( 'vault', 'subscriptions_change_payment', 'pay_for_order' ),
 			'setup Classic'        => array( 'setup', 'shortcode_checkout', 'blocks_checkout' ),
 			'setup Blocks'         => array( 'setup', 'blocks_checkout', 'shortcode_checkout' ),
+		);
+	}
+
+	/**
+	 * @testdox $origin records do not supply to unsupported $source requests.
+	 *
+	 * @dataProvider unsupported_final_source_provider
+	 */
+	public function test_records_reject_unsupported_final_sources( string $origin, string $source ): void {
+		$request = $this->create_artifact_record( $origin );
+
+		$this->assert_incoming_decision_is_preserved( $source, $request, 'response-session' );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, string}> */
+	public function unsupported_final_source_provider(): array {
+		return array(
+			'setup pay for order'       => array( 'setup', 'pay_for_order' ),
+			'setup change payment'      => array( 'setup', 'subscriptions_change_payment' ),
+			'create change payment'     => array( 'create', 'subscriptions_change_payment' ),
+			'vault add payment method'  => array( 'vault', 'add_payment_method' ),
 		);
 	}
 

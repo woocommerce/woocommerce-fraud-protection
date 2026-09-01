@@ -410,6 +410,16 @@ describe( 'paypal-express fetch interceptor', () => {
 		} );
 
 		it( 'resets before a later artifact after an unreadable response', async () => {
+			const events = [];
+			mockAcquireSessionId
+				.mockImplementationOnce( () => {
+					events.push( 'acquire:S1' );
+					return Promise.resolve( 'S1' );
+				} )
+				.mockImplementationOnce( () => {
+					events.push( 'acquire:S2' );
+					return Promise.resolve( 'S2' );
+				} );
 			originalFetch.mockResolvedValueOnce( {
 				ok: true,
 				clone: () => ( {
@@ -417,18 +427,23 @@ describe( 'paypal-express fetch interceptor', () => {
 				} ),
 			} );
 			setupAndLoad();
+			window.wcFraudProtection.reset.mockImplementation( () => {
+				events.push( 'reset' );
+			} );
 
 			await window.fetch(
 				'https://store.test/?wc-ajax=ppc-create-order',
 				{ body: '{}' }
 			);
 			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+			expect( events ).toEqual( [ 'acquire:S1' ] );
 
 			await window.fetch(
 				'https://store.test/?wc-ajax=ppc-create-setup-token',
 				{ body: '{}' }
 			);
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+			expect( events ).toEqual( [ 'acquire:S1', 'reset', 'acquire:S2' ] );
 		} );
 
 		it( 'does not reset twice when retrying after a confirmed failure', async () => {
