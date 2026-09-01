@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Integrates Blackbox fraud protection into PayPal Payments express checkout flows.
  *
- * Verifies protected PayPal artifacts and carries one response-backed decision
+ * Verifies protected PayPal requests and carries one response-backed decision
  * to the matching final request.
  */
 class PayPalCompat {
@@ -163,11 +163,11 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function verify_and_block_create_order( $data ): void {
-		$request_data      = is_array( $data ) ? $data : array();
-		$submitted_carrier = $request_data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
-		$record_allowed    = '' !== $this->session_id_normalizer->normalize_stored( $submitted_carrier );
+		$request_data         = is_array( $data ) ? $data : array();
+		$submitted_session_id = $request_data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
+		$can_store_result     = '' !== $this->session_id_normalizer->normalize_stored( $submitted_session_id );
 
-		$this->verify_and_block_artifact( $request_data, self::ORDER_CREATION_SOURCE, $record_allowed );
+		$this->verify_and_block_paypal_request( $request_data, self::ORDER_CREATION_SOURCE, $can_store_result );
 	}
 
 	/**
@@ -188,12 +188,12 @@ class PayPalCompat {
 			return $args;
 		}
 
-		$data           = array();
-		$record_allowed = false;
+		$data             = array();
+		$can_store_result = false;
 		try {
-			$data              = $this->read_protected_request_data( $origin );
-			$submitted_carrier = $data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
-			$record_allowed    = '' !== $this->session_id_normalizer->normalize_stored( $submitted_carrier );
+			$data                 = $this->read_protected_request_data( $origin );
+			$submitted_session_id = $data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
+			$can_store_result     = '' !== $this->session_id_normalizer->normalize_stored( $submitted_session_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
@@ -206,7 +206,7 @@ class PayPalCompat {
 			);
 		}
 
-		$this->verify_and_block_artifact( $data, $origin, $record_allowed );
+		$this->verify_and_block_paypal_request( $data, $origin, $can_store_result );
 
 		return $args;
 	}
@@ -286,14 +286,17 @@ class PayPalCompat {
 
 			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 		} catch ( \Throwable $e ) {
+			$context = array(
+				'hook'              => 'woocommerce_paypal_payments_paypal_order_created',
+				'session_id'        => $session_id,
+				'exception_class'   => $e::class,
+				'exception_message' => $e->getMessage(),
+			);
+
 			FraudProtectionController::log(
 				'warning',
 				'Binding the created PayPal order threw; leaving the verification unbound',
-				array(
-					'hook'            => 'woocommerce_paypal_payments_paypal_order_created',
-					'session_id'      => $session_id,
-					'exception_class' => $e::class,
-				),
+				$context,
 				true
 			);
 		}
@@ -449,6 +452,7 @@ class PayPalCompat {
 			return $supplied_decision;
 		}
 
+		$resolved_session_id = '';
 		try {
 			$record            = $this->get_verified_session_record();
 			$stored_session_id = null === $record ? '' : $this->session_id_normalizer->normalize_stored( $record['session_id'] );
@@ -457,7 +461,8 @@ class PayPalCompat {
 				return $supplied_decision;
 			}
 
-			$matches = self::SETUP_TOKEN_CREATION_SOURCE === $record['origin']
+			$resolved_session_id = $stored_session_id;
+			$matches             = self::SETUP_TOKEN_CREATION_SOURCE === $record['origin']
 				? $this->setup_record_matches( $record, $source )
 				: $this->order_record_matches( $record, $source, $request_data );
 			if ( ! $matches ) {
@@ -471,13 +476,18 @@ class PayPalCompat {
 			return new SuppliedDecision( $record['decision'], $record['session_id'] );
 		} catch ( \Throwable $e ) {
 			$this->retire_verification_record();
+			$context = array(
+				'event_source'      => $source,
+				'exception_class'   => $e::class,
+				'exception_message' => $e->getMessage(),
+			);
+			if ( '' !== $resolved_session_id ) {
+				$context['session_id'] = $resolved_session_id;
+			}
 			FraudProtectionController::log(
 				'warning',
-				'Reading or consuming the PayPal verification record failed; final request will verify',
-				array(
-					'hook'            => 'woocommerce_fraud_protection_skip_session_verify',
-					'exception_class' => $e::class,
-				),
+				'Reading or consuming the PayPal request verification record failed; final request will verify',
+				$context,
 				true
 			);
 
@@ -512,30 +522,34 @@ class PayPalCompat {
 	}
 
 	/**
-	 * Verify one protected PayPal artifact and enforce its decision.
+	 * Verify one protected PayPal request and enforce its decision.
 	 *
 	 * @param array  $data           Validated request data.
 	 * @param string $origin         Verification source.
-	 * @param bool   $record_allowed Whether the browser carrier can identify this response.
+	 * @param bool   $can_store_result Whether the submitted session ID can identify this response.
 	 */
-	private function verify_and_block_artifact( array $data, string $origin, bool $record_allowed ): void {
+	private function verify_and_block_paypal_request( array $data, string $origin, bool $can_store_result ): void {
 		$submitted_session_id = array_key_exists( SessionVerifier::SESSION_ID_FIELD, $data ) ? $data[ SessionVerifier::SESSION_ID_FIELD ] : '';
 		$decision             = $this->session_verifier->verify_session( $submitted_session_id, $origin, 0, $data );
 		$resolved_session_id  = $this->session_verifier->last_verified_session_id();
 		$record_stored        = false;
 
 		try {
-			$record_stored = $this->update_verification_record( $origin, $resolved_session_id, $decision, $record_allowed );
+			$record_stored = $this->update_verification_record( $origin, $resolved_session_id, $decision, $can_store_result );
 		} catch ( \Throwable $e ) {
 			$this->retire_verification_record();
+			$context = array(
+				'event_source'      => $origin,
+				'exception_class'   => $e::class,
+				'exception_message' => $e->getMessage(),
+			);
+			if ( '' !== $resolved_session_id ) {
+				$context['session_id'] = $resolved_session_id;
+			}
 			FraudProtectionController::log(
 				'warning',
-				'Recording the PayPal artifact verification failed; final request will verify',
-				array(
-					'hook'            => 'paypal_artifact_verification',
-					'session_id'      => $resolved_session_id,
-					'exception_class' => $e::class,
-				),
+				'Recording the PayPal request verification failed; final request will verify',
+				$context,
 				true
 			);
 		}
@@ -580,21 +594,21 @@ class PayPalCompat {
 	}
 
 	/**
-	 * Store the current response-backed artifact decision.
+	 * Store the current response-backed PayPal request decision.
 	 *
 	 * @param string        $origin         Verification source.
 	 * @param string        $session_id     Response-backed session ID.
 	 * @param FraudDecision $decision       Applied decision.
-	 * @param bool          $record_allowed Whether this result can be matched by the browser carrier.
+	 * @param bool          $can_store_result Whether this result can be matched by the submitted session ID.
 	 * @return bool Whether the current actionable record was stored.
 	 */
-	private function update_verification_record( string $origin, string $session_id, FraudDecision $decision, bool $record_allowed ): bool {
+	private function update_verification_record( string $origin, string $session_id, FraudDecision $decision, bool $can_store_result ): bool {
 		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
 			return false;
 		}
 
 		$record = null;
-		if ( $record_allowed && '' !== $session_id && in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
+		if ( $can_store_result && '' !== $session_id && in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
 			$record = array(
 				'origin'     => $origin,
 				'session_id' => $session_id,

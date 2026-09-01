@@ -1,7 +1,7 @@
 /**
- * PayPal artifact fetch interceptor for Woo Fraud Protection.
+ * PayPal request fetch interceptor for Woo Fraud Protection.
  *
- * Injects the browser session into supported PayPal artifact requests. Errors
+ * Injects the browser session into supported PayPal requests. Errors
  * remain fail open and never prevent the original Fetch call.
  */
 ( function () {
@@ -10,13 +10,12 @@
 	}
 
 	const originalFetch = window.fetch;
-	const protectedEndpoints = new Set( [
+	const protectedPayPalEndpoints = [
 		'ppc-create-order',
 		'ppc-create-setup-token',
 		'ppc-vault-create-order',
-	] );
-	let artifactQueue = Promise.resolve();
-	let resetBeforeNextArtifact = false;
+	];
+	let resetBeforeNextPayPalRequest = false;
 
 	function getEndpoint( resource ) {
 		const url =
@@ -28,7 +27,7 @@
 		);
 	}
 
-	function reset( fp ) {
+	function resetSessionSafely( fp ) {
 		try {
 			if ( typeof fp.reset === 'function' ) {
 				fp.reset();
@@ -51,10 +50,15 @@
 		}
 	}
 
-	async function dispatchArtifact( thisArg, fp, resource, init ) {
-		if ( resetBeforeNextArtifact ) {
-			reset( fp );
-			resetBeforeNextArtifact = false;
+	async function dispatchProtectedPayPalRequest(
+		thisArg,
+		fp,
+		resource,
+		init
+	) {
+		if ( resetBeforeNextPayPalRequest ) {
+			resetSessionSafely( fp );
+			resetBeforeNextPayPalRequest = false;
 		}
 
 		try {
@@ -70,19 +74,15 @@
 		try {
 			response = await originalFetch.call( thisArg, resource, init );
 		} catch ( e ) {
-			reset( fp );
+			resetSessionSafely( fp );
 			throw e;
 		}
 
-		try {
-			const result = await classifyResponse( response );
-			if ( 'failure' === result ) {
-				reset( fp );
-			} else {
-				resetBeforeNextArtifact = true;
-			}
-		} catch ( e ) {
-			resetBeforeNextArtifact = true;
+		const result = await classifyResponse( response );
+		if ( 'failure' === result ) {
+			resetSessionSafely( fp );
+		} else {
+			resetBeforeNextPayPalRequest = true;
 		}
 
 		return response;
@@ -92,15 +92,16 @@
 		try {
 			const fp = window.wcFraudProtection;
 			if (
-				protectedEndpoints.has( getEndpoint( resource ) ) &&
+				protectedPayPalEndpoints.includes( getEndpoint( resource ) ) &&
 				fp &&
 				typeof fp.acquireSessionId === 'function'
 			) {
-				const dispatch = () =>
-					dispatchArtifact( this, fp, resource, init || {} );
-				const result = artifactQueue.then( dispatch, dispatch );
-				artifactQueue = result.catch( () => undefined );
-				return result;
+				return dispatchProtectedPayPalRequest(
+					this,
+					fp,
+					resource,
+					init || {}
+				);
 			}
 		} catch ( e ) {
 			// Fail open.

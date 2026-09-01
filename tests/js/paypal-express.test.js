@@ -4,7 +4,7 @@
 /* eslint jsdoc/check-tag-names: off */
 
 /**
- * Tests for paypal-express.js — Fetch interceptor for supported PayPal artifact requests.
+ * Tests for paypal-express.js — Fetch interceptor for supported PayPal requests.
  *
  * paypal-express.js is an IIFE. We test it by setting up global mocks,
  * requiring the file (which executes the IIFE), and asserting on mocks.
@@ -48,7 +48,7 @@ function setupAndLoad( config ) {
 	} );
 }
 
-function artifactResponse( ok = true, data = { success: true } ) {
+function paypalResponse( ok = true, data = { success: true } ) {
 	return {
 		ok,
 		clone: () => ( { json: () => Promise.resolve( data ) } ),
@@ -320,7 +320,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'resets before a later protected artifact after success', async () => {
+		it( 'resets before a later protected PayPal request after success', async () => {
 			const events = [];
 			mockAcquireSessionId
 				.mockImplementationOnce( () => {
@@ -353,63 +353,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			] );
 		} );
 
-		it( 'serializes concurrent protected artifact requests', async () => {
-			let resolveFirstFetch;
-			const events = [];
-			mockAcquireSessionId
-				.mockImplementationOnce( () => {
-					events.push( 'acquire:S1' );
-					return Promise.resolve( 'S1' );
-				} )
-				.mockImplementationOnce( () => {
-					events.push( 'acquire:S2' );
-					return Promise.resolve( 'S2' );
-				} );
-			originalFetch
-				.mockImplementationOnce(
-					() =>
-						new Promise( ( resolve ) => {
-							resolveFirstFetch = resolve;
-						} )
-				)
-				.mockResolvedValueOnce( artifactResponse() );
-			setupAndLoad();
-			window.wcFraudProtection.reset.mockImplementation( () => {
-				events.push( 'reset' );
-			} );
-
-			const first = window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: '{}' }
-			);
-			const second = window.fetch(
-				'https://store.test/?wc-ajax=ppc-vault-create-order',
-				{ body: '{}' }
-			);
-			await Promise.resolve();
-			await Promise.resolve();
-
-			expect( originalFetch ).toHaveBeenCalledTimes( 1 );
-			expect( events ).toEqual( [ 'acquire:S1' ] );
-			resolveFirstFetch( artifactResponse() );
-			await first;
-			await second;
-
-			expect( originalFetch ).toHaveBeenCalledTimes( 2 );
-			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
-			expect(
-				JSON.parse( originalFetch.mock.calls[ 0 ][ 1 ].body )
-					.wc_fraud_protection_session_id
-			).toBe( 'S1' );
-			expect(
-				JSON.parse( originalFetch.mock.calls[ 1 ][ 1 ].body )
-					.wc_fraud_protection_session_id
-			).toBe( 'S2' );
-			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
-			expect( events ).toEqual( [ 'acquire:S1', 'reset', 'acquire:S2' ] );
-		} );
-
-		it( 'resets before a later artifact after an unreadable response', async () => {
+		it( 'resets before a later protected PayPal request after an unreadable response', async () => {
 			const events = [];
 			mockAcquireSessionId
 				.mockImplementationOnce( () => {
@@ -448,7 +392,7 @@ describe( 'paypal-express fetch interceptor', () => {
 
 		it( 'does not reset twice when retrying after a confirmed failure', async () => {
 			originalFetch.mockResolvedValueOnce(
-				artifactResponse( false, { success: false } )
+				paypalResponse( false, { success: false } )
 			);
 			setupAndLoad();
 
@@ -466,7 +410,7 @@ describe( 'paypal-express fetch interceptor', () => {
 
 		it( 'continues when reset throws', async () => {
 			originalFetch.mockResolvedValueOnce(
-				artifactResponse( false, { success: false } )
+				paypalResponse( false, { success: false } )
 			);
 			setupAndLoad();
 			window.wcFraudProtection.reset.mockImplementation( () => {
