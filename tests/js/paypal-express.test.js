@@ -1,6 +1,7 @@
 /**
  * @jest-environment jsdom
  */
+/* eslint jsdoc/check-tag-names: off */
 
 /**
  * Tests for paypal-express.js — Fetch interceptor for PayPal CreateOrder AJAX.
@@ -8,7 +9,7 @@
  * paypal-express.js is an IIFE. We test it by setting up global mocks,
  * requiring the file (which executes the IIFE), and asserting on mocks.
  *
- * @package WooCommerce\FraudProtection
+ * @package
  */
 
 let mockAcquireSessionId;
@@ -21,11 +22,18 @@ beforeEach( () => {
 	fetchCalls = [];
 	originalFetch = jest.fn( ( resource, init ) => {
 		fetchCalls.push( { resource, init } );
-		return Promise.resolve( { ok: true, json: () => Promise.resolve( {} ) } );
+		return Promise.resolve( {
+			ok: true,
+			clone: jest.fn( () => ( {
+				json: () => Promise.resolve( { success: true } ),
+			} ) ),
+		} );
 	} );
 	window.fetch = originalFetch;
 
-	mockAcquireSessionId = jest.fn( () => Promise.resolve( 'test-session-abc' ) );
+	mockAcquireSessionId = jest.fn( () =>
+		Promise.resolve( 'test-session-abc' )
+	);
 } );
 
 function setupAndLoad( config ) {
@@ -40,26 +48,62 @@ function setupAndLoad( config ) {
 	} );
 }
 
+function artifactResponse( ok = true, data = { success: true } ) {
+	return {
+		ok,
+		clone: () => ( { json: () => Promise.resolve( data ) } ),
+	};
+}
+
 describe( 'paypal-express fetch interceptor', () => {
 	describe( 'interception', () => {
-		it( 'intercepts ppc-create-order requests and injects session_id', async () => {
+		it.each( [
+			'ppc-create-order',
+			'ppc-create-setup-token',
+			'ppc-vault-create-order',
+		] )(
+			'intercepts exact %s requests and injects session_id',
+			async ( endpoint ) => {
+				setupAndLoad();
+
+				const body = JSON.stringify( {
+					nonce: 'abc',
+					context: 'product',
+				} );
+				await window.fetch(
+					`https://store.test/?wc-ajax=${ endpoint }`,
+					{ body }
+				);
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( fetchCalls ).toHaveLength( 1 );
+
+				const sentBody = JSON.parse( fetchCalls[ 0 ].init.body );
+				expect( sentBody.wc_fraud_protection_session_id ).toBe(
+					'test-session-abc'
+				);
+				expect( sentBody.nonce ).toBe( 'abc' );
+			}
+		);
+
+		it.each( [
+			'https://store.test/?wc-ajax=ppc-create-order-copy',
+			'https://store.test/?other=ppc-create-order',
+		] )( 'does not intercept endpoint lookalike %s', async ( url ) => {
 			setupAndLoad();
 
-			const body = JSON.stringify( { nonce: 'abc', context: 'product' } );
-			await window.fetch( 'https://store.test/?wc-ajax=ppc-create-order', { body } );
+			await window.fetch( url, { body: '{}' } );
 
-			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
-			expect( fetchCalls ).toHaveLength( 1 );
-
-			const sentBody = JSON.parse( fetchCalls[ 0 ].init.body );
-			expect( sentBody.wc_fraud_protection_session_id ).toBe( 'test-session-abc' );
-			expect( sentBody.nonce ).toBe( 'abc' );
+			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 		} );
 
 		it( 'does not intercept non-PayPal fetch calls', async () => {
 			setupAndLoad();
 
-			await window.fetch( 'https://store.test/wp-json/wc/store/v1/checkout', { body: '{}' } );
+			await window.fetch(
+				'https://store.test/wp-json/wc/store/v1/checkout',
+				{ body: '{}' }
+			);
 
 			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 			expect( fetchCalls ).toHaveLength( 1 );
@@ -69,7 +113,9 @@ describe( 'paypal-express fetch interceptor', () => {
 		it( 'handles Request objects with url property', async () => {
 			setupAndLoad();
 
-			const request = new Request( 'https://store.test/?wc-ajax=ppc-create-order' );
+			const request = new Request(
+				'https://store.test/?wc-ajax=ppc-create-order'
+			);
 			await window.fetch( request, { body: JSON.stringify( {} ) } );
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
@@ -78,7 +124,9 @@ describe( 'paypal-express fetch interceptor', () => {
 		it( 'handles URL objects', async () => {
 			setupAndLoad();
 
-			const url = new URL( 'https://store.test/?wc-ajax=ppc-create-order' );
+			const url = new URL(
+				'https://store.test/?wc-ajax=ppc-create-order'
+			);
 			await window.fetch( url, { body: JSON.stringify( {} ) } );
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
@@ -89,7 +137,10 @@ describe( 'paypal-express fetch interceptor', () => {
 		it( 'sends request without session_id when body is not valid JSON', async () => {
 			setupAndLoad();
 
-			await window.fetch( 'https://store.test/?wc-ajax=ppc-create-order', { body: 'not-json' } );
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: 'not-json' }
+			);
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 			expect( fetchCalls ).toHaveLength( 1 );
@@ -175,28 +226,36 @@ describe( 'paypal-express fetch interceptor', () => {
 	} );
 
 	describe( 'reset', () => {
-		it( 'calls reset after intercepted CreateOrder fetch returns', async () => {
+		it( 'keeps the session after an intercepted CreateOrder succeeds', async () => {
 			setupAndLoad();
 
-			await window.fetch( 'https://store.test/?wc-ajax=ppc-create-order', {
-				body: JSON.stringify( {} ),
-			} );
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{
+					body: JSON.stringify( {} ),
+				}
+			);
 
-			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 		} );
 
 		it( 'does not call reset for non-PayPal fetch calls', async () => {
 			setupAndLoad();
 
-			await window.fetch( 'https://store.test/wp-json/wc/store/v1/checkout', {
-				body: '{}',
-			} );
+			await window.fetch(
+				'https://store.test/wp-json/wc/store/v1/checkout',
+				{
+					body: '{}',
+				}
+			);
 
 			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 		} );
 
 		it( 'calls reset even when fetch rejects', async () => {
-			originalFetch.mockImplementationOnce( () => Promise.reject( new Error( 'Network error' ) ) );
+			originalFetch.mockImplementationOnce( () =>
+				Promise.reject( new Error( 'Network error' ) )
+			);
 			setupAndLoad();
 
 			await expect(
@@ -206,6 +265,153 @@ describe( 'paypal-express fetch interceptor', () => {
 			).rejects.toThrow( 'Network error' );
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it.each( [
+			[ false, { success: true } ],
+			[ true, { success: false } ],
+		] )( 'resets after a confirmed failed response', async ( ok, data ) => {
+			originalFetch.mockResolvedValueOnce( {
+				ok,
+				clone: jest.fn( () => ( {
+					json: () => Promise.resolve( data ),
+				} ) ),
+			} );
+			setupAndLoad();
+
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-setup-token',
+				{
+					body: '{}',
+				}
+			);
+
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'resets before a later protected artifact after success', async () => {
+			mockAcquireSessionId
+				.mockResolvedValueOnce( 'session-1' )
+				.mockResolvedValueOnce( 'session-2' );
+			setupAndLoad();
+
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: '{}' }
+			);
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-vault-create-order',
+				{ body: '{}' }
+			);
+
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'serializes concurrent protected artifact requests', async () => {
+			let resolveFirstFetch;
+			originalFetch
+				.mockImplementationOnce(
+					() =>
+						new Promise( ( resolve ) => {
+							resolveFirstFetch = resolve;
+						} )
+				)
+				.mockResolvedValueOnce( artifactResponse() );
+			setupAndLoad();
+
+			const first = window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: '{}' }
+			);
+			const second = window.fetch(
+				'https://store.test/?wc-ajax=ppc-vault-create-order',
+				{ body: '{}' }
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect( originalFetch ).toHaveBeenCalledTimes( 1 );
+			resolveFirstFetch( artifactResponse() );
+			await first;
+			await second;
+
+			expect( originalFetch ).toHaveBeenCalledTimes( 2 );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'resets before a later artifact after an unreadable response', async () => {
+			originalFetch.mockResolvedValueOnce( {
+				ok: true,
+				clone: () => ( {
+					json: () => Promise.reject( new Error( 'Unreadable' ) ),
+				} ),
+			} );
+			setupAndLoad();
+
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: '{}' }
+			);
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-setup-token',
+				{ body: '{}' }
+			);
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'does not reset twice when retrying after a confirmed failure', async () => {
+			originalFetch.mockResolvedValueOnce(
+				artifactResponse( false, { success: false } )
+			);
+			setupAndLoad();
+
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: '{}' }
+			);
+			await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: '{}' }
+			);
+
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'continues when reset throws', async () => {
+			originalFetch.mockResolvedValueOnce(
+				artifactResponse( false, { success: false } )
+			);
+			setupAndLoad();
+			window.wcFraudProtection.reset.mockImplementation( () => {
+				throw new Error( 'Reset failed' );
+			} );
+
+			await expect(
+				window.fetch( 'https://store.test/?wc-ajax=ppc-create-order', {
+					body: '{}',
+				} )
+			).resolves.toMatchObject( { ok: false } );
+		} );
+
+		it( 'inspects a clone and preserves the original response', async () => {
+			const response = {
+				ok: true,
+				clone: jest.fn( () => ( {
+					json: () => Promise.resolve( { success: true } ),
+				} ) ),
+			};
+			originalFetch.mockResolvedValueOnce( response );
+			setupAndLoad();
+
+			const result = await window.fetch(
+				'https://store.test/?wc-ajax=ppc-create-order',
+				{ body: '{}' }
+			);
+
+			expect( result ).toBe( response );
+			expect( response.clone ).toHaveBeenCalledTimes( 1 );
 		} );
 	} );
 } );

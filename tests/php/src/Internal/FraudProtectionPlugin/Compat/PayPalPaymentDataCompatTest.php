@@ -71,6 +71,13 @@ if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
 		 */
 		private static bool $merchant_id_throws = false;
 
+		/**
+		 * Optional test services by container ID.
+		 *
+		 * @var array<string, mixed>
+		 */
+		private static array $services = array();
+
 		public static function set_merchant_id( $merchant_id ): void {
 			self::$merchant_id = $merchant_id;
 		}
@@ -79,18 +86,38 @@ if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
 			self::$merchant_id_throws = $throws;
 		}
 
+		/**
+		 * Set an optional container service.
+		 *
+		 * @param string $id      Service ID.
+		 * @param mixed  $service Service value.
+		 */
+		public static function set_service( string $id, $service ): void {
+			self::$services[ $id ] = $service;
+		}
+
 		public static function reset(): void {
 			self::$merchant_id        = null;
 			self::$merchant_id_throws = false;
+			self::$services           = array();
 		}
 
 		/**
 		 * Get a service by ID.
 		 *
 		 * @param string $id Service ID.
-		 * @return PPCP_ConnectionState_Stub
+		 * @return mixed
 		 */
 		public function get( string $id ) {
+			if ( array_key_exists( $id, self::$services ) ) {
+				$service = self::$services[ $id ];
+				if ( $service instanceof \Throwable ) {
+					throw $service;
+				}
+
+				return $service;
+			}
+
 			if ( 'api.merchant_id' === $id ) {
 				if ( self::$merchant_id_throws ) {
 					throw new \RuntimeException( 'Merchant ID lookup failed' );
