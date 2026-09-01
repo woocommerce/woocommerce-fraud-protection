@@ -239,11 +239,11 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Log identity prefixes use the accepted 64-byte value.
+	 * @testdox Log identity prefixes use the accepted 255-byte value.
 	 */
 	public function test_log_truncates_valid_long_identity_prefix(): void {
 		$messages = $this->capture_logged_messages();
-		$prefix   = str_repeat( 'a', 64 );
+		$prefix   = str_repeat( 'a', 255 );
 		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $prefix . 'tail' );
 
 		FraudProtectionController::log( 'info', 'Test message' );

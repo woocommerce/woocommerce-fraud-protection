@@ -115,8 +115,9 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->get_identity_id();
 
 		if ( '' === $expected ) {
-			$this->assertStringStartsWith( 'customer_', $result );
-			$this->assertLessThanOrEqual( 64, strlen( $result ) );
+			$this->assertNotSame( $stored, $result );
+			$this->assertMatchesRegularExpression( '/\A[A-Za-z0-9:_+\/=\-]+\z/', $result );
+			$this->assertLessThanOrEqual( 255, strlen( $result ) );
 		} else {
 			$this->assertSame( $expected, $result );
 		}
@@ -130,12 +131,12 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	 * @return array<string, array{mixed, string}>
 	 */
 	public function stored_identity_provider(): array {
-		$exact = str_repeat( 'a', 64 );
+		$exact = str_repeat( 'a', 255 );
 
 		return array(
 			'known Woo form'        => array( 'customer_1234:abc_DEF-+/=', 'customer_1234:abc_DEF-+/=' ),
 			'integer'               => array( 123456, '123456' ),
-			'exactly 64 bytes'      => array( $exact, $exact ),
+			'exactly 255 bytes'     => array( $exact, $exact ),
 			'valid long value'      => array( $exact . 'tail', $exact ),
 			'empty value'           => array( '', '' ),
 			'unsupported character' => array( 'identity with spaces', '' ),
@@ -194,11 +195,11 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 			$result = $this->sut->get_identity_id();
 
 			$this->assertSame( $result, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
-			$this->assertLessThanOrEqual( 64, strlen( $result ) );
+			$this->assertLessThanOrEqual( 255, strlen( $result ) );
 			if ( $expects_fallback ) {
 				$this->assertStringStartsWith( 'customer_', $result );
 			} else {
-				$this->assertSame( str_repeat( 'a', 64 ), $result );
+				$this->assertSame( str_repeat( 'a', 255 ), $result );
 			}
 		} finally {
 			if ( $had_cookie ) {
@@ -217,7 +218,7 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tracks_identity_provider(): array {
 		return array(
-			'valid long identity' => array( str_repeat( 'a', 70 ), false ),
+			'valid long identity' => array( str_repeat( 'a', 300 ), false ),
 			'invalid identity'    => array( 'identity with spaces', true ),
 		);
 	}

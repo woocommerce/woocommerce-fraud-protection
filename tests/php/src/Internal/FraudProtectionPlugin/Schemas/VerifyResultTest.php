@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Schemas;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResultOrigin;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -60,26 +61,24 @@ class VerifyResultTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox create() produces a result not flagged as fail-open
+	 * @testdox create() records a response origin.
 	 */
-	public function test_create_is_not_fail_open(): void {
+	public function test_create_records_response_origin(): void {
 		$result = VerifyResult::create( FraudDecision::Allow, 'sid' );
 
-		$this->assertFalse( $result->fail_open );
-		$this->assertFalse( $result->request_rejected );
+		$this->assertSame( VerifyResultOrigin::Response, $result->origin );
 	}
 
 	/**
-	 * @testdox fail_open() produces a synthetic allow with no association ID
+	 * @testdox fail_open() produces a synthetic allow with a fail-open origin.
 	 */
-	public function test_fail_open_produces_flagged_synthetic_allow(): void {
+	public function test_fail_open_produces_synthetic_allow(): void {
 		$result = VerifyResult::fail_open();
 
-		$this->assertTrue( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::FailOpen, $result->origin );
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
 		$this->assertNull( $result->risk_score );
-		$this->assertFalse( $result->request_rejected );
 	}
 
 	/**
@@ -91,7 +90,6 @@ class VerifyResultTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( FraudDecision::Block, $result->decision );
 		$this->assertSame( '', $result->session_id );
 		$this->assertNull( $result->risk_score );
-		$this->assertFalse( $result->fail_open );
-		$this->assertTrue( $result->request_rejected );
+		$this->assertSame( VerifyResultOrigin::RequestRejected, $result->origin );
 	}
 }

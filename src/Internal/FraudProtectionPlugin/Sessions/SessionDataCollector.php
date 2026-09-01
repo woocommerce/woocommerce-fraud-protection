@@ -152,18 +152,8 @@ class SessionDataCollector {
 		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {
 			$collected_data = $wc->session->get( self::COLLECTED_DATA_KEY );
 			if ( is_array( $collected_data ) ) {
-				$history_trimmed = count( $collected_data ) > self::MAX_EVENT_COUNT;
-				if ( $history_trimmed ) {
-					$collected_data = array_slice( $collected_data, -self::MAX_EVENT_COUNT );
-				}
-
-				$normalized_events = array();
-				foreach ( $collected_data as $event ) {
-					$normalized_events[] = $this->normalize_event( $event );
-				}
-
-				$data['collected_events'] = $this->trim_history( $normalized_events, $history_trimmed );
-				if ( $history_trimmed || true === $wc->session->get( self::COLLECTED_EVENTS_TRUNCATED_KEY ) ) {
+				$data['collected_events'] = $collected_data;
+				if ( true === $wc->session->get( self::COLLECTED_EVENTS_TRUNCATED_KEY ) ) {
 					$data['collected_events_truncated'] = true;
 				}
 			}

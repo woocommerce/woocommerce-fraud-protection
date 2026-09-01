@@ -271,7 +271,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		// Session ID should be a string when session is available.
 		$this->assertIsString( $result['session']['wc_identity_id'] );
 		$this->assertNotEmpty( $result['session']['wc_identity_id'] );
-		$this->assertSame( str_repeat( 'a', 64 ), $result['session']['wc_identity_id'] );
+		$this->assertSame( str_repeat( 'a', 70 ), $result['session']['wc_identity_id'] );
 	}
 
 	/**
@@ -1069,7 +1069,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox collect() bounds strings and keeps the first normalized colliding key.
+	 * @testdox collect() limits strings and keeps the first normalized colliding key.
 	 */
 	public function test_collect_normalizes_strings_and_key_collisions(): void {
 		$key_prefix = str_repeat( 'k', 128 );
@@ -1124,7 +1124,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox collect() retains a deep event within the 64-node limit.
 	 */
-	public function test_collect_bounds_deep_event_by_node_count(): void {
+	public function test_collect_limits_deep_event_by_node_count(): void {
 		$event_data = array( 'leaf' => 'value' );
 		for ( $index = 0; $index < 70; ++$index ) {
 			$event_data = array( 'child' => $event_data );
@@ -1139,7 +1139,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox collect() stops a recursive event within the 64-node limit.
 	 */
-	public function test_collect_bounds_recursive_event_by_node_count(): void {
+	public function test_collect_limits_recursive_event_by_node_count(): void {
 		$event_data         = array();
 		$event_data['self'] = &$event_data;
 
@@ -1152,7 +1152,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox collect() keeps the newest 256 events and marks discarded history.
 	 */
-	public function test_collect_bounds_event_count_and_marks_history(): void {
+	public function test_collect_limits_event_count_and_marks_history(): void {
 		for ( $index = 0; $index < 257; ++$index ) {
 			$this->sut->collect( 'event_' . $index );
 		}
@@ -1163,12 +1163,20 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'event_1', $result['collected_events'][0]['event_type'] );
 		$this->assertSame( 'event_256', $result['collected_events'][255]['event_type'] );
 		$this->assertTrue( $result['collected_events_truncated'] );
+
+		$this->sut->collect( 'event_257' );
+		$result = $this->sut->get_collected_data();
+
+		$this->assertCount( 256, $result['collected_events'] );
+		$this->assertSame( 'event_2', $result['collected_events'][0]['event_type'] );
+		$this->assertSame( 'event_257', $result['collected_events'][255]['event_type'] );
+		$this->assertTrue( $result['collected_events_truncated'] );
 	}
 
 	/**
-	 * @testdox collect() bounds serialized history bytes and retains the newest event.
+	 * @testdox collect() limits serialized history bytes and retains the newest event.
 	 */
-	public function test_collect_bounds_serialized_history_bytes(): void {
+	public function test_collect_limits_serialized_history_bytes(): void {
 		for ( $index = 0; $index < 256; ++$index ) {
 			$this->sut->collect( 'event_' . $index, array( 'value' => str_repeat( 'v', 1024 ) ) );
 		}
@@ -1179,65 +1187,6 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertLessThan( 256, count( $stored ) );
 		$this->assertSame( 'event_255', $stored[ count( $stored ) - 1 ]['event_type'] );
 		$this->assertTrue( $this->sut->get_collected_data()['collected_events_truncated'] );
-	}
-
-	/**
-	 * @testdox get_collected_data() normalizes a legacy request copy without rewriting session history.
-	 */
-	public function test_get_collected_data_normalizes_legacy_copy_only(): void {
-		$legacy = array(
-			array(
-				'timestamp'  => str_repeat( 't', 65 ),
-				'event_data' => array( 'value' => str_repeat( 'v', 1025 ) ),
-			),
-			array(
-				'timestamp'  => '2026-08-31 12:00:00',
-				'event_data' => array( 'value' => 'kept' ),
-			),
-			array(
-				'event_type' => array( 'unsupported' ),
-				'timestamp'  => array( 'unsupported' ),
-				'event_data' => array(),
-			),
-		);
-		WC()->session->set( 'fraud_protection_collected_data', $legacy );
-
-		$result = $this->sut->get_collected_data();
-
-		$this->assertSame( $legacy, WC()->session->get( 'fraud_protection_collected_data' ) );
-		$this->assertNull( $result['collected_events'][0]['event_type'] );
-		$this->assertSame( str_repeat( 't', 64 ), $result['collected_events'][0]['timestamp'] );
-		$this->assertSame( str_repeat( 'v', 1024 ), $result['collected_events'][0]['event_data']['value'] );
-		$this->assertTrue( $result['collected_events'][0]['event_data_truncated'] );
-		$this->assertNull( $result['collected_events'][1]['event_type'] );
-		$this->assertTrue( $result['collected_events'][1]['event_data_truncated'] );
-		$this->assertNull( $result['collected_events'][2]['event_type'] );
-		$this->assertNull( $result['collected_events'][2]['timestamp'] );
-		$this->assertTrue( $result['collected_events'][2]['event_data_truncated'] );
-	}
-
-	/**
-	 * @testdox get_collected_data() bounds legacy history without rewriting it.
-	 */
-	public function test_get_collected_data_bounds_legacy_history_copy(): void {
-		$legacy = array();
-		for ( $index = 0; $index < 257; ++$index ) {
-			$legacy[] = array(
-				'event_type' => 'event_' . $index,
-				'timestamp'  => '2026-08-31 12:00:00',
-				'event_data' => array(),
-			);
-		}
-		WC()->session->set( 'fraud_protection_collected_data', $legacy );
-
-		$result   = $this->sut->get_collected_data();
-		$returned = $result['collected_events'];
-
-		$this->assertCount( 256, $returned );
-		$this->assertTrue( $result['collected_events_truncated'] );
-		$this->assertSame( 'event_1', $returned[0]['event_type'] );
-		$this->assertSame( 'event_256', $returned[255]['event_type'] );
-		$this->assertSame( $legacy, WC()->session->get( 'fraud_protection_collected_data' ) );
 	}
 
 	// ========================================

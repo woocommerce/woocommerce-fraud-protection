@@ -22,7 +22,7 @@ defined( 'ABSPATH' ) || exit;
 class SessionIdentityManager {
 
 	/** Maximum stored identity length in bytes. */
-	private const MAX_IDENTITY_LENGTH = 64;
+	private const MAX_IDENTITY_LENGTH = 255;
 
 	/**
 	 * Session key for storing customer identity ID.
@@ -67,27 +67,13 @@ class SessionIdentityManager {
 			WC()->initialize_session();
 		}
 
-		// Checks if the identity ID is already in the session.
-		$stored_identity_id = WC()->session->get( self::CUSTOMER_IDENTITY_ID_KEY );
-
-		if ( null !== $stored_identity_id ) {
-			$identity_id = self::normalize_identity_id( $stored_identity_id );
-			if ( null === $identity_id ) {
-				$identity_id = $this->generate_fallback_identity_id();
-			}
-
-			WC()->session->set( self::CUSTOMER_IDENTITY_ID_KEY, $identity_id );
-			return $identity_id;
-		}
-
-		$identity_id = null;
-		if ( class_exists( '\WC_Tracks_Client' ) ) {
+		$identity_id = self::normalize_identity_id( WC()->session->get( self::CUSTOMER_IDENTITY_ID_KEY ) );
+		if ( null === $identity_id && class_exists( '\WC_Tracks_Client' ) ) {
 			// If no identity ID is found in the session, the Tracks Client will get it from the tk_ai cookie or generate a new one.
 			$identity    = \WC_Tracks_Client::get_identity( get_current_user_id() );
-			$identity_id = $identity['_ui'] ?? '';
+			$identity_id = self::normalize_identity_id( $identity['_ui'] ?? null );
 		}
 
-		$identity_id = self::normalize_identity_id( $identity_id );
 		if ( null === $identity_id ) {
 			$identity_id = $this->generate_fallback_identity_id();
 		}

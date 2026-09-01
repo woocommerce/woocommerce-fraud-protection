@@ -15,6 +15,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResultOrigin;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
 defined( 'ABSPATH' ) || exit;
@@ -189,10 +190,10 @@ class SessionEventRecorder {
 		// takes precedence: it decided the outcome whatever the verify did.
 		if ( ! is_null( $matched_rule ) ) {
 			$trigger = FraudDecision::Allow === $matched_rule->action ? SessionTrigger::AllowRule : SessionTrigger::BlockRule;
-		} elseif ( $result->request_rejected ) {
+		} elseif ( VerifyResultOrigin::RequestRejected === $result->origin ) {
 			$trigger = SessionTrigger::RequestRejected;
 		} else {
-			$trigger = $result->fail_open ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
+			$trigger = VerifyResultOrigin::FailOpen === $result->origin ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
 		}
 
 		// Caps use mb_substr: the column limits are in characters, and a byte-based
