@@ -319,6 +319,28 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox An enforced rejected verify is recorded as blocked.
+	 */
+	public function test_rejected_verify_is_recorded_as_blocked_in_enforcement_mode(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$verifier = $this->a_session_verifier_with_transport(
+			array(
+				'response' => array( 'code' => 413 ),
+				'body'     => 'Request rejected',
+			)
+		);
+
+		$decision = $verifier->verify_session( 'integration-rejected-request', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Block, $decision );
+		$row = $this->latest_row_without_session_id();
+		$this->assertNotNull( $row );
+		$this->assertSame( 'block', $row['decision'] );
+		$this->assertSame( 'blocked', $row['final_status'] );
+		$this->assertSame( 'request_rejected', $row['trigger_type'] );
+	}
+
+	/**
 	 * @testdox Each verify event of a repeated session ID gets its own row.
 	 */
 	public function test_repeated_verifies_record_one_row_each(): void {

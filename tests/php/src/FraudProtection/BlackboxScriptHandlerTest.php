@@ -70,6 +70,9 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		global $wp;
 		unset( $wp->query_vars['order-pay'] );
 		unset( $wp->query_vars['order-received'] );
+		if ( WC()->session instanceof \WC_Session ) {
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
+		}
 
 		parent::tearDown();
 	}

@@ -178,6 +178,51 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Tracks cookie identities are normalized before storage.
+	 * @dataProvider tracks_identity_provider
+	 *
+	 * @param string $tracks_identity Tracks cookie identity.
+	 * @param bool   $expects_fallback Whether a fallback is expected.
+	 */
+	public function test_get_identity_id_normalizes_tracks_cookie( string $tracks_identity, bool $expects_fallback ): void {
+		$had_cookie = array_key_exists( 'tk_ai', $_COOKIE );
+		$old_cookie = $_COOKIE['tk_ai'] ?? null;
+		try {
+			$_COOKIE['tk_ai'] = $tracks_identity;
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
+
+			$result = $this->sut->get_identity_id();
+
+			$this->assertSame( $result, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
+			$this->assertLessThanOrEqual( 64, strlen( $result ) );
+			if ( $expects_fallback ) {
+				$this->assertStringStartsWith( 'customer_', $result );
+			} else {
+				$this->assertSame( str_repeat( 'a', 64 ), $result );
+			}
+		} finally {
+			if ( $had_cookie ) {
+				$_COOKIE['tk_ai'] = $old_cookie;
+			} else {
+				unset( $_COOKIE['tk_ai'] );
+			}
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
+		}
+	}
+
+	/**
+	 * Tracks cookie identity cases.
+	 *
+	 * @return array<string, array{string, bool}>
+	 */
+	public function tracks_identity_provider(): array {
+		return array(
+			'valid long identity' => array( str_repeat( 'a', 70 ), false ),
+			'invalid identity'    => array( 'identity with spaces', true ),
+		);
+	}
+
+	/**
 	 * @testdox Should use Tracks Client identity for anonymous (guest) users.
 	 */
 	public function test_get_identity_id_uses_tracks_identity_for_anonymous_users(): void {

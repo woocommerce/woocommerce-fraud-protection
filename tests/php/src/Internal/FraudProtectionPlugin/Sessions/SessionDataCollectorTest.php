@@ -262,6 +262,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	 * Test wc_identity_id is retrieved from SessionIdentityManager.
 	 */
 	public function test_session_id_retrieved_from_session_identity_manager(): void {
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, str_repeat( 'a', 70 ) );
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
 
@@ -269,6 +270,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		// Session ID should be a string when session is available.
 		$this->assertIsString( $result['session']['wc_identity_id'] );
 		$this->assertNotEmpty( $result['session']['wc_identity_id'] );
+		$this->assertSame( str_repeat( 'a', 64 ), $result['session']['wc_identity_id'] );
 	}
 
 	/**
@@ -1211,6 +1213,32 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( $result['collected_events'][2]['event_type'] );
 		$this->assertNull( $result['collected_events'][2]['timestamp'] );
 		$this->assertTrue( $result['collected_events'][2]['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox get_collected_data() bounds legacy history without rewriting it.
+	 */
+	public function test_get_collected_data_bounds_legacy_history_copy(): void {
+		$legacy = array();
+		for ( $index = 0; $index < 300; ++$index ) {
+			$legacy[] = array(
+				'event_type' => 'event_' . $index,
+				'timestamp'  => '2026-08-31 12:00:00',
+				'event_data' => array( 'value' => str_repeat( 'v', 1024 ) ),
+			);
+		}
+		WC()->session->set( 'fraud_protection_collected_data', $legacy );
+
+		$result   = $this->sut->get_collected_data();
+		$returned = $result['collected_events'];
+
+		$this->assertLessThanOrEqual( 256, count( $returned ) );
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Verifies the request-copy limit.
+		$this->assertLessThanOrEqual( 256 * 1024, strlen( serialize( $returned ) ) );
+		$this->assertTrue( $result['collected_events_truncated'] );
+		$this->assertSame( 'event_' . ( 300 - count( $returned ) ), $returned[0]['event_type'] );
+		$this->assertSame( 'event_299', $returned[ count( $returned ) - 1 ]['event_type'] );
+		$this->assertSame( $legacy, WC()->session->get( 'fraud_protection_collected_data' ) );
 	}
 
 	// ========================================
