@@ -20,9 +20,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
 use Automattic\WooCommerce\Blocks\BlockTypes\AbstractBlock;
 
-/**
- * PayPal request-data stub.
- */
+/** PayPal request-data stub. */
 class TestPayPalRequestData {
 
 	/** @var array */
@@ -46,9 +44,7 @@ class TestPayPalRequestData {
 	}
 }
 
-/**
- * Subscriptions runtime stub.
- */
+/** Subscriptions runtime stub. */
 class TestWCSubscriptions {}
 
 /**
@@ -623,9 +619,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/**
-	 * @testdox Mixed PayPal filter inputs pass through without verification.
-	 */
+	/** @testdox Mixed PayPal filter inputs pass through without verification. */
 	public function test_protected_request_preserves_mixed_filter_inputs(): void {
 		$this->session_verifier->expects( $this->never() )->method( 'verify_session' );
 
@@ -1238,7 +1232,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox An approved order alone no longer answers for any gateway.
 	 *
 	 * Deliberate 0.1.6 behavior change, not a regression: this route used to
-	 * stand down whenever any order sat in PayPal's session slot, whatever it
+	 * answer whenever any order sat in PayPal's session slot, whatever it
 	 * was and whoever put it there. It now answers only for the order the
 	 * recorded verification minted; with nothing recorded, every request
 	 * defers to a real verify.
@@ -1488,7 +1482,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A verified PayPal order is answered once, then verified again.
 	 */
-	public function test_supply_answers_for_a_verified_session_only_up_to_the_bound(): void {
+	public function test_supply_answers_for_a_verified_order_only_once(): void {
 		$this->score_create_order( 'reused-session', FraudDecision::Allow );
 		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
@@ -1501,7 +1495,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
-		$this->assertSame( FraudDecision::Allow, $supplied_decision->decision, 'The one stand-down a genuine flow needs must be granted.' );
+		$this->assertSame( FraudDecision::Allow, $supplied_decision->decision, 'The unused record must supply its decision.' );
 		$this->assertSame( 'reused-session', $supplied_decision->session_id_for_order );
 
 		$this->assertFalse(
@@ -2018,11 +2012,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Scoring again starts the record unbound, with an unspent order budget.
-	 *
-	 * The order a record names is the one minted under its own scoring, or
-	 * none yet; neither an order minted under a superseded scoring nor the
-	 * budget it spent may carry over into a fresh one.
+	 * @testdox Scoring again replaces the prior use with a fresh unbound record.
 	 */
 	public function test_verify_scoring_again_starts_the_record_unbound(): void {
 		$this->score_create_order( 'scored-session', FraudDecision::Allow );
@@ -2147,13 +2137,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A freshly bound order gets its own budget.
-	 *
-	 * A retry mints a fresh session and a fresh order; the new order's one
-	 * completion leg must be answered even though the previous order spent its
-	 * budget.
+	 * @testdox A new verification replaces the used record.
 	 */
-	public function test_bind_grants_a_fresh_order_its_own_budget(): void {
+	public function test_new_verification_replaces_the_used_record(): void {
 		$this->score_create_order( 'scored-session', FraudDecision::Allow );
 		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-1' ) );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-1' ) ) );
@@ -2170,14 +2156,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame(
 			FraudDecision::Allow,
 			$this->ask( 'blocks_checkout', 'ppcp-gateway', 'scored-session' ),
-			'The fresh order\'s one completion leg must be answered from its own budget.'
+			'The new unused record must answer once.'
 		);
 	}
 
 	/**
 	 * @testdox A record in the retired shape is not reused.
 	 */
-	public function test_supply_reads_an_absent_order_budget_as_unspent(): void {
+	public function test_supply_does_not_reuse_the_retired_record_shape(): void {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
@@ -2195,7 +2181,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox Binding preserves the record's unused state.
 	 */
-	public function test_bind_preserves_the_spent_budget(): void {
+	public function test_bind_preserves_the_unused_state(): void {
 		$this->score_create_order( 'reused-session', FraudDecision::Allow );
 		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-9' ) );
 
@@ -2247,9 +2233,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/**
-	 * @testdox Setup records require current eligibility and an unchanged server cart hash.
-	 */
+	/** @testdox Setup records recheck eligibility and the server cart hash before final use. */
 	public function test_setup_record_requires_current_eligible_cart(): void {
 		$this->set_setup_cart( 'cart-hash' );
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
@@ -2260,6 +2244,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertFalse( $this->sut->supply_decision_for_paypal_express( false, 'add_payment_method', $request, 'response-session' ) );
 
+		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
+		$this->set_setup_cart( 'cart-hash', array(), false );
+		$this->assertFalse( $this->sut->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' ) );
+		$this->set_setup_cart( 'cart-hash' );
 		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
 		$this->set_setup_cart( 'changed-hash' );
 		$this->assertFalse( $this->sut->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' ) );
@@ -2278,9 +2266,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/**
-	 * @testdox A PayPal-managed plan prevents setup record storage.
-	 */
+	/** @testdox A PayPal-managed plan prevents setup record storage. */
 	public function test_setup_managed_plan_is_not_recorded(): void {
 		$product = $this->createMock( \WC_Product::class );
 		$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( 'plan-id' );
@@ -2294,9 +2280,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
-	/**
-	 * @testdox Subscriptions render requests the interceptor only for the active PayPal script.
-	 */
+	/** @testdox Subscriptions render requests the interceptor only for the active PayPal script. */
 	public function test_subscriptions_render_requires_active_paypal_script(): void {
 		$handler = $this->createMock( BlackboxScriptHandler::class );
 		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
@@ -2312,9 +2296,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
 
-	/**
-	 * @testdox My Account render requires the page and add-payment-method query variable.
-	 */
+	/** @testdox My Account render requires the page and add-payment-method query variable. */
 	public function test_my_account_render_requires_both_page_checks(): void {
 		global $wp;
 
@@ -2383,17 +2365,18 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Set a controlled eligible setup cart.
 	 *
-	 * @param string $hash  Cart hash.
-	 * @param array  $items Cart items.
+	 * @param string $hash          Cart hash.
+	 * @param array  $items         Cart items.
+	 * @param bool   $needs_payment Whether the cart needs a payment method.
 	 */
-	private function set_setup_cart( string $hash, array $items = array() ): void {
+	private function set_setup_cart( string $hash, array $items = array(), bool $needs_payment = true ): void {
 		$cart = $this->getMockBuilder( \WC_Cart::class )
 			->disableOriginalConstructor()
 			->onlyMethods( array( 'is_empty', 'get_total', 'needs_payment', 'get_cart', 'get_cart_hash' ) )
 			->getMock();
 		$cart->method( 'is_empty' )->willReturn( false );
 		$cart->method( 'get_total' )->willReturn( '0' );
-		$cart->method( 'needs_payment' )->willReturn( true );
+		$cart->method( 'needs_payment' )->willReturn( $needs_payment );
 		$cart->method( 'get_cart' )->willReturn( $items );
 		$cart->method( 'get_cart_hash' )->willReturn( $hash );
 		WC()->cart = $cart;
