@@ -140,8 +140,10 @@ class FraudProtectionLogger {
 			return '';
 		}
 
-		$identity_id = $wc->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY );
+		$identity_id = SessionIdentityManager::normalize_identity_id(
+			$wc->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY )
+		);
 
-		return is_string( $identity_id ) ? $identity_id : '';
+		return $identity_id ?? '';
 	}
 }

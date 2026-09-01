@@ -66,6 +66,7 @@ class VerifyResultTest extends FraudProtectionUnitTestCase {
 		$result = VerifyResult::create( FraudDecision::Allow, 'sid' );
 
 		$this->assertFalse( $result->fail_open );
+		$this->assertFalse( $result->request_rejected );
 	}
 
 	/**
@@ -78,5 +79,19 @@ class VerifyResultTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
 		$this->assertNull( $result->risk_score );
+		$this->assertFalse( $result->request_rejected );
+	}
+
+	/**
+	 * @testdox request_rejected() produces a marked block without association data.
+	 */
+	public function test_request_rejected_produces_marked_block(): void {
+		$result = VerifyResult::request_rejected();
+
+		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertSame( '', $result->session_id );
+		$this->assertNull( $result->risk_score );
+		$this->assertFalse( $result->fail_open );
+		$this->assertTrue( $result->request_rejected );
 	}
 }

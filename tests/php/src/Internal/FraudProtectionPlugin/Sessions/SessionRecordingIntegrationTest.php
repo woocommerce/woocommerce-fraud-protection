@@ -297,6 +297,28 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A rejected verify is recorded as a received block and learning mode allows it.
+	 */
+	public function test_rejected_verify_is_recorded_and_suppressed_by_learning_mode(): void {
+		$verifier = $this->a_session_verifier_with_transport(
+			array(
+				'response' => array( 'code' => 413 ),
+				'body'     => 'Request rejected',
+			)
+		);
+
+		$decision = $verifier->verify_session( 'integration-rejected-request', 'blocks_checkout' );
+
+		$this->assertSame( FraudDecision::Allow, $decision );
+		$row = $this->latest_row_without_session_id();
+		$this->assertNotNull( $row );
+		$this->assertSame( 'block', $row['decision'] );
+		$this->assertSame( 'allowed', $row['final_status'] );
+		$this->assertSame( 'request_rejected', $row['trigger_type'] );
+		$this->assertSame( '', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+	}
+
+	/**
 	 * @testdox Each verify event of a repeated session ID gets its own row.
 	 */
 	public function test_repeated_verifies_record_one_row_each(): void {

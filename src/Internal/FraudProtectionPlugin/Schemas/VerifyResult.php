@@ -25,13 +25,15 @@ class VerifyResult {
 	 * @param FraudDecision $decision   The fraud decision.
 	 * @param string        $session_id The effective Blackbox session ID, or empty string if none.
 	 * @param ?float        $risk_score The Blackbox risk score, or null if none.
-	 * @param bool          $fail_open  Whether the decision is a synthetic allow produced by failing open.
+	 * @param bool          $fail_open        Whether the decision is a synthetic allow produced by failing open.
+	 * @param bool          $request_rejected Whether the request received a confirmed rejection response.
 	 */
 	private function __construct(
 		public readonly FraudDecision $decision,
 		public readonly string $session_id,
 		public readonly ?float $risk_score = null,
-		public readonly bool $fail_open = false
+		public readonly bool $fail_open = false,
+		public readonly bool $request_rejected = false
 	) {}
 
 	/**
@@ -58,5 +60,14 @@ class VerifyResult {
 	 */
 	public static function fail_open(): self {
 		return new self( FraudDecision::Allow, '', null, true );
+	}
+
+	/**
+	 * Build a result for a confirmed rejected verify request.
+	 *
+	 * @return self
+	 */
+	public static function request_rejected(): self {
+		return new self( FraudDecision::Block, '', null, false, true );
 	}
 }

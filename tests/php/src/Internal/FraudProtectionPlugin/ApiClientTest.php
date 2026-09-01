@@ -149,10 +149,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'jetpack_remote_request' )
 			->willReturnCallback(
-				function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body, &$request_log, $response_data, $spy ) {
+				function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body, $response_data ) {
 					$captured_url  = $request_args['url'];
 					$captured_body = json_decode( $body, true );
-					$request_log   = $spy->entries[0] ?? null;
 
 					return array(
 						'response' => array( 'code' => 200 ),
@@ -168,6 +167,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 				'events' => array( array( 'event_type' => 'checkout_update' ) ),
 			)
 		);
+		$request_log = $spy->entries[0] ?? null;
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
 		$this->assertIsArray( $captured_body );
@@ -358,6 +358,56 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( '', $result->session_id );
 		$this->assertTrue( $result->fail_open );
 		$this->assertLogged( 'error', 'status code 500' );
+	}
+
+	/**
+	 * @testdox verify() returns a marked block only for a received HTTP 413 response.
+	 */
+	public function test_verify_marks_received_http_413_as_rejected(): void {
+		$spy = $this->spy_on_controller_logging();
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 413 ),
+				'body'     => 'rejected-response-body',
+			)
+		);
+
+		$result = $sut->verify( 'bounded-identity', array( 'source' => 'blocks_checkout', 'secret' => 'request-value' ) );
+
+		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertSame( '', $result->session_id );
+		$this->assertNull( $result->risk_score );
+		$this->assertFalse( $result->fail_open );
+		$this->assertTrue( $result->request_rejected );
+		$this->assertLogged(
+			'error',
+			'Verification request was rejected.',
+			array(
+				'event_source' => 'api_verify',
+				'source'       => 'blocks_checkout',
+				'session_id'   => 'bounded-identity',
+				'api_endpoint' => '/verify',
+				'http_status'  => 413,
+				'error_code'   => 'api_http_error',
+			),
+			true
+		);
+		$this->assertCount( 1, $spy->entries );
+		$this->assertStringNotContainsString( 'request-value', (string) wp_json_encode( $spy->entries ) );
+		$this->assertStringNotContainsString( 'rejected-response-body', (string) wp_json_encode( $spy->entries ) );
+	}
+
+	/**
+	 * @testdox verify() does not let a transport error imitate a received HTTP 413.
+	 */
+	public function test_verify_transport_error_with_413_data_fails_open(): void {
+		$sut = $this->api_client_returning( new WP_Error( 'api_error', 'Transport failed', array( 'http_status' => 413 ) ) );
+
+		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+		$this->assertTrue( $result->fail_open );
+		$this->assertFalse( $result->request_rejected );
 	}
 
 	/**
@@ -856,10 +906,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'jetpack_remote_request' )
 			->willReturnCallback(
-				function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body, &$request_log, $response_data, $spy ) {
+				function ( array $request_args, string $body ) use ( &$captured_url, &$captured_body, $response_data ) {
 					$captured_url  = $request_args['url'];
 					$captured_body = json_decode( $body, true );
-					$request_log   = $spy->entries[0] ?? null;
 
 					return array(
 						'response' => array( 'code' => 200 ),
@@ -875,6 +924,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 				'context'    => array( 'result' => 'success' ),
 			)
 		);
+		$request_log = $spy->entries[0] ?? null;
 
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/report/test-session-id', $captured_url );
 		$this->assertIsArray( $captured_body );
@@ -989,6 +1039,26 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertFalse( $result );
 		$this->assertLogged( 'error', 'status code 500' );
+	}
+
+	/**
+	 * @testdox report() returns false for HTTP 413 without writing the accepted request log.
+	 */
+	public function test_report_returns_false_on_http_413(): void {
+		$spy = $this->spy_on_controller_logging();
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 413 ),
+				'body'     => 'rejected-response-body',
+			)
+		);
+
+		$result = $sut->report( 'test-session-id', array( 'event_type' => 'payment_success', 'secret' => 'request-value' ) );
+
+		$this->assertFalse( $result );
+		$this->assertCount( 1, $spy->entries );
+		$this->assertSame( 'error', $spy->entries[0]['level'] );
+		$this->assertStringNotContainsString( 'request-value', (string) wp_json_encode( $spy->entries ) );
 	}
 
 	/**

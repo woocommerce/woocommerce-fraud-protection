@@ -26,6 +26,16 @@ defined( 'ABSPATH' ) || exit;
  */
 class SessionDataCollector {
 
+	private const COLLECTED_DATA_KEY             = 'fraud_protection_collected_data';
+	private const COLLECTED_EVENTS_TRUNCATED_KEY = 'fraud_protection_collected_events_truncated';
+	private const MAX_EVENT_NODES                = 64;
+	private const MAX_EVENT_CONTENT_NODES        = self::MAX_EVENT_NODES - 1;
+	private const MAX_EVENT_COUNT                = 256;
+	private const MAX_HISTORY_BYTES              = 256 * 1024;
+	private const MAX_KEY_BYTES                  = 128;
+	private const MAX_TYPE_BYTES                 = 64;
+	private const MAX_VALUE_BYTES                = 1024;
+
 	/**
 	 * SessionIdentityManager instance.
 	 *
@@ -58,10 +68,12 @@ class SessionDataCollector {
 		// Ensure cart and session are loaded.
 		$this->session_identity_manager->ensure_cart_loaded();
 
-		$data = array(
-			'event_type' => $event_type,
-			'timestamp'  => gmdate( 'Y-m-d H:i:s' ),
-			'event_data' => $event_data,
+		$data = $this->normalize_event(
+			array(
+				'event_type' => $event_type,
+				'timestamp'  => gmdate( 'Y-m-d H:i:s' ),
+				'event_data' => $event_data,
+			)
 		);
 
 		$wc = function_exists( 'WC' ) ? WC() : null;
@@ -69,13 +81,17 @@ class SessionDataCollector {
 		// Save the collected data in the session for fraud analysis tracking, preserving multiple calls.
 		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {
 			// Retrieve existing data array or initialize if not present.
-			$collected_data = $wc->session->get( 'fraud_protection_collected_data' );
+			$collected_data = $wc->session->get( self::COLLECTED_DATA_KEY );
 			if ( ! is_array( $collected_data ) ) {
 				$collected_data = array();
 			}
 			$collected_data[] = $data;
-			$collected_data   = $this->trim_to_max_size( $collected_data );
-			$wc->session->set( 'fraud_protection_collected_data', $collected_data );
+			$history_trimmed  = false;
+			$collected_data   = $this->trim_history( $collected_data, $history_trimmed );
+			$wc->session->set( self::COLLECTED_DATA_KEY, $collected_data );
+			if ( $history_trimmed ) {
+				$wc->session->set( self::COLLECTED_EVENTS_TRUNCATED_KEY, true );
+			}
 		} else {
 			FraudProtectionController::log(
 				'error',
@@ -97,7 +113,8 @@ class SessionDataCollector {
 	public function clear_collected_events(): void {
 		$wc = function_exists( 'WC' ) ? WC() : null;
 		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {
-			$wc->session->set( 'fraud_protection_collected_data', null );
+			$wc->session->set( self::COLLECTED_DATA_KEY, null );
+			$wc->session->set( self::COLLECTED_EVENTS_TRUNCATED_KEY, null );
 		}
 	}
 
@@ -132,14 +149,19 @@ class SessionDataCollector {
 			'collected_events' => array(),
 		);
 
-		// Calculate base data size to ensure total response stays under limit.
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used for size calculation only.
-		$base_size = strlen( serialize( $data ) );
-
 		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {
-			$collected_data = $wc->session->get( 'fraud_protection_collected_data' );
+			$collected_data = $wc->session->get( self::COLLECTED_DATA_KEY );
 			if ( is_array( $collected_data ) ) {
-				$data['collected_events'] = $this->trim_to_max_size( $collected_data, $base_size );
+				$normalized_events = array();
+				foreach ( $collected_data as $event ) {
+					$normalized_events[] = $this->normalize_event( $event );
+				}
+
+				$history_trimmed          = false;
+				$data['collected_events'] = $this->trim_history( $normalized_events, $history_trimmed );
+				if ( $history_trimmed || true === $wc->session->get( self::COLLECTED_EVENTS_TRUNCATED_KEY ) ) {
+					$data['collected_events_truncated'] = true;
+				}
 			}
 		}
 
@@ -257,23 +279,170 @@ class SessionDataCollector {
 	}
 
 	/**
-	 * Trim collected data array to ensure it stays within 1 MB size limit.
+	 * Normalize one event to the retained data limits.
 	 *
-	 * Removes oldest entries from the array until the serialized size is under the limit.
-	 * Always keeps at least one entry (the most recent).
-	 *
-	 * @param array $data      Array of collected event data.
-	 * @param int   $base_size Size in bytes of additional data that will be combined with this array.
-	 * @return array Trimmed array that fits within the size limit.
+	 * @param mixed $event Event value.
+	 * @return array<string|int, mixed> Normalized event.
 	 */
-	private function trim_to_max_size( array $data, int $base_size = 0 ): array {
-		$max_size_bytes = 1 * 1024 * 1024 - $base_size; // 1 MB minus base data size.
-		$data_count     = count( $data );
+	private function normalize_event( mixed $event ): array {
+		$changed = false;
+		if ( ! is_array( $event ) ) {
+			$event   = array(
+				'event_type' => null,
+				'timestamp'  => null,
+				'event_data' => $event,
+			);
+			$changed = true;
+		}
+
+		$already_truncated = true === ( $event['event_data_truncated'] ?? false );
+		if ( array_key_exists( 'event_data_truncated', $event ) ) {
+			unset( $event['event_data_truncated'] );
+			$changed = $changed || ! $already_truncated;
+		}
+
+		if ( ! array_key_exists( 'event_type', $event ) ) {
+			$event = array( 'event_type' => null ) + $event;
+		}
+
+		$nodes      = 1;
+		$normalized = $this->normalize_event_array( $event, $nodes, $changed, true );
+		if ( $changed || $already_truncated ) {
+			$normalized['event_data_truncated'] = true;
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Normalize an event array within the shared node budget.
+	 *
+	 * @param array<string|int, mixed> $data    Event data.
+	 * @param int                      $nodes   Consumed content nodes.
+	 * @param bool                     $changed Whether normalization changed the event.
+	 * @param bool                     $root    Whether this is the event envelope.
+	 * @return array<string|int, mixed> Normalized data.
+	 */
+	private function normalize_event_array( array $data, int &$nodes, bool &$changed, bool $root = false ): array {
+		$normalized = array();
+		foreach ( $data as $key => $value ) {
+			$normalized_key = $key;
+			if ( is_string( $key ) ) {
+				$normalized_key = $this->normalize_text( $key, self::MAX_KEY_BYTES, $changed );
+			}
+
+			if ( array_key_exists( $normalized_key, $normalized ) ) {
+				$changed = true;
+				continue;
+			}
+
+			if ( $nodes >= self::MAX_EVENT_CONTENT_NODES ) {
+				$changed = true;
+				break;
+			}
+
+			if ( is_array( $value ) ) {
+				if ( self::MAX_EVENT_CONTENT_NODES - $nodes <= 1 ) {
+					$normalized[ $normalized_key ] = null;
+					++$nodes;
+					$changed = true;
+					continue;
+				}
+
+				++$nodes;
+				$normalized[ $normalized_key ] = $this->normalize_event_array( $value, $nodes, $changed );
+				continue;
+			}
+
+			++$nodes;
+			if ( $root && ( 'event_type' === $normalized_key || 'timestamp' === $normalized_key ) ) {
+				$normalized[ $normalized_key ] = $this->normalize_event_label( $value, $changed );
+			} else {
+				$normalized[ $normalized_key ] = $this->normalize_event_value( $value, $changed );
+			}
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Normalize an event type or timestamp.
+	 *
+	 * @param mixed $value   Value to normalize.
+	 * @param bool  $changed Whether normalization changed the event.
+	 * @return string|null Normalized label.
+	 */
+	private function normalize_event_label( mixed $value, bool &$changed ): ?string {
+		if ( null === $value ) {
+			return null;
+		}
+
+		if ( ! is_string( $value ) ) {
+			$changed = true;
+			return null;
+		}
+
+		return $this->normalize_text( $value, self::MAX_TYPE_BYTES, $changed );
+	}
+
+	/**
+	 * Normalize an event scalar.
+	 *
+	 * @param mixed $value   Value to normalize.
+	 * @param bool  $changed Whether normalization changed the event.
+	 * @return bool|float|int|string|null Normalized value.
+	 */
+	private function normalize_event_value( mixed $value, bool &$changed ): bool|float|int|string|null {
+		if ( null === $value || is_bool( $value ) || is_int( $value ) ) {
+			return $value;
+		}
+
+		if ( is_float( $value ) && is_finite( $value ) ) {
+			return $value;
+		}
+
+		if ( is_string( $value ) ) {
+			return $this->normalize_text( $value, self::MAX_VALUE_BYTES, $changed );
+		}
+
+		$changed = true;
+		return null;
+	}
+
+	/**
+	 * Return a valid UTF-8 byte prefix.
+	 *
+	 * @param string $value     Value to normalize.
+	 * @param int    $max_bytes Maximum bytes.
+	 * @param bool   $changed   Whether normalization changed the event.
+	 * @return string Normalized string.
+	 */
+	private function normalize_text( string $value, int $max_bytes, bool &$changed ): string {
+		$normalized = wp_check_invalid_utf8( $value, true );
+		$normalized = mb_strcut( $normalized, 0, $max_bytes, 'UTF-8' );
+		if ( $normalized !== $value ) {
+			$changed = true;
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Trim event history to the count and serialized-byte limits.
+	 *
+	 * @param array<int, mixed> $data    Event history.
+	 * @param bool              $trimmed Whether an event was removed.
+	 * @return array<int, mixed> Trimmed event history.
+	 */
+	private function trim_history( array $data, bool &$trimmed ): array {
+		$data       = array_values( $data );
+		$data_count = count( $data );
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used for size calculation only.
 		$data_size = strlen( serialize( $data ) );
 
-		while ( $data_count > 1 && $data_size > $max_size_bytes ) {
+		while ( $data_count > 1 && ( $data_count > self::MAX_EVENT_COUNT || $data_size > self::MAX_HISTORY_BYTES ) ) {
 			array_shift( $data );
+			$trimmed    = true;
 			$data_count = count( $data );
 			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used for size calculation only.
 			$data_size = strlen( serialize( $data ) );

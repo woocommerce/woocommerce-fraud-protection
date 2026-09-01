@@ -168,6 +168,26 @@ class ApiClient {
 	 */
 	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
+			$error_data = $response->get_error_data();
+			if ( 'api_http_error' === $response->get_error_code() && is_array( $error_data ) && 413 === ( $error_data['http_status'] ?? null ) ) {
+				$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
+				FraudProtectionController::log(
+					'error',
+					'Verification request was rejected.',
+					array(
+						'event_source' => 'api_verify',
+						'source'       => $context['source'] ?? 'unknown',
+						'session_id'   => $session_id,
+						'api_endpoint' => self::VERIFY_ENDPOINT,
+						'http_status'  => 413,
+						'error_code'   => 'api_http_error',
+					),
+					true
+				);
+
+				return VerifyResult::request_rejected();
+			}
+
 			$error_data = $response->get_error_data() ?? array();
 			$error_data = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
 			FraudProtectionController::log(
@@ -311,17 +331,6 @@ class ApiClient {
 			);
 		}
 
-		$log_payload = $wire_payload;
-		if ( is_array( $log_payload['full_headers'] ?? null ) ) {
-			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
-		}
-
-		FraudProtectionController::log(
-			'info',
-			$log_message,
-			array( 'payload' => $log_payload )
-		);
-
 		$request_args = array(
 			'url'           => self::BLACKBOX_API_BASE_URL . $path . '/' . rawurlencode( $session_id ),
 			'method'        => $method,
@@ -343,11 +352,25 @@ class ApiClient {
 
 		if ( $response_code >= 300 ) {
 			return new \WP_Error(
-				'api_error',
+				'api_http_error',
 				sprintf( 'Blackbox API %s %s returned status code %d', $method, $path, $response_code ),
-				array( 'response' => JSON_ERROR_NONE === json_last_error() ? $data : $response_body )
+				array(
+					'http_status' => (int) $response_code,
+					'response'    => JSON_ERROR_NONE === json_last_error() ? $data : $response_body,
+				)
 			);
 		}
+
+		$log_payload = $wire_payload;
+		if ( is_array( $log_payload['full_headers'] ?? null ) ) {
+			$log_payload['full_headers'] = sprintf( '(%d headers)', count( $log_payload['full_headers'] ) );
+		}
+
+		FraudProtectionController::log(
+			'info',
+			$log_message,
+			array( 'payload' => $log_payload )
+		);
 
 		if ( JSON_ERROR_NONE !== json_last_error() || ! is_array( $data ) ) {
 			return new \WP_Error(

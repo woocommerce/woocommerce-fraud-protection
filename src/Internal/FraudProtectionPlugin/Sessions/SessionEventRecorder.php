@@ -187,10 +187,12 @@ class SessionEventRecorder {
 		// verify_error trigger so the synthetic allow stays distinguishable
 		// from a genuine Blackbox allow in the sessions log. A matched rule
 		// takes precedence: it decided the outcome whatever the verify did.
-		if ( is_null( $matched_rule ) ) {
-			$trigger = $result->fail_open ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
-		} else {
+		if ( ! is_null( $matched_rule ) ) {
 			$trigger = FraudDecision::Allow === $matched_rule->action ? SessionTrigger::AllowRule : SessionTrigger::BlockRule;
+		} elseif ( $result->request_rejected ) {
+			$trigger = SessionTrigger::RequestRejected;
+		} else {
+			$trigger = $result->fail_open ? SessionTrigger::VerifyError : SessionTrigger::Blackbox;
 		}
 
 		// Caps use mb_substr: the column limits are in characters, and a byte-based

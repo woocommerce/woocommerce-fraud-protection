@@ -21,6 +21,9 @@ defined( 'ABSPATH' ) || exit;
  */
 class SessionIdentityManager {
 
+	/** Maximum stored identity length in bytes. */
+	private const MAX_IDENTITY_LENGTH = 64;
+
 	/**
 	 * Session key for storing customer identity ID.
 	 */
@@ -65,30 +68,66 @@ class SessionIdentityManager {
 		}
 
 		// Checks if the identity ID is already in the session.
-		$identity_id = WC()->session->get( self::CUSTOMER_IDENTITY_ID_KEY );
+		$stored_identity_id = WC()->session->get( self::CUSTOMER_IDENTITY_ID_KEY );
 
-		if ( is_string( $identity_id ) && $identity_id ) {
+		if ( null !== $stored_identity_id ) {
+			$identity_id = self::normalize_identity_id( $stored_identity_id );
+			if ( null === $identity_id ) {
+				$identity_id = $this->generate_fallback_identity_id();
+			}
+
+			WC()->session->set( self::CUSTOMER_IDENTITY_ID_KEY, $identity_id );
 			return $identity_id;
 		}
 
+		$identity_id = null;
 		if ( class_exists( '\WC_Tracks_Client' ) ) {
 			// If no identity ID is found in the session, the Tracks Client will get it from the tk_ai cookie or generate a new one.
 			$identity    = \WC_Tracks_Client::get_identity( get_current_user_id() );
 			$identity_id = $identity['_ui'] ?? '';
 		}
 
-		if ( ! $identity_id ) {
-			// Only used as a fallback. Should rarely happen.
-			$identity_id = WC()->call_function( 'wc_rand_hash', 'customer_', 30 );
-			FraudProtectionController::log(
-				'warning',
-				'Created new fallback session identity ID for customer. This should rarely happen.',
-				array( 'user_id' => get_current_user_id() )
-			);
+		$identity_id = self::normalize_identity_id( $identity_id );
+		if ( null === $identity_id ) {
+			$identity_id = $this->generate_fallback_identity_id();
 		}
 
 		// Persists the identity ID in the session for future use.
 		WC()->session->set( self::CUSTOMER_IDENTITY_ID_KEY, $identity_id );
+
+		return $identity_id;
+	}
+
+	/**
+	 * Normalize an identity value for storage and logging.
+	 *
+	 * @param mixed $identity_id Identity value.
+	 * @return string|null Normalized identity, or null when rejected.
+	 */
+	public static function normalize_identity_id( mixed $identity_id ): ?string {
+		if ( is_int( $identity_id ) ) {
+			$identity_id = (string) $identity_id;
+		}
+
+		if ( ! is_string( $identity_id ) || '' === $identity_id || 1 !== preg_match( '/^[A-Za-z0-9:_+\/=\-]+$/', $identity_id ) ) {
+			return null;
+		}
+
+		return substr( $identity_id, 0, self::MAX_IDENTITY_LENGTH );
+	}
+
+	/**
+	 * Generate and log a fallback identity.
+	 *
+	 * @return string Fallback identity.
+	 */
+	private function generate_fallback_identity_id(): string {
+		$identity_id = WC()->call_function( 'wc_rand_hash', 'customer_', 30 );
+		FraudProtectionController::log(
+			'warning',
+			'Created new fallback session identity ID for customer. This should rarely happen.',
+			array( 'user_id' => get_current_user_id() )
+		);
 
 		return $identity_id;
 	}

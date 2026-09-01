@@ -103,6 +103,47 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Stored identities are normalized before reuse.
+	 * @dataProvider stored_identity_provider
+	 *
+	 * @param mixed  $stored   Stored identity.
+	 * @param string $expected Expected identity, or an empty value for a fallback.
+	 */
+	public function test_get_identity_id_normalizes_stored_values( mixed $stored, string $expected ): void {
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $stored );
+
+		$result = $this->sut->get_identity_id();
+
+		if ( '' === $expected ) {
+			$this->assertStringStartsWith( 'customer_', $result );
+			$this->assertLessThanOrEqual( 64, strlen( $result ) );
+		} else {
+			$this->assertSame( $expected, $result );
+		}
+		$this->assertSame( $result, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
+		$this->assertSame( $result, $this->sut->get_identity_id() );
+	}
+
+	/**
+	 * Stored identity cases.
+	 *
+	 * @return array<string, array{mixed, string}>
+	 */
+	public function stored_identity_provider(): array {
+		$exact = str_repeat( 'a', 64 );
+
+		return array(
+			'known Woo form'        => array( 'customer_1234:abc_DEF-+/=', 'customer_1234:abc_DEF-+/=' ),
+			'integer'               => array( 123456, '123456' ),
+			'exactly 64 bytes'      => array( $exact, $exact ),
+			'valid long value'      => array( $exact . 'tail', $exact ),
+			'empty value'           => array( '', '' ),
+			'unsupported character' => array( 'identity with spaces', '' ),
+			'unsupported type'      => array( array( 'identity' ), '' ),
+		);
+	}
+
+	/**
 	 * @testdox Should initialize session and return valid ID when session is not available.
 	 */
 	public function test_get_identity_id_initializes_session_when_unavailable(): void {

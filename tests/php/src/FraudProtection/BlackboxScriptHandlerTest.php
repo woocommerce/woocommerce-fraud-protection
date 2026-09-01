@@ -101,6 +101,24 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox request_scripts() repairs a valid long legacy identity before localization.
+	 */
+	public function test_request_scripts_localizes_bounded_legacy_identity(): void {
+		$this->mock_jetpack_blog_id( 42 );
+		$prefix = str_repeat( 'a', 64 );
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $prefix . 'tail' );
+
+		$handler = new BlackboxScriptHandler();
+		$handler->init( new SessionIdentityManager() );
+
+		$this->assertTrue( $handler->request_scripts() );
+		$data = (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
+		$this->assertStringContainsString( '"identityKey":"' . $prefix . '"', $data );
+		$this->assertStringNotContainsString( $prefix . 'tail', $data );
+		$this->assertSame( $prefix, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
+	}
+
+	/**
 	 * @testdox A managed URL correction registered after bootstrap applies when scripts are requested.
 	 */
 	public function test_request_scripts_resolves_init_url_after_a_late_url_correction(): void {
