@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.2.2
+* Fixed - Fraud Protection now bounds retained shopper identity and event history, and handles oversized verification attempts per request.
+
 2026-08-31 - version 0.2.1
 * Fixed - Checkout and payment-method retries now use the current Fraud Protection session value instead of retaining one from an earlier attempt.
 * Fixed - Managed installations now load browser assets from their reachable plugin URL regardless of load order.
