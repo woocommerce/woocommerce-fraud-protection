@@ -342,6 +342,12 @@ class SessionDataCollector {
 				break;
 			}
 
+			if ( $root && ( 'event_type' === $normalized_key || 'timestamp' === $normalized_key ) ) {
+				++$nodes;
+				$normalized[ $normalized_key ] = $this->normalize_event_label( $value, $changed );
+				continue;
+			}
+
 			if ( is_array( $value ) ) {
 				if ( self::MAX_EVENT_CONTENT_NODES - $nodes <= 1 ) {
 					$normalized[ $normalized_key ] = null;
@@ -356,11 +362,7 @@ class SessionDataCollector {
 			}
 
 			++$nodes;
-			if ( $root && ( 'event_type' === $normalized_key || 'timestamp' === $normalized_key ) ) {
-				$normalized[ $normalized_key ] = $this->normalize_event_label( $value, $changed );
-			} else {
-				$normalized[ $normalized_key ] = $this->normalize_event_value( $value, $changed );
-			}
+			$normalized[ $normalized_key ] = $this->normalize_event_value( $value, $changed );
 		}
 
 		return $normalized;

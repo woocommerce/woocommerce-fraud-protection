@@ -1191,6 +1191,11 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 				'timestamp'  => '2026-08-31 12:00:00',
 				'event_data' => array( 'value' => 'kept' ),
 			),
+			array(
+				'event_type' => array( 'unsupported' ),
+				'timestamp'  => array( 'unsupported' ),
+				'event_data' => array(),
+			),
 		);
 		WC()->session->set( 'fraud_protection_collected_data', $legacy );
 
@@ -1203,6 +1208,9 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( $result['collected_events'][0]['event_data_truncated'] );
 		$this->assertNull( $result['collected_events'][1]['event_type'] );
 		$this->assertTrue( $result['collected_events'][1]['event_data_truncated'] );
+		$this->assertNull( $result['collected_events'][2]['event_type'] );
+		$this->assertNull( $result['collected_events'][2]['timestamp'] );
+		$this->assertTrue( $result['collected_events'][2]['event_data_truncated'] );
 	}
 
 	// ========================================

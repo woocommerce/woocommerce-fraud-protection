@@ -169,7 +169,12 @@ class ApiClient {
 	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
 			$error_data = $response->get_error_data();
-			if ( 'api_http_error' === $response->get_error_code() && is_array( $error_data ) && 413 === ( $error_data['http_status'] ?? null ) ) {
+			if (
+				'api_http_error' === $response->get_error_code()
+				&& is_array( $error_data )
+				&& 413 === ( $error_data['http_status'] ?? null )
+				&& true === ( $error_data['_wcfp_http_response_received'] ?? false )
+			) {
 				$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
 				FraudProtectionController::log(
 					'error',
@@ -355,8 +360,9 @@ class ApiClient {
 				'api_http_error',
 				sprintf( 'Blackbox API %s %s returned status code %d', $method, $path, $response_code ),
 				array(
-					'http_status' => (int) $response_code,
-					'response'    => JSON_ERROR_NONE === json_last_error() ? $data : $response_body,
+					'_wcfp_http_response_received' => true,
+					'http_status'                  => (int) $response_code,
+					'response'                     => JSON_ERROR_NONE === json_last_error() ? $data : $response_body,
 				)
 			);
 		}

@@ -401,7 +401,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() does not let a transport error imitate a received HTTP 413.
 	 */
 	public function test_verify_transport_error_with_413_data_fails_open(): void {
-		$sut = $this->api_client_returning( new WP_Error( 'api_error', 'Transport failed', array( 'http_status' => 413 ) ) );
+		$sut = $this->api_client_returning( new WP_Error( 'api_http_error', 'Transport failed', array( 'http_status' => 413 ) ) );
 
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
