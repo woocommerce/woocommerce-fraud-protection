@@ -309,6 +309,9 @@ describe( 'paypal-express fetch interceptor', () => {
 
 		it( 'serializes concurrent protected artifact requests', async () => {
 			let resolveFirstFetch;
+			mockAcquireSessionId
+				.mockResolvedValueOnce( 'S1' )
+				.mockResolvedValueOnce( 'S2' );
 			originalFetch
 				.mockImplementationOnce(
 					() =>
@@ -336,6 +339,15 @@ describe( 'paypal-express fetch interceptor', () => {
 			await second;
 
 			expect( originalFetch ).toHaveBeenCalledTimes( 2 );
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			expect(
+				JSON.parse( originalFetch.mock.calls[ 0 ][ 1 ].body )
+					.wc_fraud_protection_session_id
+			).toBe( 'S1' );
+			expect(
+				JSON.parse( originalFetch.mock.calls[ 1 ][ 1 ].body )
+					.wc_fraud_protection_session_id
+			).toBe( 'S2' );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
 

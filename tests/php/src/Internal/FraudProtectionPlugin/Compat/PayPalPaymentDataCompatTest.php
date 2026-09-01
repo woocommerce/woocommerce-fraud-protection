@@ -7,143 +7,18 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+require_once dirname( __DIR__, 4 ) . '/Support/PayPalPPCPStubs.php';
+
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalConnectionStateStub;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalContainerStub;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalPPCPStub;
 
-// Stub PayPal Payments PPCP and ConnectionState if not loaded.
 if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
-
-	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
-	class PPCP_ConnectionState_Stub {
-
-		/**
-		 * Whether the merchant is connected and in sandbox mode.
-		 *
-		 * @var ?bool True = sandbox, false = production, null = not connected.
-		 */
-		private static ?bool $sandbox = null;
-
-		/**
-		 * Set the sandbox state for testing.
-		 *
-		 * @param ?bool $sandbox True = sandbox, false = production, null = not connected.
-		 * @return void
-		 */
-		public static function set_sandbox( ?bool $sandbox ): void {
-			self::$sandbox = $sandbox;
-		}
-
-		/**
-		 * Whether the merchant is connected and in sandbox mode.
-		 *
-		 * @return bool
-		 */
-		public function is_sandbox(): bool {
-			return true === self::$sandbox;
-		}
-
-		/**
-		 * Whether the merchant is connected and in production mode.
-		 *
-		 * @return bool
-		 */
-		public function is_production(): bool {
-			return false === self::$sandbox;
-		}
-	}
-
-	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
-	class PPCP_Container_Stub {
-
-		/**
-		 * PayPal merchant identifier.
-		 *
-		 * @var mixed
-		 */
-		private static $merchant_id;
-
-		/**
-		 * Whether the merchant identifier lookup should throw.
-		 *
-		 * @var bool
-		 */
-		private static bool $merchant_id_throws = false;
-
-		/**
-		 * Optional test services by container ID.
-		 *
-		 * @var array<string, mixed>
-		 */
-		private static array $services = array();
-
-		public static function set_merchant_id( $merchant_id ): void {
-			self::$merchant_id = $merchant_id;
-		}
-
-		public static function set_merchant_id_throws( bool $throws ): void {
-			self::$merchant_id_throws = $throws;
-		}
-
-		/**
-		 * Set an optional container service.
-		 *
-		 * @param string $id      Service ID.
-		 * @param mixed  $service Service value.
-		 */
-		public static function set_service( string $id, $service ): void {
-			self::$services[ $id ] = $service;
-		}
-
-		public static function reset(): void {
-			self::$merchant_id        = null;
-			self::$merchant_id_throws = false;
-			self::$services           = array();
-		}
-
-		/**
-		 * Get a service by ID.
-		 *
-		 * @param string $id Service ID.
-		 * @return mixed
-		 */
-		public function get( string $id ) {
-			if ( array_key_exists( $id, self::$services ) ) {
-				$service = self::$services[ $id ];
-				if ( $service instanceof \Throwable ) {
-					throw $service;
-				}
-
-				return $service;
-			}
-
-			if ( 'api.merchant_id' === $id ) {
-				if ( self::$merchant_id_throws ) {
-					throw new \RuntimeException( 'Merchant ID lookup failed' );
-				}
-
-				return self::$merchant_id;
-			}
-
-			return new PPCP_ConnectionState_Stub();
-		}
-	}
-
-	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
-	class PPCP_Stub {
-
-		/**
-		 * Get the container.
-		 *
-		 * @return PPCP_Container_Stub
-		 */
-		public static function container(): PPCP_Container_Stub {
-			return new PPCP_Container_Stub();
-		}
-	}
-
-	class_alias( __NAMESPACE__ . '\PPCP_Stub', 'WooCommerce\PayPalCommerce\PPCP' );
+	class_alias( PayPalPPCPStub::class, 'WooCommerce\PayPalCommerce\PPCP' );
 }
 
 /**
@@ -173,8 +48,8 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
-		PPCP_ConnectionState_Stub::set_sandbox( null );
-		PPCP_Container_Stub::reset();
+		PayPalConnectionStateStub::set_sandbox( null );
+		PayPalContainerStub::reset();
 		parent::tearDown();
 	}
 
@@ -193,7 +68,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Includes test mode when PayPal is in sandbox.
 	 */
 	public function test_includes_test_mode(): void {
-		PPCP_ConnectionState_Stub::set_sandbox( true );
+		PayPalConnectionStateStub::set_sandbox( true );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' )
@@ -206,7 +81,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Includes live mode when PayPal is in production.
 	 */
 	public function test_includes_live_mode(): void {
-		PPCP_ConnectionState_Stub::set_sandbox( false );
+		PayPalConnectionStateStub::set_sandbox( false );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' )
@@ -231,7 +106,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Matches ppcp-card-button-gateway as a PayPal gateway.
 	 */
 	public function test_matches_ppcp_card_button_gateway(): void {
-		PPCP_ConnectionState_Stub::set_sandbox( true );
+		PayPalConnectionStateStub::set_sandbox( true );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-card-button-gateway' )
@@ -244,8 +119,8 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Includes the merchant account identifier for a prefixed PayPal gateway.
 	 */
 	public function test_includes_merchant_identifier(): void {
-		PPCP_ConnectionState_Stub::set_sandbox( true );
-		PPCP_Container_Stub::set_merchant_id( ' merchant_123 ' );
+		PayPalConnectionStateStub::set_sandbox( true );
+		PayPalContainerStub::set_merchant_id( ' merchant_123 ' );
 
 		$result = $this->sut->resolve( new PaymentMethodData( 'ppcp-card-button-gateway' ) );
 		$array  = $result->to_array();
@@ -263,9 +138,9 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @param bool  $throws Whether the source throws.
 	 */
 	public function test_omits_invalid_merchant_identifier( $merchant_id, bool $throws ): void {
-		PPCP_ConnectionState_Stub::set_sandbox( true );
-		PPCP_Container_Stub::set_merchant_id( $merchant_id );
-		PPCP_Container_Stub::set_merchant_id_throws( $throws );
+		PayPalConnectionStateStub::set_sandbox( true );
+		PayPalContainerStub::set_merchant_id( $merchant_id );
+		PayPalContainerStub::set_merchant_id_throws( $throws );
 
 		$array = $this->sut->resolve( new PaymentMethodData( 'ppcp-gateway' ) )->to_array();
 
@@ -289,7 +164,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Augments pre-resolved data with transaction mode.
 	 */
 	public function test_augments_preresolved_with_mode(): void {
-		PPCP_ConnectionState_Stub::set_sandbox( true );
+		PayPalConnectionStateStub::set_sandbox( true );
 
 		$resolved = new PaymentMethodData( 'ppcp-gateway', 'paypal', true );
 

@@ -7,6 +7,8 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+require_once dirname( __DIR__, 4 ) . '/Support/PayPalPPCPStubs.php';
+
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
@@ -17,6 +19,9 @@ use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalContainerStub;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalJsonResponseCapture;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalPPCPStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
 use Automattic\WooCommerce\Blocks\BlockTypes\AbstractBlock;
 
@@ -114,14 +119,17 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function setUp(): void {
 		parent::setUp();
+		if ( 'test_missing_paypal_classes_verify_without_carrier' !== $this->getName() && ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
+			class_alias( PayPalPPCPStub::class, 'WooCommerce\PayPalCommerce\PPCP' );
+		}
 		if ( ! class_exists( 'WC_Subscriptions' ) ) {
 			class_alias( TestWCSubscriptions::class, 'WC_Subscriptions' );
 		}
 		TestPayPalRequestData::$data  = array();
 		TestPayPalRequestData::$error = null;
-		if ( class_exists( PPCP_Container_Stub::class ) ) {
-			PPCP_Container_Stub::reset();
-		}
+		PayPalContainerStub::reset();
+		PayPalPPCPStub::set_error( null );
+		PayPalJsonResponseCapture::reset();
 		$this->original_cart = WC()->cart;
 
 		$this->session_verifier        = $this->createMock( SessionVerifier::class );
@@ -154,9 +162,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		remove_all_filters( 'wp_die_ajax_handler' );
 		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
 		remove_all_filters( 'ppcp_request_args' );
-		if ( class_exists( PPCP_Container_Stub::class ) ) {
-			PPCP_Container_Stub::reset();
-		}
+		PayPalContainerStub::reset();
+		PayPalPPCPStub::set_error( null );
+		PayPalJsonResponseCapture::reset();
 		$this->restore_paypal_options();
 		if ( $this->touched_smart_button_handle ) {
 			wp_dequeue_script( 'ppcp-smart-button' );
@@ -523,49 +531,17 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Protected routes return the plaintext purchase message on Block.
+	 * @testdox An unusable validated carrier verifies but creates no reusable record.
 	 *
-	 * @dataProvider protected_request_provider
+	 * @dataProvider unusable_carrier_provider
 	 */
-	public function test_protected_request_blocks_before_transport( string $action, string $path, string $source, string $nonce ): void {
-		unset( $source, $nonce );
-		$output = '';
-		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
-		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
-		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
-		add_filter( 'wp_doing_ajax', '__return_true' );
-		add_filter(
-			'wp_die_ajax_handler',
-			function () {
-				return function () {
-					throw new \WPDieException();
-				};
-			}
-		);
-
-		ob_start();
-		try {
-			$this->run_protected_request( $action, array( 'method' => 'POST' ), $path );
-			$this->fail( 'Expected the Block response to terminate the request.' );
-		} catch ( \WPDieException $e ) {
-			unset( $e );
-			$output = ob_get_clean();
-		}
-
-		$this->assertStringContainsString( 'unable to process this request', $output );
-	}
-
-	/**
-	 * @testdox PayPal RequestData failures verify without a carrier and store no reusable record.
-	 *
-	 * @dataProvider request_data_failure_provider
-	 */
-	public function test_request_data_failure_verifies_without_carrier( string $failure ): void {
-		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ), $failure );
+	public function test_unusable_validated_carrier_is_not_recorded( array $data, $carrier ): void {
+		$validated = $data + array( 'validated_nonce' => 'ppc-create-setup-token' );
+		$this->configure_paypal_request_data( $data );
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( '', 'paypal_setup_token_creation', 0, array() )
+			->with( $carrier, 'paypal_setup_token_creation', 0, $validated )
 			->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
 
@@ -574,12 +550,67 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
-	/** @return array<string, array{string}> */
+	/** @return array<string, array{array, mixed}> */
+	public function unusable_carrier_provider(): array {
+		return array(
+			'missing'   => array( array(), '' ),
+			'empty'     => array( array( SessionVerifier::SESSION_ID_FIELD => '' ), '' ),
+			'malformed' => array( array( SessionVerifier::SESSION_ID_FIELD => array( 'invalid' ) ), array( 'invalid' ) ),
+		);
+	}
+
+	/**
+	 * @testdox Protected routes return the plaintext purchase message on Block.
+	 *
+	 * @dataProvider protected_request_provider
+	 */
+	public function test_protected_request_blocks_before_transport( string $action, string $path, string $source, string $nonce ): void {
+		unset( $source, $nonce );
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
+		PayPalJsonResponseCapture::$enabled = true;
+
+		try {
+			$this->run_protected_request( $action, array( 'method' => 'POST' ), $path );
+			$this->fail( 'Expected the Block response to terminate the request.' );
+		} catch ( \WPDieException $e ) {
+			unset( $e );
+		}
+
+		$this->assertSame( 403, PayPalJsonResponseCapture::$status_code );
+		$this->assertIsArray( PayPalJsonResponseCapture::$data );
+		$this->assertStringContainsString( 'unable to process this request', PayPalJsonResponseCapture::$data['message'] );
+	}
+
+	/**
+	 * @testdox PayPal RequestData failures verify without a carrier and store no reusable record.
+	 *
+	 * @dataProvider request_data_failure_provider
+	 */
+	public function test_request_data_failure_verifies_without_carrier( string $failure, string $action, string $path, string $source ): void {
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ), $failure );
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( '', $source, 0, array() )
+			->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
+
+		$this->run_protected_request( $action, array( 'method' => 'POST' ), $path );
+
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, string, string, string}> */
 	public function request_data_failure_provider(): array {
 		return array(
-			'container'            => array( 'container' ),
-			'incompatible service' => array( 'service' ),
-			'read or nonce'        => array( 'read' ),
+			'setup container'            => array( 'container', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation' ),
+			'setup incompatible service' => array( 'service', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation' ),
+			'setup read or nonce'        => array( 'read', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation' ),
+			'vault container'            => array( 'container', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation' ),
+			'vault incompatible service' => array( 'service', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation' ),
+			'vault read or nonce'        => array( 'read', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation' ),
 		);
 	}
 
@@ -2266,6 +2297,45 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/**
+	 * @testdox Setup records require each material eligibility fact at final use.
+	 *
+	 * @dataProvider final_setup_eligibility_provider
+	 */
+	public function test_setup_record_rechecks_material_eligibility( string $total, bool $empty, bool $managed_plan ): void {
+		$this->set_setup_cart( 'cart-hash' );
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
+		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
+
+		$items = array();
+		if ( $managed_plan ) {
+			$product = $this->createMock( \WC_Product::class );
+			$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( 'plan-id' );
+			$items = array( array( 'data' => $product ) );
+		}
+		$this->set_setup_cart( 'cart-hash', $items, true, $total, $empty );
+
+		$this->assertFalse(
+			$this->sut->supply_decision_for_paypal_express(
+				false,
+				'blocks_checkout',
+				array( 'payment_method' => 'ppcp-gateway' ),
+				'response-session'
+			)
+		);
+	}
+
+	/** @return array<string, array{string, bool, bool}> */
+	public function final_setup_eligibility_provider(): array {
+		return array(
+			'positive total'      => array( '1', false, false ),
+			'empty cart'          => array( '0', true, false ),
+			'PayPal-managed plan' => array( '0', false, true ),
+		);
+	}
+
 	/** @testdox A PayPal-managed plan prevents setup record storage. */
 	public function test_setup_managed_plan_is_not_recorded(): void {
 		$product = $this->createMock( \WC_Product::class );
@@ -2304,17 +2374,26 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
 		$sut = $this->make_compat_with_script_handler( $handler );
 		$page_id = self::factory()->post->create( array( 'post_type' => 'page' ) );
-		update_option( 'woocommerce_myaccount_page_id', $page_id );
-		$this->go_to( get_permalink( $page_id ) );
-		wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
-		wp_enqueue_script( 'ppcp-add-payment-method' );
-		$this->touched_add_payment_method_handle = true;
+		$previous_page_id = get_option( 'woocommerce_myaccount_page_id', null );
+		try {
+			update_option( 'woocommerce_myaccount_page_id', $page_id );
+			$this->go_to( get_permalink( $page_id ) );
+			wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
+			wp_enqueue_script( 'ppcp-add-payment-method' );
+			$this->touched_add_payment_method_handle = true;
 
-		$sut->enqueue_paypal_script_for_add_payment_method();
-		$wp->query_vars['add-payment-method'] = '';
-		$sut->enqueue_paypal_script_for_add_payment_method();
+			$sut->enqueue_paypal_script_for_add_payment_method();
+			$wp->query_vars['add-payment-method'] = '';
+			$sut->enqueue_paypal_script_for_add_payment_method();
 
-		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		} finally {
+			if ( null === $previous_page_id ) {
+				delete_option( 'woocommerce_myaccount_page_id' );
+			} else {
+				update_option( 'woocommerce_myaccount_page_id', $previous_page_id );
+			}
+		}
 	}
 
 	/**
@@ -2330,12 +2409,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		TestPayPalRequestData::$data  = $data;
 		TestPayPalRequestData::$error = 'read' === $failure ? new \RuntimeException( 'invalid request' ) : null;
+		PayPalPPCPStub::set_error( 'container' === $failure ? new \RuntimeException( 'container unavailable' ) : null );
 		$service = match ( $failure ) {
-			'container' => new \RuntimeException( 'container unavailable' ),
 			'service'   => new \stdClass(),
 			default     => new TestPayPalRequestData(),
 		};
-		PPCP_Container_Stub::set_service( 'button.request-data', $service );
+		PayPalContainerStub::set_service( 'button.request-data', $service );
 
 	}
 
@@ -2368,14 +2447,16 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @param string $hash          Cart hash.
 	 * @param array  $items         Cart items.
 	 * @param bool   $needs_payment Whether the cart needs a payment method.
+	 * @param mixed  $total         Cart total.
+	 * @param bool   $empty         Whether the cart is empty.
 	 */
-	private function set_setup_cart( string $hash, array $items = array(), bool $needs_payment = true ): void {
+	private function set_setup_cart( string $hash, array $items = array(), bool $needs_payment = true, $total = '0', bool $empty = false ): void {
 		$cart = $this->getMockBuilder( \WC_Cart::class )
 			->disableOriginalConstructor()
 			->onlyMethods( array( 'is_empty', 'get_total', 'needs_payment', 'get_cart', 'get_cart_hash' ) )
 			->getMock();
-		$cart->method( 'is_empty' )->willReturn( false );
-		$cart->method( 'get_total' )->willReturn( '0' );
+		$cart->method( 'is_empty' )->willReturn( $empty );
+		$cart->method( 'get_total' )->willReturn( $total );
 		$cart->method( 'needs_payment' )->willReturn( $needs_payment );
 		$cart->method( 'get_cart' )->willReturn( $items );
 		$cart->method( 'get_cart_hash' )->willReturn( $hash );

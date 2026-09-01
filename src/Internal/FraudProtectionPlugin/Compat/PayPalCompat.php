@@ -187,8 +187,9 @@ class PayPalCompat {
 		$data           = array();
 		$record_allowed = false;
 		try {
-			$data           = $this->read_protected_request_data( $origin );
-			$record_allowed = true;
+			$data              = $this->read_protected_request_data( $origin );
+			$submitted_carrier = $data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
+			$record_allowed    = '' !== $this->session_id_normalizer->normalize_stored( $submitted_carrier );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
