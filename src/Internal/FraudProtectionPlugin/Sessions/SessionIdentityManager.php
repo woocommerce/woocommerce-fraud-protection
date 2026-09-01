@@ -122,7 +122,7 @@ class SessionIdentityManager {
 	 * @return string Fallback identity.
 	 */
 	private function generate_fallback_identity_id(): string {
-		$identity_id = WC()->call_function( 'wc_rand_hash', 'customer_', 30 );
+		$identity_id = substr( 'customer_' . WC()->call_function( 'wc_rand_hash' ), 0, self::MAX_IDENTITY_LENGTH );
 		FraudProtectionController::log(
 			'warning',
 			'Created new fallback session identity ID for customer. This should rarely happen.',

@@ -421,7 +421,10 @@ class SessionDataCollector {
 	 * @return string Normalized string.
 	 */
 	private function normalize_text( string $value, int $max_bytes, bool &$changed ): string {
-		$normalized = wp_check_invalid_utf8( $value, true );
+		$normalized = $value;
+		if ( 1 !== preg_match( '//u', $normalized ) ) {
+			$normalized = (string) json_decode( (string) wp_json_encode( $normalized, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE ), true );
+		}
 		if ( strlen( $normalized ) > $max_bytes ) {
 			$low  = 0;
 			$high = mb_strlen( $normalized, 'UTF-8' );
