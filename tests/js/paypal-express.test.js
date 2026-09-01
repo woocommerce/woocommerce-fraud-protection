@@ -248,18 +248,25 @@ describe( 'paypal-express fetch interceptor', () => {
 	} );
 
 	describe( 'reset', () => {
-		it( 'keeps the session after an intercepted CreateOrder succeeds', async () => {
-			setupAndLoad();
+		it.each( [
+			'ppc-create-order',
+			'ppc-create-setup-token',
+			'ppc-vault-create-order',
+		] )(
+			'keeps the session after a successful %s request',
+			async ( endpoint ) => {
+				setupAndLoad();
 
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{
-					body: JSON.stringify( {} ),
-				}
-			);
+				await window.fetch(
+					`https://store.test/?wc-ajax=${ endpoint }`,
+					{
+						body: JSON.stringify( {} ),
+					}
+				);
 
-			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
-		} );
+				expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+			}
+		);
 
 		it( 'does not call reset for non-PayPal fetch calls', async () => {
 			setupAndLoad();
@@ -293,29 +300,41 @@ describe( 'paypal-express fetch interceptor', () => {
 			[ false, { success: true } ],
 			[ true, { success: false } ],
 		] )( 'resets after a confirmed failed response', async ( ok, data ) => {
-			originalFetch.mockResolvedValueOnce( {
+			const response = {
 				ok,
 				clone: jest.fn( () => ( {
 					json: () => Promise.resolve( data ),
 				} ) ),
-			} );
+			};
+			originalFetch.mockResolvedValueOnce( response );
 			setupAndLoad();
 
-			await window.fetch(
+			const result = await window.fetch(
 				'https://store.test/?wc-ajax=ppc-create-setup-token',
 				{
 					body: '{}',
 				}
 			);
 
+			expect( result ).toBe( response );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
 
 		it( 'resets before a later protected artifact after success', async () => {
+			const events = [];
 			mockAcquireSessionId
-				.mockResolvedValueOnce( 'session-1' )
-				.mockResolvedValueOnce( 'session-2' );
+				.mockImplementationOnce( () => {
+					events.push( 'acquire:session-1' );
+					return Promise.resolve( 'session-1' );
+				} )
+				.mockImplementationOnce( () => {
+					events.push( 'acquire:session-2' );
+					return Promise.resolve( 'session-2' );
+				} );
 			setupAndLoad();
+			window.wcFraudProtection.reset.mockImplementation( () => {
+				events.push( 'reset' );
+			} );
 
 			await window.fetch(
 				'https://store.test/?wc-ajax=ppc-create-order',
@@ -327,13 +346,25 @@ describe( 'paypal-express fetch interceptor', () => {
 			);
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+			expect( events ).toEqual( [
+				'acquire:session-1',
+				'reset',
+				'acquire:session-2',
+			] );
 		} );
 
 		it( 'serializes concurrent protected artifact requests', async () => {
 			let resolveFirstFetch;
+			const events = [];
 			mockAcquireSessionId
-				.mockResolvedValueOnce( 'S1' )
-				.mockResolvedValueOnce( 'S2' );
+				.mockImplementationOnce( () => {
+					events.push( 'acquire:S1' );
+					return Promise.resolve( 'S1' );
+				} )
+				.mockImplementationOnce( () => {
+					events.push( 'acquire:S2' );
+					return Promise.resolve( 'S2' );
+				} );
 			originalFetch
 				.mockImplementationOnce(
 					() =>
@@ -343,6 +374,9 @@ describe( 'paypal-express fetch interceptor', () => {
 				)
 				.mockResolvedValueOnce( artifactResponse() );
 			setupAndLoad();
+			window.wcFraudProtection.reset.mockImplementation( () => {
+				events.push( 'reset' );
+			} );
 
 			const first = window.fetch(
 				'https://store.test/?wc-ajax=ppc-create-order',
@@ -356,6 +390,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			await Promise.resolve();
 
 			expect( originalFetch ).toHaveBeenCalledTimes( 1 );
+			expect( events ).toEqual( [ 'acquire:S1' ] );
 			resolveFirstFetch( artifactResponse() );
 			await first;
 			await second;
@@ -371,6 +406,7 @@ describe( 'paypal-express fetch interceptor', () => {
 					.wc_fraud_protection_session_id
 			).toBe( 'S2' );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+			expect( events ).toEqual( [ 'acquire:S1', 'reset', 'acquire:S2' ] );
 		} );
 
 		it( 'resets before a later artifact after an unreadable response', async () => {
