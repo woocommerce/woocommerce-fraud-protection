@@ -446,8 +446,9 @@ class PayPalCompat {
 		}
 
 		try {
-			$record = $this->get_verified_session_record();
-			if ( null === $record || $record['used'] || $this->session_id_normalizer->normalize_stored( $record['session_id'] ) !== $session_id ) {
+			$record            = $this->get_verified_session_record();
+			$stored_session_id = null === $record ? '' : $this->session_id_normalizer->normalize_stored( $record['session_id'] );
+			if ( null === $record || $record['used'] || '' === $session_id || '' === $stored_session_id || $stored_session_id !== $session_id ) {
 				$this->retire_verification_record();
 				return $supplied_decision;
 			}

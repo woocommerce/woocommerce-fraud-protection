@@ -1659,6 +1659,20 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/** @testdox An invalid stored session ID does not match an empty submitted session ID. */
+	public function test_invalid_stored_session_id_does_not_match_empty_submitted_session(): void {
+		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$record['session_id'] = '.';
+		WC()->session->set( '_fraud_protection_paypal_verification', $record );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', '' ) );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Recorded decision
