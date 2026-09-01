@@ -62,6 +62,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		// Clear any existing session data before each test.
 		WC()->session->set( 'fraud_protection_collected_data', null );
 		WC()->session->set( 'fraud_protection_collected_events_truncated', null );
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
 	}
 
 	/**
