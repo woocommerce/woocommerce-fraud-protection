@@ -129,7 +129,7 @@ class PayPalCompat {
 	 */
 	public function register(): void {
 		add_action( 'woocommerce_paypal_payments_create_order_request_started', array( $this, 'verify_and_block_create_order' ) );
-		add_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this, 'bind_created_order_to_verification' ) );
+		add_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this, 'associate_created_order_with_verification' ) );
 		add_filter( 'ppcp_request_args', array( $this, 'verify_protected_paypal_request' ), 10, 2 );
 		add_action( 'woocommerce_paypal_payments_single_product_button_render', array( $this, 'enqueue_paypal_script' ), 10, 0 );
 		add_action( 'woocommerce_paypal_payments_cart_button_render', array( $this, 'enqueue_paypal_script' ), 10, 0 );
@@ -233,21 +233,21 @@ class PayPalCompat {
 	}
 
 	/**
-	 * Bind the PayPal order just created to the verification that covered it.
+	 * Associate the PayPal order just created with the verification that covered it.
 	 *
 	 * Runs on `woocommerce_paypal_payments_paypal_order_created`, which fires
 	 * in the same request as the create-order verification, once the order
 	 * exists — the identity the create-order hook fires too early to know.
 	 * The order ID is what the approved-order route matches on later. Without
 	 * a verification recorded by this request — a server-side order creation,
-	 * say — there is nothing to bind to.
+	 * say — there is no verification to associate with the order.
 	 *
 	 * @internal
 	 *
 	 * @param mixed $order The PayPal order entity; foreign code's object, read defensively.
 	 * @return void
 	 */
-	public function bind_created_order_to_verification( $order ): void {
+	public function associate_created_order_with_verification( $order ): void {
 		// Consumed on read, before the try, so the session ID state is always
 		// spent and remains available to the fail-open log.
 		$session_id = $this->session_recorded_this_request;
@@ -260,7 +260,7 @@ class PayPalCompat {
 		// inside the create-order request that already minted the order — so any
 		// throw here (the foreign order object, a bad session deserialize, the
 		// write) would fail the shopper's checkout. Fail open: on any throw,
-		// leave the verification unbound so a later completion leg verifies.
+		// leave the verification without an associated order so a later completion leg verifies.
 		try {
 			if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
 				return;
@@ -286,17 +286,15 @@ class PayPalCompat {
 
 			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
 		} catch ( \Throwable $e ) {
-			$context = array(
-				'hook'              => 'woocommerce_paypal_payments_paypal_order_created',
-				'session_id'        => $session_id,
-				'exception_class'   => $e::class,
-				'exception_message' => $e->getMessage(),
-			);
-
 			FraudProtectionController::log(
 				'warning',
-				'Binding the created PayPal order threw; leaving the verification unbound',
-				$context,
+				'Associating the created PayPal order threw; leaving the verification without an associated order',
+				array(
+					'hook'              => 'woocommerce_paypal_payments_paypal_order_created',
+					'session_id'        => $session_id,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				),
 				true
 			);
 		}
