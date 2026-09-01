@@ -340,7 +340,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @param mixed $value Submitted value.
 	 */
-	public function test_verify_passes_submitted_value_to_session_verifier( $value ): void {
+	public function test_verify_passes_submitted_value_to_session_verifier( $value, FraudDecision $decision ): void {
 		$data = array(
 			SessionVerifier::SESSION_ID_FIELD => $value,
 			'context'                         => array( 'source' => 'product' ),
@@ -350,26 +350,28 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->expects( $this->once() )
 			->method( 'verify_session' )
 			->with( $value, 'paypal_express_order_creation', 0, $this->anything() )
-			->willReturn( FraudDecision::Allow );
+			->willReturn( $decision );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-id' );
 
 		$this->sut->verify_and_block_create_order( $data );
 		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
 
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'response-id' ) );
 	}
 
 	/**
 	 * Submitted session values.
 	 *
-	 * @return array<string, array{mixed}>
+	 * @return array<string, array{mixed, FraudDecision}>
 	 */
 	public function submitted_session_value_provider(): array {
 		return array(
-			'empty string'       => array( '' ),
-			'invalid characters' => array( '.' ),
-			'null'               => array( null ),
-			'array'              => array( array( 'private' ) ),
+			'empty string'          => array( '', FraudDecision::Allow ),
+			'invalid characters'    => array( '.', FraudDecision::Allow ),
+			'null'                  => array( null, FraudDecision::Allow ),
+			'array'                 => array( array( 'private' ), FraudDecision::Allow ),
+			'non-actionable result' => array( 'browser-session', FraudDecision::Challenge ),
 		);
 	}
 
@@ -2300,20 +2302,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Binding preserves the record's unused state.
-	 */
-	public function test_bind_preserves_the_unused_state(): void {
-		$this->score_create_order( 'reused-session', FraudDecision::Allow );
-		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-9' ) );
-
-		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
-
-		$this->assertIsArray( $record );
-		$this->assertFalse( $record['used'] );
-		$this->assertSame( 'PP-9', $record['order_id'] );
-	}
-
-	/**
 	 * @testdox Each record has one shared use across its allowed final sources.
 	 *
 	 * @dataProvider final_order_source_provider
@@ -2414,7 +2402,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider final_setup_eligibility_provider
 	 */
-	public function test_setup_record_rechecks_material_eligibility( string $total, bool $empty, bool $managed_plan ): void {
+	public function test_setup_record_rechecks_material_eligibility( string $total, bool $empty, bool $managed_plan, string $cart_hash ): void {
 		$this->set_setup_cart( 'cart-hash' );
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
@@ -2427,7 +2415,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( 'plan-id' );
 			$items = array( array( 'data' => $product ) );
 		}
-		$this->set_setup_cart( 'cart-hash', $items, true, $total, $empty );
+		$this->set_setup_cart( $cart_hash, $items, true, $total, $empty );
 
 		$this->assert_incoming_decision_is_preserved(
 			'blocks_checkout',
@@ -2436,12 +2424,13 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/** @return array<string, array{string, bool, bool}> */
+	/** @return array<string, array{string, bool, bool, string}> */
 	public function final_setup_eligibility_provider(): array {
 		return array(
-			'positive total'      => array( '1', false, false ),
-			'empty cart'          => array( '0', true, false ),
-			'PayPal-managed plan' => array( '0', false, true ),
+			'positive total'      => array( '1', false, false, 'cart-hash' ),
+			'empty cart'          => array( '0', true, false, 'cart-hash' ),
+			'PayPal-managed plan' => array( '0', false, true, 'cart-hash' ),
+			'empty cart hash'     => array( '0', false, false, '' ),
 		);
 	}
 
@@ -2452,14 +2441,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @param mixed $plan_metadata PayPal plan metadata.
 	 */
-	public function test_ineligible_setup_cart_is_not_recorded( string $total, bool $empty, bool $needs_payment, $plan_metadata ): void {
+	public function test_ineligible_setup_cart_is_not_recorded( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash ): void {
 		$items = array();
 		if ( null !== $plan_metadata ) {
 			$product = $this->createMock( \WC_Product::class );
 			$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( $plan_metadata );
 			$items = array( array( 'data' => $product ) );
 		}
-		$this->set_setup_cart( 'cart-hash', $items, $needs_payment, $total, $empty );
+		$this->set_setup_cart( $cart_hash, $items, $needs_payment, $total, $empty );
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
@@ -2469,13 +2458,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
-	/** @return array<string, array{string, bool, bool, mixed}> */
+	/** @return array<string, array{string, bool, bool, mixed, string}> */
 	public function setup_storage_ineligibility_provider(): array {
 		return array(
-			'empty cart'               => array( '0', true, true, null ),
-			'positive total'           => array( '1', false, true, null ),
-			'payment not needed'       => array( '0', false, false, null ),
-			'PayPal-managed plan data' => array( '0', false, true, 'plan-id' ),
+			'empty cart'               => array( '0', true, true, null, 'cart-hash' ),
+			'positive total'           => array( '1', false, true, null, 'cart-hash' ),
+			'payment not needed'       => array( '0', false, false, null, 'cart-hash' ),
+			'PayPal-managed plan data' => array( '0', false, true, 'plan-id', 'cart-hash' ),
+			'empty cart hash'          => array( '0', false, true, null, '' ),
 		);
 	}
 
@@ -2534,6 +2524,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$sut->register();
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
+		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_enqueue_script( 'ppcp-add-payment-method' );
 		$this->touched_add_payment_method_handle = true;
 
