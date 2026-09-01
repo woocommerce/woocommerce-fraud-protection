@@ -2174,21 +2174,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @dataProvider final_order_source_provider
 	 */
 	public function test_order_records_supply_once_for_allowed_sources( string $origin, string $source ): void {
-		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
-		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
-
-		if ( 'create' === $origin ) {
-			$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
-		} else {
-			$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
-			$this->run_protected_request( 'wc_ajax_ppc-vault-create-order', array( 'method' => 'POST' ), '/v2/checkout/orders' );
-		}
-
-		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
-		$request = array(
-			'payment_method' => 'ppcp-gateway',
-			'payment_data'   => array( 'paypal_order_id' => 'PP-123' ),
-		);
+		$request = $this->create_artifact_record( $origin );
 		$first = $this->sut->supply_decision_for_paypal_express( false, $source, $request, 'response-session' );
 
 		$this->assertInstanceOf( SuppliedDecision::class, $first );
