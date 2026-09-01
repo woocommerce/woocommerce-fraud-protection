@@ -109,7 +109,7 @@ class SessionIdentityManager {
 			$identity_id = (string) $identity_id;
 		}
 
-		if ( ! is_string( $identity_id ) || '' === $identity_id || 1 !== preg_match( '/^[A-Za-z0-9:_+\/=\-]+$/', $identity_id ) ) {
+		if ( ! is_string( $identity_id ) || '' === $identity_id || 1 !== preg_match( '/\A[A-Za-z0-9:_+\/=\-]+\z/', $identity_id ) ) {
 			return null;
 		}
 

@@ -1087,6 +1087,19 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox collect() keeps a valid UTF-8 prefix at the value byte limit.
+	 */
+	public function test_collect_truncates_multibyte_value_at_utf8_boundary(): void {
+		$event = $this->collect_and_get_event( 'event', array( 'value' => str_repeat( 'é', 513 ) ) );
+		$value = $event['event_data']['value'];
+
+		$this->assertSame( 1024, strlen( $value ) );
+		$this->assertSame( 1, preg_match( '//u', $value ) );
+		$this->assertSame( str_repeat( 'é', 512 ), $value );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
 	 * @testdox collect() replaces unsupported values and non-finite floats with null.
 	 */
 	public function test_collect_replaces_unsupported_values_with_null(): void {
@@ -1174,6 +1187,10 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 				'timestamp'  => str_repeat( 't', 65 ),
 				'event_data' => array( 'value' => str_repeat( 'v', 1025 ) ),
 			),
+			array(
+				'timestamp'  => '2026-08-31 12:00:00',
+				'event_data' => array( 'value' => 'kept' ),
+			),
 		);
 		WC()->session->set( 'fraud_protection_collected_data', $legacy );
 
@@ -1184,6 +1201,8 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( str_repeat( 't', 64 ), $result['collected_events'][0]['timestamp'] );
 		$this->assertSame( str_repeat( 'v', 1024 ), $result['collected_events'][0]['event_data']['value'] );
 		$this->assertTrue( $result['collected_events'][0]['event_data_truncated'] );
+		$this->assertNull( $result['collected_events'][1]['event_type'] );
+		$this->assertTrue( $result['collected_events'][1]['event_data_truncated'] );
 	}
 
 	// ========================================

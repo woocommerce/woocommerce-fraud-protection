@@ -139,6 +139,7 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 			'valid long value'      => array( $exact . 'tail', $exact ),
 			'empty value'           => array( '', '' ),
 			'unsupported character' => array( 'identity with spaces', '' ),
+			'trailing newline'       => array( "identity\n", '' ),
 			'unsupported type'      => array( array( 'identity' ), '' ),
 		);
 	}

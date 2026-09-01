@@ -302,7 +302,8 @@ class SessionDataCollector {
 		}
 
 		if ( ! array_key_exists( 'event_type', $event ) ) {
-			$event = array( 'event_type' => null ) + $event;
+			$event   = array( 'event_type' => null ) + $event;
+			$changed = true;
 		}
 
 		$nodes      = 1;
@@ -419,7 +420,20 @@ class SessionDataCollector {
 	 */
 	private function normalize_text( string $value, int $max_bytes, bool &$changed ): string {
 		$normalized = wp_check_invalid_utf8( $value, true );
-		$normalized = mb_strcut( $normalized, 0, $max_bytes, 'UTF-8' );
+		if ( strlen( $normalized ) > $max_bytes ) {
+			$low  = 0;
+			$high = mb_strlen( $normalized, 'UTF-8' );
+			while ( $low < $high ) {
+				$mid       = intdiv( $low + $high + 1, 2 );
+				$candidate = mb_substr( $normalized, 0, $mid, 'UTF-8' );
+				if ( strlen( $candidate ) <= $max_bytes ) {
+					$low = $mid;
+				} else {
+					$high = $mid - 1;
+				}
+			}
+			$normalized = mb_substr( $normalized, 0, $low, 'UTF-8' );
+		}
 		if ( $normalized !== $value ) {
 			$changed = true;
 		}
