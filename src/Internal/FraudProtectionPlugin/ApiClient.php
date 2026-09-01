@@ -42,6 +42,13 @@ class ApiClient {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
+	 * HTTP errors created from concrete responses by this client instance.
+	 *
+	 * @var \WeakMap<\WP_Error, bool>
+	 */
+	private \WeakMap $received_http_errors;
+
+	/**
 	 * Default timeout for API requests in seconds.
 	 *
 	 * Sized above the Blackbox API's observed p99 server response time with
@@ -77,6 +84,7 @@ class ApiClient {
 	final public function init( VisitorIpResolver $visitor_ip_resolver, SessionIdNormalizer $session_id_normalizer ): void {
 		$this->visitor_ip_resolver   = $visitor_ip_resolver;
 		$this->session_id_normalizer = $session_id_normalizer;
+		$this->received_http_errors  = new \WeakMap();
 	}
 
 	/**
@@ -173,7 +181,7 @@ class ApiClient {
 				'api_http_error' === $response->get_error_code()
 				&& is_array( $error_data )
 				&& 413 === ( $error_data['http_status'] ?? null )
-				&& true === ( $error_data['_wcfp_http_response_received'] ?? false )
+				&& isset( $this->received_http_errors[ $response ] )
 			) {
 				$context = is_array( $event_data['context'] ?? null ) ? $event_data['context'] : array();
 				FraudProtectionController::log(
@@ -356,15 +364,17 @@ class ApiClient {
 		$data = json_decode( $response_body, true );
 
 		if ( $response_code >= 300 ) {
-			return new \WP_Error(
+			$error                                = new \WP_Error(
 				'api_http_error',
 				sprintf( 'Blackbox API %s %s returned status code %d', $method, $path, $response_code ),
 				array(
-					'_wcfp_http_response_received' => true,
-					'http_status'                  => (int) $response_code,
-					'response'                     => JSON_ERROR_NONE === json_last_error() ? $data : $response_body,
+					'http_status' => (int) $response_code,
+					'response'    => JSON_ERROR_NONE === json_last_error() ? $data : $response_body,
 				)
 			);
+			$this->received_http_errors[ $error ] = true;
+
+			return $error;
 		}
 
 		$log_payload = $wire_payload;
