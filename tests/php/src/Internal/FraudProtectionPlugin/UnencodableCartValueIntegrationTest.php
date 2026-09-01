@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResultOrigin;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CartEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
@@ -210,7 +211,7 @@ class UnencodableCartValueIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( 1, $transport_calls, 'The verify request must reach the Blackbox transport' );
 		$this->assertIsArray( $captured_body, 'The transport must receive a body that encoded' );
-		$this->assertFalse( $result->fail_open, 'Verification must reach a real verdict, not a fallback' );
+		$this->assertSame( VerifyResultOrigin::Response, $result->origin, 'Verification must reach a real verdict, not a fallback' );
 		$this->assertSame( FraudDecision::Block, $result->decision, 'The real Blackbox verdict must be honoured' );
 
 		// The unencodable value costs its own field — not the event, and not the request.
@@ -267,7 +268,7 @@ class UnencodableCartValueIntegrationTest extends FraudProtectionUnitTestCase {
 		$result          = $this->verify_through_stub_transport( $payload, $transport_calls, $captured_body );
 
 		$this->assertSame( 1, $transport_calls, 'The verify request must reach the Blackbox transport' );
-		$this->assertFalse( $result->fail_open, 'Verification must reach a real verdict, not a fallback' );
+		$this->assertSame( VerifyResultOrigin::Response, $result->origin, 'Verification must reach a real verdict, not a fallback' );
 
 		$sent_item = $captured_body['context']['order']['items'][0] ?? array();
 		$this->assertSame( 1.0e308, $sent_item['quantity'] ?? null, 'The quantity itself is representable, so it is relayed' );

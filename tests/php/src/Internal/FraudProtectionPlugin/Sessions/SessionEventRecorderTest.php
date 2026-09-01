@@ -299,6 +299,32 @@ class SessionEventRecorderTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should record confirmed rejected requests under their own trigger.
+	 */
+	public function test_derives_request_rejected_trigger(): void {
+		$captured = $this->record_result_and_capture( VerifyResult::request_rejected(), FraudDecision::Allow );
+
+		$this->assertSame( 'block', $captured['decision'] );
+		$this->assertSame( 'allowed', $captured['final_status'] );
+		$this->assertSame( 'request_rejected', $captured['trigger_type'] );
+	}
+
+	/**
+	 * @testdox Should let a matched rule take priority over the rejected-request trigger.
+	 */
+	public function test_matched_rule_trigger_takes_precedence_over_request_rejected(): void {
+		$captured = $this->record_result_and_capture(
+			VerifyResult::request_rejected(),
+			FraudDecision::Block,
+			null,
+			$this->a_matching_rule( FraudDecision::Block )
+		);
+
+		$this->assertSame( 'block_rule', $captured['trigger_type'] );
+		$this->assertSame( 42, $captured['matched_rule_id'] );
+	}
+
+	/**
 	 * @testdox Should record a matching allow rule under the allow_rule trigger with the rule id, keeping the received decision.
 	 */
 	public function test_records_allow_rule_trigger_for_matching_allow_rule(): void {

@@ -11,6 +11,7 @@ use Automattic\Jetpack\Connection\Client as Jetpack_Connection_Client;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResultOrigin;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,9 +22,8 @@ defined( 'ABSPATH' ) || exit;
  * to verify sessions and report fraud events. The API returns fraud protection
  * decisions (allow, block, or challenge).
  *
- * This class implements a fail-open pattern: if the endpoint is unreachable,
- * times out, or returns an error, it returns an "allow" decision to ensure
- * legitimate transactions are never blocked due to service issues.
+ * Transport and endpoint failures fail open. A confirmed oversized verification
+ * rejection returns a rejected-request result for the current attempt.
  */
 class ApiClient {
 
@@ -168,14 +168,22 @@ class ApiClient {
 	 */
 	private function process_decision_response( array|\WP_Error $response, array $event_data, string $session_id ): VerifyResult {
 		if ( is_wp_error( $response ) ) {
-			$error_data = $response->get_error_data() ?? array();
-			$error_data = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
-			FraudProtectionController::log(
-				'error',
-				sprintf(
+			$error_data       = $response->get_error_data() ?? array();
+			$error_data       = is_array( $error_data ) ? $error_data : array( 'error' => $error_data );
+			$request_rejected = (
+				'api_http_error' === $response->get_error_code()
+				&& 413 === ( $error_data['http_status'] ?? null )
+			);
+			$result           = $request_rejected ? VerifyResult::request_rejected() : VerifyResult::fail_open();
+			$message          = VerifyResultOrigin::RequestRejected === $result->origin
+				? 'Verification request was rejected.'
+				: sprintf(
 					'Blackbox API request failed: %s. Failing open with "allow" decision.',
 					$response->get_error_message()
-				),
+				);
+			FraudProtectionController::log(
+				'error',
+				$message,
 				array_merge(
 					$error_data,
 					array(
@@ -187,7 +195,7 @@ class ApiClient {
 				),
 				true
 			);
-			return VerifyResult::fail_open();
+			return $result;
 		}
 
 		$raw = $this->extract_decision( $response );
@@ -343,9 +351,12 @@ class ApiClient {
 
 		if ( $response_code >= 300 ) {
 			return new \WP_Error(
-				'api_error',
+				'api_http_error',
 				sprintf( 'Blackbox API %s %s returned status code %d', $method, $path, $response_code ),
-				array( 'response' => JSON_ERROR_NONE === json_last_error() ? $data : $response_body )
+				array(
+					'http_status' => (int) $response_code,
+					'response'    => JSON_ERROR_NONE === json_last_error() ? $data : $response_body,
+				)
 			);
 		}
 

@@ -147,6 +147,46 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A received 413 blocks only that attempt and the next attempt verifies again.
+	 */
+	public function test_rejected_request_blocks_single_attempt_and_next_attempt_is_reverified(): void {
+		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->api_client
+			->expects( $this->exactly( 2 ) )
+			->method( 'jetpack_remote_request' )
+			->willReturnOnConsecutiveCalls(
+				array(
+					'response' => array( 'code' => 413 ),
+					'body'     => 'Request rejected',
+				),
+				$this->decision_response( 'allow', 'blackbox-attempt-2' )
+			);
+
+		$product = \WC_Helper_Product::create_simple_product();
+		WC()->cart->add_to_cart( $product->get_id(), 1 );
+		$order = \WC_Helper_Order::create_order();
+
+		$this->sut->extract_request_data( $order, $this->checkout_request( 'blackbox-attempt-1' ) );
+		$blocked = null;
+		try {
+			$this->sut->verify_and_block( $order );
+		} catch ( RouteException $exception ) {
+			$blocked = $exception;
+		}
+
+		$this->assertInstanceOf( RouteException::class, $blocked );
+		$this->assertSame( '', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+
+		$this->sut->extract_request_data( $order, $this->checkout_request( 'blackbox-attempt-2' ) );
+		$this->sut->verify_and_block( $order );
+
+		$order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $order );
+		$this->assertSame( 'blackbox-attempt-2', $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+		$product->delete( true );
+	}
+
+	/**
 	 * Create a blocks checkout REST request carrying a Blackbox session ID.
 	 *
 	 * @param string $blackbox_session_id The Blackbox session ID for the attempt.
