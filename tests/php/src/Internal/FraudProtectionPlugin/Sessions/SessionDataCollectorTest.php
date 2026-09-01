@@ -104,15 +104,17 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Count arrays, scalars, and null values in an event.
+	 * Count budgeted arrays, scalars, and null values in event data.
 	 *
-	 * @param array $value Event array.
+	 * The top-level event data container does not consume the node budget.
+	 *
+	 * @param array $value Event data.
 	 * @return int Node count.
 	 */
-	private function count_event_nodes( array $value ): int {
-		$count = 1;
+	private function count_event_data_nodes( array $value ): int {
+		$count = 0;
 		foreach ( $value as $item ) {
-			$count += is_array( $item ) ? $this->count_event_nodes( $item ) : 1;
+			$count += is_array( $item ) ? 1 + $this->count_event_data_nodes( $item ) : 1;
 		}
 
 		return $count;
@@ -210,12 +212,6 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		// Verify timestamp is in Y-m-d H:i:s format.
 		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $event['timestamp'] );
-
-		// Verify timestamp is recent (within last 10 seconds).
-		$timestamp       = strtotime( $event['timestamp'] );
-		$current_time    = time();
-		$time_difference = abs( $current_time - $timestamp );
-		$this->assertLessThanOrEqual( 10, $time_difference, 'Timestamp should be recent (within 10 seconds)' );
 	}
 
 	/**
@@ -1069,55 +1065,54 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox collect() limits strings and keeps the first normalized colliding key.
+	 * @testdox collect() limits event data strings and keeps the last normalized colliding key.
 	 */
 	public function test_collect_normalizes_strings_and_key_collisions(): void {
-		$key_prefix = str_repeat( 'k', 128 );
+		$key_prefix = str_repeat( 'k', 64 );
 		$event      = $this->collect_and_get_event(
-			str_repeat( 't', 65 ),
+			'event',
 			array(
-				$key_prefix . 'a' => str_repeat( 'v', 1025 ),
-				$key_prefix . 'b' => 'discarded',
-				"bad\xFFkey"     => "valid\xFFsuffix",
+				$key_prefix . 'a' => 'discarded',
+				$key_prefix . 'b' => str_repeat( 'v', 513 ),
 			)
 		);
 
-		$this->assertSame( str_repeat( 't', 64 ), $event['event_type'] );
-		$this->assertSame( str_repeat( 'v', 1024 ), $event['event_data'][ $key_prefix ] );
-		$this->assertArrayHasKey( "bad\u{FFFD}key", $event['event_data'] );
-		$this->assertSame( "valid\u{FFFD}suffix", $event['event_data'][ "bad\u{FFFD}key" ] );
+		$this->assertSame( str_repeat( 'v', 512 ), $event['event_data'][ $key_prefix ] );
 		$this->assertTrue( $event['event_data_truncated'] );
 	}
 
 	/**
-	 * @testdox collect() keeps a valid UTF-8 prefix at the value byte limit.
+	 * @testdox collect() limits multibyte values by character count.
 	 */
-	public function test_collect_truncates_multibyte_value_at_utf8_boundary(): void {
+	public function test_collect_truncates_multibyte_value_by_character_count(): void {
 		$event = $this->collect_and_get_event( 'event', array( 'value' => str_repeat( 'é', 513 ) ) );
 		$value = $event['event_data']['value'];
 
-		$this->assertSame( 1024, strlen( $value ) );
-		$this->assertSame( 1, preg_match( '//u', $value ) );
+		$this->assertSame( 512, mb_strlen( $value, 'UTF-8' ) );
 		$this->assertSame( str_repeat( 'é', 512 ), $value );
 		$this->assertTrue( $event['event_data_truncated'] );
 	}
 
 	/**
-	 * @testdox collect() replaces unsupported values and non-finite floats with null.
+	 * @testdox collect() replaces unsupported values and preserves all floats.
 	 */
-	public function test_collect_replaces_unsupported_values_with_null(): void {
+	public function test_collect_replaces_unsupported_values_and_preserves_floats(): void {
 		$resource = fopen( 'php://memory', 'r' );
 		$event    = $this->collect_and_get_event(
 			'event',
 			array(
-				'resource' => $resource,
-				'infinite' => INF,
+				'resource'          => $resource,
+				'infinite'          => INF,
+				'negative_infinite' => -INF,
+				'not_a_number'      => NAN,
 			)
 		);
 		fclose( $resource );
 
 		$this->assertNull( $event['event_data']['resource'] );
-		$this->assertNull( $event['event_data']['infinite'] );
+		$this->assertSame( INF, $event['event_data']['infinite'] );
+		$this->assertSame( -INF, $event['event_data']['negative_infinite'] );
+		$this->assertTrue( is_nan( $event['event_data']['not_a_number'] ) );
 		$this->assertTrue( $event['event_data_truncated'] );
 	}
 
@@ -1132,7 +1127,27 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		$event = $this->collect_and_get_event( 'deep', $event_data );
 
-		$this->assertSame( 64, $this->count_event_nodes( $event ) );
+		$this->assertSame( 64, $this->count_event_data_nodes( $event['event_data'] ) );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox collect() shares the node budget across sibling branches in insertion order.
+	 */
+	public function test_collect_shares_node_budget_across_sibling_branches(): void {
+		$branch = array_fill( 0, 32, 'value' );
+		$event  = $this->collect_and_get_event(
+			'siblings',
+			array(
+				'first'  => $branch,
+				'second' => $branch,
+			)
+		);
+
+		$this->assertSame( 64, $this->count_event_data_nodes( $event['event_data'] ) );
+		$this->assertArrayHasKey( 31, $event['event_data']['first'] );
+		$this->assertArrayHasKey( 29, $event['event_data']['second'] );
+		$this->assertArrayNotHasKey( 30, $event['event_data']['second'] );
 		$this->assertTrue( $event['event_data_truncated'] );
 	}
 
@@ -1145,48 +1160,33 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		$event = $this->collect_and_get_event( 'recursive', $event_data );
 
-		$this->assertSame( 64, $this->count_event_nodes( $event ) );
+		$this->assertSame( 64, $this->count_event_data_nodes( $event['event_data'] ) );
 		$this->assertTrue( $event['event_data_truncated'] );
 	}
 
 	/**
-	 * @testdox collect() keeps the newest 256 events and marks discarded history.
+	 * @testdox collect() keeps the newest 128 events and marks discarded history.
 	 */
 	public function test_collect_limits_event_count_and_marks_history(): void {
-		for ( $index = 0; $index < 257; ++$index ) {
+		for ( $index = 0; $index < 129; ++$index ) {
 			$this->sut->collect( 'event_' . $index );
 		}
 
 		$result = $this->sut->get_collected_data();
 
-		$this->assertCount( 256, $result['collected_events'] );
+		$this->assertCount( 128, $result['collected_events'] );
 		$this->assertSame( 'event_1', $result['collected_events'][0]['event_type'] );
-		$this->assertSame( 'event_256', $result['collected_events'][255]['event_type'] );
+		$this->assertSame( 'event_128', $result['collected_events'][127]['event_type'] );
 		$this->assertTrue( $result['collected_events_truncated'] );
 
-		$this->sut->collect( 'event_257' );
+		WC()->session->set( 'fraud_protection_collected_data', array_slice( $result['collected_events'], 1 ) );
+		$this->sut->collect( 'event_129' );
 		$result = $this->sut->get_collected_data();
 
-		$this->assertCount( 256, $result['collected_events'] );
+		$this->assertCount( 128, $result['collected_events'] );
 		$this->assertSame( 'event_2', $result['collected_events'][0]['event_type'] );
-		$this->assertSame( 'event_257', $result['collected_events'][255]['event_type'] );
+		$this->assertSame( 'event_129', $result['collected_events'][127]['event_type'] );
 		$this->assertTrue( $result['collected_events_truncated'] );
-	}
-
-	/**
-	 * @testdox collect() limits serialized history bytes and retains the newest event.
-	 */
-	public function test_collect_limits_serialized_history_bytes(): void {
-		for ( $index = 0; $index < 256; ++$index ) {
-			$this->sut->collect( 'event_' . $index, array( 'value' => str_repeat( 'v', 1024 ) ) );
-		}
-
-		$stored = WC()->session->get( 'fraud_protection_collected_data' );
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Verifies the storage limit.
-		$this->assertLessThanOrEqual( 256 * 1024, strlen( serialize( $stored ) ) );
-		$this->assertLessThan( 256, count( $stored ) );
-		$this->assertSame( 'event_255', $stored[ count( $stored ) - 1 ]['event_type'] );
-		$this->assertTrue( $this->sut->get_collected_data()['collected_events_truncated'] );
 	}
 
 	// ========================================

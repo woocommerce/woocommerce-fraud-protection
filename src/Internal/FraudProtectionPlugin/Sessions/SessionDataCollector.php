@@ -28,13 +28,10 @@ class SessionDataCollector {
 
 	private const COLLECTED_DATA_KEY             = 'fraud_protection_collected_data';
 	private const COLLECTED_EVENTS_TRUNCATED_KEY = 'fraud_protection_collected_events_truncated';
-	private const MAX_EVENT_NODES                = 64;
-	private const MAX_EVENT_CONTENT_NODES        = self::MAX_EVENT_NODES - 1;
-	private const MAX_EVENT_COUNT                = 256;
-	private const MAX_HISTORY_BYTES              = 256 * 1024;
-	private const MAX_KEY_BYTES                  = 128;
-	private const MAX_TYPE_BYTES                 = 64;
-	private const MAX_VALUE_BYTES                = 1024;
+	private const MAX_EVENT_DATA_NODES           = 64;
+	private const MAX_EVENT_COUNT                = 128;
+	private const MAX_KEY_LENGTH                 = 64;
+	private const MAX_VALUE_LENGTH               = 512;
 
 	/**
 	 * SessionIdentityManager instance.
@@ -68,13 +65,7 @@ class SessionDataCollector {
 		// Ensure cart and session are loaded.
 		$this->session_identity_manager->ensure_cart_loaded();
 
-		$data = $this->normalize_event(
-			array(
-				'event_type' => $event_type,
-				'timestamp'  => gmdate( 'Y-m-d H:i:s' ),
-				'event_data' => $event_data,
-			)
-		);
+		$data = $this->normalize_event( $event_type, gmdate( 'Y-m-d H:i:s' ), $event_data );
 
 		$wc = function_exists( 'WC' ) ? WC() : null;
 
@@ -86,8 +77,8 @@ class SessionDataCollector {
 				$collected_data = array();
 			}
 			$collected_data[] = $data;
-			$history_trimmed  = false;
-			$collected_data   = $this->trim_history( $collected_data, $history_trimmed );
+			$history_trimmed  = count( $collected_data ) > self::MAX_EVENT_COUNT;
+			$collected_data   = array_slice( $collected_data, -self::MAX_EVENT_COUNT );
 			$wc->session->set( self::COLLECTED_DATA_KEY, $collected_data );
 			if ( $history_trimmed ) {
 				$wc->session->set( self::COLLECTED_EVENTS_TRUNCATED_KEY, true );
@@ -275,34 +266,19 @@ class SessionDataCollector {
 	/**
 	 * Normalize one event to the retained data limits.
 	 *
-	 * @param mixed $event Event value.
+	 * @param string|null              $event_type Event type.
+	 * @param string                   $timestamp  Event timestamp.
+	 * @param array<string|int, mixed> $event_data Event data.
 	 * @return array<string|int, mixed> Normalized event.
 	 */
-	private function normalize_event( mixed $event ): array {
-		$changed = false;
-		if ( ! is_array( $event ) ) {
-			$event   = array(
-				'event_type' => null,
-				'timestamp'  => null,
-				'event_data' => $event,
-			);
-			$changed = true;
-		}
-
-		$already_truncated = true === ( $event['event_data_truncated'] ?? false );
-		if ( array_key_exists( 'event_data_truncated', $event ) ) {
-			unset( $event['event_data_truncated'] );
-			$changed = $changed || ! $already_truncated;
-		}
-
-		if ( ! array_key_exists( 'event_type', $event ) ) {
-			$event   = array( 'event_type' => null ) + $event;
-			$changed = true;
-		}
-
-		$nodes      = 1;
-		$normalized = $this->normalize_event_array( $event, $nodes, $changed, true );
-		if ( $changed || $already_truncated ) {
+	private function normalize_event( ?string $event_type, string $timestamp, array $event_data ): array {
+		$event_data_result = $this->normalize_event_array( $event_data, self::MAX_EVENT_DATA_NODES );
+		$normalized        = array(
+			'event_type' => $event_type,
+			'timestamp'  => $timestamp,
+			'event_data' => $event_data_result['normalized_data'],
+		);
+		if ( $event_data_result['changed'] ) {
 			$normalized['event_data_truncated'] = true;
 		}
 
@@ -312,160 +288,71 @@ class SessionDataCollector {
 	/**
 	 * Normalize an event array within the shared node budget.
 	 *
-	 * @param array<string|int, mixed> $data    Event data.
-	 * @param int                      $nodes   Consumed content nodes.
-	 * @param bool                     $changed Whether normalization changed the event.
-	 * @param bool                     $root    Whether this is the event envelope.
-	 * @return array<string|int, mixed> Normalized data.
+	 * @param array<string|int, mixed> $data            Event data.
+	 * @param int                      $remaining_nodes Remaining nodes in the event data budget.
+	 * @return array{normalized_data: array<string|int, mixed>, remaining_nodes: int, changed: bool} Normalized data and traversal state.
 	 */
-	private function normalize_event_array( array $data, int &$nodes, bool &$changed, bool $root = false ): array {
+	private function normalize_event_array( array $data, int $remaining_nodes ): array {
 		$normalized = array();
+		$changed    = false;
 		foreach ( $data as $key => $value ) {
 			$normalized_key = $key;
 			if ( is_string( $key ) ) {
-				$normalized_key = $this->normalize_text( $key, self::MAX_KEY_BYTES, $changed );
+				$normalized_key = $this->truncate_text( $key, self::MAX_KEY_LENGTH );
+				$changed        = $changed || $normalized_key !== $key;
 			}
 
-			if ( array_key_exists( $normalized_key, $normalized ) ) {
-				$changed = true;
-				continue;
-			}
-
-			if ( $nodes >= self::MAX_EVENT_CONTENT_NODES ) {
+			if ( $remaining_nodes <= 0 ) {
 				$changed = true;
 				break;
 			}
 
-			if ( $root && ( 'event_type' === $normalized_key || 'timestamp' === $normalized_key ) ) {
-				++$nodes;
-				$normalized[ $normalized_key ] = $this->normalize_event_label( $value, $changed );
-				continue;
-			}
-
+			--$remaining_nodes;
 			if ( is_array( $value ) ) {
-				if ( self::MAX_EVENT_CONTENT_NODES - $nodes <= 1 ) {
-					$normalized[ $normalized_key ] = null;
-					++$nodes;
-					$changed = true;
-					continue;
-				}
-
-				++$nodes;
-				$normalized[ $normalized_key ] = $this->normalize_event_array( $value, $nodes, $changed );
-				continue;
+				$child_result                  = $this->normalize_event_array( $value, $remaining_nodes );
+				$normalized[ $normalized_key ] = $child_result['normalized_data'];
+				$remaining_nodes               = $child_result['remaining_nodes'];
+				$changed                       = $changed || $child_result['changed'];
+			} else {
+				$normalized_value              = $this->normalize_event_value( $value );
+				$normalized[ $normalized_key ] = $normalized_value;
+				$changed                       = $changed || ( ! is_float( $value ) && $normalized_value !== $value );
 			}
-
-			++$nodes;
-			$normalized[ $normalized_key ] = $this->normalize_event_value( $value, $changed );
 		}
 
-		return $normalized;
-	}
-
-	/**
-	 * Normalize an event type or timestamp.
-	 *
-	 * @param mixed $value   Value to normalize.
-	 * @param bool  $changed Whether normalization changed the event.
-	 * @return string|null Normalized label.
-	 */
-	private function normalize_event_label( mixed $value, bool &$changed ): ?string {
-		if ( null === $value ) {
-			return null;
-		}
-
-		if ( ! is_string( $value ) ) {
-			$changed = true;
-			return null;
-		}
-
-		return $this->normalize_text( $value, self::MAX_TYPE_BYTES, $changed );
+		return array(
+			'normalized_data' => $normalized,
+			'remaining_nodes' => $remaining_nodes,
+			'changed'         => $changed,
+		);
 	}
 
 	/**
 	 * Normalize an event scalar.
 	 *
-	 * @param mixed $value   Value to normalize.
-	 * @param bool  $changed Whether normalization changed the event.
+	 * @param mixed $value Value to normalize.
 	 * @return bool|float|int|string|null Normalized value.
 	 */
-	private function normalize_event_value( mixed $value, bool &$changed ): bool|float|int|string|null {
-		if ( null === $value || is_bool( $value ) || is_int( $value ) ) {
-			return $value;
-		}
-
-		if ( is_float( $value ) && is_finite( $value ) ) {
+	private function normalize_event_value( mixed $value ): bool|float|int|string|null {
+		if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
 			return $value;
 		}
 
 		if ( is_string( $value ) ) {
-			return $this->normalize_text( $value, self::MAX_VALUE_BYTES, $changed );
+			return $this->truncate_text( $value, self::MAX_VALUE_LENGTH );
 		}
 
-		$changed = true;
 		return null;
 	}
 
 	/**
-	 * Return a valid UTF-8 byte prefix.
+	 * Truncate text to a character limit.
 	 *
-	 * @param string $value     Value to normalize.
-	 * @param int    $max_bytes Maximum bytes.
-	 * @param bool   $changed   Whether normalization changed the event.
+	 * @param string $value      Value to truncate.
+	 * @param int    $max_length Maximum characters.
 	 * @return string Normalized string.
 	 */
-	private function normalize_text( string $value, int $max_bytes, bool &$changed ): string {
-		$normalized = $value;
-		if ( 1 !== preg_match( '//u', $normalized ) ) {
-			$normalized = (string) json_decode( (string) wp_json_encode( $normalized, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE ), true );
-		}
-		if ( strlen( $normalized ) > $max_bytes ) {
-			$low  = 0;
-			$high = mb_strlen( $normalized, 'UTF-8' );
-			while ( $low < $high ) {
-				$mid       = intdiv( $low + $high + 1, 2 );
-				$candidate = mb_substr( $normalized, 0, $mid, 'UTF-8' );
-				if ( strlen( $candidate ) <= $max_bytes ) {
-					$low = $mid;
-				} else {
-					$high = $mid - 1;
-				}
-			}
-			$normalized = mb_substr( $normalized, 0, $low, 'UTF-8' );
-		}
-		if ( $normalized !== $value ) {
-			$changed = true;
-		}
-
-		return $normalized;
-	}
-
-	/**
-	 * Trim event history to the count and serialized-byte limits.
-	 *
-	 * @param array<int, mixed> $data    Event history.
-	 * @param bool              $trimmed Whether an event was removed.
-	 * @return array<int, mixed> Trimmed event history.
-	 */
-	private function trim_history( array $data, bool &$trimmed ): array {
-		$data = array_values( $data );
-		if ( count( $data ) > self::MAX_EVENT_COUNT ) {
-			$data    = array_slice( $data, -self::MAX_EVENT_COUNT );
-			$trimmed = true;
-		}
-
-		$data_count = count( $data );
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used for size calculation only.
-		$data_size = strlen( serialize( $data ) );
-
-		while ( $data_count > 1 && $data_size > self::MAX_HISTORY_BYTES ) {
-			array_shift( $data );
-			$trimmed    = true;
-			$data_count = count( $data );
-			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used for size calculation only.
-			$data_size = strlen( serialize( $data ) );
-		}
-
-		return $data;
+	private function truncate_text( string $value, int $max_length ): string {
+		return mb_substr( $value, 0, $max_length );
 	}
 }
