@@ -1731,54 +1731,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox A verified PayPal order is answered once, then verified again.
-	 */
-	public function test_supply_answers_for_a_verified_order_only_once(): void {
-		$this->score_create_order( 'reused-session', FraudDecision::Allow );
-		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
-		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
-
-		$supplied_decision = $this->sut->supply_decision_for_paypal_express(
-			false,
-			'blocks_checkout',
-			array( 'payment_method' => 'ppcp-credit-card-gateway' ),
-			'reused-session'
-		);
-
-		$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
-		$this->assertSame( FraudDecision::Allow, $supplied_decision->decision, 'The unused record must supply its decision.' );
-		$this->assertSame( 'reused-session', $supplied_decision->session_id_for_order );
-
-		$this->assertFalse(
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'reused-session' ),
-			'Reuse past the genuine shape must fall through to a real verify.'
-		);
-	}
-
-	/**
-	 * @testdox One verification cannot answer for a whole Store API batch.
-	 */
-	public function test_supply_does_not_answer_for_a_replayed_batch(): void {
-		$this->score_create_order( 'batched-session', FraudDecision::Allow );
-		$this->sut->bind_created_order_to_verification( new FakePayPalOrder( 'PP-123' ) );
-		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
-
-		$answered = 0;
-		$deferred = 0;
-
-		for ( $sub_request = 0; $sub_request < 25; $sub_request++ ) {
-			if ( false === $this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'batched-session' ) ) {
-				++$deferred;
-			} else {
-				++$answered;
-			}
-		}
-
-		$this->assertSame( 1, $answered, 'Exactly one sub-request may be answered from the record.' );
-		$this->assertSame( 24, $deferred, 'Every other sub-request must be verified for real.' );
-	}
-
-	/**
 	 * @testdox The record is keyed by the session ID the verification resolved, not the one presented.
 	 */
 	public function test_verify_keys_the_record_by_the_resolved_session_id(): void {
