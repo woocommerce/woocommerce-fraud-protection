@@ -692,7 +692,11 @@ class PayPalCompat {
 			return '';
 		}
 
-		$cart  = WC()->cart;
+		$cart = WC()->cart;
+		if ( ! $cart->is_empty() && true !== $cart->needs_payment() ) {
+			$cart->calculate_totals();
+		}
+
 		$total = $cart->get_total( 'edit' );
 		if ( $cart->is_empty() || ! is_numeric( $total ) || (float) $total > 0 || true !== $cart->needs_payment() ) {
 			return '';

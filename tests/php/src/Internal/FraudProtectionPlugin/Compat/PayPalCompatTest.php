@@ -2293,6 +2293,39 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
+	/** @testdox Setup record storage initializes the cart before checking its payment requirement. */
+	public function test_setup_record_initializes_cart_totals(): void {
+		$totals_calculated = false;
+		$cart              = $this->getMockBuilder( \WC_Cart::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'is_empty', 'get_total', 'needs_payment', 'get_cart', 'get_cart_hash', 'calculate_totals' ) )
+			->getMock();
+		$cart->method( 'is_empty' )->willReturn( false );
+		$cart->method( 'get_total' )->willReturn( '0' );
+		$cart->method( 'needs_payment' )->willReturnCallback(
+			static function () use ( &$totals_calculated ): bool {
+				return $totals_calculated;
+			}
+		);
+		$cart->method( 'get_cart' )->willReturn( array() );
+		$cart->method( 'get_cart_hash' )->willReturn( 'cart-hash' );
+		$cart->expects( $this->once() )->method( 'calculate_totals' )->willReturnCallback(
+			static function () use ( &$totals_calculated ): void {
+				$totals_calculated = true;
+			}
+		);
+		WC()->cart = $cart;
+
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
+		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertSame( 'cart-hash', $record['cart_hash'] );
+	}
+
 	/** @testdox Subscriptions render requests the interceptor only for the active PayPal script. */
 	public function test_subscriptions_render_requires_active_paypal_script(): void {
 		$handler = $this->createMock( BlackboxScriptHandler::class );
@@ -2427,7 +2460,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	private function set_setup_cart( string $hash, array $items = array(), bool $needs_payment = true, $total = '0', bool $empty = false ): void {
 		$cart = $this->getMockBuilder( \WC_Cart::class )
 			->disableOriginalConstructor()
-			->onlyMethods( array( 'is_empty', 'get_total', 'needs_payment', 'get_cart', 'get_cart_hash' ) )
+			->onlyMethods( array( 'is_empty', 'get_total', 'needs_payment', 'get_cart', 'get_cart_hash', 'calculate_totals' ) )
 			->getMock();
 		$cart->method( 'is_empty' )->willReturn( $empty );
 		$cart->method( 'get_total' )->willReturn( $total );
