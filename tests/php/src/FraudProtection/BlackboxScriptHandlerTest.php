@@ -70,6 +70,9 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		global $wp;
 		unset( $wp->query_vars['order-pay'] );
 		unset( $wp->query_vars['order-received'] );
+		if ( WC()->session instanceof \WC_Session ) {
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
+		}
 
 		parent::tearDown();
 	}
@@ -98,6 +101,24 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( '"identityKey":"mock-session-id"', $data );
 		$this->assertStringContainsString( '"timeout":3000', $data );
 		$this->assertStringContainsString( '"sessionIdField":"wc_fraud_protection_session_id"', $data );
+	}
+
+	/**
+	 * @testdox request_scripts() repairs a valid long legacy identity before localization.
+	 */
+	public function test_request_scripts_localizes_limited_legacy_identity(): void {
+		$this->mock_jetpack_blog_id( 42 );
+		$prefix = str_repeat( 'a', 255 );
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $prefix . 'tail' );
+
+		$handler = new BlackboxScriptHandler();
+		$handler->init( new SessionIdentityManager() );
+
+		$this->assertTrue( $handler->request_scripts() );
+		$data = (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
+		$this->assertStringContainsString( '"identityKey":"' . $prefix . '"', $data );
+		$this->assertStringNotContainsString( $prefix . 'tail', $data );
+		$this->assertSame( $prefix, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
 	}
 
 	/**

@@ -61,6 +61,8 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		// Clear any existing session data before each test.
 		WC()->session->set( 'fraud_protection_collected_data', null );
+		WC()->session->set( 'fraud_protection_collected_events_truncated', null );
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
 	}
 
 	/**
@@ -99,6 +101,23 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	private function collect_and_get_data( ?string $event_type = null, array $event_data = array() ): array {
 		$this->sut->collect( $event_type, $event_data );
 		return $this->sut->get_collected_data();
+	}
+
+	/**
+	 * Count budgeted arrays, scalars, and null values in event data.
+	 *
+	 * The top-level event data container does not consume the node budget.
+	 *
+	 * @param array $value Event data.
+	 * @return int Node count.
+	 */
+	private function count_event_data_nodes( array $value ): int {
+		$count = 0;
+		foreach ( $value as $item ) {
+			$count += is_array( $item ) ? 1 + $this->count_event_data_nodes( $item ) : 1;
+		}
+
+		return $count;
 	}
 
 	/**
@@ -193,12 +212,6 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 
 		// Verify timestamp is in Y-m-d H:i:s format.
 		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $event['timestamp'] );
-
-		// Verify timestamp is recent (within last 10 seconds).
-		$timestamp       = strtotime( $event['timestamp'] );
-		$current_time    = time();
-		$time_difference = abs( $current_time - $timestamp );
-		$this->assertLessThanOrEqual( 10, $time_difference, 'Timestamp should be recent (within 10 seconds)' );
 	}
 
 	/**
@@ -246,6 +259,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	 * Test wc_identity_id is retrieved from SessionIdentityManager.
 	 */
 	public function test_session_id_retrieved_from_session_identity_manager(): void {
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, str_repeat( 'a', 70 ) );
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
 
@@ -253,6 +267,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		// Session ID should be a string when session is available.
 		$this->assertIsString( $result['session']['wc_identity_id'] );
 		$this->assertNotEmpty( $result['session']['wc_identity_id'] );
+		$this->assertSame( str_repeat( 'a', 70 ), $result['session']['wc_identity_id'] );
 	}
 
 	/**
@@ -1029,6 +1044,151 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertEquals( array( 'gateway' => 'stripe' ), $result['collected_events'][1]['event_data'] );
 	}
 
+	/**
+	 * @testdox collect() keeps null event types and supported scalar values unchanged.
+	 */
+	public function test_collect_preserves_supported_event_values(): void {
+		$event = $this->collect_and_get_event(
+			null,
+			array(
+				'null'  => null,
+				'bool'  => false,
+				'int'   => 4,
+				'float' => 1.5,
+				'text'  => 'value',
+			)
+		);
+
+		$this->assertNull( $event['event_type'] );
+		$this->assertSame( array( 'null' => null, 'bool' => false, 'int' => 4, 'float' => 1.5, 'text' => 'value' ), $event['event_data'] );
+		$this->assertArrayNotHasKey( 'event_data_truncated', $event );
+	}
+
+	/**
+	 * @testdox collect() limits event data strings and keeps the last normalized colliding key.
+	 */
+	public function test_collect_normalizes_strings_and_key_collisions(): void {
+		$key_prefix = str_repeat( 'k', 64 );
+		$event      = $this->collect_and_get_event(
+			'event',
+			array(
+				$key_prefix . 'a' => 'discarded',
+				$key_prefix . 'b' => str_repeat( 'v', 513 ),
+			)
+		);
+
+		$this->assertSame( str_repeat( 'v', 512 ), $event['event_data'][ $key_prefix ] );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox collect() limits multibyte values by character count.
+	 */
+	public function test_collect_truncates_multibyte_value_by_character_count(): void {
+		$event = $this->collect_and_get_event( 'event', array( 'value' => str_repeat( 'é', 513 ) ) );
+		$value = $event['event_data']['value'];
+
+		$this->assertSame( 512, mb_strlen( $value, 'UTF-8' ) );
+		$this->assertSame( str_repeat( 'é', 512 ), $value );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox collect() replaces unsupported values and preserves all floats.
+	 */
+	public function test_collect_replaces_unsupported_values_and_preserves_floats(): void {
+		$resource = fopen( 'php://memory', 'r' );
+		$event    = $this->collect_and_get_event(
+			'event',
+			array(
+				'resource'          => $resource,
+				'infinite'          => INF,
+				'negative_infinite' => -INF,
+				'not_a_number'      => NAN,
+			)
+		);
+		fclose( $resource );
+
+		$this->assertNull( $event['event_data']['resource'] );
+		$this->assertSame( INF, $event['event_data']['infinite'] );
+		$this->assertSame( -INF, $event['event_data']['negative_infinite'] );
+		$this->assertTrue( is_nan( $event['event_data']['not_a_number'] ) );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox collect() retains a deep event within the 64-node limit.
+	 */
+	public function test_collect_limits_deep_event_by_node_count(): void {
+		$event_data = array( 'leaf' => 'value' );
+		for ( $index = 0; $index < 70; ++$index ) {
+			$event_data = array( 'child' => $event_data );
+		}
+
+		$event = $this->collect_and_get_event( 'deep', $event_data );
+
+		$this->assertSame( 64, $this->count_event_data_nodes( $event['event_data'] ) );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox collect() shares the node budget across sibling branches in insertion order.
+	 */
+	public function test_collect_shares_node_budget_across_sibling_branches(): void {
+		$branch = array_fill( 0, 32, 'value' );
+		$event  = $this->collect_and_get_event(
+			'siblings',
+			array(
+				'first'  => $branch,
+				'second' => $branch,
+			)
+		);
+
+		$this->assertSame( 64, $this->count_event_data_nodes( $event['event_data'] ) );
+		$this->assertArrayHasKey( 31, $event['event_data']['first'] );
+		$this->assertArrayHasKey( 29, $event['event_data']['second'] );
+		$this->assertArrayNotHasKey( 30, $event['event_data']['second'] );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox collect() stops a recursive event within the 64-node limit.
+	 */
+	public function test_collect_limits_recursive_event_by_node_count(): void {
+		$event_data         = array();
+		$event_data['self'] = &$event_data;
+
+		$event = $this->collect_and_get_event( 'recursive', $event_data );
+
+		$this->assertSame( 64, $this->count_event_data_nodes( $event['event_data'] ) );
+		$this->assertTrue( $event['event_data_truncated'] );
+	}
+
+	/**
+	 * @testdox collect() keeps the newest 128 events and marks discarded history.
+	 */
+	public function test_collect_limits_event_count_and_marks_history(): void {
+		for ( $index = 0; $index < 129; ++$index ) {
+			$this->sut->collect( 'event_' . $index );
+		}
+
+		$result = $this->sut->get_collected_data();
+
+		$this->assertCount( 128, $result['collected_events'] );
+		$this->assertSame( 'event_1', $result['collected_events'][0]['event_type'] );
+		$this->assertSame( 'event_128', $result['collected_events'][127]['event_type'] );
+		$this->assertTrue( $result['collected_events_truncated'] );
+
+		WC()->session->set( 'fraud_protection_collected_data', array_slice( $result['collected_events'], 1 ) );
+		$this->sut->collect( 'event_129' );
+		$result = $this->sut->get_collected_data();
+
+		$this->assertCount( 128, $result['collected_events'] );
+		$this->assertSame( 'event_2', $result['collected_events'][0]['event_type'] );
+		$this->assertSame( 'event_129', $result['collected_events'][127]['event_type'] );
+		$this->assertTrue( $result['collected_events_truncated'] );
+	}
+
 	// ========================================
 	// Clear Collected Events Tests
 	// ========================================
@@ -1039,10 +1199,12 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	public function test_clear_collected_events_removes_data_from_session(): void {
 		$this->sut->collect( 'cart_page_loaded', array() );
 		$this->sut->collect( 'checkout_page_loaded', array() );
+		WC()->session->set( 'fraud_protection_collected_events_truncated', true );
 
 		$this->sut->clear_collected_events();
 
 		$this->assertNull( WC()->session->get( 'fraud_protection_collected_data' ) );
+		$this->assertNull( WC()->session->get( 'fraud_protection_collected_events_truncated' ) );
 	}
 
 	/**

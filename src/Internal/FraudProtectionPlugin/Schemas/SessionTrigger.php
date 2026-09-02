@@ -28,6 +28,9 @@ enum SessionTrigger: string {
 	 */
 	case VerifyError = 'verify_error';
 
+	/** The verify request received a confirmed rejection response. */
+	case RequestRejected = 'request_rejected';
+
 	/**
 	 * A merchant allow rule decided the outcome, taking precedence over the
 	 * recorded Blackbox decision.

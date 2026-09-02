@@ -103,6 +103,49 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Stored identities are normalized before reuse.
+	 * @dataProvider stored_identity_provider
+	 *
+	 * @param mixed  $stored   Stored identity.
+	 * @param string $expected Expected identity, or an empty value for a fallback.
+	 */
+	public function test_get_identity_id_normalizes_stored_values( mixed $stored, string $expected ): void {
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $stored );
+
+		$result = $this->sut->get_identity_id();
+
+		if ( '' === $expected ) {
+			$this->assertNotSame( $stored, $result );
+			$this->assertMatchesRegularExpression( '/\A[A-Za-z0-9:_+\/=\-]+\z/', $result );
+			$this->assertLessThanOrEqual( 255, strlen( $result ) );
+		} else {
+			$this->assertSame( $expected, $result );
+		}
+		$this->assertSame( $result, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
+		$this->assertSame( $result, $this->sut->get_identity_id() );
+	}
+
+	/**
+	 * Stored identity cases.
+	 *
+	 * @return array<string, array{mixed, string}>
+	 */
+	public function stored_identity_provider(): array {
+		$exact = str_repeat( 'a', 255 );
+
+		return array(
+			'known Woo form'        => array( 'customer_1234:abc_DEF-+/=', 'customer_1234:abc_DEF-+/=' ),
+			'integer'               => array( 123456, '123456' ),
+			'exactly 255 bytes'     => array( $exact, $exact ),
+			'valid long value'      => array( $exact . 'tail', $exact ),
+			'empty value'           => array( '', '' ),
+			'unsupported character' => array( 'identity with spaces', '' ),
+			'trailing newline'       => array( "identity\n", '' ),
+			'unsupported type'      => array( array( 'identity' ), '' ),
+		);
+	}
+
+	/**
 	 * @testdox Should initialize session and return valid ID when session is not available.
 	 */
 	public function test_get_identity_id_initializes_session_when_unavailable(): void {
@@ -133,6 +176,51 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 
 		wp_set_current_user( 0 );
 		wp_delete_user( $user_id );
+	}
+
+	/**
+	 * @testdox Tracks cookie identities are normalized before storage.
+	 * @dataProvider tracks_identity_provider
+	 *
+	 * @param string $tracks_identity Tracks cookie identity.
+	 * @param bool   $expects_fallback Whether a fallback is expected.
+	 */
+	public function test_get_identity_id_normalizes_tracks_cookie( string $tracks_identity, bool $expects_fallback ): void {
+		$had_cookie = array_key_exists( 'tk_ai', $_COOKIE );
+		$old_cookie = $_COOKIE['tk_ai'] ?? null;
+		try {
+			$_COOKIE['tk_ai'] = $tracks_identity;
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
+
+			$result = $this->sut->get_identity_id();
+
+			$this->assertSame( $result, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
+			$this->assertLessThanOrEqual( 255, strlen( $result ) );
+			if ( $expects_fallback ) {
+				$this->assertStringStartsWith( 'customer_', $result );
+			} else {
+				$this->assertSame( str_repeat( 'a', 255 ), $result );
+			}
+		} finally {
+			if ( $had_cookie ) {
+				$_COOKIE['tk_ai'] = $old_cookie;
+			} else {
+				unset( $_COOKIE['tk_ai'] );
+			}
+			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
+		}
+	}
+
+	/**
+	 * Tracks cookie identity cases.
+	 *
+	 * @return array<string, array{string, bool}>
+	 */
+	public function tracks_identity_provider(): array {
+		return array(
+			'valid long identity' => array( str_repeat( 'a', 300 ), false ),
+			'invalid identity'    => array( 'identity with spaces', true ),
+		);
 	}
 
 	/**

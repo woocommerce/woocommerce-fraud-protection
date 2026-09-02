@@ -239,6 +239,37 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Log identity prefixes use the accepted 255-byte value.
+	 */
+	public function test_log_truncates_valid_long_identity_prefix(): void {
+		$messages = $this->capture_logged_messages();
+		$prefix   = str_repeat( 'a', 255 );
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $prefix . 'tail' );
+
+		FraudProtectionController::log( 'info', 'Test message' );
+
+		$this->assertContains( 'Identity: ' . $prefix . ' | Test message', $messages );
+	}
+
+	/**
+	 * @testdox Rejected legacy identities are omitted from local and forwarded log messages.
+	 */
+	public function test_log_omits_rejected_identity_prefix(): void {
+		$messages = $this->capture_logged_messages();
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, 'invalid identity' );
+
+		$forwarded = $this->capture_error_log(
+			static function () {
+				FraudProtectionController::log( 'error', 'Test message', array(), true );
+			}
+		);
+
+		$this->assertContains( 'Test message', $messages );
+		$this->assertStringNotContainsString( 'invalid identity', $messages[0] );
+		$this->assertStringNotContainsString( 'invalid identity', $forwarded );
+	}
+
+	/**
 	 * Test that log message has no prefix when identity ID is not in session.
 	 */
 	public function test_log_has_no_prefix_when_identity_id_not_in_session(): void {

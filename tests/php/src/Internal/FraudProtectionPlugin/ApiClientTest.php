@@ -11,6 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResultOrigin;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use WP_Error;
 
@@ -168,7 +169,6 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 				'events' => array( array( 'event_type' => 'checkout_update' ) ),
 			)
 		);
-
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/verify/test-session-id', $captured_url );
 		$this->assertIsArray( $captured_body );
 		$this->assertIsArray( $request_log );
@@ -178,7 +178,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'Verifying session with Blackbox API', $request_log['message'] );
 		$this->assertSame( array( 'payload' => $expected_log_payload ), $request_log['context'] );
 		$this->assertFalse( $request_log['forwarded'] );
-		$this->assertLogged( 'info', 'Fraud decision received:', array( 'response' => $response_data ), false );
+		$this->assertLogged( 'info', 'Fraud decision received: allow | Source: blocks_checkout', array( 'response' => $response_data ), false );
 		$this->assertCount( 2, $spy->entries );
 	}
 
@@ -299,7 +299,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$result = $sut->verify( 'test-session-id', array( 'source' => 'blocks_checkout' ) );
 
 		$this->assertSame( FraudDecision::Block, $result->decision );
-		$this->assertFalse( $result->fail_open, 'A parsed verdict is not a fail-open result' );
+		$this->assertSame( VerifyResultOrigin::Response, $result->origin, 'A parsed verdict is not a fail-open result' );
 	}
 
 	/**
@@ -319,7 +319,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertTrue( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::FailOpen, $result->origin );
 		$this->assertLogged( 'error', 'Jetpack blog ID not found' );
 	}
 
@@ -335,7 +335,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertTrue( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::FailOpen, $result->origin );
 		$this->assertLogged( 'error', 'Connection timeout' );
 	}
 
@@ -356,8 +356,44 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertTrue( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::FailOpen, $result->origin );
 		$this->assertLogged( 'error', 'status code 500' );
+	}
+
+	/**
+	 * @testdox verify() returns a marked block only for a received HTTP 413 response.
+	 */
+	public function test_verify_marks_received_http_413_as_rejected(): void {
+		$spy = $this->spy_on_controller_logging();
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 413 ),
+				'body'     => 'rejected-response-body',
+			)
+		);
+
+		$result = $sut->verify( 'limited-identity', array( 'source' => 'blocks_checkout', 'secret' => 'request-value' ) );
+
+		$this->assertSame( FraudDecision::Block, $result->decision );
+		$this->assertSame( '', $result->session_id );
+		$this->assertNull( $result->risk_score );
+		$this->assertSame( VerifyResultOrigin::RequestRejected, $result->origin );
+		$this->assertLogged(
+			'error',
+			'Verification request was rejected.',
+			array(
+				'http_status'  => 413,
+				'response'     => 'rejected-response-body',
+				'event_source' => 'api_verify',
+				'session_id'   => 'limited-identity',
+				'api_endpoint' => '/verify',
+				'error_code'   => 'api_http_error',
+			),
+			true
+		);
+		$this->assertCount( 2, $spy->entries );
+		$this->assertSame( 'Verifying session with Blackbox API', $spy->entries[0]['message'] );
+		$this->assertStringContainsString( 'request-value', (string) wp_json_encode( $spy->entries[0] ) );
 	}
 
 	/**
@@ -377,7 +413,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertTrue( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::FailOpen, $result->origin );
 		$this->assertLogged( 'error', 'Failed to decode JSON' );
 	}
 
@@ -398,7 +434,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertTrue( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::FailOpen, $result->origin );
 		$this->assertLogged( 'error', 'Could not extract decision' );
 	}
 
@@ -414,7 +450,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertTrue( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::FailOpen, $result->origin );
 		$this->assertLogged( 'error', 'Invalid decision value' );
 	}
 
@@ -792,7 +828,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Block, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertFalse( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::Response, $result->origin );
 	}
 
 	/**
@@ -815,7 +851,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Block, $result->decision );
 		$this->assertSame( '', $result->session_id );
-		$this->assertFalse( $result->fail_open );
+		$this->assertSame( VerifyResultOrigin::Response, $result->origin );
 	}
 
 	/**
@@ -875,7 +911,6 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 				'context'    => array( 'result' => 'success' ),
 			)
 		);
-
 		$this->assertStringContainsString( 'blackbox-api.wp.com/v1/report/test-session-id', $captured_url );
 		$this->assertIsArray( $captured_body );
 		$this->assertIsArray( $request_log );
@@ -992,6 +1027,39 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox report() logs the request before an HTTP 413 and returns false.
+	 */
+	public function test_report_returns_false_on_http_413(): void {
+		$spy = $this->spy_on_controller_logging();
+		$sut = $this->api_client_returning(
+			array(
+				'response' => array( 'code' => 413 ),
+				'body'     => 'rejected-response-body',
+			)
+		);
+
+		$result = $sut->report( 'test-session-id', array( 'event_type' => 'payment_success', 'secret' => 'request-value' ) );
+
+		$this->assertFalse( $result );
+		$this->assertCount( 2, $spy->entries );
+		$this->assertSame( 'info', $spy->entries[0]['level'] );
+		$this->assertSame( 'Reporting event to Blackbox API', $spy->entries[0]['message'] );
+		$this->assertStringContainsString( 'request-value', (string) wp_json_encode( $spy->entries[0] ) );
+		$this->assertSame( 'error', $spy->entries[1]['level'] );
+		$this->assertSame(
+			array(
+				'http_status'  => 413,
+				'response'     => 'rejected-response-body',
+				'event_source' => 'api_report',
+				'session_id'   => 'test-session-id',
+				'api_endpoint' => '/report',
+				'error_code'   => 'api_http_error',
+			),
+			$spy->entries[1]['context']
+		);
+	}
+
+	/**
 	 * @testdox verify() drops an unencodable value and still reaches the transport
 	 *
 	 * One case per shape the allowlist rejects. Each costs its own field: the body still encodes,
@@ -1025,7 +1093,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 
 		$this->assertIsArray( $captured_body, 'The transport must be reached with an encodable body' );
 		$this->assertSame( FraudDecision::Block, $result->decision, 'The real verdict must be honoured' );
-		$this->assertFalse( $result->fail_open, 'Verification must not fail open' );
+		$this->assertSame( VerifyResultOrigin::Response, $result->origin, 'Verification must not fail open' );
 
 		$event = $captured_body['context']['events'][0];
 		$this->assertSame( 'item_added', $event['action'], 'The surrounding event must survive' );
