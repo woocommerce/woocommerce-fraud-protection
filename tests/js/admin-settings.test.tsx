@@ -12,19 +12,45 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 
 jest.mock( '@wordpress/components', () => ( {
 	Button: ( {
+		__next40pxDefaultSize,
 		isBusy,
 		...props
 	}: React.ButtonHTMLAttributes< HTMLButtonElement > & {
+		__next40pxDefaultSize?: boolean;
 		isBusy?: boolean;
-	} ) => <button { ...props } data-busy={ isBusy ? 'true' : 'false' } />,
+	} ) => (
+		<button
+			{ ...props }
+			data-busy={ isBusy ? 'true' : 'false' }
+			data-next-40px-size={ __next40pxDefaultSize ? 'true' : 'false' }
+		/>
+	),
 	Card: ( { children }: React.PropsWithChildren ) => (
 		<section>{ children }</section>
 	),
-	CardBody: ( { children }: React.PropsWithChildren ) => (
-		<div>{ children }</div>
+	CardBody: ( {
+		children,
+		size,
+	}: React.PropsWithChildren< { size?: string } > ) => (
+		<div data-testid="settings-card-body" data-size={ size }>
+			{ children }
+		</div>
 	),
-	CardHeader: ( { children }: React.PropsWithChildren ) => (
-		<header>{ children }</header>
+	CardHeader: ( {
+		children,
+		isBorderless,
+		size,
+	}: React.PropsWithChildren< {
+		isBorderless?: boolean;
+		size?: string;
+	} > ) => (
+		<header
+			data-testid="settings-card-header"
+			data-borderless={ isBorderless ? 'true' : 'false' }
+			data-size={ size }
+		>
+			{ children }
+		</header>
 	),
 	CheckboxControl: ( {
 		label,
@@ -71,6 +97,19 @@ describe( 'AutomaticProtectionSettings', () => {
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( checkbox ).not.toBeChecked();
 		expect( save ).toBeDisabled();
+		expect( save ).toHaveAttribute( 'data-next-40px-size', 'true' );
+		expect( screen.getByTestId( 'settings-card-header' ) ).toHaveAttribute(
+			'data-borderless',
+			'true'
+		);
+		expect( screen.getByTestId( 'settings-card-header' ) ).toHaveAttribute(
+			'data-size',
+			'none'
+		);
+		expect( screen.getByTestId( 'settings-card-body' ) ).toHaveAttribute(
+			'data-size',
+			'none'
+		);
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 
 		fireEvent.click( save );

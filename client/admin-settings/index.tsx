@@ -82,7 +82,11 @@ export function AutomaticProtectionSettings() {
 				</Notice>
 			) }
 			<Card className="wc-fraud-protection-settings__card">
-				<CardHeader>
+				<CardHeader
+					className="wc-fraud-protection-settings__header"
+					isBorderless
+					size="none"
+				>
 					<div>
 						<h2>
 							{ __(
@@ -98,7 +102,10 @@ export function AutomaticProtectionSettings() {
 						</p>
 					</div>
 				</CardHeader>
-				<CardBody>
+				<CardBody
+					className="wc-fraud-protection-settings__body"
+					size="none"
+				>
 					<CheckboxControl
 						label={ __(
 							'Automatically block checkout attempts flagged by fraud prevention.',
@@ -112,6 +119,7 @@ export function AutomaticProtectionSettings() {
 			</Card>
 			<div className="wc-fraud-protection-settings__actions">
 				<Button
+					__next40pxDefaultSize
 					variant="primary"
 					type="button"
 					isBusy={ isSaving }
