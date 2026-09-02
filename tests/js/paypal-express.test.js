@@ -61,7 +61,7 @@ function paypalResponse( ok = true, data = { success: true } ) {
 	};
 }
 
-function protectedFetch( endpoint, body = {} ) {
+function fetchPayPalEndpoint( endpoint, body = {} ) {
 	return window.fetch( `https://store.test/?wc-ajax=${ endpoint }`, {
 		body: JSON.stringify( body ),
 	} );
@@ -74,7 +74,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			async ( endpoint ) => {
 				setupAndLoad();
 
-				await protectedFetch( endpoint, {
+				await fetchPayPalEndpoint( endpoint, {
 					nonce: 'abc',
 					context: 'product',
 				} );
@@ -199,7 +199,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			window.wcFraudProtection.acquireSessionId = mockAcquireSessionId;
 			window.wcFraudProtection.reset = jest.fn();
 
-			await protectedFetch( 'ppc-create-order', { nonce: 'abc' } );
+			await fetchPayPalEndpoint( 'ppc-create-order', { nonce: 'abc' } );
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 			const sentBody = JSON.parse( fetchCalls[ 0 ].init.body );
@@ -217,7 +217,7 @@ describe( 'paypal-express fetch interceptor', () => {
 				require( '../../assets/js/paypal-express' );
 			} );
 
-			const response = await protectedFetch( 'ppc-create-order' );
+			const response = await fetchPayPalEndpoint( 'ppc-create-order' );
 
 			expect( response.ok ).toBe( true );
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
@@ -240,7 +240,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			async ( endpoint ) => {
 				setupAndLoad();
 
-				await protectedFetch( endpoint );
+				await fetchPayPalEndpoint( endpoint );
 
 				expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 			}
@@ -265,7 +265,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			);
 			setupAndLoad();
 
-			await expect( protectedFetch( 'ppc-create-order' ) ).rejects.toThrow(
+			await expect( fetchPayPalEndpoint( 'ppc-create-order' ) ).rejects.toThrow(
 				'Network error'
 			);
 
@@ -280,7 +280,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			originalFetch.mockResolvedValueOnce( response );
 			setupAndLoad();
 
-			const result = await protectedFetch( 'ppc-create-setup-token' );
+			const result = await fetchPayPalEndpoint( 'ppc-create-setup-token' );
 
 			expect( result ).toBe( response );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
@@ -302,8 +302,8 @@ describe( 'paypal-express fetch interceptor', () => {
 				events.push( 'reset' );
 			} );
 
-			await protectedFetch( 'ppc-create-order' );
-			await protectedFetch( 'ppc-vault-create-order' );
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+			await fetchPayPalEndpoint( 'ppc-vault-create-order' );
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 			expect( events ).toEqual( [
@@ -335,11 +335,11 @@ describe( 'paypal-express fetch interceptor', () => {
 				events.push( 'reset' );
 			} );
 
-			await protectedFetch( 'ppc-create-order' );
+			await fetchPayPalEndpoint( 'ppc-create-order' );
 			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 			expect( events ).toEqual( [ 'acquire:S1' ] );
 
-			await protectedFetch( 'ppc-create-setup-token' );
+			await fetchPayPalEndpoint( 'ppc-create-setup-token' );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 			expect( events ).toEqual( [ 'acquire:S1', 'reset', 'acquire:S2' ] );
 		} );
@@ -350,8 +350,8 @@ describe( 'paypal-express fetch interceptor', () => {
 			);
 			setupAndLoad();
 
-			await protectedFetch( 'ppc-create-order' );
-			await protectedFetch( 'ppc-create-order' );
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+			await fetchPayPalEndpoint( 'ppc-create-order' );
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
@@ -366,7 +366,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			originalFetch.mockResolvedValueOnce( response );
 			setupAndLoad();
 
-			const result = await protectedFetch( 'ppc-create-order' );
+			const result = await fetchPayPalEndpoint( 'ppc-create-order' );
 
 			expect( result ).toBe( response );
 			expect( response.clone ).toHaveBeenCalledTimes( 1 );

@@ -49,6 +49,20 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	private array $jetpack_blog_id_filters = array();
 
 	/**
+	 * WooCommerce's session object at the start of the test.
+	 *
+	 * @var ?\WC_Session
+	 */
+	private ?\WC_Session $original_woocommerce_session = null;
+
+	/**
+	 * WooCommerce's cart object at the start of the test.
+	 *
+	 * @var ?\WC_Cart
+	 */
+	private ?\WC_Cart $original_woocommerce_cart = null;
+
+	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
@@ -57,6 +71,8 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 		$this->forwarded_platform_logs = array();
 		$this->original_server_variables = array();
 		$this->jetpack_blog_id_filters = array();
+		$this->original_woocommerce_session = WC()->session;
+		$this->original_woocommerce_cart = WC()->cart;
 
 		$this->register_legacy_proxy_function_mocks(
 			array(
@@ -100,9 +116,38 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 
 		$this->reset_woocommerce_checkout_page_cache();
 		$this->reset_legacy_proxy_mocks();
+		WC()->session = $this->original_woocommerce_session;
+		WC()->cart = $this->original_woocommerce_cart;
 		$this->forwarded_platform_logs = array();
 
 		parent::tearDown();
+	}
+
+	/**
+	 * Replace WooCommerce's session for a test.
+	 *
+	 * @param ?\WC_Session $session Replacement session object.
+	 */
+	protected function set_woocommerce_session( ?\WC_Session $session ): void {
+		WC()->session = $session;
+	}
+
+	/**
+	 * Get the original WooCommerce session before a test replaced it.
+	 *
+	 * @return ?\WC_Session
+	 */
+	protected function get_original_woocommerce_session(): ?\WC_Session {
+		return $this->original_woocommerce_session;
+	}
+
+	/**
+	 * Replace WooCommerce's cart for a test.
+	 *
+	 * @param ?\WC_Cart $cart Replacement cart object.
+	 */
+	protected function set_woocommerce_cart( ?\WC_Cart $cart ): void {
+		WC()->cart = $cart;
 	}
 
 	/**

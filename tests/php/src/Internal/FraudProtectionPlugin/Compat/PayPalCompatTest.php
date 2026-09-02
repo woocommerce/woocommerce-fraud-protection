@@ -64,9 +64,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	/** @var PayPalDecisionReuse */
 	private PayPalDecisionReuse $decision_reuse;
 
-	/** @var mixed */
-	private $original_cart;
-
 	/**
 	 * Set up test fixtures.
 	 */
@@ -83,8 +80,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		PayPalContainerStub::reset();
 		PayPalPPCPStub::set_error( null );
 		PayPalJsonResponseCapture::reset();
-		$this->original_cart = WC()->cart;
-
 		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->session_id_normalizer    = new SessionIdNormalizer();
@@ -110,13 +105,13 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		PayPalContainerStub::reset();
 		PayPalPPCPStub::set_error( null );
 		PayPalJsonResponseCapture::reset();
-		WC()->cart = $this->original_cart;
 		$this->reset_fraud_protection_scripts();
 
-		if ( WC()->session ) {
-			WC()->session->set( 'ppcp', null );
-			WC()->session->set( '_fraud_protection_paypal_verification', null );
-			WC()->session->set( '_fraud_protection_paypal_verified_session_id', null );
+		$session = $this->get_original_woocommerce_session();
+		if ( $session ) {
+			$session->set( 'ppcp', null );
+			$session->set( '_fraud_protection_paypal_verification', null );
+			$session->set( '_fraud_protection_paypal_verified_session_id', null );
 		}
 
 		parent::tearDown();
@@ -312,10 +307,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'blocked-session' );
 
-		$original_session = WC()->session;
 		$session          = $this->createMock( \WC_Session::class );
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willThrowException( new \RuntimeException( 'session unavailable' ) );
-		WC()->session = $session;
+		$this->set_woocommerce_session( $session );
 
 		add_filter( 'wp_doing_ajax', '__return_true' );
 		add_filter(
@@ -335,7 +329,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			$blocked = true;
 		} finally {
 			ob_end_clean();
-			WC()->session = $original_session;
 		}
 
 		$this->assertTrue( $blocked, 'The block must still be enforced when recording the verification throws.' );
@@ -353,8 +346,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 	/** @testdox A failed current record write retires an older record and leaves no order association marker. */
 	public function test_failed_record_write_leaves_no_order_association_marker(): void {
-		$original_session = WC()->session;
-		$record           = array(
+		$backing_session = WC()->session;
+		$record          = array(
 			'origin'     => 'paypal_express_order_creation',
 			'session_id' => 'response-session',
 			'decision'   => FraudDecision::Allow,
@@ -362,32 +355,28 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			'order_id'   => '',
 			'cart_hash'  => '',
 		);
-		$original_session->set( '_fraud_protection_paypal_verification', $record );
-		$session     = $this->createMock( \WC_Session::class );
-		$write_count = 0;
+		$backing_session->set( '_fraud_protection_paypal_verification', $record );
+		$session         = $this->createMock( \WC_Session::class );
+		$write_count     = 0;
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willReturnCallback(
-			static function ( string $key, $value ) use ( $original_session, &$write_count ): void {
+			static function ( string $key, $value ) use ( $backing_session, &$write_count ): void {
 				if ( 1 === ++$write_count ) {
 					throw new \RuntimeException( 'session write unavailable' );
 				}
 
-				$original_session->set( $key, $value );
+				$backing_session->set( $key, $value );
 			}
 		);
-		WC()->session = $session;
+		$this->set_woocommerce_session( $session );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
 
-		try {
-			$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
-			$this->assertNull( $original_session->get( '_fraud_protection_paypal_verification' ) );
-			$original_session->set( '_fraud_protection_paypal_verification', $record );
-			$this->sut->associate_created_order_with_verification( new FakePayPalOrder( 'PP-NEW' ) );
-		} finally {
-			WC()->session = $original_session;
-		}
+		$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->assertNull( $backing_session->get( '_fraud_protection_paypal_verification' ) );
+		$backing_session->set( '_fraud_protection_paypal_verification', $record );
+		$this->sut->associate_created_order_with_verification( new FakePayPalOrder( 'PP-NEW' ) );
 
-		$record = $original_session->get( '_fraud_protection_paypal_verification' );
+		$record = $backing_session->get( '_fraud_protection_paypal_verification' );
 		$this->assertIsArray( $record );
 		$this->assertSame( '', $record['order_id'] );
 		$this->assertLogged(
@@ -420,7 +409,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->onlyMethods( array( 'is_empty' ) )
 			->getMock();
 		$cart->method( 'is_empty' )->willThrowException( new \RuntimeException( 'cart unavailable' ) );
-		WC()->cart = $cart;
+		$this->set_woocommerce_cart( $cart );
 
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
@@ -663,7 +652,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$cart->method( 'needs_payment' )->willReturn( true );
 		$cart->method( 'get_cart' )->willReturn( array() );
 		$cart->method( 'get_cart_hash' )->willReturn( 'cart-hash' );
-		WC()->cart = $cart;
+		$this->set_woocommerce_cart( $cart );
 	}
 
 	/** Run a setup-token request. */
