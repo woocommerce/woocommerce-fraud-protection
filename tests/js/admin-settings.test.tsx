@@ -10,6 +10,10 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 	default: jest.fn(),
 } ) );
 
+jest.mock( '@wordpress/icons', () => ( {
+	error: 'error-icon',
+} ) );
+
 jest.mock( '@wordpress/components', () => ( {
 	Button: ( {
 		__next40pxDefaultSize,
@@ -74,8 +78,29 @@ jest.mock( '@wordpress/components', () => ( {
 			/>
 		</label>
 	),
-	Notice: ( { children }: React.PropsWithChildren ) => (
-		<div role="alert">{ children }</div>
+	Icon: ( {
+		className,
+		icon,
+		size,
+	}: {
+		className?: string;
+		icon: string;
+		size: number;
+	} ) => (
+		<span
+			className={ className }
+			data-testid="settings-error-icon"
+			data-icon={ icon }
+			data-size={ size }
+		/>
+	),
+	Notice: ( {
+		children,
+		className,
+	}: React.PropsWithChildren< { className?: string } > ) => (
+		<div className={ className } role="alert">
+			{ children }
+		</div>
 	),
 	SnackbarList: ( {
 		notices,
@@ -211,6 +236,17 @@ describe( 'AutomaticProtectionSettings', () => {
 
 		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
 			'The Fraud Protection setting could not be saved.'
+		);
+		expect( screen.getByRole( 'alert' ) ).toHaveClass(
+			'wc-fraud-protection-settings__error-notice'
+		);
+		expect( screen.getByTestId( 'settings-error-icon' ) ).toHaveAttribute(
+			'data-icon',
+			'error-icon'
+		);
+		expect( screen.getByTestId( 'settings-error-icon' ) ).toHaveAttribute(
+			'data-size',
+			'16'
 		);
 	} );
 } );

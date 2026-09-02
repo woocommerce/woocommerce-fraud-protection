@@ -55,6 +55,7 @@
 		"@wordpress/element": "^8.6.0",
 		"@wordpress/env": "10.39.0",
 		"@wordpress/i18n": "^6.27.0",
+		"@wordpress/icons": "^15.5.0",
 		"@wordpress/scripts": "^31.7.0",
 		"jquery": "^3.7.1",
 		"typescript": "^5.7.3"

@@ -5,11 +5,13 @@ import {
 	CardBody,
 	CardHeader,
 	CheckboxControl,
+	Icon,
 	Notice,
 	SnackbarList,
 } from '@wordpress/components';
 import { createRoot, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
+import { error as errorIcon } from '@wordpress/icons';
 
 import './style.scss';
 
@@ -82,8 +84,19 @@ export function AutomaticProtectionSettings( {
 	return (
 		<div className="wc-fraud-protection-settings__content">
 			{ error && (
-				<Notice status="error" isDismissible={ false }>
-					{ error }
+				<Notice
+					className="wc-fraud-protection-settings__error-notice"
+					status="error"
+					isDismissible={ false }
+				>
+					<div className="wc-fraud-protection-settings__error-content">
+						<Icon
+							className="wc-fraud-protection-settings__error-icon"
+							icon={ errorIcon }
+							size={ 16 }
+						/>
+						<span>{ error }</span>
+					</div>
 				</Notice>
 			) }
 			<Card className="wc-fraud-protection-settings__card">
