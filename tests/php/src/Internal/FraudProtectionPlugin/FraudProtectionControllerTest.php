@@ -5,6 +5,8 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 
@@ -138,6 +140,10 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	 * than being registered directly by the plugin initializer).
 	 */
 	public function test_compat_layer_hooks_are_registered(): void {
+		$container  = wc_get_container();
+		$controller = $this->create_controller();
+		$controller->register();
+
 		// Payment-data resolvers (Stripe, Square, PayPal, WooPayments) all hook this filter.
 		$this->assertNotFalse(
 			has_filter( 'woocommerce_fraud_protection_resolved_payment_data' ),
@@ -148,6 +154,22 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->assertNotFalse(
 			has_action( 'woocommerce_paypal_payments_create_order_request_started' ),
 			'PayPal compat action should be registered via the controller'
+		);
+		$this->assertSame(
+			10,
+			has_filter(
+				'woocommerce_fraud_protection_skip_session_verify',
+				array( $container->get( PayPalDecisionReuse::class ), 'supply_decision_for_paypal_express' )
+			),
+			'PayPal decision reuse filter should be registered via the controller'
+		);
+		$this->assertSame(
+			10,
+			has_action(
+				'woocommerce_paypal_payments_single_product_button_render',
+				array( $container->get( PayPalScriptCompat::class ), 'enqueue_paypal_script' )
+			),
+			'PayPal script action should be registered via the controller'
 		);
 
 		// Subscriptions change-payment-method compat action.
