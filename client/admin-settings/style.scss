@@ -37,3 +37,24 @@
 .wc-fraud-protection-settings__actions {
 	margin-top: 24px;
 }
+
+.wc-fraud-protection-settings__snackbar-list {
+	position: fixed;
+	right: 16px;
+	bottom: 12px;
+	left: 176px;
+	width: auto;
+	z-index: 100001;
+
+	.folded & {
+		left: 52px;
+	}
+
+	@media screen and (max-width: 960px) {
+		left: 52px;
+	}
+
+	@media screen and (max-width: 782px) {
+		left: 16px;
+	}
+}

@@ -6,7 +6,7 @@ import {
 	CardHeader,
 	CheckboxControl,
 	Notice,
-	Snackbar,
+	SnackbarList,
 } from '@wordpress/components';
 import { createRoot, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
@@ -25,6 +25,17 @@ export function AutomaticProtectionSettings() {
 	const [ isSaving, setIsSaving ] = useState( false );
 	const [ error, setError ] = useState< string | null >( null );
 	const [ showSuccess, setShowSuccess ] = useState( false );
+	const successNotices = showSuccess
+		? [
+				{
+					id: 'settings-saved',
+					content: __(
+						'Settings saved.',
+						'woocommerce-fraud-protection'
+					),
+				},
+		  ]
+		: [];
 
 	useEffect( () => {
 		apiFetch< SettingsResponse >( {
@@ -74,6 +85,12 @@ export function AutomaticProtectionSettings() {
 		}
 	};
 
+	const updateValue = ( newValue: boolean ) => {
+		setValue( newValue );
+		setError( null );
+		setShowSuccess( false );
+	};
+
 	return (
 		<div className="wc-fraud-protection-settings__content">
 			{ error && (
@@ -113,7 +130,7 @@ export function AutomaticProtectionSettings() {
 						) }
 						checked={ value }
 						disabled={ initialValue === null || isSaving }
-						onChange={ setValue }
+						onChange={ updateValue }
 					/>
 				</CardBody>
 			</Card>
@@ -133,11 +150,11 @@ export function AutomaticProtectionSettings() {
 					{ __( 'Save', 'woocommerce-fraud-protection' ) }
 				</Button>
 			</div>
-			{ showSuccess && (
-				<Snackbar onRemove={ () => setShowSuccess( false ) }>
-					{ __( 'Settings saved.', 'woocommerce-fraud-protection' ) }
-				</Snackbar>
-			) }
+			<SnackbarList
+				className="wc-fraud-protection-settings__snackbar-list"
+				notices={ successNotices }
+				onRemove={ () => setShowSuccess( false ) }
+			/>
 		</div>
 	);
 }

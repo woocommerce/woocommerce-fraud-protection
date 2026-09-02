@@ -77,8 +77,23 @@ jest.mock( '@wordpress/components', () => ( {
 	Notice: ( { children }: React.PropsWithChildren ) => (
 		<div role="alert">{ children }</div>
 	),
-	Snackbar: ( { children }: React.PropsWithChildren ) => (
-		<div role="status">{ children }</div>
+	SnackbarList: ( {
+		notices,
+		onRemove,
+	}: {
+		notices: Array< { id: string; content: string } >;
+		onRemove: ( id: string ) => void;
+	} ) => (
+		<div>
+			{ notices.map( ( notice ) => (
+				<div key={ notice.id } role="status">
+					{ notice.content }
+					<button onClick={ () => onRemove( notice.id ) }>
+						Dismiss
+					</button>
+				</div>
+			) ) }
+		</div>
 	),
 } ) );
 
@@ -152,6 +167,10 @@ describe( 'AutomaticProtectionSettings', () => {
 		expect( await screen.findByRole( 'status' ) ).toHaveTextContent(
 			'Settings saved.'
 		);
+		fireEvent.click( screen.getByRole( 'button', { name: 'Dismiss' } ) );
+		await waitFor( () => {
+			expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
+		} );
 	} );
 
 	it( 'keeps the controls disabled while a changed value is saving', async () => {
