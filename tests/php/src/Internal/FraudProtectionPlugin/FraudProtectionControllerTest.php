@@ -177,6 +177,10 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 			has_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode' ),
 			'Subscriptions change-payment compat action should be registered via the controller'
 		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_subscriptions_change_payment_after_submit' ),
+			'Subscriptions change-payment form render action should be registered via the controller'
+		);
 	}
 
 	/**
