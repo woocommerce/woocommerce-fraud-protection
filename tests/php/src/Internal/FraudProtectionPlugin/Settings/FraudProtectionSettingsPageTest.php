@@ -26,6 +26,13 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	private $sut;
 
 	/**
+	 * Automatic-protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private $automatic_protection;
+
+	/**
 	 * Original request parameters.
 	 *
 	 * @var array<string, mixed>
@@ -75,9 +82,11 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 			$this->asset_file_contents = (string) file_get_contents( $this->asset_file );
 		}
 		$this->reset_asset_registrations();
-		$this->sut = new FraudProtectionSettingsPage();
+		$this->automatic_protection = wc_get_container()->get( AutomaticProtectionSetting::class );
+		$this->sut                  = new FraudProtectionSettingsPage();
+		$this->sut->init( $this->automatic_protection );
 		$this->sut->register();
-		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
+		$this->automatic_protection->reset();
 	}
 
 	public function tearDown(): void {
@@ -91,7 +100,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		}
 		$this->restore_asset_fixture();
 		$this->reset_asset_registrations();
-		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
+		$this->automatic_protection->reset();
 		remove_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_assets' ) );
 		parent::tearDown();
 	}
@@ -107,17 +116,34 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The page renders only the React mount and hides the classic save button.
+	 * @testdox The page hydrates the effective automatic-protection value and hides the classic save button.
+	 *
+	 * @dataProvider automatic_protection_values
+	 *
+	 * @param bool $enabled Effective automatic-protection value.
 	 */
-	public function test_output_renders_mount_and_hides_classic_save(): void {
+	public function test_output_hydrates_setting_and_hides_classic_save( bool $enabled ): void {
 		$GLOBALS['hide_save_button'] = false;
+		$this->automatic_protection->set_enabled( $enabled );
 
 		ob_start();
 		$this->sut->output();
 		$output = (string) ob_get_clean();
 
-		$this->assertSame( '<div id="wc-fraud-protection-settings"></div>', $output );
+		$this->assertSame( '<div id="wc-fraud-protection-settings" data-automatic-protection="' . ( $enabled ? 'true' : 'false' ) . '"></div>', $output );
 		$this->assertTrue( $GLOBALS['hide_save_button'] );
+	}
+
+	/**
+	 * Effective automatic-protection values.
+	 *
+	 * @return array<string, array{bool}>
+	 */
+	public function automatic_protection_values(): array {
+		return array(
+			'disabled' => array( false ),
+			'enabled'  => array( true ),
+		);
 	}
 
 	/**

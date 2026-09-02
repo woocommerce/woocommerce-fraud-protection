@@ -21,6 +21,13 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	private const SCRIPT_HANDLE = 'wc-fraud-protection-admin-settings';
 
 	/**
+	 * Automatic-protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private AutomaticProtectionSetting $automatic_protection;
+
+	/**
 	 * Initialize the WooCommerce settings page.
 	 */
 	public function __construct() {
@@ -28,6 +35,17 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 		$this->label = __( 'Fraud prevention', 'woocommerce-fraud-protection' );
 
 		parent::__construct();
+	}
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
+	 */
+	final public function init( AutomaticProtectionSetting $automatic_protection ): void {
+		$this->automatic_protection = $automatic_protection;
 	}
 
 	/**
@@ -55,7 +73,10 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	public function output(): void {
 		$GLOBALS['hide_save_button'] = true;
 
-		echo '<div id="wc-fraud-protection-settings"></div>';
+		printf(
+			'<div id="wc-fraud-protection-settings" data-automatic-protection="%s"></div>',
+			esc_attr( $this->automatic_protection->is_enabled() ? 'true' : 'false' )
+		);
 	}
 
 	/**

@@ -8,7 +8,7 @@ import {
 	Notice,
 	SnackbarList,
 } from '@wordpress/components';
-import { createRoot, useEffect, useState } from '@wordpress/element';
+import { createRoot, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
 import './style.scss';
@@ -17,11 +17,17 @@ type SettingsResponse = {
 	automatic_protection: boolean;
 };
 
-export function AutomaticProtectionSettings() {
-	const [ initialValue, setInitialValue ] = useState< boolean | null >(
-		null
+type AutomaticProtectionSettingsProps = {
+	initialAutomaticProtection: boolean;
+};
+
+export function AutomaticProtectionSettings( {
+	initialAutomaticProtection,
+}: AutomaticProtectionSettingsProps ) {
+	const [ savedValue, setSavedValue ] = useState(
+		initialAutomaticProtection
 	);
-	const [ value, setValue ] = useState( false );
+	const [ value, setValue ] = useState( initialAutomaticProtection );
 	const [ isSaving, setIsSaving ] = useState( false );
 	const [ error, setError ] = useState< string | null >( null );
 	const [ showSuccess, setShowSuccess ] = useState( false );
@@ -37,26 +43,8 @@ export function AutomaticProtectionSettings() {
 		  ]
 		: [];
 
-	useEffect( () => {
-		apiFetch< SettingsResponse >( {
-			path: '/wc-fraud-protection/v1/settings',
-		} )
-			.then( ( response ) => {
-				setInitialValue( response.automatic_protection );
-				setValue( response.automatic_protection );
-			} )
-			.catch( () => {
-				setError(
-					__(
-						'The Fraud Protection settings could not be loaded.',
-						'woocommerce-fraud-protection'
-					)
-				);
-			} );
-	}, [] );
-
 	const save = async () => {
-		if ( initialValue === null || initialValue === value || isSaving ) {
+		if ( savedValue === value || isSaving ) {
 			return;
 		}
 
@@ -70,7 +58,7 @@ export function AutomaticProtectionSettings() {
 				method: 'POST',
 				data: { automatic_protection: value },
 			} );
-			setInitialValue( response.automatic_protection );
+			setSavedValue( response.automatic_protection );
 			setValue( response.automatic_protection );
 			setShowSuccess( true );
 		} catch {
@@ -129,7 +117,7 @@ export function AutomaticProtectionSettings() {
 							'woocommerce-fraud-protection'
 						) }
 						checked={ value }
-						disabled={ initialValue === null || isSaving }
+						disabled={ isSaving }
 						onChange={ updateValue }
 					/>
 				</CardBody>
@@ -140,11 +128,7 @@ export function AutomaticProtectionSettings() {
 					variant="primary"
 					type="button"
 					isBusy={ isSaving }
-					disabled={
-						initialValue === null ||
-						initialValue === value ||
-						isSaving
-					}
+					disabled={ savedValue === value || isSaving }
 					onClick={ save }
 				>
 					{ __( 'Save', 'woocommerce-fraud-protection' ) }
@@ -162,5 +146,11 @@ export function AutomaticProtectionSettings() {
 const mount = document.getElementById( 'wc-fraud-protection-settings' );
 
 if ( mount ) {
-	createRoot( mount ).render( <AutomaticProtectionSettings /> );
+	createRoot( mount ).render(
+		<AutomaticProtectionSettings
+			initialAutomaticProtection={
+				mount.dataset.automaticProtection === 'true'
+			}
+		/>
+	);
 }

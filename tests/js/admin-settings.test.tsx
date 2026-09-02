@@ -104,11 +104,12 @@ describe( 'AutomaticProtectionSettings', () => {
 		mockedApiFetch.mockReset();
 	} );
 
-	it( 'keeps an absent effective default unchanged until the checkbox changes', async () => {
-		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: false } );
-		render( <AutomaticProtectionSettings /> );
+	it( 'renders the hydrated disabled value without a request', () => {
+		render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
+		);
 
-		const checkbox = await screen.findByRole( 'checkbox' );
+		const checkbox = screen.getByRole( 'checkbox' );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( checkbox ).not.toBeChecked();
 		expect( save ).toBeDisabled();
@@ -125,33 +126,29 @@ describe( 'AutomaticProtectionSettings', () => {
 			'data-size',
 			'none'
 		);
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( mockedApiFetch ).not.toHaveBeenCalled();
 
 		fireEvent.click( save );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( mockedApiFetch ).not.toHaveBeenCalled();
 	} );
 
-	it( 'disables settings and shows a Notice when loading fails', async () => {
-		mockedApiFetch.mockRejectedValueOnce( new Error( 'failed' ) );
-		render( <AutomaticProtectionSettings /> );
-
-		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
-			'The Fraud Protection settings could not be loaded.'
+	it( 'renders the hydrated enabled value without a request', () => {
+		render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ true } />
 		);
-		const checkbox = screen.getByRole( 'checkbox' );
-		const save = screen.getByRole( 'button', { name: 'Save' } );
-		expect( checkbox ).toBeDisabled();
-		expect( save ).toBeDisabled();
 
-		fireEvent.click( save );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( screen.getByRole( 'checkbox' ) ).toBeChecked();
+		expect( screen.getByRole( 'button', { name: 'Save' } ) ).toBeDisabled();
+		expect( mockedApiFetch ).not.toHaveBeenCalled();
 	} );
 
 	it( 'saves a changed Boolean and shows the success Snackbar', async () => {
-		mockedApiFetch
-			.mockResolvedValueOnce( { automatic_protection: false } )
-			.mockResolvedValueOnce( { automatic_protection: true } );
-		render( <AutomaticProtectionSettings /> );
+		mockedApiFetch.mockResolvedValueOnce( {
+			automatic_protection: true,
+		} );
+		render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
+		);
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
@@ -182,10 +179,10 @@ describe( 'AutomaticProtectionSettings', () => {
 				resolveSave = resolve;
 			}
 		);
-		mockedApiFetch
-			.mockResolvedValueOnce( { automatic_protection: false } )
-			.mockReturnValueOnce( pendingSave );
-		render( <AutomaticProtectionSettings /> );
+		mockedApiFetch.mockReturnValueOnce( pendingSave );
+		render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
+		);
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
@@ -203,10 +200,10 @@ describe( 'AutomaticProtectionSettings', () => {
 	} );
 
 	it( 'shows an inline Notice when saving fails', async () => {
-		mockedApiFetch
-			.mockResolvedValueOnce( { automatic_protection: true } )
-			.mockRejectedValueOnce( new Error( 'failed' ) );
-		render( <AutomaticProtectionSettings /> );
+		mockedApiFetch.mockRejectedValueOnce( new Error( 'failed' ) );
+		render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ true } />
+		);
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
