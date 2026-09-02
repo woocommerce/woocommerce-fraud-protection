@@ -150,8 +150,9 @@ class PayPalCompat {
 				'warning',
 				'Reading protected PayPal request data failed; verifying without a browser session',
 				array(
-					'hook'            => 'ppcp_request_args',
-					'exception_class' => $e::class,
+					'hook'              => 'ppcp_request_args',
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
 				),
 				true
 			);
@@ -175,12 +176,20 @@ class PayPalCompat {
 			throw new \RuntimeException( 'PayPal request data is unavailable.' );
 		}
 
+		$endpoints = array(
+			PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE => 'ppc-create-setup-token',
+			PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE => 'ppc-vault-create-order',
+		);
+		if ( ! isset( $endpoints[ $origin ] ) ) {
+			throw new \UnexpectedValueException( 'Unsupported PayPal request origin.' );
+		}
+
 		$request_data = PPCP::container()->get( 'button.request-data' );
 		if ( ! $request_data instanceof RequestData ) {
 			throw new \UnexpectedValueException( 'PayPal request data is incompatible.' );
 		}
 
-		return $request_data->read_request( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $origin ? 'ppc-create-setup-token' : 'ppc-vault-create-order' );
+		return $request_data->read_request( $endpoints[ $origin ] );
 	}
 
 	/**

@@ -264,10 +264,13 @@ describe( 'paypal-express fetch interceptor', () => {
 				Promise.reject( new Error( 'Network error' ) )
 			);
 			setupAndLoad();
+			window.wcFraudProtection.reset.mockImplementation( () => {
+				throw new Error( 'Reset failed' );
+			} );
 
-			await expect( fetchPayPalEndpoint( 'ppc-create-order' ) ).rejects.toThrow(
-				'Network error'
-			);
+			await expect(
+				fetchPayPalEndpoint( 'ppc-create-order' )
+			).rejects.toThrow( 'Network error' );
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
@@ -279,8 +282,13 @@ describe( 'paypal-express fetch interceptor', () => {
 			const response = paypalResponse( ok, data );
 			originalFetch.mockResolvedValueOnce( response );
 			setupAndLoad();
+			window.wcFraudProtection.reset.mockImplementation( () => {
+				throw new Error( 'Reset failed' );
+			} );
 
-			const result = await fetchPayPalEndpoint( 'ppc-create-setup-token' );
+			const result = await fetchPayPalEndpoint(
+				'ppc-create-setup-token'
+			);
 
 			expect( result ).toBe( response );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
@@ -311,6 +319,23 @@ describe( 'paypal-express fetch interceptor', () => {
 				'reset',
 				'acquire:session-2',
 			] );
+		} );
+
+		it( 'continues a later protected request when reset throws', async () => {
+			setupAndLoad();
+
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+			window.wcFraudProtection.reset.mockImplementation( () => {
+				throw new Error( 'Reset failed' );
+			} );
+
+			const response = await fetchPayPalEndpoint(
+				'ppc-vault-create-order'
+			);
+
+			expect( response.ok ).toBe( true );
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			expect( originalFetch ).toHaveBeenCalledTimes( 2 );
 		} );
 
 		it( 'resets before a later protected PayPal request after an unreadable response', async () => {

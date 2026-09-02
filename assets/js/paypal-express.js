@@ -28,8 +28,12 @@
 	}
 
 	function resetSession( fp ) {
-		if ( typeof fp.reset === 'function' ) {
-			fp.reset();
+		try {
+			if ( typeof fp.reset === 'function' ) {
+				fp.reset();
+			}
+		} catch ( e ) {
+			// Fail open.
 		}
 	}
 

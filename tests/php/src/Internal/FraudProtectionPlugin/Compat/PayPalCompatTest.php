@@ -582,7 +582,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider request_data_failure_provider
 	 */
-	public function test_request_data_failure_verifies_without_session_id( string $failure, string $action, string $path, string $source ): void {
+	public function test_request_data_failure_verifies_without_session_id( string $failure, string $action, string $path, string $source, string $exception_message ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ), $failure );
 		$this->session_verifier
 			->expects( $this->once() )
@@ -594,17 +594,25 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->run_protected_request( $action, array( 'method' => 'POST' ), $path );
 
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+		$this->assertLogged(
+			'warning',
+			'Reading protected PayPal request data failed',
+			array(
+				'hook'              => 'ppcp_request_args',
+				'exception_message' => $exception_message,
+			)
+		);
 	}
 
-	/** @return array<string, array{string, string, string, string}> */
+	/** @return array<string, array{string, string, string, string, string}> */
 	public function request_data_failure_provider(): array {
 		return array(
-			'setup container'            => array( 'container', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation' ),
-			'setup incompatible service' => array( 'service', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation' ),
-			'setup read or nonce'        => array( 'read', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation' ),
-			'vault container'            => array( 'container', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation' ),
-			'vault incompatible service' => array( 'service', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation' ),
-			'vault read or nonce'        => array( 'read', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation' ),
+			'setup container'            => array( 'container', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation', 'container unavailable' ),
+			'setup incompatible service' => array( 'service', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation', 'PayPal request data is incompatible.' ),
+			'setup read or nonce'        => array( 'read', 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation', 'invalid request' ),
+			'vault container'            => array( 'container', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation', 'container unavailable' ),
+			'vault incompatible service' => array( 'service', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation', 'PayPal request data is incompatible.' ),
+			'vault read or nonce'        => array( 'read', 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation', 'invalid request' ),
 		);
 	}
 
