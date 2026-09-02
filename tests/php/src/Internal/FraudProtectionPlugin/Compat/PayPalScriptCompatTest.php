@@ -691,4 +691,3 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 
 
 }
-

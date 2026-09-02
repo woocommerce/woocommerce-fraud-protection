@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
@@ -143,6 +144,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$container->get( PayPalPaymentDataCompat::class )->register();
 		$container->get( WooPaymentsPaymentDataCompat::class )->register();
 		$container->get( PayPalCompat::class )->register();
+		$container->get( PayPalDecisionReuse::class )->register();
 		$container->get( PayPalScriptCompat::class )->register();
 		$container->get( SubscriptionsChangePaymentCompat::class )->register();
 	}

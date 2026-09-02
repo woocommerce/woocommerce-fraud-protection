@@ -107,6 +107,28 @@ class PayPalPPCPStub {
 	}
 }
 
+/** PayPal request-data stub. */
+class PayPalRequestDataStub {
+
+	/** @var array */
+	public static array $data = array();
+
+	/** @var ?\Throwable */
+	public static ?\Throwable $error = null;
+
+	/** Read controlled request data. */
+	public function read_request( string $nonce ): array {
+		if ( null !== self::$error ) {
+			throw self::$error;
+		}
+
+		return self::$data + array( 'validated_nonce' => $nonce );
+	}
+}
+
+/** Subscriptions runtime stub. */
+class PayPalSubscriptionsStub {}
+
 /** Captured PayPal JSON response. */
 class PayPalJsonResponseCapture {
 

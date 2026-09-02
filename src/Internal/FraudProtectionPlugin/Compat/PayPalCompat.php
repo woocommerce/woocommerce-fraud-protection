@@ -12,7 +12,6 @@ use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
-use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use WooCommerce\PayPalCommerce\Button\Endpoint\RequestData;
 use WooCommerce\PayPalCommerce\PPCP;
@@ -22,35 +21,9 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Integrates Blackbox fraud protection into PayPal Payments express checkout flows.
  *
- * Verifies protected PayPal requests and carries one response-backed decision
- * to the matching final request.
+ * Verifies protected PayPal requests and blocks their transport when required.
  */
 class PayPalCompat {
-
-	/**
-	 * Source identifier for verify requests from PayPal express flows.
-	 */
-	private const ORDER_CREATION_SOURCE = 'paypal_express_order_creation';
-
-	/**
-	 * Source identifier for setup-token requests.
-	 */
-	private const SETUP_TOKEN_CREATION_SOURCE = 'paypal_setup_token_creation';
-
-	/**
-	 * Source identifier for vault-order requests.
-	 */
-	private const VAULT_ORDER_CREATION_SOURCE = 'paypal_vault_order_creation';
-
-	/**
-	 * Gateway ID prefix shared by all PayPal Payments gateways.
-	 */
-	private const PAYPAL_GATEWAY_PREFIX = 'ppcp-';
-
-	/**
-	 * WC session key for the current PayPal verification record.
-	 */
-	private const VERIFICATION_RECORD_KEY = '_fraud_protection_paypal_verification';
 
 	/**
 	 * Session verifier instance.
@@ -74,6 +47,13 @@ class PayPalCompat {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
+	 * PayPal decision reuse service.
+	 *
+	 * @var PayPalDecisionReuse
+	 */
+	private PayPalDecisionReuse $decision_reuse;
+
+	/**
 	 * The session ID this request's order verification recorded, if any.
 	 *
 	 * @var string
@@ -95,15 +75,18 @@ class PayPalCompat {
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
 	 * @param SessionIdNormalizer   $session_id_normalizer    The session ID normalizer.
+	 * @param PayPalDecisionReuse   $decision_reuse           The PayPal decision reuse service.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
 		BlockedSessionMessage $blocked_session_message,
-		SessionIdNormalizer $session_id_normalizer
+		SessionIdNormalizer $session_id_normalizer,
+		PayPalDecisionReuse $decision_reuse
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
 		$this->session_id_normalizer   = $session_id_normalizer;
+		$this->decision_reuse          = $decision_reuse;
 	}
 
 	/**
@@ -115,7 +98,6 @@ class PayPalCompat {
 		add_action( 'woocommerce_paypal_payments_create_order_request_started', array( $this, 'verify_and_block_create_order' ) );
 		add_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this, 'associate_created_order_with_verification' ) );
 		add_filter( 'ppcp_request_args', array( $this, 'verify_protected_paypal_request' ), 10, 2 );
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this, 'supply_decision_for_paypal_express' ), 10, 4 );
 	}
 
 	/**
@@ -136,7 +118,7 @@ class PayPalCompat {
 		$submitted_session_id = $request_data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
 		$can_store_result     = '' !== $this->session_id_normalizer->normalize_stored( $submitted_session_id );
 
-		$this->verify_and_block_paypal_request( $request_data, self::ORDER_CREATION_SOURCE, $can_store_result );
+		$this->verify_and_block_paypal_request( $request_data, PayPalDecisionReuse::ORDER_CREATION_SOURCE, $can_store_result );
 	}
 
 	/**
@@ -198,172 +180,25 @@ class PayPalCompat {
 			throw new \UnexpectedValueException( 'PayPal request data is incompatible.' );
 		}
 
-		return $request_data->read_request( self::SETUP_TOKEN_CREATION_SOURCE === $origin ? 'ppc-create-setup-token' : 'ppc-vault-create-order' );
+		return $request_data->read_request( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $origin ? 'ppc-create-setup-token' : 'ppc-vault-create-order' );
 	}
 
 	/**
-	 * Associate the PayPal order just created with the verification that covered it.
-	 *
-	 * Runs on `woocommerce_paypal_payments_paypal_order_created`, which fires
-	 * in the same request as the create-order verification, once the order
-	 * exists — the identity the create-order hook fires too early to know.
-	 * The order ID is what the approved-order route matches on later. Without
-	 * a verification recorded by this request — a server-side order creation,
-	 * say — there is no verification to associate with the order.
+	 * Associate the PayPal order just created with this request's verification.
 	 *
 	 * @internal
 	 *
-	 * @param mixed $order The PayPal order entity; foreign code's object, read defensively.
+	 * @param mixed $order PayPal order entity.
 	 * @return void
 	 */
 	public function associate_created_order_with_verification( $order ): void {
-		// Consumed on read, before the try, so the session ID state is always
-		// spent and remains available to the fail-open log.
 		$session_id = $this->session_recorded_this_request;
 		$origin     = $this->origin_recorded_this_request;
 
 		$this->session_recorded_this_request = '';
 		$this->origin_recorded_this_request  = '';
 
-		// This runs on a ppcp hook, outside SessionVerifier's fail-open guard,
-		// inside the create-order request that already minted the order — so any
-		// throw here (the foreign order object, a bad session deserialize, the
-		// write) would fail the shopper's checkout. Fail open: on any throw,
-		// leave the verification without an associated order so a later completion leg verifies.
-		try {
-			if ( '' === $session_id || ! function_exists( 'WC' ) || ! WC()->session ) {
-				return;
-			}
-
-			if ( ! is_object( $order ) || ! method_exists( $order, 'id' ) ) {
-				return;
-			}
-
-			$order_id = $order->id();
-
-			if ( ! is_string( $order_id ) || '' === $order_id ) {
-				return;
-			}
-
-			$record = $this->get_verified_session_record();
-
-			if ( null === $record || $record['session_id'] !== $session_id || $record['origin'] !== $origin ) {
-				return;
-			}
-
-			$record['order_id'] = $order_id;
-
-			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
-		} catch ( \Throwable $e ) {
-			FraudProtectionController::log(
-				'warning',
-				'Associating the created PayPal order threw; leaving the verification without an associated order',
-				array(
-					'hook'              => 'woocommerce_paypal_payments_paypal_order_created',
-					'session_id'        => $session_id,
-					'exception_class'   => $e::class,
-					'exception_message' => $e->getMessage(),
-				),
-				true
-			);
-		}
-	}
-
-	/**
-	 * Skip redundant verification for PayPal flows handled by PayPalCompat.
-	 *
-	 * Answers requests this class already scored with the decision that scoring
-	 * produced, so one payment attempt is not scored twice; everything else is
-	 * deferred and verified normally. Standard filter arbitration: a consumer
-	 * that wants the last word registers with a later priority.
-	 *
-	 * @internal
-	 *
-	 * @param SuppliedDecision|false $supplied_decision The filter's default (false), or what an earlier consumer returned.
-	 * @param string                 $source            Source identifier.
-	 * @param array                  $request_data      Request data with payment_method, payment_data, etc.
-	 * @param string                 $session_id        The Blackbox session ID being verified.
-	 * @return SuppliedDecision|false The supplied result, or the value passed in to defer.
-	 */
-	public function supply_decision_for_paypal_express( SuppliedDecision|false $supplied_decision, string $source, array $request_data, string $session_id ): SuppliedDecision|false {
-		if ( in_array( $source, array( self::ORDER_CREATION_SOURCE, self::SETUP_TOKEN_CREATION_SOURCE, self::VAULT_ORDER_CREATION_SOURCE ), true ) ) {
-			return $supplied_decision;
-		}
-
-		$payment_method = is_string( $request_data['payment_method'] ?? null ) ? $request_data['payment_method'] : '';
-
-		// Not a PayPal gateway — nothing for this filter to do.
-		if ( ! $this->is_paypal_gateway( $payment_method ) ) {
-			return $supplied_decision;
-		}
-
-		$resolved_session_id = '';
-		try {
-			$record            = $this->get_verified_session_record();
-			$stored_session_id = null === $record ? '' : $this->session_id_normalizer->normalize_stored( $record['session_id'] );
-			if ( null === $record || $record['used'] || '' === $session_id || '' === $stored_session_id || $stored_session_id !== $session_id ) {
-				$this->retire_verification_record();
-				return $supplied_decision;
-			}
-
-			$resolved_session_id = $stored_session_id;
-			$matches             = self::SETUP_TOKEN_CREATION_SOURCE === $record['origin']
-				? $this->setup_record_matches( $record, $source )
-				: $this->order_record_matches( $record, $source, $request_data );
-			if ( ! $matches ) {
-				$this->retire_verification_record();
-				return $supplied_decision;
-			}
-
-			$record['used'] = true;
-			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
-
-			return new SuppliedDecision( $record['decision'], $record['session_id'] );
-		} catch ( \Throwable $e ) {
-			$this->retire_verification_record();
-			$context = array(
-				'event_source'      => $source,
-				'exception_class'   => $e::class,
-				'exception_message' => $e->getMessage(),
-			);
-			if ( '' !== $resolved_session_id ) {
-				$context['session_id'] = $resolved_session_id;
-			}
-			FraudProtectionController::log(
-				'warning',
-				'Reading or consuming the PayPal request verification record failed; final request will verify',
-				$context,
-				true
-			);
-
-			return $supplied_decision;
-		}
-	}
-
-	/**
-	 * The ID of the approved PayPal order in the WC session, if one is there.
-	 *
-	 * PayPal Payments keeps its order entity under the 'ppcp' session key;
-	 * the entity is foreign code's object, so it is read defensively.
-	 *
-	 * @return string The order ID, or empty string.
-	 */
-	private function paypal_order_id_in_session(): string {
-		$ppcp_session = WC()->session->get( 'ppcp' );
-
-		if ( ! is_array( $ppcp_session ) ) {
-			return '';
-		}
-
-		$order = $ppcp_session['order'] ?? null;
-
-		if ( ! is_object( $order ) || ! method_exists( $order, 'id' ) ) {
-			return '';
-		}
-
-		$order_id = $order->id();
-
-		return is_string( $order_id ) ? $order_id : '';
+		$this->decision_reuse->associate_created_order( $order, $session_id, $origin );
 	}
 
 	/**
@@ -380,9 +215,9 @@ class PayPalCompat {
 		$record_stored        = false;
 
 		try {
-			$record_stored = $this->update_verification_record( $origin, $resolved_session_id, $decision, $can_store_result );
+			$record_stored = $this->decision_reuse->record_verification( $origin, $resolved_session_id, $decision, $can_store_result );
 		} catch ( \Throwable $e ) {
-			$this->retire_verification_record();
+			$this->decision_reuse->retire_verification_record();
 			$context = array(
 				'event_source'      => $origin,
 				'exception_class'   => $e::class,
@@ -406,7 +241,7 @@ class PayPalCompat {
 			);
 		}
 
-		if ( $record_stored && in_array( $origin, array( self::ORDER_CREATION_SOURCE, self::VAULT_ORDER_CREATION_SOURCE ), true ) ) {
+		if ( $record_stored && in_array( $origin, array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE ), true ) ) {
 			$this->session_recorded_this_request = $resolved_session_id;
 			$this->origin_recorded_this_request  = $origin;
 		}
@@ -428,184 +263,13 @@ class PayPalCompat {
 		$path = is_string( $path ) ? '/' . ltrim( untrailingslashit( $path ), '/' ) : '';
 
 		if ( doing_action( 'wc_ajax_ppc-create-setup-token' ) && '/v3/vault/setup-tokens' === $path ) {
-			return self::SETUP_TOKEN_CREATION_SOURCE;
+			return PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE;
 		}
 
 		if ( doing_action( 'wc_ajax_ppc-vault-create-order' ) && '/v2/checkout/orders' === $path ) {
-			return self::VAULT_ORDER_CREATION_SOURCE;
+			return PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE;
 		}
 
 		return '';
-	}
-
-	/**
-	 * Store the current response-backed PayPal request decision.
-	 *
-	 * @param string        $origin         Verification source.
-	 * @param string        $session_id     Response-backed session ID.
-	 * @param FraudDecision $decision       Applied decision.
-	 * @param bool          $can_store_result Whether this result can be matched by the submitted session ID.
-	 * @return bool Whether the current actionable record was stored.
-	 */
-	private function update_verification_record( string $origin, string $session_id, FraudDecision $decision, bool $can_store_result ): bool {
-		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-			return false;
-		}
-
-		$record = null;
-		if ( $can_store_result && '' !== $session_id && in_array( $decision, FraudDecision::ACTIONABLE, true ) ) {
-			$record = array(
-				'origin'     => $origin,
-				'session_id' => $session_id,
-				'decision'   => $decision,
-				'used'       => false,
-				'order_id'   => '',
-				'cart_hash'  => '',
-			);
-
-			if ( self::SETUP_TOKEN_CREATION_SOURCE === $origin ) {
-				$cart_hash = $this->eligible_setup_cart_hash();
-				$record    = '' === $cart_hash ? null : array_merge( $record, array( 'cart_hash' => $cart_hash ) );
-			}
-		}
-
-		WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
-
-		return null !== $record;
-	}
-
-	/**
-	 * Read the current verification record from the WC session.
-	 *
-	 * @return ?array{origin: string, session_id: string, decision: FraudDecision, used: bool, order_id: string, cart_hash: string} The record, or null.
-	 */
-	private function get_verified_session_record(): ?array {
-		$stored = WC()->session->get( self::VERIFICATION_RECORD_KEY );
-
-		if ( ! is_array( $stored ) ) {
-			return null;
-		}
-
-		$origin     = $stored['origin'] ?? null;
-		$session_id = $stored['session_id'] ?? null;
-		$decision   = $stored['decision'] ?? null;
-		$used       = $stored['used'] ?? null;
-
-		if (
-			! is_string( $origin )
-			|| ! in_array( $origin, array( self::ORDER_CREATION_SOURCE, self::SETUP_TOKEN_CREATION_SOURCE, self::VAULT_ORDER_CREATION_SOURCE ), true )
-			|| ! is_string( $session_id )
-			|| '' === $session_id
-			|| ! $decision instanceof FraudDecision
-			|| ! in_array( $decision, FraudDecision::ACTIONABLE, true )
-			|| ! is_bool( $used )
-		) {
-			return null;
-		}
-
-		return array(
-			'origin'     => $origin,
-			'session_id' => $session_id,
-			'decision'   => $decision,
-			'used'       => $used,
-			'order_id'   => is_string( $stored['order_id'] ?? null ) ? $stored['order_id'] : '',
-			'cart_hash'  => is_string( $stored['cart_hash'] ?? null ) ? $stored['cart_hash'] : '',
-		);
-	}
-
-	/**
-	 * Check an order record against its permitted final request.
-	 *
-	 * @param array{origin: string, session_id: string, decision: FraudDecision, used: bool, order_id: string, cart_hash: string} $record       Verification record.
-	 * @param string                                                                                                              $source       Verification source.
-	 * @param array                                                                                                               $request_data Final request data.
-	 * @return bool Whether the request matches.
-	 */
-	private function order_record_matches( array $record, string $source, array $request_data ): bool {
-		$allowed_sources = self::VAULT_ORDER_CREATION_SOURCE === $record['origin']
-			? array( 'shortcode_checkout', 'blocks_checkout', 'pay_for_order', 'subscriptions_change_payment' )
-			: array( 'shortcode_checkout', 'blocks_checkout', 'pay_for_order' );
-		if ( ! in_array( $source, $allowed_sources, true ) || '' === $record['order_id'] ) {
-			return false;
-		}
-
-		$payment_data = is_array( $request_data['payment_data'] ?? null ) ? $request_data['payment_data'] : array();
-		$order_id     = is_string( $payment_data['paypal_order_id'] ?? null ) ? $payment_data['paypal_order_id'] : '';
-		if ( '' === $order_id ) {
-			$order_id = $this->paypal_order_id_in_session();
-		}
-
-		return '' !== $order_id && $record['order_id'] === $order_id;
-	}
-
-	/**
-	 * Check a setup record against its permitted final request.
-	 *
-	 * @param array{origin: string, session_id: string, decision: FraudDecision, used: bool, order_id: string, cart_hash: string} $record Verification record.
-	 * @param string                                                                                                              $source Verification source.
-	 * @return bool Whether the request matches.
-	 */
-	private function setup_record_matches( array $record, string $source ): bool {
-		return in_array( $source, array( 'shortcode_checkout', 'blocks_checkout' ), true )
-			&& '' !== $record['cart_hash']
-			&& $record['cart_hash'] === $this->eligible_setup_cart_hash();
-	}
-
-	/**
-	 * Get the cart hash when the current cart can use a setup-token decision.
-	 *
-	 * @return string Eligible nonempty cart hash, or an empty string.
-	 */
-	private function eligible_setup_cart_hash(): string {
-		if ( ! class_exists( 'WC_Subscriptions' ) || ! function_exists( 'WC' ) || ! WC()->cart ) {
-			return '';
-		}
-
-		$cart = WC()->cart;
-		if ( ! $cart->is_empty() && true !== $cart->needs_payment() ) {
-			$cart->calculate_totals();
-		}
-
-		$total = $cart->get_total( 'edit' );
-		if ( $cart->is_empty() || ! is_numeric( $total ) || (float) $total > 0 || true !== $cart->needs_payment() ) {
-			return '';
-		}
-
-		foreach ( $cart->get_cart() as $cart_item ) {
-			$product           = is_array( $cart_item ) ? ( $cart_item['data'] ?? null ) : null;
-			$subscription_plan = is_object( $product ) && method_exists( $product, 'get_meta' ) ? $product->get_meta( 'ppcp_subscription_plan' ) : null;
-			if ( ! empty( $subscription_plan ) ) {
-				return '';
-			}
-		}
-
-		$cart_hash = $cart->get_cart_hash();
-
-		return is_string( $cart_hash ) ? $cart_hash : '';
-	}
-
-	/**
-	 * Retire the current verification record without affecting the request.
-	 *
-	 * @return void
-	 */
-	private function retire_verification_record(): void {
-		try {
-			if ( function_exists( 'WC' ) && WC()->session ) {
-				WC()->session->set( self::VERIFICATION_RECORD_KEY, null );
-			}
-		} catch ( \Throwable $e ) {
-			unset( $e );
-		}
-	}
-
-	/**
-	 * Check if a gateway ID belongs to PayPal Payments.
-	 *
-	 * @param string $gateway_id The gateway ID to check.
-	 * @return bool
-	 */
-	private function is_paypal_gateway( string $gateway_id ): bool {
-		return str_starts_with( $gateway_id, self::PAYPAL_GATEWAY_PREFIX );
 	}
 }
