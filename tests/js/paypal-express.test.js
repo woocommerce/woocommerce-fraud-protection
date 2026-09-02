@@ -16,6 +16,12 @@ let mockAcquireSessionId;
 let originalFetch;
 let fetchCalls;
 
+const PROTECTED_ENDPOINTS = [
+	'ppc-create-order',
+	'ppc-create-setup-token',
+	'ppc-vault-create-order',
+];
+
 beforeEach( () => {
 	delete window.wcFraudProtection;
 
@@ -55,25 +61,23 @@ function paypalResponse( ok = true, data = { success: true } ) {
 	};
 }
 
+function protectedFetch( endpoint, body = {} ) {
+	return window.fetch( `https://store.test/?wc-ajax=${ endpoint }`, {
+		body: JSON.stringify( body ),
+	} );
+}
+
 describe( 'paypal-express fetch interceptor', () => {
 	describe( 'interception', () => {
-		it.each( [
-			'ppc-create-order',
-			'ppc-create-setup-token',
-			'ppc-vault-create-order',
-		] )(
+		it.each( PROTECTED_ENDPOINTS )(
 			'intercepts exact %s requests and injects session_id',
 			async ( endpoint ) => {
 				setupAndLoad();
 
-				const body = JSON.stringify( {
+				await protectedFetch( endpoint, {
 					nonce: 'abc',
 					context: 'product',
 				} );
-				await window.fetch(
-					`https://store.test/?wc-ajax=${ endpoint }`,
-					{ body }
-				);
 
 				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 				expect( fetchCalls ).toHaveLength( 1 );
@@ -110,24 +114,16 @@ describe( 'paypal-express fetch interceptor', () => {
 			expect( fetchCalls[ 0 ].init.body ).toBe( '{}' );
 		} );
 
-		it( 'handles Request objects with url property', async () => {
+		it.each( [
+			{ name: 'Request', makeResource: ( url ) => new Request( url ) },
+			{ name: 'URL', makeResource: ( url ) => new URL( url ) },
+		] )( 'handles $name resources', async ( { makeResource } ) => {
 			setupAndLoad();
-
-			const request = new Request(
+			const resource = makeResource(
 				'https://store.test/?wc-ajax=ppc-create-order'
 			);
-			await window.fetch( request, { body: JSON.stringify( {} ) } );
 
-			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
-		} );
-
-		it( 'handles URL objects', async () => {
-			setupAndLoad();
-
-			const url = new URL(
-				'https://store.test/?wc-ajax=ppc-create-order'
-			);
-			await window.fetch( url, { body: JSON.stringify( {} ) } );
+			await window.fetch( resource, { body: JSON.stringify( {} ) } );
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 		} );
@@ -166,7 +162,6 @@ describe( 'paypal-express fetch interceptor', () => {
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 			expect( fetchCalls ).toHaveLength( 1 );
-			// Body is unchanged since JSON.parse failed.
 			expect( fetchCalls[ 0 ].init.body ).toBe( 'not-json' );
 		} );
 
@@ -199,15 +194,12 @@ describe( 'paypal-express fetch interceptor', () => {
 				require( '../../assets/js/paypal-express' );
 			} );
 
-			// Simulate blackbox-init.js executing later (e.g. deferred by a
-			// script optimizer) and attaching the API after this script ran.
+			// The shared init script can attach the API after this interceptor loads.
+			// The interceptor must resolve the API when each request starts.
 			window.wcFraudProtection.acquireSessionId = mockAcquireSessionId;
 			window.wcFraudProtection.reset = jest.fn();
 
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: JSON.stringify( { nonce: 'abc' } ) }
-			);
+			await protectedFetch( 'ppc-create-order', { nonce: 'abc' } );
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 			const sentBody = JSON.parse( fetchCalls[ 0 ].init.body );
@@ -225,44 +217,30 @@ describe( 'paypal-express fetch interceptor', () => {
 				require( '../../assets/js/paypal-express' );
 			} );
 
-			const response = await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: JSON.stringify( {} ) }
-			);
+			const response = await protectedFetch( 'ppc-create-order' );
 
 			expect( response.ok ).toBe( true );
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 		} );
 
 		it( 'does nothing when wcFraudProtection is not available', async () => {
-			// Don't call setupAndLoad — wcFraudProtection is not set.
 			const savedFetch = window.fetch;
 
 			jest.isolateModules( () => {
 				require( '../../assets/js/paypal-express' );
 			} );
 
-			// fetch should not have been replaced.
 			expect( window.fetch ).toBe( savedFetch );
 		} );
 	} );
 
 	describe( 'reset', () => {
-		it.each( [
-			'ppc-create-order',
-			'ppc-create-setup-token',
-			'ppc-vault-create-order',
-		] )(
+		it.each( PROTECTED_ENDPOINTS )(
 			'keeps the session after a successful %s request',
 			async ( endpoint ) => {
 				setupAndLoad();
 
-				await window.fetch(
-					`https://store.test/?wc-ajax=${ endpoint }`,
-					{
-						body: JSON.stringify( {} ),
-					}
-				);
+				await protectedFetch( endpoint );
 
 				expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 			}
@@ -287,11 +265,9 @@ describe( 'paypal-express fetch interceptor', () => {
 			);
 			setupAndLoad();
 
-			await expect(
-				window.fetch( 'https://store.test/?wc-ajax=ppc-create-order', {
-					body: JSON.stringify( {} ),
-				} )
-			).rejects.toThrow( 'Network error' );
+			await expect( protectedFetch( 'ppc-create-order' ) ).rejects.toThrow(
+				'Network error'
+			);
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
@@ -300,21 +276,11 @@ describe( 'paypal-express fetch interceptor', () => {
 			[ false, { success: true } ],
 			[ true, { success: false } ],
 		] )( 'resets after a confirmed failed response', async ( ok, data ) => {
-			const response = {
-				ok,
-				clone: jest.fn( () => ( {
-					json: () => Promise.resolve( data ),
-				} ) ),
-			};
+			const response = paypalResponse( ok, data );
 			originalFetch.mockResolvedValueOnce( response );
 			setupAndLoad();
 
-			const result = await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-setup-token',
-				{
-					body: '{}',
-				}
-			);
+			const result = await protectedFetch( 'ppc-create-setup-token' );
 
 			expect( result ).toBe( response );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
@@ -336,14 +302,8 @@ describe( 'paypal-express fetch interceptor', () => {
 				events.push( 'reset' );
 			} );
 
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: '{}' }
-			);
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-vault-create-order',
-				{ body: '{}' }
-			);
+			await protectedFetch( 'ppc-create-order' );
+			await protectedFetch( 'ppc-vault-create-order' );
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 			expect( events ).toEqual( [
@@ -375,17 +335,11 @@ describe( 'paypal-express fetch interceptor', () => {
 				events.push( 'reset' );
 			} );
 
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: '{}' }
-			);
+			await protectedFetch( 'ppc-create-order' );
 			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 			expect( events ).toEqual( [ 'acquire:S1' ] );
 
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-setup-token',
-				{ body: '{}' }
-			);
+			await protectedFetch( 'ppc-create-setup-token' );
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 			expect( events ).toEqual( [ 'acquire:S1', 'reset', 'acquire:S2' ] );
 		} );
@@ -396,14 +350,8 @@ describe( 'paypal-express fetch interceptor', () => {
 			);
 			setupAndLoad();
 
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: '{}' }
-			);
-			await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: '{}' }
-			);
+			await protectedFetch( 'ppc-create-order' );
+			await protectedFetch( 'ppc-create-order' );
 
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
@@ -418,10 +366,7 @@ describe( 'paypal-express fetch interceptor', () => {
 			originalFetch.mockResolvedValueOnce( response );
 			setupAndLoad();
 
-			const result = await window.fetch(
-				'https://store.test/?wc-ajax=ppc-create-order',
-				{ body: '{}' }
-			);
+			const result = await protectedFetch( 'ppc-create-order' );
 
 			expect( result ).toBe( response );
 			expect( response.clone ).toHaveBeenCalledTimes( 1 );

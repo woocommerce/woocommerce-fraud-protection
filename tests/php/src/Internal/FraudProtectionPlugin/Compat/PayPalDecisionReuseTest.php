@@ -7,22 +7,13 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
-require_once dirname( __DIR__, 4 ) . '/Support/PayPalPPCPStubs.php';
-
-use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
-use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
-use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalContainerStub;
-use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalJsonResponseCapture;
-use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalPPCPStub;
-use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalRequestDataStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalSubscriptionsStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 
 /**
@@ -32,12 +23,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
  */
 class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
-	private PayPalCompat $paypal_compat;
-
 	private PayPalDecisionReuse $decision_reuse;
-
-	/** @var SessionVerifier&\PHPUnit\Framework\MockObject\MockObject */
-	private $session_verifier;
 
 	/** @var mixed */
 	private $original_cart;
@@ -47,50 +33,26 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		if ( ! class_exists( '\\WooCommerce\\PayPalCommerce\\PPCP', false ) ) {
-			class_alias( PayPalPPCPStub::class, 'WooCommerce\\PayPalCommerce\\PPCP' );
-		}
 		if ( ! class_exists( 'WC_Subscriptions' ) ) {
 			class_alias( PayPalSubscriptionsStub::class, 'WC_Subscriptions' );
 		}
-		PayPalRequestDataStub::$data  = array();
-		PayPalRequestDataStub::$error = null;
-		PayPalContainerStub::reset();
-		PayPalPPCPStub::set_error( null );
-		PayPalJsonResponseCapture::reset();
 		$this->original_cart = WC()->cart;
 
-		$this->session_verifier = $this->createMock( SessionVerifier::class );
 		$normalizer             = new SessionIdNormalizer();
-		$blocked_message        = $this->createMock( BlockedSessionMessage::class );
-		$blocked_message->method( 'get_plaintext' )->willReturn( 'We are unable to process this request online.' );
 		$this->decision_reuse = new PayPalDecisionReuse();
 		$this->decision_reuse->init( $normalizer );
-		$this->paypal_compat = new PayPalCompat();
-		$this->paypal_compat->init( $this->session_verifier, $blocked_message, $normalizer, $this->decision_reuse );
 	}
 
 	/**
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		remove_all_filters( 'wp_doing_ajax' );
-		remove_all_filters( 'wp_die_ajax_handler' );
-		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
-		remove_all_filters( 'ppcp_request_args' );
-		remove_all_actions( 'woocommerce_paypal_payments_create_order_request_started' );
-		remove_all_actions( 'woocommerce_paypal_payments_paypal_order_created' );
-		PayPalContainerStub::reset();
-		PayPalPPCPStub::set_error( null );
-		PayPalJsonResponseCapture::reset();
 		WC()->cart = $this->original_cart;
 		if ( WC()->session ) {
 			WC()->session->set( 'ppcp', null );
 			WC()->session->set( '_fraud_protection_paypal_verification', null );
 			WC()->session->set( '_fraud_protection_paypal_verified_session_id', null );
 		}
-		unset( $_GET['wc-ajax'] );
-
 		parent::tearDown();
 	}
 
@@ -175,54 +137,30 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Run a create-order verification with the given decision.
+	 * Store a verification result for the decision-reuse tests.
 	 *
 	 * @param string        $session_id          The session ID the request presents.
 	 * @param FraudDecision $decision            What the verifier returns.
 	 * @param ?string       $resolved_session_id The session ID the verifier resolves, when it differs.
 	 */
-	private function score_create_order( string $session_id, FraudDecision $decision, ?string $resolved_session_id = null ): void {
-		$this->session_verifier
-			->method( 'verify_session' )
-			->willReturn( $decision );
-
-		// A completed verification exposes the session ID it resolved; the
-		// record is keyed by that, not by what the request presented.
-		$this->session_verifier
-			->method( 'last_verified_session_id' )
-			->willReturn( $resolved_session_id ?? $session_id );
-
-		if ( FraudDecision::Block !== $decision ) {
-			$this->paypal_compat->verify_and_block_create_order(
-				array( SessionVerifier::SESSION_ID_FIELD => $session_id )
-			);
-			return;
-		}
-
-		add_filter( 'wp_doing_ajax', '__return_true' );
-		add_filter(
-			'wp_die_ajax_handler',
-			function () {
-				return function () {
-					throw new \WPDieException();
-				};
-			}
+	private function record_verification( string $session_id, FraudDecision $decision, ?string $resolved_session_id = null, string $origin = PayPalDecisionReuse::ORDER_CREATION_SOURCE, bool $can_store_result = true ): void {
+		$this->decision_reuse->record_verification(
+			$origin,
+			$resolved_session_id ?? $session_id,
+			$decision,
+			$can_store_result
 		);
-
-		try {
-			$this->paypal_compat->verify_and_block_create_order(
-				array( SessionVerifier::SESSION_ID_FIELD => $session_id )
-			);
-			$this->fail( 'Expected the block response to terminate the request.' );
-		} catch ( \WPDieException $e ) {
-			unset( $e );
-		}
 	}
 
-	/** Score a create-order request and associate its PayPal order. */
-	private function score_and_associate_order( string $session_id, string $order_id = 'PP-123', ?string $resolved_session_id = null ): void {
-		$this->score_create_order( $session_id, FraudDecision::Allow, $resolved_session_id );
-		$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( $order_id ) );
+	/** Store a verification result and associate its PayPal order. */
+	private function record_order( string $session_id, string $order_id = 'PP-123', ?string $resolved_session_id = null, string $origin = PayPalDecisionReuse::ORDER_CREATION_SOURCE ): void {
+		$this->record_verification( $session_id, FraudDecision::Allow, $resolved_session_id, $origin );
+		$this->associate_order( $resolved_session_id ?? $session_id, $order_id, $origin );
+	}
+
+	/** Associate an order with the current verification record. */
+	private function associate_order( string $session_id = 'scored-session', string $order_id = 'PP-123', string $origin = PayPalDecisionReuse::ORDER_CREATION_SOURCE ): void {
+		$this->decision_reuse->associate_created_order( new FakePayPalOrder( $order_id ), $session_id, $origin );
 	}
 
 	/**
@@ -250,8 +188,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox The ppc-create-order query parameter alone answers for nothing.
 	 *
-	 * The query string is supplied by whoever made the request. A request that
-	 * merely says it is ppc-create-order must never be enough to omit verification.
+	 * The query string is caller-controlled and must not be trusted as evidence
+	 * that this plugin already verified the request.
 	 */
 	public function test_supply_defers_on_the_create_order_query_parameter(): void {
 		$_GET['wc-ajax'] = 'ppc-create-order';
@@ -265,9 +203,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A record under the retired pre-0.1.6 session key is not read.
 	 *
-	 * Records written by earlier versions are orphaned by the key rename, not
-	 * migrated: they age out with their WC session. A shopper updating
-	 * mid-checkout gets one extra real verification — never a skip.
+	 * Records under the former key are intentionally orphaned when the key
+	 * changes; they must never satisfy a later request.
 	 */
 	public function test_supply_ignores_a_record_under_the_retired_session_key(): void {
 		WC()->session->set( '_fraud_protection_paypal_verified_session_id', 'test-session-abc' );
@@ -303,9 +240,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A record this code could not have written is not answered from.
 	 *
-	 * Only the shape update_verification_record() writes counts as a
-	 * record. A matching session ID whose decision no verification produced
-	 * must be verified for real, not served a normalized allow.
+	 * A matching session ID is not enough: the complete record shape and an
+	 * actionable decision are required before stored state can be reused.
 	 */
 	public function test_supply_defers_when_the_record_is_malformed(): void {
 		WC()->session->set(
@@ -361,18 +297,24 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox Create-order verification does not answer for an unidentified later request.
+	 *
+	 * A later request must identify the same PayPal attempt before it can reuse a
+	 * stored result.
 	 */
 	public function test_supply_defers_for_an_unidentified_request_after_create_order_verification(): void {
-		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->record_verification( 'scored-session', FraudDecision::Allow );
 
 		$this->assertFalse( $this->ask( 'shortcode_checkout', '', '' ) );
 	}
 
 	/**
 	 * @testdox An unrelated saved Allow does not override an earlier Block.
+	 *
+	 * A result for another session cannot replace an actionable decision already
+	 * supplied by an earlier filter consumer.
 	 */
 	public function test_supply_does_not_override_an_earlier_block_with_an_unrelated_saved_allow(): void {
-		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->record_verification( 'scored-session', FraudDecision::Allow );
 		$supplied_decision = new SuppliedDecision( FraudDecision::Block );
 
 		$this->assertSame(
@@ -389,9 +331,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox An earlier consumer's decision is passed through when this class defers.
 	 *
-	 * Every deferral path returns the value received, so a decision put in the
-	 * chain by an earlier consumer survives a request this class has nothing
-	 * to say about.
+	 * Filter arbitration must preserve an earlier consumer's result when this
+	 * class has no matching record.
 	 */
 	public function test_supply_passes_an_earlier_decision_through_when_it_defers(): void {
 		$supplied_decision = new SuppliedDecision( FraudDecision::Block );
@@ -410,9 +351,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox The record answers at this callback's priority, over an earlier consumer's decision.
 	 *
-	 * Standard filter arbitration: this callback answers from its record at its
-	 * own priority, whatever an earlier consumer returned. A consumer that wants
-	 * the last word registers with a later priority.
+	 * This callback may answer at its own priority; consumers that need the final
+	 * decision can register later.
 	 */
 	public function test_supply_answers_from_its_record_over_an_earlier_decision(): void {
 		$this->set_verification_record( session_id: 'some-session-id', order_id: 'PP-123' );
@@ -435,25 +375,15 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	public function test_supply_read_failure_preserves_incoming_decision_and_retires(): void {
 		$request          = $this->create_protected_paypal_request_record( 'create' );
 		$original_session = WC()->session;
-		$session          = new class( $original_session ) {
-			/** @var mixed */
-			private $session;
-
-			public bool $retired = false;
-
-			public function __construct( $session ) { // phpcs:ignore
-				$this->session = $session;
+		$session          = $this->createMock( \WC_Session::class );
+		$retired         = false;
+		$session->method( 'get' )->willThrowException( new \RuntimeException( 'session read unavailable' ) );
+		$session->expects( $this->once() )->method( 'set' )->willReturnCallback(
+			static function ( string $key, $value ) use ( $original_session, &$retired ): void {
+				$retired = null === $value;
+				$original_session->set( $key, $value );
 			}
-
-			public function get( $key, $default = null ) { // phpcs:ignore
-				throw new \RuntimeException( 'session read unavailable' );
-			}
-
-			public function set( $key, $value = null ): void { // phpcs:ignore
-				$this->retired = null === $value;
-				$this->session->set( $key, $value );
-			}
-		};
+		);
 		WC()->session     = $session;
 		$incoming         = new SuppliedDecision( FraudDecision::Block );
 		$returned         = null;
@@ -465,7 +395,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		}
 
 		$this->assertSame( $incoming, $returned );
-		$this->assertTrue( $session->retired );
+		$this->assertTrue( $retired );
 		$this->assertNull( $original_session->get( '_fraud_protection_paypal_verification' ) );
 		$this->assertLogged(
 			'warning',
@@ -482,32 +412,20 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	public function test_supply_write_failure_preserves_incoming_decision_and_retires(): void {
 		$request          = $this->create_protected_paypal_request_record( 'create' );
 		$original_session = WC()->session;
-		$session          = new class( $original_session ) {
-			/** @var mixed */
-			private $session;
-
-			private bool $fail_next_write = true;
-
-			public bool $retired = false;
-
-			public function __construct( $session ) { // phpcs:ignore
-				$this->session = $session;
-			}
-
-			public function get( $key, $default = null ) { // phpcs:ignore
-				return $this->session->get( $key, $default );
-			}
-
-			public function set( $key, $value = null ): void { // phpcs:ignore
-				if ( $this->fail_next_write ) {
-					$this->fail_next_write = false;
+		$session          = $this->createMock( \WC_Session::class );
+		$write_count     = 0;
+		$retired         = false;
+		$session->method( 'get' )->willReturnCallback( static fn( string $key, $default = null ) => $original_session->get( $key, $default ) );
+		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willReturnCallback(
+			static function ( string $key, $value ) use ( $original_session, &$write_count, &$retired ): void {
+				if ( 1 === ++$write_count ) {
 					throw new \RuntimeException( 'session write unavailable' );
 				}
 
-				$this->retired = null === $value;
-				$this->session->set( $key, $value );
+				$retired = null === $value;
+				$original_session->set( $key, $value );
 			}
-		};
+		);
 		WC()->session     = $session;
 		$incoming         = new SuppliedDecision( FraudDecision::Block );
 		$returned         = null;
@@ -519,7 +437,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		}
 
 		$this->assertSame( $incoming, $returned );
-		$this->assertTrue( $session->retired );
+		$this->assertTrue( $retired );
 		$this->assertNull( $original_session->get( '_fraud_protection_paypal_verification' ) );
 		$this->assertLogged(
 			'warning',
@@ -536,10 +454,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A malformed value in the chain fails loudly instead of being silently ignored.
 	 *
-	 * The declared parameter type is the warning: an earlier consumer returning
-	 * something that is neither a SuppliedDecision nor the default raises a
-	 * TypeError, which SessionVerifier logs as a warning and answers with a
-	 * real verify.
+	 * The typed callback contract rejects values that are neither the default nor
+	 * a supplied decision.
 	 */
 	public function test_supply_rejects_a_malformed_earlier_value_loudly(): void {
 		$this->expectException( \TypeError::class );
@@ -559,10 +475,10 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox The record is keyed by the session ID the verification resolved, not the one presented.
+	 * @testdox The record uses the response-backed session ID, not the submitted one.
 	 */
-	public function test_verify_keys_the_record_by_the_resolved_session_id(): void {
-		$this->score_and_associate_order( 'presented-session', resolved_session_id: 'resolved-session' );
+	public function test_record_uses_the_response_backed_session_id(): void {
+		$this->record_order( 'presented-session', resolved_session_id: 'resolved-session' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
@@ -575,7 +491,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'resolved-session' )
 		);
 
-		$this->score_and_associate_order( 'presented-session', resolved_session_id: 'resolved-session' );
+		$this->record_order( 'presented-session', resolved_session_id: 'resolved-session' );
 		$this->assertFalse(
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'presented-session' ),
 			'The ID the request presented is not the one that was scored; it is verified for real.'
@@ -583,9 +499,9 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Nothing is recorded when the call completed no verification.
+	 * @testdox No record remains when verification produced no response-backed session ID.
 	 */
-	public function test_verify_records_nothing_when_no_verification_completed(): void {
+	public function test_record_is_removed_without_a_response_backed_session_id(): void {
 		WC()->session->set(
 			'_fraud_protection_paypal_verification',
 			array(
@@ -595,7 +511,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->score_create_order( 'presented-session', FraudDecision::Allow, '' );
+		$this->record_verification( 'presented-session', FraudDecision::Allow, '' );
 
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
@@ -607,7 +523,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$normalized = str_repeat( 'a', 255 );
 		$stored     = $normalized . 'b';
 
-		$this->score_create_order( $normalized, FraudDecision::Allow );
+		$this->record_verification( $normalized, FraudDecision::Allow );
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 		$this->assertIsArray( $record );
 		$record['session_id'] = $stored;
@@ -623,50 +539,40 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Invalid stored session IDs do not match a normalized submitted session ID.
+	 * @testdox Invalid stored session IDs do not match a submitted session ID.
 	 *
 	 * @dataProvider invalid_stored_session_id_provider
-	 *
-	 * @param string $stored_session_id Stored session ID.
 	 */
-	public function test_invalid_stored_session_id_does_not_match_submitted_session( string $stored_session_id ): void {
-		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+	public function test_invalid_stored_session_id_does_not_match_submitted_session( string $stored_session_id, string $submitted_session_id ): void {
+		$this->record_order( 'scored-session' );
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 		$this->assertIsArray( $record );
 		$record['session_id'] = $stored_session_id;
-		$record['decision']   = FraudDecision::Block;
-		WC()->session->set( '_fraud_protection_paypal_verification', $record );
-
-		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'wcfp-invalid-characters' ) );
-	}
-
-	/**
-	 * Invalid stored session IDs.
-	 *
-	 * @return array<string, array{string}>
-	 */
-	public function invalid_stored_session_id_provider(): array {
-		return array(
-			'single dot' => array( '.' ),
-			'double dot' => array( '..' ),
-		);
-	}
-
-	/** @testdox An invalid stored session ID does not match an empty submitted session ID. */
-	public function test_invalid_stored_session_id_does_not_match_empty_submitted_session(): void {
-		$this->score_and_associate_order( 'scored-session' );
-		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
-		$this->assertIsArray( $record );
-		$record['session_id'] = '.';
 		WC()->session->set( '_fraud_protection_paypal_verification', $record );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
-		$this->assert_incoming_decision_is_preserved(
+		$incoming = '' === $submitted_session_id ? new SuppliedDecision( FraudDecision::Block ) : false;
+		$returned = $this->decision_reuse->supply_decision_for_paypal_express(
+			$incoming,
 			'blocks_checkout',
 			array( 'payment_method' => 'ppcp-gateway' ),
-			''
+			$submitted_session_id
 		);
+		if ( '' === $submitted_session_id ) {
+			$this->assertSame( $incoming, $returned );
+		} else {
+			$this->assertFalse( $returned );
+		}
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, string}> */
+	public function invalid_stored_session_id_provider(): array {
+		return array(
+			'single dot'           => array( '.', 'wcfp-invalid-characters' ),
+			'double dot'           => array( '..', 'wcfp-invalid-characters' ),
+			'empty submitted value' => array( '.', '' ),
+		);
 	}
 
 	/*
@@ -678,11 +584,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A blocked create-order without an associated order does not satisfy a final request.
 	 *
-	 * This is WOOSUBS-1831. The blocked session used to reach a later request and
-	 * be waved through, because "already handled" was expressed as "allowed".
+	 * A blocked create-order has no order to bind, so its record cannot authorize
+	 * a later completion request.
 	 */
-	public function test_supply_answers_a_blocked_session_with_its_block(): void {
-		$this->score_create_order( 'blocked-session', FraudDecision::Block );
+	public function test_blocked_session_without_an_order_defers(): void {
+		$this->record_verification( 'blocked-session', FraudDecision::Block );
 
 		$this->assertFalse(
 			$this->ask( 'shortcode_checkout', 'ppcp-gateway', 'blocked-session' ),
@@ -693,11 +599,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox The verified-session record survives a blocked create-order.
 	 *
-	 * The blocked attempt is the one whose record matters most: the request after
-	 * it is answered from that record, and the block is what comes back.
+	 * The response-backed decision is recorded before Block enforcement. An
+	 * order-producing Block cannot be reused because no order is associated.
 	 */
-	public function test_verify_records_the_verified_session_even_on_block(): void {
-		$this->score_create_order( 'blocked-session', FraudDecision::Block );
+	public function test_record_verification_stores_the_response_backed_block(): void {
+		$this->record_verification( 'blocked-session', FraudDecision::Block );
 
 		$this->assertSame(
 			array(
@@ -714,38 +620,14 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An allowed create-order hands its allow back within the attempt.
-	 *
-	 * The completion leg of a create-order-by-AJAX flow presents the same session
-	 * ID in a later request. It is answered from the record — the allow that
-	 * verification produced — rather than scored a second time, which Blackbox
-	 * would score harder as a reused session.
-	 */
-	public function test_supply_answers_an_allowed_session_with_its_allow(): void {
-		$this->score_and_associate_order( 'clean-session' );
-		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
-
-		$this->assertSame(
-			FraudDecision::Allow,
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'clean-session' )
-		);
-	}
-
-	/**
 	 * @testdox A recorded allow never answers for another gateway.
 	 *
-	 * The regression that sank the first central design: a stored ppcp allow at
-	 * one amount satisfied a cod checkout at another with no verification at all.
-	 * The gateway gate sits above every record read, so a non-PayPal checkout
-	 * presenting the recorded session ID is verified for real — even with
-	 * PayPal's approved-order slot populated.
+	 * Stored PayPal state is scoped to PayPal requests; another gateway must
+	 * continue through normal verification.
 	 */
 	public function test_supply_does_not_apply_a_recorded_allow_to_another_gateway(): void {
-		$this->score_and_associate_order( 'paypal-scored-session', 'PP-SCORED' );
+		$this->record_order( 'paypal-scored-session', 'PP-SCORED' );
 
-		// The scored order itself sits in the slot, so both the session-keyed
-		// and the associated-order reads would answer; only the gateway gate stands
-		// between them and this request.
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-SCORED' ) ) );
 
 		$this->assertFalse(
@@ -757,12 +639,10 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A recorded block does not answer for another gateway either; the request verifies.
 	 *
-	 * Same gate, other verdict. A non-PayPal checkout presenting a blocked ID
-	 * gets a real verification instead of the record — the record answers only
-	 * requests of the gateway whose flow produced it.
+	 * The gateway check applies regardless of the recorded decision.
 	 */
 	public function test_supply_does_not_apply_a_recorded_block_to_another_gateway(): void {
-		$this->score_create_order( 'blocked-session', FraudDecision::Block );
+		$this->record_verification( 'blocked-session', FraudDecision::Block );
 
 		$this->assertFalse(
 			$this->ask( 'shortcode_checkout', 'cod', 'blocked-session' ),
@@ -798,10 +678,10 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox The order created by a verified create-order request is associated with its record.
+	 * @testdox A create-order record can be associated with its created order.
 	 */
-	public function test_verify_associates_the_created_order_with_the_record(): void {
-		$this->score_and_associate_order( 'scored-session' );
+	public function test_record_can_be_associated_with_the_created_order(): void {
+		$this->record_order( 'scored-session' );
 
 		$this->assertSame(
 			array(
@@ -819,15 +699,13 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox An associated-order id() that throws leaves the record without an associated order and is logged.
 	 *
-	 * The order is foreign code's object; a throw reading its ID must not escape
-	 * into ppcp's create-order request, which minted the order already and would
-	 * otherwise fail the shopper's checkout. Fail open: the record keeps its
-	 * empty order_id, so a later completion leg verifies for real.
+	 * PayPal order objects are foreign objects. An ID read failure must leave the
+	 * record safe and allow the later request to verify normally.
 	 */
 	public function test_association_fails_open_when_the_order_id_throws(): void {
-		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->record_verification( 'scored-session', FraudDecision::Allow );
 
-		$this->paypal_compat->associate_created_order_with_verification( new ThrowingPayPalOrder() );
+		$this->decision_reuse->associate_created_order( new ThrowingPayPalOrder(), 'scored-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 
@@ -848,7 +726,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox The scored order's completion is answered with its decision.
 	 */
 	public function test_supply_answers_the_scored_orders_completion_with_its_decision(): void {
-		$this->score_and_associate_order( 'scored-session' );
+		$this->record_order( 'scored-session' );
 
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
@@ -868,7 +746,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox An associated approved order does not replay with an empty session ID.
 	 */
 	public function test_supply_does_not_answer_associated_order_with_empty_session_id(): void {
-		$this->score_and_associate_order( 'scored-session' );
+		$this->record_order( 'scored-session' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
 		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', '' ) );
@@ -878,7 +756,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox An approved order that is not the scored one is not answered for.
 	 */
 	public function test_supply_defers_when_the_approved_order_is_not_the_scored_one(): void {
-		$this->score_and_associate_order( 'scored-session' );
+		$this->record_order( 'scored-session' );
 
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-999' ) ) );
 
@@ -902,8 +780,6 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox A record without an associated order does not answer for an approved order.
 	 *
-	 * The record is current and valid, but names no order, so the approved-order
-	 * route defers.
 	 */
 	public function test_supply_defers_for_a_record_without_an_associated_order(): void {
 		$this->set_verification_record();
@@ -929,7 +805,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox A slot order that cannot be read defers.
 	 */
 	public function test_supply_defers_when_the_slot_order_is_not_readable(): void {
-		$this->score_and_associate_order( 'scored-session' );
+		$this->record_order( 'scored-session' );
 
 		WC()->session->set( 'ppcp', array( 'order' => new \stdClass() ) );
 
@@ -939,14 +815,13 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox An order created without a verification in this request binds nothing.
 	 *
-	 * The shape of a server-side order creation — a subscription renewal, for
-	 * instance: PayPal's order-created hook fires, but no create-order
-	 * verification ran in the request, so there is no verification to associate.
+	 * Association is valid only when the current request produced the matching
+	 * verification record.
 	 */
 	public function test_association_adds_nothing_without_a_verification_in_this_request(): void {
 		$this->set_verification_record();
 
-		$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+		$this->associate_order( '', 'PP-123' );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 
@@ -958,9 +833,9 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox A blocked create-order associates no order.
 	 */
 	public function test_association_adds_nothing_on_a_blocked_create_order(): void {
-		$this->score_create_order( 'blocked-session', FraudDecision::Block );
+		$this->record_verification( 'blocked-session', FraudDecision::Block );
 
-		$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+		$this->associate_order( '', 'PP-123' );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 
@@ -970,25 +845,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox One verification associates only the one order its request creates.
-	 */
-	public function test_association_covers_only_the_one_order_a_request_creates(): void {
-		$this->score_and_associate_order( 'scored-session', 'PP-1' );
-		$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( 'PP-2' ) );
-
-		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
-
-		$this->assertIsArray( $record );
-		$this->assertSame( 'PP-1', $record['order_id'], 'The association state is consumed on read.' );
-	}
-
-	/**
 	 * @testdox A record that is no longer this verification's is not associated.
 	 */
 	public function test_association_ignores_a_record_for_another_session(): void {
-		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->record_verification( 'scored-session', FraudDecision::Allow );
 
-		// The record was replaced before the order was created.
 		$replaced = array(
 			'origin'     => 'paypal_express_order_creation',
 			'session_id' => 'another-session',
@@ -999,7 +860,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 		WC()->session->set( '_fraud_protection_paypal_verification', $replaced );
 
-		$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+		$this->associate_order();
 
 		$this->assertSame(
 			$replaced,
@@ -1012,11 +873,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox A create-order association does not associate an order with a vault-order record for the same session.
 	 */
 	public function test_association_ignores_a_record_from_another_origin(): void {
-		$this->score_create_order( 'scored-session', FraudDecision::Allow );
+		$this->record_verification( 'scored-session', FraudDecision::Allow );
 		$this->set_verification_record( origin: 'paypal_vault_order_creation' );
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 
-		$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+		$this->associate_order();
 
 		$this->assertSame( $record, WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
@@ -1024,10 +885,6 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox An associated record's decision is what the associated route replays, whatever it is.
 	 *
-	 * An associated Block cannot be produced today — a blocked create-order dies
-	 * before its order exists — but the route's contract is "replay the
-	 * recorded decision", and this pin is what stops a future change from
-	 * turning an associated record into a verdict-blind allow.
 	 */
 	public function test_supply_answers_an_associated_block_with_its_block(): void {
 		$this->set_verification_record( order_id: 'PP-BOUND', decision: FraudDecision::Block );
@@ -1040,18 +897,15 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Scoring again replaces the prior use with a fresh record without an associated order.
+	 * @testdox Recording again replaces the prior use without carrying an associated order.
 	 */
-	public function test_verify_scoring_again_starts_without_an_associated_order(): void {
-		$this->score_and_associate_order( 'scored-session', 'PP-1' );
+	public function test_recording_again_starts_without_an_associated_order(): void {
+		$this->record_order( 'scored-session', 'PP-1' );
 
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-1' ) ) );
 		$this->ask( 'blocks_checkout', 'ppcp-gateway', 'post-reset-spend' );
 
-		// The same session is scored again; the mocks still resolve it.
-		$this->paypal_compat->verify_and_block_create_order(
-			array( SessionVerifier::SESSION_ID_FIELD => 'scored-session' )
-		);
+		$this->record_verification( 'scored-session', FraudDecision::Allow );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 
@@ -1087,16 +941,12 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox A new verification replaces the used record.
 	 */
 	public function test_new_verification_replaces_the_used_record(): void {
-		$this->score_and_associate_order( 'scored-session', 'PP-1' );
+		$this->record_order( 'scored-session', 'PP-1' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-1' ) ) );
 
 		$this->assertSame( FraudDecision::Allow, $this->ask( 'blocks_checkout', 'ppcp-gateway', 'scored-session' ) );
 
-		// The retry: the same session is scored again and mints a new order.
-		$this->paypal_compat->verify_and_block_create_order(
-			array( SessionVerifier::SESSION_ID_FIELD => 'scored-session' )
-		);
-		$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( 'PP-2' ) );
+		$this->record_order( 'scored-session', 'PP-2' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-2' ) ) );
 
 		$this->assertSame(
@@ -1177,37 +1027,16 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Setup records reject non-checkout sources and recheck final eligibility.
+	 * @testdox Setup records reject non-checkout sources.
 	 *
 	 * @dataProvider disallowed_setup_source_provider
 	 */
 	public function test_setup_record_requires_current_eligible_cart( string $disallowed_source ): void {
 		$this->set_setup_cart( 'cart-hash' );
-		$this->run_allowed_setup_token_request();
+		$this->record_setup_verification();
 		$request = array( 'payment_method' => 'ppcp-gateway' );
 
 		$this->assert_incoming_decision_is_preserved( $disallowed_source, $request, 'response-session' );
-
-		$this->run_setup_token_request();
-		$this->set_setup_cart( 'cart-hash', array(), false );
-		$this->assert_incoming_decision_is_preserved( 'blocks_checkout', $request, 'response-session' );
-		$this->set_setup_cart( 'cart-hash' );
-		$this->run_setup_token_request();
-		$this->set_setup_cart( 'changed-hash' );
-		$this->assert_incoming_decision_is_preserved( 'blocks_checkout', $request, 'response-session' );
-
-		$this->set_setup_cart( 'cart-hash' );
-		$this->run_setup_token_request();
-		$this->assertInstanceOf(
-			SuppliedDecision::class,
-			$this->decision_reuse->supply_decision_for_paypal_express( false, 'shortcode_checkout', $request, 'response-session' )
-		);
-
-		$this->run_setup_token_request();
-		$this->assertInstanceOf(
-			SuppliedDecision::class,
-			$this->decision_reuse->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' )
-		);
 	}
 
 	/** @return array<string, array{string}> */
@@ -1221,19 +1050,16 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox Setup records require each material eligibility fact at final use.
 	 *
-	 * @dataProvider final_setup_eligibility_provider
+	 * @dataProvider setup_eligibility_provider
+	 *
+	 * @param mixed $plan_metadata PayPal plan metadata.
 	 */
-	public function test_setup_record_rechecks_material_eligibility( string $total, bool $empty, bool $managed_plan, string $cart_hash ): void {
+	public function test_setup_record_rechecks_material_eligibility( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
+		unset( $can_store );
 		$this->set_setup_cart( 'cart-hash' );
-		$this->run_allowed_setup_token_request();
+		$this->record_setup_verification();
 
-		$items = array();
-		if ( $managed_plan ) {
-			$product = $this->createMock( \WC_Product::class );
-			$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( 'plan-id' );
-			$items = array( array( 'data' => $product ) );
-		}
-		$this->set_setup_cart( $cart_hash, $items, true, $total, $empty );
+		$this->set_setup_cart( $cart_hash, $this->setup_cart_items( $plan_metadata ), $needs_payment, $total, $empty );
 
 		$this->assert_incoming_decision_is_preserved(
 			'blocks_checkout',
@@ -1242,55 +1068,37 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/** @return array<string, array{string, bool, bool, string}> */
-	public function final_setup_eligibility_provider(): array {
+	/** @return array<string, array{string, bool, bool, mixed, string, bool}> */
+	public function setup_eligibility_provider(): array {
 		return array(
-			'positive total'      => array( '1', false, false, 'cart-hash' ),
-			'empty cart'          => array( '0', true, false, 'cart-hash' ),
-			'PayPal-managed plan' => array( '0', false, true, 'cart-hash' ),
-			'empty cart hash'     => array( '0', false, false, '' ),
+			'positive total'              => array( '1', false, true, null, 'cart-hash', false ),
+			'empty cart'                  => array( '0', true, true, null, 'cart-hash', false ),
+			'payment not needed'          => array( '0', false, false, null, 'cart-hash', false ),
+			'scalar PayPal-managed plan' => array( '0', false, true, 'plan-id', 'cart-hash', false ),
+			'array PayPal-managed plan'  => array( '0', false, true, array( 'plan-id' ), 'cart-hash', false ),
+			'empty cart hash'             => array( '0', false, true, null, '', false ),
+			'changed cart hash'           => array( '0', false, true, null, 'changed-hash', true ),
 		);
 	}
 
 	/**
-	 * @testdox Ineligible setup carts do not create reusable records at storage time.
+	 * @testdox Setup cart eligibility controls record storage.
 	 *
-	 * @dataProvider setup_storage_ineligibility_provider
+	 * @dataProvider setup_eligibility_provider
 	 *
 	 * @param mixed $plan_metadata PayPal plan metadata.
 	 */
-	public function test_ineligible_setup_cart_is_not_recorded( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash ): void {
-		$items = array();
-		if ( null !== $plan_metadata ) {
-			$product = $this->createMock( \WC_Product::class );
-			$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( $plan_metadata );
-			$items = array( array( 'data' => $product ) );
+	public function test_setup_cart_eligibility_controls_record_storage( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
+		$this->set_setup_cart( $cart_hash, $this->setup_cart_items( $plan_metadata ), $needs_payment, $total, $empty );
+		$this->record_setup_verification();
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		if ( $can_store ) {
+			$this->assertIsArray( $record );
+			$this->assertSame( $cart_hash, $record['cart_hash'] );
+		} else {
+			$this->assertNull( $record );
 		}
-		$this->set_setup_cart( $cart_hash, $items, $needs_payment, $total, $empty );
-		$this->run_allowed_setup_token_request();
-
-		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
-	}
-
-	/** @return array<string, array{string, bool, bool, mixed, string}> */
-	public function setup_storage_ineligibility_provider(): array {
-		return array(
-			'empty cart'               => array( '0', true, true, null, 'cart-hash' ),
-			'positive total'           => array( '1', false, true, null, 'cart-hash' ),
-			'payment not needed'       => array( '0', false, false, null, 'cart-hash' ),
-			'PayPal-managed plan data' => array( '0', false, true, 'plan-id', 'cart-hash' ),
-			'empty cart hash'          => array( '0', false, true, null, '' ),
-		);
-	}
-
-	/** @testdox Nonempty array plan metadata prevents setup record storage. */
-	public function test_array_plan_metadata_prevents_setup_record(): void {
-		$product = $this->createMock( \WC_Product::class );
-		$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( array( 'plan-id' ) );
-		$this->set_setup_cart( 'cart-hash', array( array( 'data' => $product ) ) );
-		$this->run_allowed_setup_token_request();
-
-		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
 	/** @testdox Setup record storage initializes the cart before checking its payment requirement. */
@@ -1316,55 +1124,23 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 		WC()->cart = $cart;
 
-		$this->run_allowed_setup_token_request();
+		$this->record_setup_verification();
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 		$this->assertIsArray( $record );
 		$this->assertSame( 'cart-hash', $record['cart_hash'] );
 	}
 
-	/**
-	 * Configure PayPal request-data compatibility stubs.
-	 *
-	 * @param array  $data    Request data.
-	 * @param string $failure Failure mode.
-	 */
-	private function configure_paypal_request_data( array $data, string $failure = '' ): void {
-		if ( ! class_exists( 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' ) ) {
-			class_alias( PayPalRequestDataStub::class, 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' );
-		}
-
-		PayPalRequestDataStub::$data  = $data;
-		PayPalRequestDataStub::$error = 'read' === $failure ? new \RuntimeException( 'invalid request' ) : null;
-		PayPalPPCPStub::set_error( 'container' === $failure ? new \RuntimeException( 'container unavailable' ) : null );
-		$service = match ( $failure ) {
-			'service'   => new \stdClass(),
-			default     => new PayPalRequestDataStub(),
-		};
-		PayPalContainerStub::set_service( 'button.request-data', $service );
-
-	}
-
-	/**
-	 * Create a reusable record through its protected PayPal request path.
-	 *
-	 * @param string $record_type Record type.
-	 * @return array Final request data.
-	 */
+	/** Create a reusable record for a final-request test. */
 	private function create_protected_paypal_request_record( string $record_type ): array {
-		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
-		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
-
 		if ( 'create' === $record_type ) {
-			$this->score_and_associate_order( 'browser-session', resolved_session_id: 'response-session' );
+			$this->record_order( 'browser-session', resolved_session_id: 'response-session' );
 		} else {
-			$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 			if ( 'setup' === $record_type ) {
 				$this->set_setup_cart( 'cart-hash' );
-				$this->run_setup_token_request();
+				$this->record_verification( 'browser-session', FraudDecision::Allow, 'response-session', PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE );
 			} else {
-				$this->run_vault_order_request();
-				$this->paypal_compat->associate_created_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+				$this->record_order( 'browser-session', 'PP-123', 'response-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE );
 			}
 		}
 
@@ -1407,46 +1183,26 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/** Run one setup-token request with an allowed response-backed session. */
-	private function run_allowed_setup_token_request(): void {
-		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
-		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
-		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
-		$this->run_setup_token_request();
-	}
-
-	/** Run the setup-token request through its exact WooCommerce action and PayPal path. */
-	private function run_setup_token_request(): void {
-		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
-	}
-
-	/** Run the vault-order request through its exact WooCommerce action and PayPal path. */
-	private function run_vault_order_request(): void {
-		$this->run_protected_request( 'wc_ajax_ppc-vault-create-order', array( 'method' => 'POST' ), '/v2/checkout/orders' );
+	/** Store a setup-token verification with the current cart eligibility. */
+	private function record_setup_verification(): void {
+		$this->record_verification( 'browser-session', FraudDecision::Allow, 'response-session', PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE );
 	}
 
 	/**
-	 * Run a request filter while its WooCommerce AJAX action is active.
+	 * Build cart items with controlled PayPal plan metadata.
 	 *
-	 * @param string $action Action name.
-	 * @param array  $args   HTTP arguments.
-	 * @param string $path   PayPal URL path.
-	 * @return mixed Filter result.
+	 * @param mixed $plan_metadata PayPal plan metadata.
+	 * @return array<int, array{data: \WC_Product}>
 	 */
-	private function run_protected_request( string $action, array $args, string $path ) {
-		$this->paypal_compat->register();
-		$result   = null;
-		$callback = function () use ( &$result, $args, $path ): void {
-			$result = apply_filters( 'ppcp_request_args', $args, 'https://api-m.paypal.com' . $path );
-		};
-		add_action( $action, $callback );
-		try {
-			do_action( $action );
-		} finally {
-			remove_action( $action, $callback );
+	private function setup_cart_items( $plan_metadata ): array {
+		if ( null === $plan_metadata ) {
+			return array();
 		}
 
-		return $result;
+		$product = $this->createMock( \WC_Product::class );
+		$product->method( 'get_meta' )->with( 'ppcp_subscription_plan' )->willReturn( $plan_metadata );
+
+		return array( array( 'data' => $product ) );
 	}
 
 	/**

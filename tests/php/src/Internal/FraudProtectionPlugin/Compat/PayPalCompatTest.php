@@ -107,17 +107,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * Tear down after each test.
 	 */
 	public function tearDown(): void {
-		global $wp;
-
-		remove_all_filters( 'wp_doing_ajax' );
-		remove_all_filters( 'wp_die_ajax_handler' );
-		remove_all_filters( 'woocommerce_fraud_protection_skip_session_verify' );
-		remove_all_filters( 'ppcp_request_args' );
 		PayPalContainerStub::reset();
 		PayPalPPCPStub::set_error( null );
 		PayPalJsonResponseCapture::reset();
-		remove_all_actions( 'woocommerce_paypal_payments_create_order_request_started' );
-		remove_all_actions( 'woocommerce_paypal_payments_paypal_order_created' );
 		WC()->cart = $this->original_cart;
 		$this->reset_fraud_protection_scripts();
 
@@ -126,11 +118,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			WC()->session->set( '_fraud_protection_paypal_verification', null );
 			WC()->session->set( '_fraud_protection_paypal_verified_session_id', null );
 		}
-
-		unset( $_GET['wc-ajax'] );
-		unset( $wp->query_vars['order-pay'] );
-		unset( $wp->query_vars['order-received'] );
-		set_current_screen( 'front' );
 
 		parent::tearDown();
 	}
@@ -166,10 +153,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox verify_and_block_create_order() extracts session_id from data and calls verify_session — allows on ALLOW.
+	 * @testdox A complete create-order request is verified unchanged and stored on Allow.
 	 */
-	public function test_verify_allows_on_allow_decision(): void {
-		$data = array( SessionVerifier::SESSION_ID_FIELD => 'test-session-abc' );
+	public function test_complete_create_order_request_allows_and_stores_record(): void {
+		$data = array(
+			SessionVerifier::SESSION_ID_FIELD => 'test-session-abc',
+			'payment_method'                  => 'ppcp-credit-card-gateway',
+			'payment_data'                    => array( 'card_number' => 'tokenized-value' ),
+		);
 
 		$this->session_verifier
 			->expects( $this->once() )
@@ -177,11 +168,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->with( 'test-session-abc', 'paypal_express_order_creation', 0, $data )
 			->willReturn( FraudDecision::Allow );
 
-		$this->session_verifier
-			->method( 'last_verified_session_id' )
-			->willReturn( 'test-session-abc' );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'test-session-abc' );
 
-		// Should return normally without terminating.
 		$this->sut->verify_and_block_create_order( $data );
 
 		$this->assertSame(
@@ -197,26 +185,18 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/**
-	 * @testdox verify_and_block_create_order() forwards a complete PayPal payment request unchanged.
-	 */
-	public function test_verify_forwards_complete_paypal_payment_request(): void {
-		$data = array(
-			SessionVerifier::SESSION_ID_FIELD => 'test-session-abc',
-			'payment_method'                  => 'ppcp-credit-card-gateway',
-			'payment_data'                    => array( 'card_number' => 'tokenized-value' ),
-		);
+	/** @testdox A verified request associates only the first created PayPal order. */
+	public function test_association_covers_only_the_one_order_a_request_creates(): void {
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'scored-session' );
 
-		$this->session_verifier
-			->expects( $this->once() )
-			->method( 'verify_session' )
-			->with( 'test-session-abc', 'paypal_express_order_creation', 0, $data )
-			->willReturn( FraudDecision::Allow );
-		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'test-session-abc' );
+		$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'scored-session' ) );
+		$this->sut->associate_created_order_with_verification( new FakePayPalOrder( 'PP-1' ) );
+		$this->sut->associate_created_order_with_verification( new FakePayPalOrder( 'PP-2' ) );
 
-		$this->sut->verify_and_block_create_order( $data );
-
-		$this->assertSame( FraudDecision::Allow, WC()->session->get( '_fraud_protection_paypal_verification' )['decision'] );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertSame( 'PP-1', $record['order_id'] );
 	}
 
 	/**
@@ -332,16 +312,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'blocked-session' );
 
-		// A WC session whose reads and writes throw, so update_verification_record() fails.
 		$original_session = WC()->session;
-		WC()->session     = new class() {
-			public function get( $key, $default = null ) { // phpcs:ignore
-				throw new \RuntimeException( 'session unavailable' );
-			}
-			public function set( $key, $value = null ) { // phpcs:ignore
-				throw new \RuntimeException( 'session unavailable' );
-			}
-		};
+		$session          = $this->createMock( \WC_Session::class );
+		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willThrowException( new \RuntimeException( 'session unavailable' ) );
+		WC()->session = $session;
 
 		add_filter( 'wp_doing_ajax', '__return_true' );
 		add_filter(
@@ -389,29 +363,18 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			'cart_hash'  => '',
 		);
 		$original_session->set( '_fraud_protection_paypal_verification', $record );
-		WC()->session = new class( $original_session ) {
-			/** @var mixed */
-			private $session;
-
-			private bool $fail_next_write = true;
-
-			public function __construct( $session ) { // phpcs:ignore
-				$this->session = $session;
-			}
-
-			public function get( $key, $default = null ) { // phpcs:ignore
-				return $this->session->get( $key, $default );
-			}
-
-			public function set( $key, $value = null ): void { // phpcs:ignore
-				if ( $this->fail_next_write ) {
-					$this->fail_next_write = false;
+		$session     = $this->createMock( \WC_Session::class );
+		$write_count = 0;
+		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willReturnCallback(
+			static function ( string $key, $value ) use ( $original_session, &$write_count ): void {
+				if ( 1 === ++$write_count ) {
 					throw new \RuntimeException( 'session write unavailable' );
 				}
 
-				$this->session->set( $key, $value );
+				$original_session->set( $key, $value );
 			}
-		};
+		);
+		WC()->session = $session;
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
 
@@ -522,11 +485,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Protected requests use PayPal's validated data and exact nonce action.
+	 * @testdox Successful protected requests use validated data and store the reusable record.
 	 *
 	 * @dataProvider protected_request_provider
 	 */
 	public function test_protected_request_uses_validated_data( string $action, string $path, string $source, string $nonce ): void {
+		if ( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $source ) {
+			$this->set_eligible_setup_cart();
+		}
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 		$this->session_verifier
 			->expects( $this->once() )
@@ -544,6 +510,16 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
 
 		$this->run_protected_request( $action, array( 'method' => 'POST' ), $path );
+		if ( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE === $source ) {
+			$this->sut->associate_created_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+		}
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertSame( $source, $record['origin'] );
+		$this->assertSame( 'response-session', $record['session_id'] );
+		$this->assertSame( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $source ? 'cart-hash' : '', $record['cart_hash'] );
+		$this->assertSame( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE === $source ? 'PP-123' : '', $record['order_id'] );
 	}
 
 	/** @return array<string, array{string, string, string, string}> */
@@ -674,6 +650,20 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			'button.request-data',
 			'service' === $failure ? new \stdClass() : new PayPalRequestDataStub()
 		);
+	}
+
+	/** Configure an eligible zero-total cart for setup-token record storage. */
+	private function set_eligible_setup_cart(): void {
+		$cart = $this->getMockBuilder( \WC_Cart::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'is_empty', 'get_total', 'needs_payment', 'get_cart', 'get_cart_hash' ) )
+			->getMock();
+		$cart->method( 'is_empty' )->willReturn( false );
+		$cart->method( 'get_total' )->willReturn( '0' );
+		$cart->method( 'needs_payment' )->willReturn( true );
+		$cart->method( 'get_cart' )->willReturn( array() );
+		$cart->method( 'get_cart_hash' )->willReturn( 'cart-hash' );
+		WC()->cart = $cart;
 	}
 
 	/** Run a setup-token request. */

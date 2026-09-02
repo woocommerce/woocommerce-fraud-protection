@@ -22,9 +22,6 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/** @var PayPalScriptCompat */
 	private PayPalScriptCompat $sut;
 
-	/** @var array<string, array{exists: bool, value: mixed}> */
-	private array $original_paypal_options = array();
-
 	private bool $touched_smart_button_handle = false;
 
 	private bool $registered_block_handle = false;
@@ -36,9 +33,6 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		$this->remember_paypal_option( 'woocommerce-ppcp-settings' );
-		$this->remember_paypal_option( 'woocommerce-ppcp-data-styling' );
-		$this->remember_paypal_option( 'woocommerce-ppcp-version' );
 		$this->sut = $this->make_compat_with_script_handler( $this->make_blackbox_script_handler() );
 	}
 
@@ -46,9 +40,6 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		global $wp;
-
-		$this->restore_paypal_options();
 		if ( $this->touched_smart_button_handle ) {
 			wp_dequeue_script( 'ppcp-smart-button' );
 			wp_deregister_script( 'ppcp-smart-button' );
@@ -61,21 +52,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			wp_dequeue_script( 'ppcp-add-payment-method' );
 			wp_deregister_script( 'ppcp-add-payment-method' );
 		}
-		foreach ( $this->paypal_button_render_hook_provider() as $case ) {
-			remove_action( $case[0], array( $this->sut, 'enqueue_paypal_script' ), 10 );
-		}
-		remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ), 20 );
-		remove_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_paypal_cart_block_scripts_if_registered' ), 20 );
-		remove_action( 'woocommerce_before_mini_cart', array( $this->sut, 'enqueue_paypal_mini_cart_script_if_enabled' ), 10 );
-		remove_filter( 'woocommerce_widget_cart_is_hidden', array( $this->sut, 'enqueue_paypal_script_for_visible_mini_cart_widget' ), 20 );
-		remove_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20 );
-		remove_action( 'before_woocommerce_pay_form', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20 );
-		remove_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ), 20 );
-		remove_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this->sut, 'enqueue_paypal_script_if_add_payment_method_enqueued' ), 20 );
 		$this->reset_fraud_protection_scripts();
-		unset( $wp->query_vars['order-pay'] );
-		unset( $wp->query_vars['order-received'] );
-		set_current_screen( 'front' );
 
 		parent::tearDown();
 	}
@@ -180,9 +157,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_block_follower_enqueues_when_paypal_block_integration_is_registered(): void {
 		$this->register_paypal_block_handle();
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_block_script_if_registered();
 
@@ -201,9 +176,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			$gateways[ $gateway->id ] = $gateway;
 			return $gateways;
 		};
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_no_script_request();
 		add_filter( 'woocommerce_available_payment_gateways', $add_gateway );
 
 		try {
@@ -221,9 +194,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_standard_form_follower_uses_enqueued_smart_button_without_gateway_snapshot(): void {
 		$this->register_and_enqueue_paypal_smart_button();
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_script_if_smart_button_enqueued();
 
@@ -240,9 +211,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_standard_form_follower_requires_registered_and_enqueued_smart_button( bool $registered, bool $enqueued ): void {
 		$this->configure_paypal_smart_button( $registered, $enqueued );
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_no_script_request();
 
 		$sut->enqueue_paypal_script_if_smart_button_enqueued();
 
@@ -271,9 +240,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function test_paypal_block_follower_skips_checkout_endpoint( string $endpoint ): void {
 		global $wp;
 
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_no_script_request();
 		$wp->query_vars[ $endpoint ] = '123';
 
 		$sut->enqueue_paypal_block_script_if_registered();
@@ -286,9 +253,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_mini_cart_follower_enqueues_for_paypal_fragment_script(): void {
 		$this->configure_paypal_mini_cart( true, true, true );
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
 
@@ -300,9 +265,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_visible_cart_widget_prepares_paypal_fragments(): void {
 		$this->configure_paypal_mini_cart( true, true, true );
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_script_request( true );
 
 		$this->assertFalse( $sut->enqueue_paypal_script_for_visible_mini_cart_widget( false ) );
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
@@ -312,9 +275,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox A hidden classic cart widget stays hidden and requests no scripts.
 	 */
 	public function test_hidden_cart_widget_requests_nothing(): void {
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_no_script_request();
 
 		$this->assertTrue( $sut->enqueue_paypal_script_for_visible_mini_cart_widget( true ) );
 		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
@@ -323,14 +284,15 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox Malformed cart widget visibility values pass through without requesting scripts.
 	 *
+	 * This filter accepts mixed extension input, so invalid values must remain
+	 * unchanged instead of being coerced into widget visibility.
+	 *
 	 * @dataProvider malformed_cart_widget_visibility_provider
 	 *
 	 * @param mixed $value Malformed filter value.
 	 */
 	public function test_malformed_cart_widget_visibility_passes_through_without_scripts( $value ): void {
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_no_script_request();
 		$result = $sut->enqueue_paypal_script_for_visible_mini_cart_widget( $value );
 
 		$this->assertSame( $value, $result );
@@ -380,9 +342,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_mini_cart_follower_requires_paypal_location_and_script( bool $location_enabled, bool $script_registered, bool $script_enqueued ): void {
 		$this->configure_paypal_mini_cart( $location_enabled, $script_registered, $script_enqueued );
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_no_script_request();
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
 
@@ -403,67 +363,35 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The mini-cart follower supports the legacy location setting when current styling is absent.
+	 * @testdox PayPal version and setting precedence controls the mini-cart follower.
+	 *
+	 * @dataProvider mini_cart_setting_precedence_provider
 	 */
-	public function test_mini_cart_follower_supports_legacy_location_setting(): void {
-		update_option( 'woocommerce-ppcp-version', '4.0.0' );
-		delete_option( 'woocommerce-ppcp-data-styling' );
-		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array( 'mini-cart' ) ) );
-		$this->register_and_enqueue_paypal_smart_button();
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
+	public function test_mini_cart_setting_precedence( string $version, ?bool $current_enabled, bool $legacy_enabled, bool $expected ): void {
+		update_option( 'woocommerce-ppcp-version', $version );
+		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => $legacy_enabled ? array( 'mini-cart' ) : array() ) );
+		if ( null === $current_enabled ) {
+			delete_option( 'woocommerce-ppcp-data-styling' );
+			$this->register_and_enqueue_paypal_smart_button();
+		} else {
+			$this->configure_paypal_mini_cart( $current_enabled, true, true );
+			update_option( 'woocommerce-ppcp-version', $version );
+		}
+		$sut = $expected ? $this->make_sut_expecting_script_request( true ) : $this->make_sut_expecting_no_script_request();
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
 
-		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		$this->assertSame( $expected, wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
 
-	/**
-	 * @testdox Current disabled mini-cart styling overrides an enabled legacy location.
-	 */
-	public function test_mini_cart_current_styling_overrides_legacy_location(): void {
-		$this->configure_paypal_mini_cart( false, true, true );
-		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array( 'mini-cart' ) ) );
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
-
-		$sut->enqueue_paypal_mini_cart_script_if_enabled();
-
-		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
-	}
-
-	/**
-	 * @testdox PayPal Payments 3.4 uses its enabled legacy mini-cart location over disabled styling data.
-	 */
-	public function test_paypal_34_uses_enabled_legacy_mini_cart_location(): void {
-		$this->configure_paypal_mini_cart( false, true, true );
-		update_option( 'woocommerce-ppcp-version', '3.4.1' );
-		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array( 'mini-cart' ) ) );
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
-
-		$sut->enqueue_paypal_mini_cart_script_if_enabled();
-
-		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
-	}
-
-	/**
-	 * @testdox PayPal Payments 3.4 ignores enabled styling data when its legacy mini-cart location is disabled.
-	 */
-	public function test_paypal_34_uses_disabled_legacy_mini_cart_location(): void {
-		$this->configure_paypal_mini_cart( true, true, true );
-		update_option( 'woocommerce-ppcp-version', '3.4.1' );
-		update_option( 'woocommerce-ppcp-settings', array( 'smart_button_locations' => array() ) );
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$sut = $this->make_compat_with_script_handler( $handler );
-
-		$sut->enqueue_paypal_mini_cart_script_if_enabled();
-
-		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	/** @return array<string, array{string, ?bool, bool, bool}> */
+	public function mini_cart_setting_precedence_provider(): array {
+		return array(
+			'current fallback to enabled legacy' => array( '4.0.0', null, true, true ),
+			'current styling overrides legacy'   => array( '4.0.0', false, true, false ),
+			'3.4 uses enabled legacy location'   => array( '3.4.1', false, true, true ),
+			'3.4 uses disabled legacy location'  => array( '3.4.1', true, false, false ),
+		);
 	}
 
 	/**
@@ -482,9 +410,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox A named PayPal render action still skips the interceptor when shared scripts are unavailable.
 	 */
 	public function test_named_paypal_render_skips_when_shared_scripts_are_unavailable(): void {
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_script_request( false );
 
 		$sut->enqueue_paypal_script();
 
@@ -495,9 +421,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox enqueue_paypal_script() uses the injected handler before it enqueues the interceptor.
 	 */
 	public function test_enqueue_paypal_script_uses_injected_handler(): void {
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_script();
 
@@ -514,7 +438,6 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Build a PayPal compatibility layer with a controlled script handler.
 	 *
-	 * @param BlackboxScriptHandler $handler Script handler.
 	 * @return PayPalScriptCompat
 	 */
 	private function make_compat_with_script_handler( BlackboxScriptHandler $handler ): PayPalScriptCompat {
@@ -522,6 +445,22 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut->init( $handler );
 
 		return $sut;
+	}
+
+	/** Build a compatibility layer that must request the shared scripts. */
+	private function make_sut_expecting_script_request( bool $result ): PayPalScriptCompat {
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( $result );
+
+		return $this->make_compat_with_script_handler( $handler );
+	}
+
+	/** Build a compatibility layer that must not request the shared scripts. */
+	private function make_sut_expecting_no_script_request(): PayPalScriptCompat {
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->never() )->method( 'request_scripts' );
+
+		return $this->make_compat_with_script_handler( $handler );
 	}
 
 	/**
@@ -602,39 +541,9 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		return $previous;
 	}
 
-	/**
-	 * Remember a PayPal option so the test can restore it.
-	 *
-	 * @param string $option_name Option name.
-	 */
-	private function remember_paypal_option( string $option_name ): void {
-		$missing = new \stdClass();
-		$value   = get_option( $option_name, $missing );
-
-		$this->original_paypal_options[ $option_name ] = array(
-			'exists' => $missing !== $value,
-			'value'  => $value,
-		);
-	}
-
-	/**
-	 * Restore PayPal options changed by a test.
-	 */
-	private function restore_paypal_options(): void {
-		foreach ( $this->original_paypal_options as $option_name => $original ) {
-			if ( $original['exists'] ) {
-				update_option( $option_name, $original['value'] );
-			} else {
-				delete_option( $option_name );
-			}
-		}
-	}
-
 	/** @testdox Subscriptions render requests the interceptor only for the active PayPal script. */
 	public function test_subscriptions_render_requires_active_paypal_script(): void {
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
+		$sut = $this->make_sut_expecting_script_request( true );
 		$sut->register();
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
