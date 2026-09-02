@@ -309,7 +309,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$session          = $this->createMock( \WC_Session::class );
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willThrowException( new \RuntimeException( 'session unavailable' ) );
-		$this->set_woocommerce_session( $session );
+		WC()->session = $session;
 
 		add_filter( 'wp_doing_ajax', '__return_true' );
 		add_filter(
@@ -346,8 +346,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 	/** @testdox A failed current record write retires an older record and leaves no order association marker. */
 	public function test_failed_record_write_leaves_no_order_association_marker(): void {
-		$backing_session = WC()->session;
-		$record          = array(
+		$unassociated_record = array(
 			'origin'     => 'paypal_express_order_creation',
 			'session_id' => 'response-session',
 			'decision'   => FraudDecision::Allow,
@@ -355,30 +354,36 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			'order_id'   => '',
 			'cart_hash'  => '',
 		);
-		$backing_session->set( '_fraud_protection_paypal_verification', $record );
-		$session         = $this->createMock( \WC_Session::class );
-		$write_count     = 0;
+		$stored_record       = $unassociated_record;
+		$session             = $this->createMock( \WC_Session::class );
+		$write_count         = 0;
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willReturnCallback(
-			static function ( string $key, $value ) use ( $backing_session, &$write_count ): void {
-				if ( 1 === ++$write_count ) {
+			function ( string $key, $value ) use ( $unassociated_record, &$stored_record, &$write_count ): void {
+				$this->assertSame( '_fraud_protection_paypal_verification', $key );
+				++$write_count;
+				if ( 1 === $write_count ) {
+					$this->assertSame( $unassociated_record, $value );
 					throw new \RuntimeException( 'session write unavailable' );
 				}
 
-				$backing_session->set( $key, $value );
+				$this->assertNull( $value );
+				$stored_record = $value;
 			}
 		);
-		$this->set_woocommerce_session( $session );
+		$session->method( 'get' )->willReturnCallback(
+			static fn( string $key, $default = null ) => '_fraud_protection_paypal_verification' === $key ? $stored_record : $default
+		);
+		WC()->session = $session;
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
 
 		$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
-		$this->assertNull( $backing_session->get( '_fraud_protection_paypal_verification' ) );
-		$backing_session->set( '_fraud_protection_paypal_verification', $record );
+		$this->assertNull( $stored_record );
+		$stored_record = $unassociated_record;
 		$this->sut->associate_created_order_with_verification( new FakePayPalOrder( 'PP-NEW' ) );
 
-		$record = $backing_session->get( '_fraud_protection_paypal_verification' );
-		$this->assertIsArray( $record );
-		$this->assertSame( '', $record['order_id'] );
+		$this->assertIsArray( $stored_record );
+		$this->assertSame( '', $stored_record['order_id'] );
 		$this->assertLogged(
 			'warning',
 			'Recording the PayPal request verification failed',
@@ -409,7 +414,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->onlyMethods( array( 'is_empty' ) )
 			->getMock();
 		$cart->method( 'is_empty' )->willThrowException( new \RuntimeException( 'cart unavailable' ) );
-		$this->set_woocommerce_cart( $cart );
+		WC()->cart = $cart;
 
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
@@ -652,7 +657,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$cart->method( 'needs_payment' )->willReturn( true );
 		$cart->method( 'get_cart' )->willReturn( array() );
 		$cart->method( 'get_cart_hash' )->willReturn( 'cart-hash' );
-		$this->set_woocommerce_cart( $cart );
+		WC()->cart = $cart;
 	}
 
 	/** Run a setup-token request. */

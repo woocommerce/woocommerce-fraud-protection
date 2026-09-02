@@ -368,25 +368,19 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 	/** @testdox A final record read failure preserves the incoming decision and retires stored state. */
 	public function test_supply_read_failure_preserves_incoming_decision_and_retires(): void {
-		$request         = $this->create_protected_paypal_request_record( 'create' );
-		$backing_session = WC()->session;
-		$session         = $this->createMock( \WC_Session::class );
-		$retired         = false;
-		$session->method( 'get' )->willThrowException( new \RuntimeException( 'session read unavailable' ) );
-		$session->expects( $this->once() )->method( 'set' )->willReturnCallback(
-			static function ( string $key, $value ) use ( $backing_session, &$retired ): void {
-				$retired = null === $value;
-				$backing_session->set( $key, $value );
-			}
+		$request = array(
+			'payment_method' => 'ppcp-gateway',
+			'payment_data'   => array( 'paypal_order_id' => 'PP-123' ),
 		);
-		$this->set_woocommerce_session( $session );
-		$incoming         = new SuppliedDecision( FraudDecision::Block );
+		$session = $this->createMock( \WC_Session::class );
+		$session->method( 'get' )->willThrowException( new \RuntimeException( 'session read unavailable' ) );
+		$session->expects( $this->once() )->method( 'set' )->with( '_fraud_protection_paypal_verification', null );
+		WC()->session = $session;
+		$incoming = new SuppliedDecision( FraudDecision::Block );
 
-		$returned         = $this->decision_reuse->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
+		$returned = $this->decision_reuse->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
 
 		$this->assertSame( $incoming, $returned );
-		$this->assertTrue( $retired );
-		$this->assertNull( $backing_session->get( '_fraud_protection_paypal_verification' ) );
 		$this->assertLogged(
 			'warning',
 			'Reading or consuming the PayPal request verification record failed',
@@ -400,30 +394,41 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 	/** @testdox A final used-state write failure preserves the incoming decision and retires stored state. */
 	public function test_supply_write_failure_preserves_incoming_decision_and_retires(): void {
-		$request         = $this->create_protected_paypal_request_record( 'create' );
-		$backing_session = WC()->session;
+		$request         = array(
+			'payment_method' => 'ppcp-gateway',
+			'payment_data'   => array( 'paypal_order_id' => 'PP-123' ),
+		);
+		$record          = array(
+			'origin'     => PayPalDecisionReuse::ORDER_CREATION_SOURCE,
+			'session_id' => 'response-session',
+			'decision'   => FraudDecision::Allow,
+			'used'       => false,
+			'order_id'   => 'PP-123',
+			'cart_hash'  => '',
+		);
+		$expected_record = $record;
+		$expected_record['used'] = true;
 		$session         = $this->createMock( \WC_Session::class );
 		$write_count     = 0;
-		$retired         = false;
-		$session->method( 'get' )->willReturnCallback( static fn( string $key, $default = null ) => $backing_session->get( $key, $default ) );
+		$session->method( 'get' )->willReturn( $record );
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willReturnCallback(
-			static function ( string $key, $value ) use ( $backing_session, &$write_count, &$retired ): void {
-				if ( 1 === ++$write_count ) {
+			function ( string $key, $value ) use ( $expected_record, &$write_count ): void {
+				$this->assertSame( '_fraud_protection_paypal_verification', $key );
+				++$write_count;
+				if ( 1 === $write_count ) {
+					$this->assertSame( $expected_record, $value );
 					throw new \RuntimeException( 'session write unavailable' );
 				}
 
-				$retired = null === $value;
-				$backing_session->set( $key, $value );
+				$this->assertNull( $value );
 			}
 		);
-		$this->set_woocommerce_session( $session );
-		$incoming         = new SuppliedDecision( FraudDecision::Block );
+		WC()->session = $session;
+		$incoming = new SuppliedDecision( FraudDecision::Block );
 
-		$returned         = $this->decision_reuse->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
+		$returned = $this->decision_reuse->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
 
 		$this->assertSame( $incoming, $returned );
-		$this->assertTrue( $retired );
-		$this->assertNull( $backing_session->get( '_fraud_protection_paypal_verification' ) );
 		$this->assertLogged(
 			'warning',
 			'Reading or consuming the PayPal request verification record failed',
@@ -1107,7 +1112,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 				$totals_calculated = true;
 			}
 		);
-		$this->set_woocommerce_cart( $cart );
+		WC()->cart = $cart;
 
 		$this->record_setup_verification();
 
@@ -1209,7 +1214,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$cart->method( 'needs_payment' )->willReturn( $needs_payment );
 		$cart->method( 'get_cart' )->willReturn( $items );
 		$cart->method( 'get_cart_hash' )->willReturn( $hash );
-		$this->set_woocommerce_cart( $cart );
+		WC()->cart = $cart;
 	}
 
 }
