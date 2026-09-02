@@ -141,7 +141,7 @@ class PayPalCompat {
 		add_filter( 'woocommerce_widget_cart_is_hidden', array( $this, 'enqueue_paypal_script_for_visible_mini_cart_widget' ), 20, 1 );
 		// Run wider-surface followers after first-party protectors on the same hooks.
 		add_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this, 'enqueue_paypal_block_script_if_registered' ), 20, 0 );
-		add_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this, 'enqueue_paypal_block_script_if_registered' ), 20, 0 );
+		add_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this, 'enqueue_paypal_cart_block_scripts_if_registered' ), 20, 0 );
 		add_action( 'woocommerce_checkout_before_order_review', array( $this, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20, 0 );
 		add_action( 'before_woocommerce_pay_form', array( $this, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20, 0 );
 		add_action( 'woocommerce_add_payment_method_form_bottom', array( $this, 'enqueue_paypal_script_for_add_payment_method' ), 20, 0 );
@@ -340,6 +340,37 @@ class PayPalCompat {
 		}
 
 		$this->enqueue_paypal_script();
+	}
+
+	/**
+	 * Enqueue the PayPal interceptor and Store API carrier for a frontend Cart block.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function enqueue_paypal_cart_block_scripts_if_registered(): void {
+		if (
+			is_wc_endpoint_url( 'order-pay' )
+			|| is_wc_endpoint_url( 'order-received' )
+			|| ! wp_script_is( 'ppcp-checkout-block', 'registered' )
+		) {
+			return;
+		}
+
+		$this->enqueue_paypal_script();
+
+		if ( ! wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'wc-fraud-protection-blocks-checkout',
+			plugins_url( 'assets/js/blocks-checkout.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
+			array( 'wc-fraud-protection-blackbox-init', 'wp-data', 'wc-blocks-checkout-events' ),
+			WC_FRAUD_PROTECTION_VERSION,
+			array( 'in_footer' => true )
+		);
 	}
 
 	/**

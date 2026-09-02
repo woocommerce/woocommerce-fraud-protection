@@ -184,7 +184,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			remove_action( $case[0], array( $this->sut, 'enqueue_paypal_script' ), 10 );
 		}
 		remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ), 20 );
-		remove_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ), 20 );
+		remove_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_paypal_cart_block_scripts_if_registered' ), 20 );
 		remove_action( 'woocommerce_before_mini_cart', array( $this->sut, 'enqueue_paypal_mini_cart_script_if_enabled' ), 10 );
 		remove_filter( 'woocommerce_widget_cart_is_hidden', array( $this->sut, 'enqueue_paypal_script_for_visible_mini_cart_widget' ), 20 );
 		remove_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20 );
@@ -230,7 +230,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		}
 
 		$this->assertSame( 20, has_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ) ) );
-		$this->assertSame( 20, has_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_paypal_block_script_if_registered' ) ) );
+		$this->assertSame( 20, has_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_paypal_cart_block_scripts_if_registered' ) ) );
 		$this->assertSame( 10, has_action( 'woocommerce_before_mini_cart', array( $this->sut, 'enqueue_paypal_mini_cart_script_if_enabled' ) ) );
 		$this->assertSame( 20, has_filter( 'woocommerce_widget_cart_is_hidden', array( $this->sut, 'enqueue_paypal_script_for_visible_mini_cart_widget' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ) ) );
@@ -818,6 +818,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 			$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
 			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
 		} finally {
 			$this->set_cart_block_enqueue_state( $previous_enqueue_state );
 		}
@@ -836,6 +837,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
 			$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
 		} finally {
 			$this->set_cart_block_enqueue_state( $previous_enqueue_state );
 		}
@@ -894,6 +896,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		}
 
 		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
 	}
 
 	/**

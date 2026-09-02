@@ -91,6 +91,23 @@ describe( 'blocks-checkout', () => {
 			);
 		} );
 
+		it( 'uses the shared session after a Cart express request', async () => {
+			setupFraudProtection();
+			loadScript();
+			const expressSessionId = await window.wcFraudProtection.acquireSessionId();
+
+			const validationCallback = mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			await validationCallback();
+
+			expect( expressSessionId ).toBe( 'test-session-id' );
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			expect( mockSetExtensionData ).toHaveBeenCalledWith(
+				'woocommerce/fraud-protection',
+				{ blackbox_session_id: expressSessionId },
+				true
+			);
+		} );
+
 		it( 'replaces extension data when session ID is empty', async () => {
 			mockAcquireSessionId.mockReturnValue( Promise.resolve( '' ) );
 			setupFraudProtection();
