@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) || exit;
  * Invoked from `DecisionHandler::apply_decision()` with the decision as
  * received from the API — not the enforcement outcome — so that block and
  * challenge decisions are recorded faithfully even when enforcement is
- * suppressed (learning mode, filter overrides). Every parsed decision is
+ * suppressed (automatic protection disabled, filter overrides). Every parsed decision is
  * recorded, allowed sessions included, so merchants can act on any session
  * from its row (e.g. create an allow or block rule for the shopper).
  * Verifies that failed to produce a real verdict (transport errors,

@@ -7,12 +7,11 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
-use Automattic\WooCommerce\FraudProtection\LearningModeContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -22,7 +21,7 @@ defined( 'ABSPATH' ) || exit;
  * This class is responsible for:
  * - Evaluating the merchant ruleset against the session
  * - Validating decisions and applying extension override filters for whitelisting
- * - Applying learning mode
+ * - Applying the automatic-protection setting
  * - Recording actionable verdicts into the sessions log via SessionEventRecorder
  *
  * Stateless by design: the returned decision applies only to the current
@@ -54,16 +53,25 @@ class DecisionHandler {
 	private RuleEvaluator $rule_evaluator;
 
 	/**
+	 * Automatic-protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private AutomaticProtectionSetting $automatic_protection;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionEventRecorder $event_recorder The session event recorder instance.
-	 * @param RuleEvaluator        $rule_evaluator The rule evaluator instance.
+	 * @param SessionEventRecorder       $event_recorder       The session event recorder instance.
+	 * @param RuleEvaluator              $rule_evaluator       The rule evaluator instance.
+	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
 	 */
-	final public function init( SessionEventRecorder $event_recorder, RuleEvaluator $rule_evaluator ): void {
-		$this->event_recorder = $event_recorder;
-		$this->rule_evaluator = $rule_evaluator;
+	final public function init( SessionEventRecorder $event_recorder, RuleEvaluator $rule_evaluator, AutomaticProtectionSetting $automatic_protection ): void {
+		$this->event_recorder       = $event_recorder;
+		$this->rule_evaluator       = $rule_evaluator;
+		$this->automatic_protection = $automatic_protection;
 	}
 
 	/**
@@ -79,14 +87,14 @@ class DecisionHandler {
 	 * The decision flow:
 	 * 1. Evaluate the merchant ruleset: a matching active rule decides the
 	 *    outcome directly - it takes precedence over the Blackbox verdict and
-	 *    bypasses the decision filter and the learning mode gate below. In
-	 *    particular, a merchant block rule enforces even in learning mode.
+	 *    bypasses the decision filter and the automatic-protection gate below.
+	 *    In particular, a merchant block rule always enforces.
 	 *    The `woocommerce_fraud_protection_rule_applied` action announces the
 	 *    outcome to extensions.
 	 * 2. Coerce non-actionable decisions to Allow
 	 * 3. Apply the `woocommerce_fraud_protection_automated_decision` filter for overrides
 	 * 4. Validate the filtered decision (third-party filters may return invalid values)
-	 * 5. Apply learning mode (suppresses Block decisions while active)
+	 * 5. Apply the automatic-protection setting
 	 * 6. Record the received decision into the sessions log (fail-open)
 	 *
 	 * @param VerifyResult         $result       The verify result from the API.
@@ -276,36 +284,10 @@ class DecisionHandler {
 			);
 		}
 
-		$payment_data = is_array( $session_data['payment'] ?? null ) ? $session_data['payment'] : array();
-		$gateway      = is_string( $payment_data['gateway'] ?? null ) ? $payment_data['gateway'] : '';
-		$source       = is_string( $session_data['source'] ?? null ) ? $session_data['source'] : '';
-		$mode         = is_string( $payment_data['transaction_mode'] ?? null ) ? PaymentMode::tryFrom( $payment_data['transaction_mode'] ) : null;
-		$context      = new LearningModeContext( $gateway, $source, $mode ?? PaymentMode::Unknown );
-
-		/**
-		 * Filters whether learning mode is active.
-		 *
-		 * When learning mode is enabled (default), block decisions are suppressed
-		 * and treated as "allow", regardless of whether the decision came from the
-		 * API or was set by the `woocommerce_fraud_protection_automated_decision` filter.
-		 * This allows the plugin to observe fraud signals without affecting real
-		 * transactions.
-		 *
-		 * To enable enforcement (blocking), return false:
-		 * `add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );`
-		 *
-		 * @since 0.1.0
-		 * @since 0.2.0 The nullable context argument was added.
-		 *
-		 * @param bool                     $learning_mode Whether learning mode is active. Default true.
-		 * @param LearningModeContext|null $context      Verification context, or null outside a verification attempt.
-		 */
-		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true, $context );
-
-		if ( $learning_mode && FraudDecision::Block === $decision ) {
+		if ( FraudDecision::Block === $decision && ! $this->automatic_protection->is_enabled() ) {
 			FraudProtectionController::log(
 				'info',
-				sprintf( 'Learning mode: suppressing "%s" decision, allowing session.', $decision->value ),
+				'Automatic protection is disabled: suppressing the "block" decision and allowing the session.',
 				$log_context
 			);
 			$decision = FraudDecision::Allow;

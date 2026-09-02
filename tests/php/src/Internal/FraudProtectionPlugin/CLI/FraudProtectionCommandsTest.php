@@ -8,10 +8,12 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\FraudProtection\LearningModeContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -46,16 +48,53 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 */
 	private $session_event_pruner;
 
-	/** @var array<string, callable> */
+	/**
+	 * Merchant experience feature.
+	 *
+	 * @var MerchantExperienceFeature
+	 */
+	private $merchant_experience;
+
+	/**
+	 * Automatic protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private $automatic_protection;
+
+	/**
+	 * Settings telemetry mock.
+	 *
+	 * @var SettingsTelemetry&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $settings_telemetry;
+
+	/**
+	 * Registered commands.
+	 *
+	 * @var array<string, callable>
+	 */
 	private array $wp_cli_hooks;
 
-	/** @var array<string, callable> */
+	/**
+	 * Registered command callbacks.
+	 *
+	 * @var array<string, callable>
+	 */
 	private array $wp_cli_commands;
 
-	/** @var string[] */
+	/**
+	 * Successful command messages.
+	 *
+	 * @var string[]
+	 */
 	private array $wp_cli_lines;
 
-	/** @var string[] */
+	/**
+	 * Command errors.
+	 *
+	 * @var string[]
+	 */
 	private array $wp_cli_successes;
 
 	/**
@@ -98,15 +137,21 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->schema_manager       = $this->createMock( SchemaManager::class );
 		$this->session_event_pruner = $this->createMock( SessionEventPruner::class );
+		$this->merchant_experience  = new MerchantExperienceFeature();
+		$this->automatic_protection = new AutomaticProtectionSetting();
+		$this->settings_telemetry   = $this->createMock( SettingsTelemetry::class );
+		$this->merchant_experience->reset();
+		$this->automatic_protection->reset();
 		$this->sut                  = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ) );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_experience, $this->automatic_protection, $this->settings_telemetry );
 	}
 
 	/**
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
+		$this->merchant_experience->reset();
+		$this->automatic_protection->reset();
 		remove_all_filters( 'pre_option_jetpack_options' );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
 		delete_option( SchemaManager::DB_INSTALL_STATE_OPTION );
@@ -155,6 +200,8 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
+				'wc fraud-protection merchant-experience set',
+				'wc fraud-protection automatic-protection set',
 				'wc fraud-protection status',
 				'wc fraud-protection database install',
 				'wc fraud-protection sessions prune',
@@ -179,18 +226,6 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			)
 		);
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( 1724198400 );
-		$received_context = 'not-called';
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
-		add_filter(
-			'woocommerce_fraud_protection_learning_mode',
-			function ( $learning_mode, $context = null ) use ( &$received_context ) {
-				$received_context = $context;
-				return $learning_mode;
-			},
-			10,
-			2
-		);
-
 		update_option( SchemaManager::DB_VERSION_OPTION, 91 );
 		update_option( SchemaManager::DB_INSTALL_STATE_OPTION, array( 'sentinel' => true ) );
 
@@ -200,8 +235,10 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'sentinel' => true ), get_option( SchemaManager::DB_INSTALL_STATE_OPTION ), 'Status must not change the install state' );
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
-		$this->assertStringContainsString( 'Learning mode: Disabled', $output );
-		$this->assertNull( $received_context );
+		$this->assertStringContainsString( 'Merchant experience override: default', $output );
+		$this->assertStringContainsString( 'Merchant experience code default: Disabled', $output );
+		$this->assertStringContainsString( 'Automatic protection stored state: default_disabled', $output );
+		$this->assertStringContainsString( 'Automatic protection: Disabled', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
 		$this->assertStringContainsString( 'Required schema version:', $output );
 		$this->assertStringContainsString( 'Installed schema version:', $output );
@@ -221,79 +258,45 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Status should list learning-mode callbacks in execution order.
+	 * @testdox Automatic-protection CLI changes write the shared setting and record CLI stats only for transitions.
 	 */
-	public function test_status_lists_learning_mode_callbacks(): void {
-		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
-		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+	public function test_automatic_protection_set_records_real_transitions(): void {
+		$this->settings_telemetry->expects( $this->exactly( 3 ) )
+			->method( 'record_automatic_protection_change' )
+			->withConsecutive(
+				array( 'enabled', SettingsTelemetry::CHANNEL_CLI ),
+				array( 'disabled', SettingsTelemetry::CHANNEL_CLI ),
+				array( 'reset', SettingsTelemetry::CHANNEL_CLI )
+			);
 
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_true', 5 );
-		add_filter( 'woocommerce_fraud_protection_learning_mode', self::class . '::learning_mode_static_callback', 10 );
-		add_filter( 'woocommerce_fraud_protection_learning_mode', array( $this, 'learning_mode_instance_callback' ), 10 );
-		add_filter( 'woocommerce_fraud_protection_learning_mode', $this, 20 );
-		$closure_calls = 0;
-		add_filter(
-			'woocommerce_fraud_protection_learning_mode',
-			function ( $learning_mode, $context = null ) use ( &$closure_calls ) {
-				++$closure_calls;
-				unset( $context );
-				return $learning_mode;
-			},
-			30,
-			2
-		);
+		$this->sut->automatic_protection_set( array( 'enabled' ) );
+		$this->sut->automatic_protection_set( array( 'enabled' ) );
+		$this->sut->automatic_protection_set( array( 'disabled' ) );
+		$this->sut->automatic_protection_set( array( 'default' ) );
 
-		$this->sut->status();
-
-		$output = implode( "\n", $this->wp_cli_lines );
-		$this->assertStringContainsString( 'Learning mode: Enabled', $output );
-		$this->assertSame( 1, $closure_calls );
-		$this->assertMatchesRegularExpression( '/Learning mode callback: __return_true \(priority 5\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_static_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class . '::learning_mode_instance_callback', '/' ) . ' \(priority 10\).*Learning mode callback: ' . preg_quote( self::class, '/' ) . ' \(priority 20\).*Learning mode callback: Closure \([^)]*FraudProtectionCommandsTest\.php:[0-9]+\) \(priority 30\)/s', $output );
-		$this->assertStringNotContainsString( getcwd(), $output );
+		$this->assertFalse( $this->automatic_protection->is_enabled() );
+		$this->assertCount( 4, $this->wp_cli_successes );
 	}
 
 	/**
-	 * @testdox Status reports no learning-mode callbacks when none are registered.
+	 * @testdox Merchant-experience CLI changes write and reset the shared override.
 	 */
-	public function test_status_reports_no_learning_mode_callbacks(): void {
-		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
-		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+	public function test_merchant_experience_set_updates_shared_override(): void {
+		$this->sut->merchant_experience_set( array( 'enabled' ) );
+		$this->assertTrue( $this->merchant_experience->is_enabled() );
 
-		$this->sut->status();
-
-		$this->assertContains( 'Learning mode callbacks: None', $this->wp_cli_lines );
+		$this->sut->merchant_experience_set( array( 'default' ) );
+		$this->assertSame( MerchantExperienceFeature::STATUS_DEFAULT, $this->merchant_experience->get_stored_status() );
 	}
 
 	/**
-	 * Return the learning-mode value unchanged.
-	 *
-	 * @param bool $learning_mode Learning-mode value.
-	 * @return bool
+	 * @testdox Invalid settings command values do not change stored state.
 	 */
-	public static function learning_mode_static_callback( $learning_mode ): bool {
-		return (bool) $learning_mode;
-	}
+	public function test_settings_commands_reject_invalid_values(): void {
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'enabled, disabled, or default' );
 
-	/**
-	 * Return the learning-mode value unchanged.
-	 *
-	 * @param bool $learning_mode Learning-mode value.
-	 * @return bool
-	 */
-	public function learning_mode_instance_callback( $learning_mode ): bool {
-		return (bool) $learning_mode;
-	}
-
-	/**
-	 * Return the learning-mode value unchanged.
-	 *
-	 * @param bool                     $learning_mode Learning-mode value.
-	 * @param LearningModeContext|null $context      Learning-mode context.
-	 * @return bool
-	 */
-	public function __invoke( $learning_mode, $context = null ): bool {
-		unset( $context );
-		return (bool) $learning_mode;
+		$this->sut->automatic_protection_set( array( 'invalid' ) );
 	}
 
 	/**

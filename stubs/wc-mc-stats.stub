@@ -1,0 +1,22 @@
+<?php
+/**
+ * Stub for WooCommerce's internal MC Stats service.
+ */
+
+namespace Automattic\WooCommerce\Internal;
+
+class McStats {
+
+	/**
+	 * Add a statistic.
+	 *
+	 * @param string $group Group name.
+	 * @param string $stat  Statistic name.
+	 */
+	public function add( $group, $stat ): void {}
+
+	/**
+	 * Send the current statistics from the server.
+	 */
+	public function do_server_side_stats(): void {}
+}

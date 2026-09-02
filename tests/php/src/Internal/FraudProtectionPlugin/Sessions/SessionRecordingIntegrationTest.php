@@ -16,6 +16,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
@@ -57,7 +58,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $schema_manager->get_rules_table_name() );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
-		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
+		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
 		remove_all_filters( 'woocommerce_fraud_protection_automated_decision' );
 
 		if ( function_exists( 'WC' ) && WC()->session instanceof \WC_Session ) {
@@ -170,7 +171,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A block decision suppressed by learning mode is recorded as received block with final status allowed, with its risk score.
+	 * @testdox A block suppressed while automatic protection is disabled is recorded with its received decision and risk score.
 	 */
 	public function test_suppressed_block_decision_is_recorded(): void {
 		$verifier = $this->a_session_verifier_receiving(
@@ -198,7 +199,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox An enforced block decision is recorded as blocked.
 	 */
 	public function test_enforced_block_decision_is_recorded_as_blocked(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
 
 		$verifier = $this->a_session_verifier_receiving(
 			array(
@@ -221,7 +222,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox A throwing automated-decision filter preserves, records, and persists an enforced Block.
 	 */
 	public function test_automated_filter_error_preserves_enforced_block_and_records_it(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
 			function () {
@@ -297,9 +298,9 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A rejected verify is recorded as a received block and learning mode allows it.
+	 * @testdox A rejected verify is recorded as a received block while automatic protection is disabled.
 	 */
-	public function test_rejected_verify_is_recorded_and_suppressed_by_learning_mode(): void {
+	public function test_rejected_verify_is_recorded_and_suppressed_when_automatic_protection_is_disabled(): void {
 		$verifier = $this->a_session_verifier_with_transport(
 			array(
 				'response' => array( 'code' => 413 ),
@@ -321,8 +322,8 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox An enforced rejected verify is recorded as blocked.
 	 */
-	public function test_rejected_verify_is_recorded_as_blocked_in_enforcement_mode(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+	public function test_rejected_verify_is_recorded_as_blocked_when_automatic_protection_is_enabled(): void {
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
 		$verifier = $this->a_session_verifier_with_transport(
 			array(
 				'response' => array( 'code' => 413 ),
@@ -430,7 +431,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A merchant block rule enforces even in learning mode and records a block_rule row with the rule id.
+	 * @testdox A merchant block rule enforces while automatic protection is disabled and records a block_rule row with the rule id.
 	 */
 	public function test_merchant_block_rule_enforces_and_records_block_rule_trigger(): void {
 		$rule = $this->a_rule_matching_the_visitor_ip( FraudDecision::Block );
@@ -455,7 +456,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$decision = $verifier->verify_session( 'integration-session-6', 'blocks_checkout' );
 
-		$this->assertSame( FraudDecision::Block, $decision, 'The merchant block rule must enforce even in learning mode' );
+		$this->assertSame( FraudDecision::Block, $decision, 'The merchant block rule must enforce while automatic protection is disabled' );
 
 		$row = $this->latest_row_for( 'integration-session-6' );
 		$this->assertNotNull( $row );
@@ -471,8 +472,6 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox A merchant allow rule overrides a Blackbox block and records an allow_rule row with the rule id.
 	 */
 	public function test_merchant_allow_rule_overrides_block_and_records_allow_rule_trigger(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
-
 		$rule = $this->a_rule_matching_the_visitor_ip( FraudDecision::Allow );
 
 		$verifier = $this->a_session_verifier_receiving(

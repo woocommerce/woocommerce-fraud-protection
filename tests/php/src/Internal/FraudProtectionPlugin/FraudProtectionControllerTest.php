@@ -9,6 +9,10 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
 /**
  * Tests for the FraudProtectionController class.
@@ -198,6 +202,39 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Settings telemetry registers while merchant-facing settings stay disabled by default.
+	 */
+	public function test_default_gate_registers_telemetry_without_merchant_surfaces(): void {
+		$container = wc_get_container();
+		$container->get( MerchantExperienceFeature::class )->reset();
+		$controller = $this->create_controller();
+
+		$controller->handle_init();
+
+		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( $container->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
+		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $controller, 'add_settings_page' ) ) );
+	}
+
+	/**
+	 * @testdox Enabling the merchant experience registers the page and settings endpoint.
+	 */
+	public function test_enabled_gate_registers_page_and_endpoint(): void {
+		$container = wc_get_container();
+		$feature   = $container->get( MerchantExperienceFeature::class );
+		$feature->set_enabled( true );
+
+		$controller = $this->create_controller();
+		$controller->handle_init();
+
+		$this->assertNotFalse( has_filter( 'woocommerce_get_settings_pages', array( $controller, 'add_settings_page' ) ) );
+		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );
+		$this->assertContains( $container->get( FraudProtectionSettingsPage::class ), $pages );
+		$feature->reset();
+	}
+
+	/**
 	 * Test that feature_is_enabled returns true when feature is enabled.
 	 */
 	public function test_feature_is_enabled_returns_true_when_enabled(): void {
@@ -349,6 +386,10 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		remove_all_filters( 'woocommerce_logging_class' );
 		delete_option( 'woocommerce_feature_fraud_protection_enabled' );
 		delete_option( 'jetpack_activation_source' );
+		wc_get_container()->get( MerchantExperienceFeature::class )->reset();
+		remove_all_filters( 'woocommerce_tracker_data' );
+		remove_all_filters( 'woocommerce_get_settings_pages' );
+		remove_all_actions( 'rest_api_init' );
 
 		// Remove any init hooks registered by the controller.
 		remove_all_actions( 'init' );

@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"jsx": "react-jsx",
+		"module": "esnext",
+		"moduleResolution": "node",
+		"noEmit": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"target": "es6",
+		"types": [ "jest", "node", "react", "react-dom" ]
+	},
+	"include": [ "client/**/*.ts", "client/**/*.tsx", "tests/js/**/*.ts", "tests/js/**/*.tsx" ],
+	"exclude": [ "node_modules", "build" ]
+}

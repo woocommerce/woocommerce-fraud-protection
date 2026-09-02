@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Outcome actually applied to a recorded fraud-protection session, as opposed
  * to what Blackbox said (the received decision). The *reason* for an outcome
- * is not part of this vocabulary: a block suppressed by learning mode or a
+ * is not part of this vocabulary: a block suppressed by the automatic-protection setting or a
  * filter override reads as `decision = block` paired with
  * `final_status = allowed`.
  *
