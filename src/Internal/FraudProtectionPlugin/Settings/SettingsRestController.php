@@ -73,6 +73,7 @@ class SettingsRestController extends \WP_REST_Controller {
 						'automatic_protection' => array(
 							'type'              => 'boolean',
 							'validate_callback' => 'rest_validate_request_arg',
+							'sanitize_callback' => 'rest_sanitize_boolean',
 						),
 					),
 				),

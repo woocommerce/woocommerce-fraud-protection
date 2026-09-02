@@ -142,8 +142,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->settings_telemetry   = $this->createMock( SettingsTelemetry::class );
 		$this->merchant_experience->reset();
 		$this->automatic_protection->reset();
-		$this->sut                  = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_experience, $this->automatic_protection, $this->settings_telemetry );
+		$this->initialize_sut( $this->automatic_protection );
 	}
 
 	/**
@@ -279,6 +278,55 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A failed automatic-protection set reports an error without telemetry.
+	 */
+	public function test_automatic_protection_set_failure_reports_error_without_telemetry(): void {
+		$setting = $this->createMock( AutomaticProtectionSetting::class );
+		$setting->expects( $this->once() )
+			->method( 'get_stored_status' )
+			->willReturn( AutomaticProtectionSetting::STATUS_DEFAULT_DISABLED );
+		$setting->expects( $this->once() )
+			->method( 'set_enabled' )
+			->with( true )
+			->willReturn( false );
+		$this->settings_telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
+		$this->initialize_sut( $setting );
+
+		try {
+			$this->sut->automatic_protection_set( array( 'enabled' ) );
+			$this->fail( 'Expected WP-CLI to report a failed setting write.' );
+		} catch ( WPCLIErrorException $error ) {
+			$this->assertStringContainsString( 'could not be saved', $error->getMessage() );
+		}
+
+		$this->assertEmpty( $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox A failed automatic-protection reset reports an error without telemetry.
+	 */
+	public function test_automatic_protection_reset_failure_reports_error_without_telemetry(): void {
+		$setting = $this->createMock( AutomaticProtectionSetting::class );
+		$setting->expects( $this->once() )
+			->method( 'get_stored_status' )
+			->willReturn( AutomaticProtectionSetting::STATUS_ENABLED );
+		$setting->expects( $this->once() )
+			->method( 'reset' )
+			->willReturn( false );
+		$this->settings_telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
+		$this->initialize_sut( $setting );
+
+		try {
+			$this->sut->automatic_protection_set( array( 'default' ) );
+			$this->fail( 'Expected WP-CLI to report a failed setting reset.' );
+		} catch ( WPCLIErrorException $error ) {
+			$this->assertStringContainsString( 'could not be saved', $error->getMessage() );
+		}
+
+		$this->assertEmpty( $this->wp_cli_successes );
+	}
+
+	/**
 	 * @testdox Merchant-experience CLI changes write and reset the shared override.
 	 */
 	public function test_merchant_experience_set_updates_shared_override(): void {
@@ -297,6 +345,16 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->expectExceptionMessage( 'enabled, disabled, or default' );
 
 		$this->sut->automatic_protection_set( array( 'invalid' ) );
+	}
+
+	/**
+	 * Initialize the command with an automatic-protection setting.
+	 *
+	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
+	 */
+	private function initialize_sut( AutomaticProtectionSetting $automatic_protection ): void {
+		$this->sut = new FraudProtectionCommands();
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_experience, $automatic_protection, $this->settings_telemetry );
 	}
 
 	/**

@@ -87,6 +87,37 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Supported REST Boolean forms are normalized before storage.
+	 *
+	 * @dataProvider supported_enabled_values
+	 *
+	 * @param mixed $value Supported Boolean form.
+	 */
+	public function test_post_normalizes_supported_enabled_values( mixed $value ): void {
+		$this->telemetry->expects( $this->once() )
+			->method( 'record_automatic_protection_change' )
+			->with( 'enabled', SettingsTelemetry::CHANNEL_SETTINGS );
+
+		$response = rest_get_server()->dispatch( $this->post_request( array( 'automatic_protection' => $value ) ) );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array( 'automatic_protection' => true ), $response->get_data() );
+		$this->assertSame( 'yes', get_option( self::OPTION_NAME ) );
+	}
+
+	/**
+	 * Supported REST values that mean enabled.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function supported_enabled_values(): array {
+		return array(
+			'string true' => array( 'true' ),
+			'integer one' => array( 1 ),
+		);
+	}
+
+	/**
 	 * @testdox Disabling automatic protection stores an explicit choice and records the transition.
 	 */
 	public function test_post_stores_explicit_disabled_choice(): void {

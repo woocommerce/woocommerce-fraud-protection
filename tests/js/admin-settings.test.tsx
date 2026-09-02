@@ -77,6 +77,22 @@ describe( 'AutomaticProtectionSettings', () => {
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
+	it( 'disables settings and shows a Notice when loading fails', async () => {
+		mockedApiFetch.mockRejectedValueOnce( new Error( 'failed' ) );
+		render( <AutomaticProtectionSettings /> );
+
+		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
+			'The Fraud Protection settings could not be loaded.'
+		);
+		const checkbox = screen.getByRole( 'checkbox' );
+		const save = screen.getByRole( 'button', { name: 'Save' } );
+		expect( checkbox ).toBeDisabled();
+		expect( save ).toBeDisabled();
+
+		fireEvent.click( save );
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+	} );
+
 	it( 'saves a changed Boolean and shows the success Snackbar', async () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( { automatic_protection: false } )
