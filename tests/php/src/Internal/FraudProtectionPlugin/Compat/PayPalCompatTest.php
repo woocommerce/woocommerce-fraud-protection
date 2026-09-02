@@ -554,15 +554,18 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Protected routes return the plaintext purchase message on Block.
+	 * @testdox Protected routes return the correct plaintext message on Block.
 	 *
-	 * @dataProvider protected_request_provider
+	 * @dataProvider protected_request_block_provider
 	 */
-	public function test_protected_request_blocks_before_transport( string $action, string $path, string $source, string $nonce ): void {
-		unset( $source, $nonce );
+	public function test_protected_request_blocks_before_transport( string $action, string $path, MessageContext $context ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
+		$this->blocked_session_message
+			->expects( $this->once() )
+			->method( 'get_plaintext' )
+			->with( $context );
 		PayPalJsonResponseCapture::$enabled = true;
 
 		try {
@@ -575,6 +578,14 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 403, PayPalJsonResponseCapture::$status_code );
 		$this->assertIsArray( PayPalJsonResponseCapture::$data );
 		$this->assertStringContainsString( 'unable to process this request', PayPalJsonResponseCapture::$data['message'] );
+	}
+
+	/** @return array<string, array{string, string, MessageContext}> */
+	public function protected_request_block_provider(): array {
+		return array(
+			'setup token' => array( 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', MessageContext::Generic ),
+			'vault order' => array( 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', MessageContext::Purchase ),
+		);
 	}
 
 	/**

@@ -245,7 +245,7 @@ class PayPalCompat {
 
 		if ( FraudDecision::Block === $decision ) {
 			wp_send_json_error(
-				array( 'message' => $this->blocked_session_message->get_plaintext( MessageContext::Purchase ) ),
+				array( 'message' => $this->blocked_session_message->get_plaintext( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $origin ? MessageContext::Generic : MessageContext::Purchase ) ),
 				403
 			);
 		}
