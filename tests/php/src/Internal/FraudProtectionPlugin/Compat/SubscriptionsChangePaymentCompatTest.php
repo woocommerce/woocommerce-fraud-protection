@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
@@ -44,6 +45,13 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	private $blocked_session_message;
 
 	/**
+	 * Mock Blackbox script handler.
+	 *
+	 * @var BlackboxScriptHandler&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $blackbox_script_handler;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -51,11 +59,13 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier       = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
+		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
 		$this->sut = new SubscriptionsChangePaymentCompat();
 		$this->sut->init(
 			$this->session_verifier,
-			$this->blocked_session_message
+			$this->blocked_session_message,
+			$this->blackbox_script_handler
 		);
 	}
 
@@ -66,7 +76,9 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		wc_clear_notices();
 		remove_all_actions( 'woocommerce_subscription_change_payment_method_via_pay_shortcode' );
+		remove_all_actions( 'woocommerce_subscriptions_change_payment_after_submit' );
 		remove_all_filters( 'wp_redirect' );
+		$this->reset_fraud_protection_scripts();
 
 		parent::tearDown();
 	}
@@ -113,6 +125,41 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 			has_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode', array( $this->sut, 'verify_and_block' ) ),
 			'woocommerce_subscription_change_payment_method_via_pay_shortcode action should be registered'
 		);
+		$this->assertSame(
+			10,
+			has_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this->sut, 'enqueue_pay_for_order_script' ) )
+		);
+	}
+
+	/**
+	 * @testdox The valid Subscriptions change-payment form requests shared and protector scripts.
+	 */
+	public function test_change_payment_form_render_enqueues_scripts(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->init(
+			$this->session_verifier,
+			$this->blocked_session_message,
+			$this->make_blackbox_script_handler()
+		);
+		$this->sut->register();
+
+		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-pay-for-order', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox The Subscriptions change-payment form does not enqueue when shared scripts are unavailable.
+	 */
+	public function test_change_payment_form_render_skips_when_shared_scripts_are_unavailable(): void {
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
+		$this->sut->register();
+
+		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-pay-for-order', 'enqueued' ) );
 	}
 
 	/*
