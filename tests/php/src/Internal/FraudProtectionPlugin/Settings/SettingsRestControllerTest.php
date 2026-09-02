@@ -40,8 +40,19 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 	 */
 	private $sut;
 
+	/**
+	 * Original REST server global.
+	 *
+	 * @var array{exists: bool, value: mixed}
+	 */
+	private array $original_rest_server;
+
 	public function setUp(): void {
 		parent::setUp();
+		$this->original_rest_server = array(
+			'exists' => array_key_exists( 'wp_rest_server', $GLOBALS ),
+			'value'  => $GLOBALS['wp_rest_server'] ?? null,
+		);
 		$GLOBALS['wp_rest_server'] = new \WP_REST_Server();
 		$this->setting   = new AutomaticProtectionSetting();
 		$this->telemetry = $this->createMock( SettingsTelemetry::class );
@@ -57,6 +68,11 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 		$this->setting->reset();
 		remove_action( 'rest_api_init', array( $this->sut, 'register_routes' ) );
 		wp_set_current_user( 0 );
+		if ( $this->original_rest_server['exists'] ) {
+			$GLOBALS['wp_rest_server'] = $this->original_rest_server['value'];
+		} else {
+			unset( $GLOBALS['wp_rest_server'] );
+		}
 		parent::tearDown();
 	}
 

@@ -52,9 +52,23 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	 */
 	private bool $build_directory_created = false;
 
+	/**
+	 * Original values of globals changed by these tests.
+	 *
+	 * @var array<string, array{exists: bool, value: mixed}>
+	 */
+	private array $original_globals;
+
 	public function setUp(): void {
 		parent::setUp();
 		$this->original_get       = $_GET;
+		$this->original_globals   = array();
+		foreach ( array( 'hide_save_button', 'current_section' ) as $global_name ) {
+			$this->original_globals[ $global_name ] = array(
+				'exists' => array_key_exists( $global_name, $GLOBALS ),
+				'value'  => $GLOBALS[ $global_name ] ?? null,
+			);
+		}
 		$this->asset_file         = dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/build/admin-settings.asset.php';
 		$this->asset_file_existed = is_file( $this->asset_file );
 		if ( $this->asset_file_existed ) {
@@ -68,6 +82,13 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 
 	public function tearDown(): void {
 		$_GET = $this->original_get;
+		foreach ( $this->original_globals as $global_name => $original ) {
+			if ( $original['exists'] ) {
+				$GLOBALS[ $global_name ] = $original['value'];
+			} else {
+				unset( $GLOBALS[ $global_name ] );
+			}
+		}
 		$this->restore_asset_fixture();
 		$this->reset_asset_registrations();
 		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
@@ -166,25 +187,71 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Missing or invalid asset metadata prevents settings assets from loading and records the error.
+	 *
+	 * @dataProvider asset_metadata_failures
+	 *
+	 * @param string $fixture       Fixture type.
+	 * @param string $expected_log  Expected error log.
+	 */
+	public function test_asset_metadata_failures_are_logged( string $fixture, string $expected_log ): void {
+		if ( 'missing' === $fixture ) {
+			if ( is_file( $this->asset_file ) ) {
+				unlink( $this->asset_file );
+			}
+		} else {
+			$this->write_raw_asset_fixture( array( 'version' => 'settings-test-version' ) );
+		}
+		$_GET['page'] = 'wc-settings';
+		$_GET['tab']  = FraudProtectionSettingsPage::PAGE_ID;
+
+		$this->sut->enqueue_assets();
+
+		$this->assertFalse( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
+		$this->assertFalse( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
+		$this->assertLogged( 'error', $expected_log );
+	}
+
+	/**
+	 * Asset metadata failure fixtures.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function asset_metadata_failures(): array {
+		return array(
+			'missing metadata' => array( 'missing', 'Fraud Protection settings asset metadata is unavailable.' ),
+			'invalid metadata' => array( 'invalid', 'Fraud Protection settings asset metadata is invalid.' ),
+		);
+	}
+
+	/**
 	 * Write controlled generated asset metadata.
 	 *
 	 * @param string[] $dependencies Script dependencies.
 	 * @param string   $version      Asset version.
 	 */
 	private function write_asset_fixture( array $dependencies, string $version ): void {
+		$this->write_raw_asset_fixture(
+			array(
+				'dependencies' => $dependencies,
+				'version'      => $version,
+			)
+		);
+	}
+
+	/**
+	 * Write controlled generated asset metadata.
+	 *
+	 * @param mixed $asset Asset metadata value.
+	 */
+	private function write_raw_asset_fixture( mixed $asset ): void {
 		$build_directory = dirname( $this->asset_file );
 		if ( ! is_dir( $build_directory ) ) {
 			$this->assertTrue( wp_mkdir_p( $build_directory ) );
 			$this->build_directory_created = true;
 		}
 
-		$contents = '<?php return ' . var_export(
-			array(
-				'dependencies' => $dependencies,
-				'version'      => $version,
-			),
-			true
-		) . ';';
+		$contents = '<?php return ' . var_export( $asset, true ) . ';';
 		$this->assertNotFalse( file_put_contents( $this->asset_file, $contents ) );
 	}
 
