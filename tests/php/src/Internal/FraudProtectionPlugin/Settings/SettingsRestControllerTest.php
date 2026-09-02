@@ -197,18 +197,25 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Unauthenticated and unauthorized users cannot read settings.
+	 * @testdox Unauthenticated and unauthorized users cannot read or update settings.
 	 */
 	public function test_permissions_require_woocommerce_management(): void {
+		$this->setting->set_enabled( true );
+
 		wp_set_current_user( 0 );
-		$unauthenticated = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$unauthenticated_get  = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$unauthenticated_post = rest_get_server()->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
 
 		$customer_id = wc_create_new_customer( 'settings-customer@example.com', 'settings-customer', 'password' );
 		wp_set_current_user( $customer_id );
-		$unauthorized = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$unauthorized_get  = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$unauthorized_post = rest_get_server()->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
 
-		$this->assertSame( 401, $unauthenticated->get_status() );
-		$this->assertSame( 403, $unauthorized->get_status() );
+		$this->assertSame( 401, $unauthenticated_get->get_status() );
+		$this->assertSame( 401, $unauthenticated_post->get_status() );
+		$this->assertSame( 403, $unauthorized_get->get_status() );
+		$this->assertSame( 403, $unauthorized_post->get_status() );
+		$this->assertSame( 'yes', get_option( self::OPTION_NAME ) );
 	}
 
 	/**

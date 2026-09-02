@@ -341,10 +341,16 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Invalid settings command values do not change stored state.
 	 */
 	public function test_settings_commands_reject_invalid_values(): void {
-		$this->expectException( WPCLIErrorException::class );
-		$this->expectExceptionMessage( 'enabled, disabled, or default' );
+		$this->automatic_protection->set_enabled( true );
 
-		$this->sut->automatic_protection_set( array( 'invalid' ) );
+		try {
+			$this->sut->automatic_protection_set( array( 'invalid' ) );
+			$this->fail( 'Expected WP-CLI to reject an invalid setting value.' );
+		} catch ( WPCLIErrorException $error ) {
+			$this->assertStringContainsString( 'enabled, disabled, or default', $error->getMessage() );
+		}
+
+		$this->assertSame( AutomaticProtectionSetting::STATUS_ENABLED, $this->automatic_protection->get_stored_status() );
 	}
 
 	/**

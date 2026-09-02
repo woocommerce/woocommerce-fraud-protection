@@ -103,13 +103,15 @@ jest.mock( '@wordpress/components', () => ( {
 		</div>
 	),
 	SnackbarList: ( {
+		className,
 		notices,
 		onRemove,
 	}: {
+		className?: string;
 		notices: Array< { id: string; content: string } >;
 		onRemove: ( id: string ) => void;
 	} ) => (
-		<div>
+		<div className={ className }>
 			{ notices.map( ( notice ) => (
 				<div key={ notice.id } role="status">
 					{ notice.content }
@@ -189,6 +191,9 @@ describe( 'AutomaticProtectionSettings', () => {
 		expect( await screen.findByRole( 'status' ) ).toHaveTextContent(
 			'Settings saved.'
 		);
+		expect( screen.getByRole( 'status' ).parentElement ).toHaveClass(
+			'wc-fraud-protection-settings__snackbar-list'
+		);
 		fireEvent.click( screen.getByRole( 'button', { name: 'Dismiss' } ) );
 		await waitFor( () => {
 			expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
@@ -225,14 +230,17 @@ describe( 'AutomaticProtectionSettings', () => {
 	} );
 
 	it( 'shows an inline Notice when saving fails', async () => {
-		mockedApiFetch.mockRejectedValueOnce( new Error( 'failed' ) );
+		mockedApiFetch
+			.mockRejectedValueOnce( new Error( 'failed' ) )
+			.mockResolvedValueOnce( { automatic_protection: false } );
 		render(
 			<AutomaticProtectionSettings initialAutomaticProtection={ true } />
 		);
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
-		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
+		const save = screen.getByRole( 'button', { name: 'Save' } );
+		fireEvent.click( save );
 
 		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
 			'The Fraud Protection setting could not be saved.'
@@ -248,5 +256,22 @@ describe( 'AutomaticProtectionSettings', () => {
 			'data-size',
 			'16'
 		);
+		expect( checkbox ).toBeEnabled();
+		expect( save ).toBeEnabled();
+
+		fireEvent.click( save );
+
+		await waitFor( () => {
+			expect( mockedApiFetch ).toHaveBeenCalledTimes( 2 );
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/settings',
+				method: 'POST',
+				data: { automatic_protection: false },
+			} );
+		} );
+		expect( await screen.findByRole( 'status' ) ).toHaveTextContent(
+			'Settings saved.'
+		);
+		expect( screen.queryByRole( 'alert' ) ).not.toBeInTheDocument();
 	} );
 } );
