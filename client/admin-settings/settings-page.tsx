@@ -47,7 +47,7 @@ export function FraudProtectionSettingsPage() {
 						<Icon
 							className="wc-fraud-protection-settings__error-icon"
 							icon={ errorIcon }
-							size={ 16 }
+							size={ 24 }
 						/>
 						<span>
 							{ errorMessage }

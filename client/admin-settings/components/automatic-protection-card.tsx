@@ -46,19 +46,21 @@ export function AutomaticProtectionCard( {
 				className="wc-fraud-protection-settings__body"
 				size="none"
 			>
-				{ isLoading ? (
-					<Spinner />
-				) : (
-					<CheckboxControl
-						label={ __(
-							'Automatically block checkout attempts flagged by fraud prevention.',
-							'woocommerce-fraud-protection'
-						) }
-						checked={ checked }
-						disabled={ disabled }
-						onChange={ onChange }
-					/>
-				) }
+				<div className="wc-fraud-protection-settings__control">
+					{ isLoading ? (
+						<Spinner />
+					) : (
+						<CheckboxControl
+							label={ __(
+								'Automatically block checkout attempts flagged by fraud prevention.',
+								'woocommerce-fraud-protection'
+							) }
+							checked={ checked }
+							disabled={ disabled }
+							onChange={ onChange }
+						/>
+					) }
+				</div>
 			</CardBody>
 		</Card>
 	);

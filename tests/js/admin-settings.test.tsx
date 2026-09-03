@@ -388,7 +388,18 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 		expect( screen.getByTestId( 'settings-error-icon' ) ).toHaveAttribute(
 			'data-size',
-			'16'
+			'24'
+		);
+		expect( screen.getByTestId( 'settings-error-icon' ) ).toHaveClass(
+			'wc-fraud-protection-settings__error-icon'
+		);
+		expect(
+			screen.getByTestId( 'settings-error-icon' ).parentElement
+		).toHaveClass( 'wc-fraud-protection-settings__error-content' );
+		expect(
+			screen.getByTestId( 'settings-error-icon' ).nextElementSibling
+		).toHaveTextContent(
+			'The Fraud Protection setting could not be saved. Try again later.'
 		);
 		expect( checkbox ).toBeEnabled();
 		expect( save ).toBeEnabled();
