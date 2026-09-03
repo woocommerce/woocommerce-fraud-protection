@@ -8,8 +8,28 @@ import {
 } from '@testing-library/react';
 
 import apiFetch from '@wordpress/api-fetch';
+import {
+	createReduxStore,
+	createRegistry,
+	RegistryProvider,
+} from '@wordpress/data';
 
-import { AutomaticProtectionSettings } from '../../client/admin-settings';
+import { FraudProtectionSettingsPage } from '../../client/admin-settings/settings-page';
+import { settingsStore } from '../../client/admin-settings/data/store';
+
+const mockCreateSuccessNotice = jest.fn();
+const noticesStore = createReduxStore( 'core/notices', {
+	reducer: ( state = null ) => state,
+	actions: {
+		createSuccessNotice: (
+			content: string,
+			options: { type: 'snackbar' }
+		) => {
+			mockCreateSuccessNotice( content, options );
+			return { type: 'CREATE_SUCCESS_NOTICE' };
+		},
+	},
+} );
 
 jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
@@ -108,26 +128,6 @@ jest.mock( '@wordpress/components', () => ( {
 			{ children }
 		</div>
 	),
-	SnackbarList: ( {
-		className,
-		notices,
-		onRemove,
-	}: {
-		className?: string;
-		notices: Array< { id: string; content: string } >;
-		onRemove: ( id: string ) => void;
-	} ) => (
-		<div className={ className }>
-			{ notices.map( ( notice ) => (
-				<div key={ notice.id } role="status">
-					{ notice.content }
-					<button onClick={ () => onRemove( notice.id ) }>
-						Dismiss
-					</button>
-				</div>
-			) ) }
-		</div>
-	),
 	Spinner: () => <span data-testid="settings-spinner" />,
 } ) );
 
@@ -140,9 +140,22 @@ const dispatchBeforeUnload = () => {
 	return { event, result };
 };
 
-describe( 'AutomaticProtectionSettings', () => {
+const renderSettings = () => {
+	const registry = createRegistry();
+	registry.register( settingsStore );
+	registry.register( noticesStore );
+
+	return render(
+		<RegistryProvider value={ registry }>
+			<FraudProtectionSettingsPage />
+		</RegistryProvider>
+	);
+};
+
+describe( 'FraudProtectionSettingsPage', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
+		mockCreateSuccessNotice.mockReset();
 	} );
 
 	afterEach( () => {
@@ -158,7 +171,7 @@ describe( 'AutomaticProtectionSettings', () => {
 				resolveLoad = resolve;
 			} )
 		);
-		render( <AutomaticProtectionSettings /> );
+		renderSettings();
 
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( screen.queryByRole( 'checkbox' ) ).not.toBeInTheDocument();
@@ -177,8 +190,10 @@ describe( 'AutomaticProtectionSettings', () => {
 			'data-size',
 			'none'
 		);
-		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/settings',
+		await waitFor( () => {
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/settings',
+			} );
 		} );
 
 		await act( async () => {
@@ -197,7 +212,7 @@ describe( 'AutomaticProtectionSettings', () => {
 
 	it( 'loads the enabled value', async () => {
 		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: true } );
-		render( <AutomaticProtectionSettings /> );
+		renderSettings();
 
 		await waitFor( () => {
 			expect( screen.getByRole( 'checkbox' ) ).toBeChecked();
@@ -208,11 +223,13 @@ describe( 'AutomaticProtectionSettings', () => {
 	} );
 
 	it( 'shows an error and keeps controls disabled when loading fails', async () => {
-		mockedApiFetch.mockRejectedValueOnce( new Error( 'failed' ) );
-		render( <AutomaticProtectionSettings /> );
+		mockedApiFetch.mockRejectedValueOnce(
+			new Error( 'Check your connection and try again.' )
+		);
+		renderSettings();
 
 		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
-			'The Fraud Protection settings could not be loaded.'
+			'The Fraud Protection settings could not be loaded. Check your connection and try again.'
 		);
 		expect( screen.getByRole( 'checkbox' ) ).toBeDisabled();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
@@ -224,7 +241,7 @@ describe( 'AutomaticProtectionSettings', () => {
 
 	it( 'updates the unload warning through repeated dirty transitions', async () => {
 		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: false } );
-		render( <AutomaticProtectionSettings /> );
+		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
@@ -258,7 +275,7 @@ describe( 'AutomaticProtectionSettings', () => {
 
 	it( 'removes the unload warning when unmounted while dirty', async () => {
 		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: false } );
-		const { unmount } = render( <AutomaticProtectionSettings /> );
+		const { unmount } = renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
@@ -273,7 +290,7 @@ describe( 'AutomaticProtectionSettings', () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( { automatic_protection: false } )
 			.mockResolvedValueOnce( { automatic_protection: true } );
-		render( <AutomaticProtectionSettings /> );
+		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
@@ -281,18 +298,18 @@ describe( 'AutomaticProtectionSettings', () => {
 		window.onbeforeunload = legacyHandler;
 		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
-		await screen.findByRole( 'status' );
 		await waitFor( () => {
+			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
 			expect( window.onbeforeunload ).toBe( legacyHandler );
 			expect( dispatchBeforeUnload().result ).toBe( true );
 		} );
 	} );
 
-	it( 'saves a changed Boolean and shows the success Snackbar', async () => {
+	it( 'saves a changed Boolean and queues the success Snackbar', async () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( { automatic_protection: false } )
 			.mockResolvedValueOnce( { automatic_protection: true } );
-		render( <AutomaticProtectionSettings /> );
+		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		await waitFor( () => expect( checkbox ).toBeEnabled() );
@@ -306,15 +323,11 @@ describe( 'AutomaticProtectionSettings', () => {
 				data: { automatic_protection: true },
 			} );
 		} );
-		expect( await screen.findByRole( 'status' ) ).toHaveTextContent(
-			'Settings saved.'
-		);
-		expect( screen.getByRole( 'status' ).parentElement ).toHaveClass(
-			'wc-fraud-protection-settings__snackbar-list'
-		);
-		fireEvent.click( screen.getByRole( 'button', { name: 'Dismiss' } ) );
 		await waitFor( () => {
-			expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
+			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+				'Settings saved.',
+				{ type: 'snackbar' }
+			);
 		} );
 	} );
 
@@ -330,7 +343,7 @@ describe( 'AutomaticProtectionSettings', () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( { automatic_protection: false } )
 			.mockReturnValueOnce( pendingSave );
-		render( <AutomaticProtectionSettings /> );
+		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		await waitFor( () => expect( checkbox ).toBeEnabled() );
@@ -345,15 +358,17 @@ describe( 'AutomaticProtectionSettings', () => {
 		} );
 
 		resolveSave( { automatic_protection: true } );
-		await screen.findByRole( 'status' );
+		await waitFor( () => {
+			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
+		} );
 	} );
 
 	it( 'shows an inline Notice when saving fails', async () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( { automatic_protection: true } )
-			.mockRejectedValueOnce( new Error( 'failed' ) )
+			.mockRejectedValueOnce( new Error( 'Try again later.' ) )
 			.mockResolvedValueOnce( { automatic_protection: false } );
-		render( <AutomaticProtectionSettings /> );
+		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		await waitFor( () => expect( checkbox ).toBeEnabled() );
@@ -362,7 +377,7 @@ describe( 'AutomaticProtectionSettings', () => {
 		fireEvent.click( save );
 
 		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
-			'The Fraud Protection setting could not be saved.'
+			'The Fraud Protection setting could not be saved. Try again later.'
 		);
 		expect( screen.getByRole( 'alert' ) ).toHaveClass(
 			'wc-fraud-protection-settings__error-notice'
@@ -389,9 +404,9 @@ describe( 'AutomaticProtectionSettings', () => {
 				data: { automatic_protection: false },
 			} );
 		} );
-		expect( await screen.findByRole( 'status' ) ).toHaveTextContent(
-			'Settings saved.'
-		);
+		await waitFor( () => {
+			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
+		} );
 		expect( screen.queryByRole( 'alert' ) ).not.toBeInTheDocument();
 	} );
 } );
