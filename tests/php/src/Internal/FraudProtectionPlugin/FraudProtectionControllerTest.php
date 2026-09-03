@@ -9,6 +9,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
 /**
  * Tests for the FraudProtectionController class.
@@ -198,6 +199,17 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Settings telemetry registers with the other first-party components.
+	 */
+	public function test_handle_init_registers_settings_telemetry(): void {
+		$controller = $this->create_controller();
+
+		$controller->handle_init();
+
+		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( wc_get_container()->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
+	}
+
+	/**
 	 * Test that feature_is_enabled returns true when feature is enabled.
 	 */
 	public function test_feature_is_enabled_returns_true_when_enabled(): void {
@@ -347,6 +359,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		// Clean up any filters or options.
 		remove_all_filters( 'woocommerce_logging_class' );
+		remove_all_filters( 'woocommerce_tracker_data' );
 		delete_option( 'woocommerce_feature_fraud_protection_enabled' );
 		delete_option( 'jetpack_activation_source' );
 

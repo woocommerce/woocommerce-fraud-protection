@@ -10,8 +10,14 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionChange;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -45,6 +51,12 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @var SessionEventPruner&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $session_event_pruner;
+
+	/** @var AutomaticProtectionSetting */
+	private $automatic_protection;
+
+	/** @var SettingsTelemetry&\PHPUnit\Framework\MockObject\MockObject */
+	private $settings_telemetry;
 
 	/** @var array<string, callable> */
 	private array $wp_cli_hooks;
@@ -98,8 +110,10 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->schema_manager       = $this->createMock( SchemaManager::class );
 		$this->session_event_pruner = $this->createMock( SessionEventPruner::class );
-		$this->sut                  = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), wc_get_container()->get( AutomaticProtectionSetting::class ) );
+		$this->automatic_protection = new AutomaticProtectionSetting();
+		$this->settings_telemetry   = $this->createMock( SettingsTelemetry::class );
+		$this->automatic_protection->reset();
+		$this->initialize_sut();
 	}
 
 	/**
@@ -107,7 +121,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		remove_all_filters( 'pre_option_jetpack_options' );
-		delete_option( 'woocommerce_fraud_protection_automatic_protection' );
+		$this->automatic_protection->reset();
 		delete_option( SchemaManager::DB_VERSION_OPTION );
 		delete_option( SchemaManager::DB_INSTALL_STATE_OPTION );
 		parent::tearDown();
@@ -155,12 +169,59 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
+				'wc fraud-protection automatic-protection set',
 				'wc fraud-protection status',
 				'wc fraud-protection database install',
 				'wc fraud-protection sessions prune',
 			),
 			array_keys( $this->wp_cli_commands )
 		);
+	}
+
+	/**
+	 * @testdox Automatic-protection CLI changes write the shared setting and record CLI stats only for transitions.
+	 */
+	public function test_automatic_protection_set_records_real_transitions(): void {
+		$this->settings_telemetry->expects( $this->exactly( 3 ) )
+			->method( 'record_automatic_protection_change' )
+			->withConsecutive(
+				array( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Cli ),
+				array( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli ),
+				array( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli )
+			);
+
+		$this->sut->automatic_protection_set( array( 'enabled' ) );
+		$this->sut->automatic_protection_set( array( 'enabled' ) );
+		$this->sut->automatic_protection_set( array( 'disabled' ) );
+		$this->sut->automatic_protection_set( array( 'default' ) );
+
+		$this->assertSame( SettingStatus::DefaultDisabled, $this->automatic_protection->get_status() );
+		$this->assertCount( 4, $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox Invalid automatic-protection values do not change stored state.
+	 */
+	public function test_automatic_protection_set_rejects_invalid_values(): void {
+		$this->automatic_protection->set_enabled( true );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'enabled, disabled, or default' );
+		try {
+			$this->sut->automatic_protection_set( array( 'invalid' ) );
+		} finally {
+			$this->assertSame( SettingStatus::Enabled, $this->automatic_protection->get_status() );
+		}
+	}
+
+	/**
+	 * Initialize the command with its automatic-protection updater.
+	 */
+	private function initialize_sut(): void {
+		$updater = new AutomaticProtectionSettingUpdater();
+		$updater->init( $this->automatic_protection, $this->settings_telemetry, $this->createMock( FraudProtectionLogger::class ) );
+		$this->sut = new FraudProtectionCommands();
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->automatic_protection, $updater );
 	}
 
 	/**
