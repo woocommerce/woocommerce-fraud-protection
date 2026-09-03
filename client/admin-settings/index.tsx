@@ -8,6 +8,7 @@ import {
 	Icon,
 	Notice,
 	SnackbarList,
+	Spinner,
 } from '@wordpress/components';
 import { createRoot, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
@@ -19,21 +20,15 @@ type SettingsResponse = {
 	automatic_protection: boolean;
 };
 
-type AutomaticProtectionSettingsProps = {
-	initialAutomaticProtection: boolean;
-};
-
-export function AutomaticProtectionSettings( {
-	initialAutomaticProtection,
-}: AutomaticProtectionSettingsProps ) {
-	const [ savedValue, setSavedValue ] = useState(
-		initialAutomaticProtection
-	);
-	const [ value, setValue ] = useState( initialAutomaticProtection );
+export function AutomaticProtectionSettings() {
+	const [ savedValue, setSavedValue ] = useState< boolean | null >( null );
+	const [ value, setValue ] = useState( false );
+	const [ isLoading, setIsLoading ] = useState( true );
 	const [ isSaving, setIsSaving ] = useState( false );
 	const [ error, setError ] = useState< string | null >( null );
 	const [ showSuccess, setShowSuccess ] = useState( false );
-	const isDirty = savedValue !== value;
+	const isLoaded = savedValue !== null;
+	const isDirty = isLoaded && savedValue !== value;
 	const successNotices = showSuccess
 		? [
 				{
@@ -45,6 +40,25 @@ export function AutomaticProtectionSettings( {
 				},
 		  ]
 		: [];
+
+	useEffect( () => {
+		apiFetch< SettingsResponse >( {
+			path: '/wc-fraud-protection/v1/settings',
+		} )
+			.then( ( response ) => {
+				setSavedValue( response.automatic_protection );
+				setValue( response.automatic_protection );
+			} )
+			.catch( () => {
+				setError(
+					__(
+						'The Fraud Protection settings could not be loaded.',
+						'woocommerce-fraud-protection'
+					)
+				);
+			} )
+			.finally( () => setIsLoading( false ) );
+	}, [] );
 
 	useEffect( () => {
 		const warnAboutUnsavedChanges = ( event: BeforeUnloadEvent ) => {
@@ -145,15 +159,19 @@ export function AutomaticProtectionSettings( {
 					className="wc-fraud-protection-settings__body"
 					size="none"
 				>
-					<CheckboxControl
-						label={ __(
-							'Automatically block checkout attempts flagged by fraud prevention.',
-							'woocommerce-fraud-protection'
-						) }
-						checked={ value }
-						disabled={ isSaving }
-						onChange={ updateValue }
-					/>
+					{ isLoading ? (
+						<Spinner />
+					) : (
+						<CheckboxControl
+							label={ __(
+								'Automatically block checkout attempts flagged by fraud prevention.',
+								'woocommerce-fraud-protection'
+							) }
+							checked={ value }
+							disabled={ ! isLoaded || isSaving }
+							onChange={ updateValue }
+						/>
+					) }
 				</CardBody>
 			</Card>
 			<div className="wc-fraud-protection-settings__actions">
@@ -180,11 +198,5 @@ export function AutomaticProtectionSettings( {
 const mount = document.getElementById( 'wc-fraud-protection-settings' );
 
 if ( mount ) {
-	createRoot( mount ).render(
-		<AutomaticProtectionSettings
-			initialAutomaticProtection={
-				mount.dataset.automaticProtection === 'true'
-			}
-		/>
-	);
+	createRoot( mount ).render( <AutomaticProtectionSettings /> );
 }

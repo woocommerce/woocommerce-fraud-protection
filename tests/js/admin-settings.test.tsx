@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from '@testing-library/react';
 
 import apiFetch from '@wordpress/api-fetch';
 
@@ -122,6 +128,7 @@ jest.mock( '@wordpress/components', () => ( {
 			) ) }
 		</div>
 	),
+	Spinner: () => <span data-testid="settings-spinner" />,
 } ) );
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
@@ -142,14 +149,20 @@ describe( 'AutomaticProtectionSettings', () => {
 		window.onbeforeunload = null;
 	} );
 
-	it( 'renders the hydrated disabled value without a request', () => {
-		render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
+	it( 'disables controls while loading and renders the disabled value', async () => {
+		let resolveLoad: ( response: {
+			automatic_protection: boolean;
+		} ) => void = () => {};
+		mockedApiFetch.mockReturnValueOnce(
+			new Promise< { automatic_protection: boolean } >( ( resolve ) => {
+				resolveLoad = resolve;
+			} )
 		);
+		render( <AutomaticProtectionSettings /> );
 
-		const checkbox = screen.getByRole( 'checkbox' );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
-		expect( checkbox ).not.toBeChecked();
+		expect( screen.queryByRole( 'checkbox' ) ).not.toBeInTheDocument();
+		expect( screen.getByTestId( 'settings-spinner' ) ).toBeInTheDocument();
 		expect( save ).toBeDisabled();
 		expect( save ).toHaveAttribute( 'data-next-40px-size', 'true' );
 		expect( screen.getByTestId( 'settings-card-header' ) ).toHaveAttribute(
@@ -164,28 +177,56 @@ describe( 'AutomaticProtectionSettings', () => {
 			'data-size',
 			'none'
 		);
-		expect( mockedApiFetch ).not.toHaveBeenCalled();
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-fraud-protection/v1/settings',
+		} );
+
+		await act( async () => {
+			resolveLoad( { automatic_protection: false } );
+		} );
+		const checkbox = await screen.findByRole( 'checkbox' );
+		expect( checkbox ).not.toBeChecked();
+		expect( checkbox ).toBeEnabled();
+		expect(
+			screen.queryByTestId( 'settings-spinner' )
+		).not.toBeInTheDocument();
 
 		fireEvent.click( save );
-		expect( mockedApiFetch ).not.toHaveBeenCalled();
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'renders the hydrated enabled value without a request', () => {
-		render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ true } />
-		);
+	it( 'loads the enabled value', async () => {
+		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: true } );
+		render( <AutomaticProtectionSettings /> );
 
-		expect( screen.getByRole( 'checkbox' ) ).toBeChecked();
+		await waitFor( () => {
+			expect( screen.getByRole( 'checkbox' ) ).toBeChecked();
+			expect( screen.getByRole( 'checkbox' ) ).toBeEnabled();
+		} );
 		expect( screen.getByRole( 'button', { name: 'Save' } ) ).toBeDisabled();
-		expect( mockedApiFetch ).not.toHaveBeenCalled();
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'updates the unload warning through repeated dirty transitions', () => {
-		render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
-		);
+	it( 'shows an error and keeps controls disabled when loading fails', async () => {
+		mockedApiFetch.mockRejectedValueOnce( new Error( 'failed' ) );
+		render( <AutomaticProtectionSettings /> );
 
-		const checkbox = screen.getByRole( 'checkbox' );
+		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
+			'The Fraud Protection settings could not be loaded.'
+		);
+		expect( screen.getByRole( 'checkbox' ) ).toBeDisabled();
+		const save = screen.getByRole( 'button', { name: 'Save' } );
+		expect( save ).toBeDisabled();
+
+		fireEvent.click( save );
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	it( 'updates the unload warning through repeated dirty transitions', async () => {
+		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: false } );
+		render( <AutomaticProtectionSettings /> );
+
+		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
 		const legacyHandler = jest.fn();
 		window.onbeforeunload = legacyHandler;
@@ -215,12 +256,12 @@ describe( 'AutomaticProtectionSettings', () => {
 		expect( secondClean.event.defaultPrevented ).toBe( false );
 	} );
 
-	it( 'removes the unload warning when unmounted while dirty', () => {
-		const { unmount } = render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
-		);
+	it( 'removes the unload warning when unmounted while dirty', async () => {
+		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: false } );
+		const { unmount } = render( <AutomaticProtectionSettings /> );
 
-		fireEvent.click( screen.getByRole( 'checkbox' ) );
+		const checkbox = await screen.findByRole( 'checkbox' );
+		fireEvent.click( checkbox );
 		unmount();
 		const afterUnmount = dispatchBeforeUnload();
 
@@ -229,14 +270,13 @@ describe( 'AutomaticProtectionSettings', () => {
 	} );
 
 	it( 'clears the unload warning after a successful save', async () => {
-		mockedApiFetch.mockResolvedValueOnce( {
-			automatic_protection: true,
-		} );
-		render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
-		);
+		mockedApiFetch
+			.mockResolvedValueOnce( { automatic_protection: false } )
+			.mockResolvedValueOnce( { automatic_protection: true } );
+		render( <AutomaticProtectionSettings /> );
 
-		fireEvent.click( screen.getByRole( 'checkbox' ) );
+		const checkbox = await screen.findByRole( 'checkbox' );
+		fireEvent.click( checkbox );
 		window.onbeforeunload = jest.fn();
 		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
@@ -248,14 +288,13 @@ describe( 'AutomaticProtectionSettings', () => {
 	} );
 
 	it( 'saves a changed Boolean and shows the success Snackbar', async () => {
-		mockedApiFetch.mockResolvedValueOnce( {
-			automatic_protection: true,
-		} );
-		render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
-		);
+		mockedApiFetch
+			.mockResolvedValueOnce( { automatic_protection: false } )
+			.mockResolvedValueOnce( { automatic_protection: true } );
+		render( <AutomaticProtectionSettings /> );
 
 		const checkbox = await screen.findByRole( 'checkbox' );
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		fireEvent.click( checkbox );
 		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
@@ -287,12 +326,13 @@ describe( 'AutomaticProtectionSettings', () => {
 				resolveSave = resolve;
 			}
 		);
-		mockedApiFetch.mockReturnValueOnce( pendingSave );
-		render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
-		);
+		mockedApiFetch
+			.mockResolvedValueOnce( { automatic_protection: false } )
+			.mockReturnValueOnce( pendingSave );
+		render( <AutomaticProtectionSettings /> );
 
 		const checkbox = await screen.findByRole( 'checkbox' );
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		fireEvent.click( checkbox );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		fireEvent.click( save );
@@ -309,13 +349,13 @@ describe( 'AutomaticProtectionSettings', () => {
 
 	it( 'shows an inline Notice when saving fails', async () => {
 		mockedApiFetch
+			.mockResolvedValueOnce( { automatic_protection: true } )
 			.mockRejectedValueOnce( new Error( 'failed' ) )
 			.mockResolvedValueOnce( { automatic_protection: false } );
-		render(
-			<AutomaticProtectionSettings initialAutomaticProtection={ true } />
-		);
+		render( <AutomaticProtectionSettings /> );
 
 		const checkbox = await screen.findByRole( 'checkbox' );
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		fireEvent.click( checkbox );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		fireEvent.click( save );
@@ -341,7 +381,7 @@ describe( 'AutomaticProtectionSettings', () => {
 		fireEvent.click( save );
 
 		await waitFor( () => {
-			expect( mockedApiFetch ).toHaveBeenCalledTimes( 2 );
+			expect( mockedApiFetch ).toHaveBeenCalledTimes( 3 );
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
 				path: '/wc-fraud-protection/v1/settings',
 				method: 'POST',

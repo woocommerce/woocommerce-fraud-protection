@@ -21,13 +21,6 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	private const SCRIPT_HANDLE = 'wc-fraud-protection-admin-settings';
 
 	/**
-	 * Automatic-protection setting.
-	 *
-	 * @var AutomaticProtectionSetting
-	 */
-	private AutomaticProtectionSetting $automatic_protection;
-
-	/**
 	 * Initialize the WooCommerce settings page.
 	 */
 	public function __construct() {
@@ -35,17 +28,6 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 		$this->label = __( 'Fraud prevention', 'woocommerce-fraud-protection' );
 
 		parent::__construct();
-	}
-
-	/**
-	 * Initialize with dependencies.
-	 *
-	 * @internal
-	 *
-	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
-	 */
-	final public function init( AutomaticProtectionSetting $automatic_protection ): void {
-		$this->automatic_protection = $automatic_protection;
 	}
 
 	/**
@@ -73,10 +55,7 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	public function output(): void {
 		$GLOBALS['hide_save_button'] = true;
 
-		printf(
-			'<div id="wc-fraud-protection-settings" data-automatic-protection="%s"></div>',
-			esc_attr( $this->automatic_protection->is_enabled() ? 'true' : 'false' )
-		);
+		echo '<div id="wc-fraud-protection-settings"></div>';
 	}
 
 	/**
@@ -119,6 +98,16 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			$asset['dependencies'],
 			$asset['version'],
 			array( 'in_footer' => true )
+		);
+
+		$preload_data = rest_preload_api_request( array(), '/wc-fraud-protection/v1/settings' );
+		wp_add_inline_script(
+			self::SCRIPT_HANDLE,
+			sprintf(
+				'wp.apiFetch.use( wp.apiFetch.createPreloadingMiddleware( %s ) );',
+				wp_json_encode( $preload_data, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+			),
+			'before'
 		);
 	}
 }
