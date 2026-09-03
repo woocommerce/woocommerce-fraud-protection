@@ -9,6 +9,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
 /**
@@ -203,6 +205,22 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->sut->handle_init();
 
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( wc_get_container()->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
+	}
+
+	/**
+	 * @testdox The settings endpoint follows the merchant-experience gate.
+	 */
+	public function test_handle_init_gates_settings_endpoint(): void {
+		$container = wc_get_container();
+		$feature   = $container->get( MerchantExperienceFeature::class );
+		$feature->reset();
+
+		$this->create_controller()->handle_init();
+		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+
+		$feature->set_enabled( true );
+		$this->create_controller()->handle_init();
+		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 	}
 
 	/**

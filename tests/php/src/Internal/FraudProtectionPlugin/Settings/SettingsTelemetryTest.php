@@ -13,6 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProt
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\McStats;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
@@ -29,6 +30,9 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 */
 	private $sut;
 
+	/** @var MerchantExperienceFeature&\PHPUnit\Framework\MockObject\MockObject */
+	private $merchant_experience;
+
 	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection;
 
@@ -40,17 +44,19 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
+		$this->merchant_experience  = $this->createMock( MerchantExperienceFeature::class );
 		$this->automatic_protection = $this->createMock( AutomaticProtectionSetting::class );
 		$this->mc_stats             = $this->createMock( McStats::class );
 		$this->logger               = $this->createMock( FraudProtectionLogger::class );
 		$this->sut                  = new SettingsTelemetry();
-		$this->sut->init( $this->automatic_protection, $this->mc_stats, $this->logger );
+		$this->sut->init( $this->merchant_experience, $this->automatic_protection, $this->mc_stats, $this->logger );
 	}
 
 	/**
 	 * @testdox Tracker data preserves existing fields and reports default states.
 	 */
 	public function test_tracker_preserves_existing_data_and_reports_defaults(): void {
+		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 
@@ -68,6 +74,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'value' => 1 ), $result['extensions']['existing'] );
 		$plugin = $result['extensions']['woocommerce_fraud_protection'];
 		$this->assertSame( 'preserved', $plugin['existing_field'] );
+		$this->assertSame( 'default_disabled', $plugin['merchant_experience_status'] );
 		$this->assertSame( 'default_disabled', $plugin['automatic_protection_status'] );
 		$this->assertSame( 'none', $plugin['automatic_protection_source'] );
 	}
@@ -81,10 +88,37 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param array<string, mixed> $expected Expected Tracker data.
 	 */
 	public function test_tracker_normalizes_malformed_data( $input, array $expected ): void {
+		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 
 		$this->assertSame( $expected, $this->sut->add_tracker_data( $input ) );
+	}
+
+	/**
+	 * @testdox Tracker data reports an explicit merchant-experience status.
+	 */
+	public function test_tracker_reports_explicit_merchant_status(): void {
+		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::Disabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
+
+		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+
+		$this->assertSame( 'disabled', $plugin['merchant_experience_status'] );
+	}
+
+	/**
+	 * @testdox Tracker data reports an enabled merchant-experience code default.
+	 */
+	public function test_tracker_reports_enabled_code_default(): void {
+		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::DefaultEnabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
+
+		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+
+		$this->assertSame( 'default_enabled', $plugin['merchant_experience_status'] );
 	}
 
 	/**
@@ -94,6 +128,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 */
 	public function malformed_tracker_data_provider(): array {
 		$plugin = array(
+			'merchant_experience_status'  => 'default_disabled',
 			'automatic_protection_status' => 'default_disabled',
 			'automatic_protection_source' => 'none',
 		);
@@ -135,6 +170,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param string                    $expected_source Expected Tracker source.
 	 */
 	public function test_tracker_reports_status_and_source( SettingStatus $status, AutomaticProtectionSource $source, string $expected_status, string $expected_source ): void {
+		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( $status );
 		$this->automatic_protection->method( 'get_source' )->willReturn( $source );
 

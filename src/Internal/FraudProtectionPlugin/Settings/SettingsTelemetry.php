@@ -21,6 +21,13 @@ class SettingsTelemetry {
 	private const MC_GROUP_AUTOMATIC_PROTECTION = 'automatic-protection';
 
 	/**
+	 * Merchant-experience feature gate.
+	 *
+	 * @var MerchantExperienceFeature
+	 */
+	private MerchantExperienceFeature $merchant_experience;
+
+	/**
 	 * Automatic-protection setting.
 	 *
 	 * @var AutomaticProtectionSetting
@@ -46,11 +53,13 @@ class SettingsTelemetry {
 	 *
 	 * @internal
 	 *
+	 * @param MerchantExperienceFeature  $merchant_experience  Merchant-experience feature gate.
 	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
 	 * @param McStats                    $mc_stats             Plugin MC Stats service.
 	 * @param FraudProtectionLogger      $logger               Logger instance.
 	 */
-	final public function init( AutomaticProtectionSetting $automatic_protection, McStats $mc_stats, FraudProtectionLogger $logger ): void {
+	final public function init( MerchantExperienceFeature $merchant_experience, AutomaticProtectionSetting $automatic_protection, McStats $mc_stats, FraudProtectionLogger $logger ): void {
+		$this->merchant_experience  = $merchant_experience;
 		$this->automatic_protection = $automatic_protection;
 		$this->mc_stats             = $mc_stats;
 		$this->logger               = $logger;
@@ -76,6 +85,7 @@ class SettingsTelemetry {
 		$extensions = is_array( $data['extensions'] ?? null ) ? $data['extensions'] : array();
 		$plugin     = is_array( $extensions['woocommerce_fraud_protection'] ?? null ) ? $extensions['woocommerce_fraud_protection'] : array();
 
+		$plugin['merchant_experience_status']  = $this->merchant_experience->get_status()->value;
 		$plugin['automatic_protection_status'] = $this->automatic_protection->get_status()->value;
 		$plugin['automatic_protection_source'] = $this->automatic_protection->get_source()->value;
 

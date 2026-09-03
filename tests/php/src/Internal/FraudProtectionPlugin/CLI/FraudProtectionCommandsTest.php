@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventP
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
@@ -50,22 +51,49 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 */
 	private $session_event_pruner;
 
-	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
+	/**
+	 * Merchant experience feature.
+	 *
+	 * @var MerchantExperienceFeature&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private $merchant_experience;
+
+	/**
+	 * Automatic protection setting.
+	 *
+	 * @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject
+	 */
 	private $automatic_protection;
 
 	/** @var AutomaticProtectionSettingUpdater&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection_updater;
 
-	/** @var array<string, callable> */
+	/**
+	 * Registered commands.
+	 *
+	 * @var array<string, callable>
+	 */
 	private array $wp_cli_hooks;
 
-	/** @var array<string, callable> */
+	/**
+	 * Registered command callbacks.
+	 *
+	 * @var array<string, callable>
+	 */
 	private array $wp_cli_commands;
 
-	/** @var string[] */
+	/**
+	 * Successful command messages.
+	 *
+	 * @var string[]
+	 */
 	private array $wp_cli_lines;
 
-	/** @var string[] */
+	/**
+	 * Command errors.
+	 *
+	 * @var string[]
+	 */
 	private array $wp_cli_successes;
 
 	/**
@@ -108,12 +136,13 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->schema_manager               = $this->createMock( SchemaManager::class );
 		$this->session_event_pruner         = $this->createMock( SessionEventPruner::class );
+		$this->merchant_experience          = $this->createMock( MerchantExperienceFeature::class );
 		$this->automatic_protection         = $this->createMock( AutomaticProtectionSetting::class );
 		$this->automatic_protection_updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 		$this->sut                          = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->automatic_protection, $this->automatic_protection_updater );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_experience, $this->automatic_protection, $this->automatic_protection_updater );
 	}
 
 	/**
@@ -158,6 +187,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
+				'wc fraud-protection merchant-experience set',
 				'wc fraud-protection automatic-protection set',
 				'wc fraud-protection status',
 				'wc fraud-protection database install',
@@ -265,6 +295,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Status should report all local diagnostic groups without mutation.
 	 */
 	public function test_status_reports_local_state_without_mutation(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn(
 			self::schema_status(
 				array(
@@ -286,8 +317,11 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'sentinel' => true ), get_option( SchemaManager::DB_INSTALL_STATE_OPTION ), 'Status must not change the install state' );
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
+		$this->assertStringContainsString( 'Merchant experience status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic protection status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic protection source: none', $output );
+		$this->assertStringNotContainsString( 'code default', $output );
+		$this->assertStringNotContainsString( 'stored state', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
 		$this->assertStringContainsString( 'Required schema version:', $output );
 		$this->assertStringContainsString( 'Installed schema version:', $output );
@@ -307,9 +341,76 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Status reports explicit setting states and the manual enabled source.
+	 */
+	public function test_status_reports_explicit_setting_states(): void {
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::Enabled );
+		$this->automatic_protection->method( 'get_status' )->willReturnOnConsecutiveCalls( SettingStatus::Enabled, SettingStatus::Disabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
+
+		$this->sut->status();
+
+		$output = implode( "\n", $this->wp_cli_lines );
+		$this->assertStringContainsString( 'Merchant experience status: enabled', $output );
+		$this->assertStringContainsString( 'Automatic protection status: enabled', $output );
+		$this->assertStringContainsString( 'Automatic protection source: manual', $output );
+
+		$this->wp_cli_lines = array();
+		$this->sut->status();
+
+		$output = implode( "\n", $this->wp_cli_lines );
+		$this->assertStringContainsString( 'Automatic protection status: disabled', $output );
+		$this->assertStringContainsString( 'Automatic protection source: manual', $output );
+	}
+
+	/**
+	 * @testdox A failed automatic-protection set reports an error.
+	 */
+	public function test_automatic_protection_set_failure_reports_error(): void {
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'set_enabled' )
+			->with( true, SettingsChangeChannel::Cli )
+			->willReturn( false );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'could not be saved' );
+		$this->sut->automatic_protection_set( array( 'enabled' ) );
+	}
+
+	/**
+	 * @testdox A failed automatic-protection reset reports an error.
+	 */
+	public function test_automatic_protection_reset_failure_reports_error(): void {
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'reset' )
+			->with( SettingsChangeChannel::Cli )
+			->willReturn( false );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'could not be saved' );
+		$this->sut->automatic_protection_set( array( 'default' ) );
+	}
+
+	/**
+	 * @testdox Merchant-experience CLI changes write and reset the shared override.
+	 */
+	public function test_merchant_experience_set_updates_shared_override(): void {
+		$this->merchant_experience->expects( $this->once() )->method( 'set_enabled' )->with( true )->willReturn( true );
+		$this->merchant_experience->expects( $this->once() )->method( 'reset' )->willReturn( true );
+
+		$this->sut->merchant_experience_set( array( 'enabled' ) );
+		$this->sut->merchant_experience_set( array( 'default' ) );
+
+		$this->assertCount( 2, $this->wp_cli_successes );
+	}
+
+	/**
 	 * @testdox Status should report the numeric Jetpack ID and missing tables.
 	 */
 	public function test_status_reports_jetpack_id_and_missing_tables(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn(
 			self::schema_status(
 				array(
@@ -348,6 +449,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Status should hide empty schema installation retry state.
 	 */
 	public function test_status_hides_empty_schema_installation_retry_state(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn(
 			self::schema_status(
 				array(
@@ -373,12 +475,22 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Status should report an in-progress pruning action.
 	 */
 	public function test_status_reports_in_progress_pruning_action(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( true );
 
 		$this->sut->status();
 
 		$this->assertContains( 'Next session pruning action: In progress', $this->wp_cli_lines );
+	}
+
+	/**
+	 * Configure the default setting states used by status tests.
+	 */
+	private function mock_default_settings_status(): void {
+		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 	}
 
 	/**
