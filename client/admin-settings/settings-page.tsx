@@ -1,6 +1,5 @@
-import { Button, Icon, Notice } from '@wordpress/components';
+import { Button, Notice, Stack } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
-import { error as errorIcon } from '@wordpress/icons';
 
 import { AutomaticProtectionCard } from './components/automatic-protection-card';
 import { useFraudProtectionSettings } from './hooks/use-fraud-protection-settings';
@@ -36,25 +35,18 @@ export function FraudProtectionSettingsPage() {
 		error?.message && error.message !== errorMessage ? error.message : null;
 
 	return (
-		<div className="wc-fraud-protection-settings__content">
+		<Stack
+			className="wc-fraud-protection-settings__content"
+			direction="column"
+			gap="xl"
+		>
 			{ errorMessage && (
-				<Notice
-					className="wc-fraud-protection-settings__error-notice"
-					status="error"
-					isDismissible={ false }
-				>
-					<div className="wc-fraud-protection-settings__error-content">
-						<Icon
-							className="wc-fraud-protection-settings__error-icon"
-							icon={ errorIcon }
-							size={ 24 }
-						/>
-						<span>
-							{ errorMessage }
-							{ errorDetail && ` ${ errorDetail }` }
-						</span>
-					</div>
-				</Notice>
+				<Notice.Root intent="error">
+					<Notice.Description>
+						{ errorMessage }
+						{ errorDetail && ` ${ errorDetail }` }
+					</Notice.Description>
+				</Notice.Root>
 			) }
 			<AutomaticProtectionCard
 				checked={ settings?.automatic_protection ?? false }
@@ -62,18 +54,17 @@ export function FraudProtectionSettingsPage() {
 				isLoading={ isLoading }
 				onChange={ setAutomaticProtection }
 			/>
-			<div className="wc-fraud-protection-settings__actions">
+			<Stack direction="row">
 				<Button
-					__next40pxDefaultSize
-					variant="primary"
+					variant="solid"
 					type="button"
-					isBusy={ isSaving }
+					loading={ isSaving }
 					disabled={ ! isDirty || isSaving }
 					onClick={ save }
 				>
 					{ __( 'Save', 'woocommerce-fraud-protection' ) }
 				</Button>
-			</div>
-		</div>
+			</Stack>
+		</Stack>
 	);
 }

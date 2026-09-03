@@ -1,11 +1,6 @@
 import '@testing-library/jest-dom';
-import {
-	act,
-	fireEvent,
-	render,
-	screen,
-	waitFor,
-} from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import apiFetch from '@wordpress/api-fetch';
 import {
@@ -36,100 +31,18 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 	default: jest.fn(),
 } ) );
 
-jest.mock( '@wordpress/icons', () => ( {
-	error: 'error-icon',
+jest.mock( '@wordpress/notices', () => ( {
+	store: { name: 'core/notices' },
 } ) );
 
-jest.mock( '@wordpress/components', () => ( {
-	Button: ( {
-		__next40pxDefaultSize,
-		isBusy,
-		...props
-	}: React.ButtonHTMLAttributes< HTMLButtonElement > & {
-		__next40pxDefaultSize?: boolean;
-		isBusy?: boolean;
-	} ) => (
-		<button
-			{ ...props }
-			data-busy={ isBusy ? 'true' : 'false' }
-			data-next-40px-size={ __next40pxDefaultSize ? 'true' : 'false' }
-		/>
-	),
-	Card: ( { children }: React.PropsWithChildren ) => (
-		<section>{ children }</section>
-	),
-	CardBody: ( {
-		children,
-		size,
-	}: React.PropsWithChildren< { size?: string } > ) => (
-		<div data-testid="settings-card-body" data-size={ size }>
-			{ children }
-		</div>
-	),
-	CardHeader: ( {
-		children,
-		isBorderless,
-		size,
-	}: React.PropsWithChildren< {
-		isBorderless?: boolean;
-		size?: string;
-	} > ) => (
-		<header
-			data-testid="settings-card-header"
-			data-borderless={ isBorderless ? 'true' : 'false' }
-			data-size={ size }
-		>
-			{ children }
-		</header>
-	),
-	CheckboxControl: ( {
-		label,
-		checked,
-		disabled,
-		onChange,
-	}: {
-		label: string;
-		checked: boolean;
-		disabled: boolean;
-		onChange: ( checked: boolean ) => void;
-	} ) => (
-		<label htmlFor="automatic-protection-test">
-			{ label }
-			<input
-				id="automatic-protection-test"
-				type="checkbox"
-				checked={ checked }
-				disabled={ disabled }
-				onChange={ ( event ) => onChange( event.target.checked ) }
-			/>
-		</label>
-	),
-	Icon: ( {
-		className,
-		icon,
-		size,
-	}: {
-		className?: string;
-		icon: string;
-		size: number;
-	} ) => (
-		<span
-			className={ className }
-			data-testid="settings-error-icon"
-			data-icon={ icon }
-			data-size={ size }
-		/>
-	),
-	Notice: ( {
-		children,
-		className,
-	}: React.PropsWithChildren< { className?: string } > ) => (
-		<div className={ className } role="alert">
-			{ children }
-		</div>
-	),
-	Spinner: () => <span data-testid="settings-spinner" />,
-} ) );
+// Base UI dispatches checkbox activation through PointerEvent, which jsdom does not provide.
+if ( ! window.PointerEvent ) {
+	Object.defineProperty( window, 'PointerEvent', {
+		configurable: true,
+		writable: true,
+		value: MouseEvent,
+	} );
+}
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 
@@ -138,6 +51,16 @@ const dispatchBeforeUnload = () => {
 	const result = window.dispatchEvent( event );
 
 	return { event, result };
+};
+
+const findVisibleText = async ( text: string ) => {
+	const matches = await screen.findAllByText( text, { exact: true } );
+	const visibleMatches = matches.filter(
+		( element ) => ! element.hasAttribute( 'aria-live' )
+	);
+
+	expect( visibleMatches ).toHaveLength( 1 );
+	return visibleMatches[ 0 ];
 };
 
 const renderSettings = () => {
@@ -175,21 +98,16 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( screen.queryByRole( 'checkbox' ) ).not.toBeInTheDocument();
-		expect( screen.getByTestId( 'settings-spinner' ) ).toBeInTheDocument();
-		expect( save ).toBeDisabled();
-		expect( save ).toHaveAttribute( 'data-next-40px-size', 'true' );
-		expect( screen.getByTestId( 'settings-card-header' ) ).toHaveAttribute(
-			'data-borderless',
-			'true'
-		);
-		expect( screen.getByTestId( 'settings-card-header' ) ).toHaveAttribute(
-			'data-size',
-			'none'
-		);
-		expect( screen.getByTestId( 'settings-card-body' ) ).toHaveAttribute(
-			'data-size',
-			'none'
-		);
+		expect( screen.getByRole( 'presentation' ) ).toBeInTheDocument();
+		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
+		expect(
+			screen.getByRole( 'heading', { name: 'Automatic protection' } )
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				'Fraud prevention scans checkout attempts for potentially automated or malicious shopper behavior. Flagged checkout attempts are recorded by default and are only blocked when automatic blocking is turned on.'
+			)
+		).toBeInTheDocument();
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
 				path: '/wc-fraud-protection/v1/settings',
@@ -201,12 +119,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 		} );
 		const checkbox = await screen.findByRole( 'checkbox' );
 		expect( checkbox ).not.toBeChecked();
-		expect( checkbox ).toBeEnabled();
-		expect(
-			screen.queryByTestId( 'settings-spinner' )
-		).not.toBeInTheDocument();
+		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect( screen.queryByRole( 'presentation' ) ).not.toBeInTheDocument();
 
-		fireEvent.click( save );
+		await userEvent.click( save );
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
@@ -215,10 +131,15 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		await waitFor( () => {
-			expect( screen.getByRole( 'checkbox' ) ).toBeChecked();
-			expect( screen.getByRole( 'checkbox' ) ).toBeEnabled();
+			const checkbox = screen.getByRole( 'checkbox', {
+				name: 'Automatically block checkout attempts flagged by fraud prevention.',
+			} );
+			expect( checkbox ).toBeChecked();
+			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		} );
-		expect( screen.getByRole( 'button', { name: 'Save' } ) ).toBeDisabled();
+		expect(
+			screen.getByRole( 'button', { name: 'Save' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
@@ -228,14 +149,19 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 		renderSettings();
 
-		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
-			'The Fraud Protection settings could not be loaded. Check your connection and try again.'
+		expect(
+			await findVisibleText(
+				'The Fraud Protection settings could not be loaded. Check your connection and try again.'
+			)
+		).toBeVisible();
+		expect( screen.getByRole( 'checkbox' ) ).toHaveAttribute(
+			'aria-disabled',
+			'true'
 		);
-		expect( screen.getByRole( 'checkbox' ) ).toBeDisabled();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
-		expect( save ).toBeDisabled();
+		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 
-		fireEvent.click( save );
+		await userEvent.click( save );
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
@@ -244,7 +170,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		fireEvent.click( checkbox );
+		await userEvent.click( checkbox );
 		const legacyHandler = jest.fn();
 		window.onbeforeunload = legacyHandler;
 		const firstDirty = dispatchBeforeUnload();
@@ -253,20 +179,20 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( firstDirty.event.defaultPrevented ).toBe( true );
 		expect( window.onbeforeunload ).toBe( legacyHandler );
 
-		fireEvent.click( checkbox );
+		await userEvent.click( checkbox );
 		const firstClean = dispatchBeforeUnload();
 
 		expect( window.onbeforeunload ).toBe( legacyHandler );
 		expect( firstClean.result ).toBe( true );
 		expect( firstClean.event.defaultPrevented ).toBe( false );
 
-		fireEvent.click( checkbox );
+		await userEvent.click( checkbox );
 		const secondDirty = dispatchBeforeUnload();
 
 		expect( secondDirty.result ).toBe( false );
 		expect( secondDirty.event.defaultPrevented ).toBe( true );
 
-		fireEvent.click( checkbox );
+		await userEvent.click( checkbox );
 		const secondClean = dispatchBeforeUnload();
 
 		expect( secondClean.result ).toBe( true );
@@ -278,7 +204,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		const { unmount } = renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		fireEvent.click( checkbox );
+		await userEvent.click( checkbox );
 		unmount();
 		const afterUnmount = dispatchBeforeUnload();
 
@@ -293,10 +219,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		fireEvent.click( checkbox );
+		await userEvent.click( checkbox );
 		const legacyHandler = jest.fn();
 		window.onbeforeunload = legacyHandler;
-		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
+		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
@@ -312,9 +238,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () => expect( checkbox ).toBeEnabled() );
-		fireEvent.click( checkbox );
-		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
+		await waitFor( () =>
+			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
+		);
+		await userEvent.click( checkbox );
+		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
@@ -326,7 +254,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
 				'Settings saved.',
-				{ type: 'snackbar' }
+				{
+					type: 'snackbar',
+				}
 			);
 		} );
 	} );
@@ -346,15 +276,16 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () => expect( checkbox ).toBeEnabled() );
-		fireEvent.click( checkbox );
+		await waitFor( () =>
+			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
+		);
+		await userEvent.click( checkbox );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
-		fireEvent.click( save );
+		await userEvent.click( save );
 
 		await waitFor( () => {
-			expect( save ).toBeDisabled();
-			expect( save ).toHaveAttribute( 'data-busy', 'true' );
-			expect( checkbox ).toBeDisabled();
+			expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
+			expect( checkbox ).toHaveAttribute( 'aria-disabled', 'true' );
 		} );
 
 		resolveSave( { automatic_protection: true } );
@@ -371,41 +302,23 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () => expect( checkbox ).toBeEnabled() );
-		fireEvent.click( checkbox );
+		await waitFor( () =>
+			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
+		);
+		await userEvent.click( checkbox );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
-		fireEvent.click( save );
+		await userEvent.click( save );
 
-		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
-			'The Fraud Protection setting could not be saved. Try again later.'
-		);
-		expect( screen.getByRole( 'alert' ) ).toHaveClass(
-			'wc-fraud-protection-settings__error-notice'
-		);
-		expect( screen.getByTestId( 'settings-error-icon' ) ).toHaveAttribute(
-			'data-icon',
-			'error-icon'
-		);
-		expect( screen.getByTestId( 'settings-error-icon' ) ).toHaveAttribute(
-			'data-size',
-			'24'
-		);
-		expect( screen.getByTestId( 'settings-error-icon' ) ).toHaveClass(
-			'wc-fraud-protection-settings__error-icon'
-		);
 		expect(
-			screen.getByTestId( 'settings-error-icon' ).parentElement
-		).toHaveClass( 'wc-fraud-protection-settings__error-content' );
-		expect(
-			screen.getByTestId( 'settings-error-icon' ).nextElementSibling
-		).toHaveTextContent(
-			'The Fraud Protection setting could not be saved. Try again later.'
-		);
-		expect( checkbox ).toBeEnabled();
-		expect( save ).toBeEnabled();
+			await findVisibleText(
+				'The Fraud Protection setting could not be saved. Try again later.'
+			)
+		).toBeVisible();
+		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect( save ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		expect( dispatchBeforeUnload().result ).toBe( false );
 
-		fireEvent.click( save );
+		await userEvent.click( save );
 
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenCalledTimes( 3 );
@@ -418,6 +331,13 @@ describe( 'FraudProtectionSettingsPage', () => {
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
 		} );
-		expect( screen.queryByRole( 'alert' ) ).not.toBeInTheDocument();
+		expect(
+			screen
+				.queryAllByText(
+					'The Fraud Protection setting could not be saved. Try again later.',
+					{ exact: true }
+				)
+				.filter( ( element ) => ! element.hasAttribute( 'aria-live' ) )
+		).toHaveLength( 0 );
 	} );
 } );
