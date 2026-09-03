@@ -133,7 +133,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut->output();
 		$output = (string) ob_get_clean();
 
-		$this->assertSame( '<div id="wc-fraud-protection-settings"></div>', $output );
+		$this->assertSame( '<div id="wc-fraud-protection-settings" class="wc-settings-prevent-change-event"></div>', $output );
 		$this->assertTrue( $GLOBALS['hide_save_button'] );
 	}
 

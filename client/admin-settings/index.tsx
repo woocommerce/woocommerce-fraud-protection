@@ -68,8 +68,6 @@ export function AutomaticProtectionSettings() {
 
 		if ( isDirty ) {
 			window.addEventListener( 'beforeunload', warnAboutUnsavedChanges );
-		} else {
-			window.onbeforeunload = null;
 		}
 
 		return () => {

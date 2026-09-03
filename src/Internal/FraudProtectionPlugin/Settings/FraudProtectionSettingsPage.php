@@ -55,7 +55,7 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	public function output(): void {
 		$GLOBALS['hide_save_button'] = true;
 
-		echo '<div id="wc-fraud-protection-settings"></div>';
+		echo '<div id="wc-fraud-protection-settings" class="wc-settings-prevent-change-event"></div>';
 	}
 
 	/**

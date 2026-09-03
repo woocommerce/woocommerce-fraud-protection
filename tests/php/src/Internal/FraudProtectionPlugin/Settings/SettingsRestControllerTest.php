@@ -67,7 +67,6 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		$this->setting->reset();
 		remove_action( 'rest_api_init', array( $this->sut, 'register_routes' ) );
-		wp_set_current_user( 0 );
 		if ( $this->original_rest_server['exists'] ) {
 			$GLOBALS['wp_rest_server'] = $this->original_rest_server['value'];
 		} else {

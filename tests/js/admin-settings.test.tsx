@@ -239,7 +239,7 @@ describe( 'AutomaticProtectionSettings', () => {
 		fireEvent.click( checkbox );
 		const firstClean = dispatchBeforeUnload();
 
-		expect( window.onbeforeunload ).toBeNull();
+		expect( window.onbeforeunload ).toBe( legacyHandler );
 		expect( firstClean.result ).toBe( true );
 		expect( firstClean.event.defaultPrevented ).toBe( false );
 
@@ -277,12 +277,13 @@ describe( 'AutomaticProtectionSettings', () => {
 
 		const checkbox = await screen.findByRole( 'checkbox' );
 		fireEvent.click( checkbox );
-		window.onbeforeunload = jest.fn();
+		const legacyHandler = jest.fn();
+		window.onbeforeunload = legacyHandler;
 		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
 		await screen.findByRole( 'status' );
 		await waitFor( () => {
-			expect( window.onbeforeunload ).toBeNull();
+			expect( window.onbeforeunload ).toBe( legacyHandler );
 			expect( dispatchBeforeUnload().result ).toBe( true );
 		} );
 	} );

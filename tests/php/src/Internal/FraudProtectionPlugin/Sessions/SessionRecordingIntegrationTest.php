@@ -184,7 +184,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$decision = $verifier->verify_session( 'integration-session-1', 'blocks_checkout' );
 
-		$this->assertSame( FraudDecision::Allow, $decision, 'Learning mode (default) should suppress the block' );
+		$this->assertSame( FraudDecision::Allow, $decision, 'Disabled automatic protection should suppress the block' );
 
 		$row = $this->latest_row_for( 'integration-session-1' );
 		$this->assertNotNull( $row, 'The decision should have been recorded in the sessions table' );
