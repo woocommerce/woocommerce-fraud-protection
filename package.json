@@ -48,16 +48,14 @@
 		"@testing-library/react": "^16.3.3",
 		"@testing-library/user-event": "^14.6.7",
 		"@types/jest": "^29.5.14",
-		"@types/node": "^20.19.43",
 		"@types/react": "^18.3.28",
 		"@types/react-dom": "^18.3.7",
 		"@wordpress/api-fetch": "^7.54.0",
-		"@wordpress/components": "^40.0.0",
 		"@wordpress/data": "^10.54.0",
 		"@wordpress/element": "^8.6.0",
 		"@wordpress/env": "10.39.0",
 		"@wordpress/i18n": "^6.27.0",
-		"@wordpress/icons": "^15.5.0",
+		"@wordpress/jest-preset-default": "^12.42.0",
 		"@wordpress/notices": "^5.54.0",
 		"@wordpress/scripts": "^31.7.0",
 		"@wordpress/ui": "^0.21.0",
@@ -68,9 +66,8 @@
 		"node": "^20.11.1"
 	},
 	"jest": {
-		"testEnvironment": "jsdom",
+		"preset": "@wordpress/jest-preset-default",
 		"moduleNameMapper": {
-			"\\.(css|scss)$": "<rootDir>/tests/js/style-mock.js",
 			"^@wordpress/ui$": "<rootDir>/node_modules/@wordpress/ui/build/index.cjs",
 			"^@wordpress/theme$": "<rootDir>/node_modules/@wordpress/theme/build/index.cjs"
 		},

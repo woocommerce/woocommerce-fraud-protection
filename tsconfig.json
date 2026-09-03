@@ -9,7 +9,7 @@
 		"skipLibCheck": true,
 		"strict": true,
 		"target": "es6",
-		"types": [ "jest", "node", "react", "react-dom" ]
+		"types": [ "jest", "react", "react-dom" ]
 	},
 	"include": [ "client/**/*.ts", "client/**/*.tsx", "tests/js/**/*.ts", "tests/js/**/*.tsx" ],
 	"exclude": [ "node_modules", "build" ]
