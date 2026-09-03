@@ -1,0 +1,14 @@
+@use '@wordpress/base-styles/colors' as *;
+
+.wc-fraud-protection-settings__content {
+	max-width: 720px;
+	margin: 0 auto;
+
+	.wc-fraud-protection-settings__description {
+		color: $gray-700;
+	}
+
+	.wc-fraud-protection-settings__control {
+		min-height: 20px;
+	}
+}

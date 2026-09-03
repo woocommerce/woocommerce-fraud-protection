@@ -6,6 +6,7 @@
 	"license": "GPL-3.0-or-later",
 	"files": [
 		"assets",
+		"build",
 		"src",
 		"vendor",
 		"changelog.txt",
@@ -26,9 +27,10 @@
 		"env:setup": "bash ./bin/wp-env-setup.sh",
 		"postenv:start": "bash ./bin/wp-env-setup.sh",
 		"postenv:update": "bash ./bin/wp-env-setup.sh",
-		"lint": "npm run lint:js && npm run lint:css && npm run lint:php",
-		"lint:js": "wp-scripts lint-js assets/js",
-		"lint:css": "wp-scripts lint-style assets/css --allow-empty-input",
+		"lint": "npm run lint:js && npm run lint:css && npm run lint:types && npm run lint:php",
+		"lint:js": "wp-scripts lint-js assets/js client tests/js/admin-settings.test.tsx",
+		"lint:css": "wp-scripts lint-style assets/css client/admin-settings/style.scss --allow-empty-input",
+		"lint:types": "tsc --noEmit",
 		"lint:php": "vendor/bin/phpcs",
 		"lint:php:autofix": "vendor/bin/phpcbf",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
@@ -42,16 +44,37 @@
 	},
 	"devDependencies": {
 		"@babel/runtime": "^7.24.0",
+		"@testing-library/jest-dom": "^6.9.1",
+		"@testing-library/react": "^16.3.3",
+		"@testing-library/user-event": "^14.6.7",
+		"@types/jest": "^29.5.14",
+		"@types/react": "^18.3.28",
+		"@types/react-dom": "^18.3.7",
+		"@wordpress/api-fetch": "^7.54.0",
+		"@wordpress/data": "^10.54.0",
+		"@wordpress/element": "^8.6.0",
 		"@wordpress/env": "10.39.0",
+		"@wordpress/i18n": "^6.27.0",
+		"@wordpress/jest-preset-default": "^12.42.0",
+		"@wordpress/notices": "^5.54.0",
 		"@wordpress/scripts": "^31.7.0",
-		"jquery": "^3.7.1"
+		"@wordpress/ui": "^0.21.0",
+		"jquery": "^3.7.1",
+		"typescript": "^5.7.3"
 	},
 	"engines": {
 		"node": "^20.11.1"
 	},
 	"jest": {
+		"preset": "@wordpress/jest-preset-default",
+		"moduleNameMapper": {
+			"^@wordpress/ui$": "<rootDir>/node_modules/@wordpress/ui/build/index.cjs",
+			"^@wordpress/theme$": "<rootDir>/node_modules/@wordpress/theme/build/index.cjs"
+		},
 		"testMatch": [
-			"**/tests/js/**/*.test.js"
+			"**/tests/js/**/*.test.js",
+			"**/tests/js/**/*.test.ts",
+			"**/tests/js/**/*.test.tsx"
 		],
 		"setupFilesAfterEnv": [
 			"./tests/js/setup.js"

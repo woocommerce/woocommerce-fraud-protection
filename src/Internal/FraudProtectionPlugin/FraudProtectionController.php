@@ -23,6 +23,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheck
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
@@ -122,18 +123,18 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionEventPruner $session_event_pruner;
 
 	/**
-	 * Settings telemetry instance.
-	 *
-	 * @var SettingsTelemetry
-	 */
-	private SettingsTelemetry $settings_telemetry;
-
-	/**
 	 * Merchant-facing feature gate.
 	 *
 	 * @var MerchantFacingFeaturesGate
 	 */
 	private MerchantFacingFeaturesGate $merchant_facing_features_gate;
+
+	/**
+	 * Settings telemetry instance.
+	 *
+	 * @var SettingsTelemetry
+	 */
+	private SettingsTelemetry $settings_telemetry;
 
 	/**
 	 * Register hooks. To be run at `woocommerce_loaded`.
@@ -181,8 +182,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
 	 * @param SchemaManager              $schema_manager               The instance of SchemaManager to use.
 	 * @param SessionEventPruner         $session_event_pruner         The instance of SessionEventPruner to use.
-	 * @param FraudProtectionLogger      $logger                       The logger instance.
-	 * @param SettingsTelemetry          $settings_telemetry           Settings telemetry instance.
+	 * @param FraudProtectionLogger      $logger                        The logger instance.
+	 * @param SettingsTelemetry          $settings_telemetry            Settings telemetry instance.
 	 * @param MerchantFacingFeaturesGate $merchant_facing_features_gate Merchant-facing features gate.
 	 */
 	final public function init(
@@ -235,8 +236,25 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->settings_telemetry->register();
 
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {
+			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
 			wc_get_container()->get( SettingsRestController::class )->register();
 		}
+	}
+
+	/**
+	 * Add the settings page after WooCommerce loads its settings base class.
+	 *
+	 * @internal
+	 *
+	 * @param array<int, \WC_Settings_Page> $pages Existing settings pages.
+	 * @return array<int, \WC_Settings_Page>
+	 */
+	public function add_settings_page( array $pages ): array {
+		$page = wc_get_container()->get( FraudProtectionSettingsPage::class );
+		$page->register();
+		$pages[] = $page;
+
+		return $pages;
 	}
 
 	/**
