@@ -126,9 +126,20 @@ jest.mock( '@wordpress/components', () => ( {
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 
+const dispatchBeforeUnload = () => {
+	const event = new Event( 'beforeunload', { cancelable: true } );
+	const result = window.dispatchEvent( event );
+
+	return { event, result };
+};
+
 describe( 'AutomaticProtectionSettings', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
+	} );
+
+	afterEach( () => {
+		window.onbeforeunload = null;
 	} );
 
 	it( 'renders the hydrated disabled value without a request', () => {
@@ -167,6 +178,73 @@ describe( 'AutomaticProtectionSettings', () => {
 		expect( screen.getByRole( 'checkbox' ) ).toBeChecked();
 		expect( screen.getByRole( 'button', { name: 'Save' } ) ).toBeDisabled();
 		expect( mockedApiFetch ).not.toHaveBeenCalled();
+	} );
+
+	it( 'updates the unload warning through repeated dirty transitions', () => {
+		render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
+		);
+
+		const checkbox = screen.getByRole( 'checkbox' );
+		fireEvent.click( checkbox );
+		const legacyHandler = jest.fn();
+		window.onbeforeunload = legacyHandler;
+		const firstDirty = dispatchBeforeUnload();
+
+		expect( firstDirty.result ).toBe( false );
+		expect( firstDirty.event.defaultPrevented ).toBe( true );
+		expect( window.onbeforeunload ).toBe( legacyHandler );
+
+		fireEvent.click( checkbox );
+		const firstClean = dispatchBeforeUnload();
+
+		expect( window.onbeforeunload ).toBeNull();
+		expect( firstClean.result ).toBe( true );
+		expect( firstClean.event.defaultPrevented ).toBe( false );
+
+		fireEvent.click( checkbox );
+		const secondDirty = dispatchBeforeUnload();
+
+		expect( secondDirty.result ).toBe( false );
+		expect( secondDirty.event.defaultPrevented ).toBe( true );
+
+		fireEvent.click( checkbox );
+		const secondClean = dispatchBeforeUnload();
+
+		expect( secondClean.result ).toBe( true );
+		expect( secondClean.event.defaultPrevented ).toBe( false );
+	} );
+
+	it( 'removes the unload warning when unmounted while dirty', () => {
+		const { unmount } = render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
+		);
+
+		fireEvent.click( screen.getByRole( 'checkbox' ) );
+		unmount();
+		const afterUnmount = dispatchBeforeUnload();
+
+		expect( afterUnmount.result ).toBe( true );
+		expect( afterUnmount.event.defaultPrevented ).toBe( false );
+	} );
+
+	it( 'clears the unload warning after a successful save', async () => {
+		mockedApiFetch.mockResolvedValueOnce( {
+			automatic_protection: true,
+		} );
+		render(
+			<AutomaticProtectionSettings initialAutomaticProtection={ false } />
+		);
+
+		fireEvent.click( screen.getByRole( 'checkbox' ) );
+		window.onbeforeunload = jest.fn();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
+
+		await screen.findByRole( 'status' );
+		await waitFor( () => {
+			expect( window.onbeforeunload ).toBeNull();
+			expect( dispatchBeforeUnload().result ).toBe( true );
+		} );
 	} );
 
 	it( 'saves a changed Boolean and shows the success Snackbar', async () => {
@@ -258,6 +336,7 @@ describe( 'AutomaticProtectionSettings', () => {
 		);
 		expect( checkbox ).toBeEnabled();
 		expect( save ).toBeEnabled();
+		expect( dispatchBeforeUnload().result ).toBe( false );
 
 		fireEvent.click( save );
 

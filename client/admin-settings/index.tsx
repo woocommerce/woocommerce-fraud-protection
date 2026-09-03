@@ -9,7 +9,7 @@ import {
 	Notice,
 	SnackbarList,
 } from '@wordpress/components';
-import { createRoot, useState } from '@wordpress/element';
+import { createRoot, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { error as errorIcon } from '@wordpress/icons';
 
@@ -33,6 +33,7 @@ export function AutomaticProtectionSettings( {
 	const [ isSaving, setIsSaving ] = useState( false );
 	const [ error, setError ] = useState< string | null >( null );
 	const [ showSuccess, setShowSuccess ] = useState( false );
+	const isDirty = savedValue !== value;
 	const successNotices = showSuccess
 		? [
 				{
@@ -45,8 +46,28 @@ export function AutomaticProtectionSettings( {
 		  ]
 		: [];
 
+	useEffect( () => {
+		const warnAboutUnsavedChanges = ( event: BeforeUnloadEvent ) => {
+			event.preventDefault();
+			event.returnValue = '';
+		};
+
+		if ( isDirty ) {
+			window.addEventListener( 'beforeunload', warnAboutUnsavedChanges );
+		} else {
+			window.onbeforeunload = null;
+		}
+
+		return () => {
+			window.removeEventListener(
+				'beforeunload',
+				warnAboutUnsavedChanges
+			);
+		};
+	}, [ isDirty ] );
+
 	const save = async () => {
-		if ( savedValue === value || isSaving ) {
+		if ( ! isDirty || isSaving ) {
 			return;
 		}
 
@@ -141,7 +162,7 @@ export function AutomaticProtectionSettings( {
 					variant="primary"
 					type="button"
 					isBusy={ isSaving }
-					disabled={ savedValue === value || isSaving }
+					disabled={ ! isDirty || isSaving }
 					onClick={ save }
 				>
 					{ __( 'Save', 'woocommerce-fraud-protection' ) }
