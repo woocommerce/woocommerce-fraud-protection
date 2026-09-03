@@ -7,9 +7,9 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 
-use Automattic\WooCommerce\FraudProtection\LearningModeContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -42,18 +42,27 @@ class FraudProtectionCommands {
 	private LegacyProxy $legacy_proxy;
 
 	/**
+	 * Automatic-protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private AutomaticProtectionSetting $automatic_protection;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SchemaManager      $schema_manager       The schema manager instance.
-	 * @param SessionEventPruner $session_event_pruner The session pruner instance.
-	 * @param LegacyProxy        $legacy_proxy         The legacy proxy instance.
+	 * @param SchemaManager              $schema_manager       The schema manager instance.
+	 * @param SessionEventPruner         $session_event_pruner The session pruner instance.
+	 * @param LegacyProxy                $legacy_proxy         The legacy proxy instance.
+	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
 	 */
-	final public function init( SchemaManager $schema_manager, SessionEventPruner $session_event_pruner, LegacyProxy $legacy_proxy ): void {
+	final public function init( SchemaManager $schema_manager, SessionEventPruner $session_event_pruner, LegacyProxy $legacy_proxy, AutomaticProtectionSetting $automatic_protection ): void {
 		$this->schema_manager       = $schema_manager;
 		$this->session_event_pruner = $session_event_pruner;
 		$this->legacy_proxy         = $legacy_proxy;
+		$this->automatic_protection = $automatic_protection;
 	}
 
 	/**
@@ -108,26 +117,8 @@ class FraudProtectionCommands {
 		$database_defaults = is_array( $database_defaults ) ? $database_defaults : array();
 
 		$this->write_line( __( 'Plugin version', 'woocommerce-fraud-protection' ), defined( 'WC_FRAUD_PROTECTION_VERSION' ) ? (string) WC_FRAUD_PROTECTION_VERSION : __( 'Unknown', 'woocommerce-fraud-protection' ) );
-		$callbacks = self::get_learning_mode_callbacks();
-		/**
-		 * Filter learning mode for local status output.
-		 *
-		 * @since 0.1.0
-		 * @since 0.2.0 The nullable context argument was added.
-		 *
-		 * @param bool                     $learning_mode Whether learning mode is active. Default true.
-		 * @param LearningModeContext|null $context      Always null for status output.
-		 */
-		$learning_mode = (bool) apply_filters( 'woocommerce_fraud_protection_learning_mode', true, null );
-
-		$this->write_line( __( 'Learning mode', 'woocommerce-fraud-protection' ), $learning_mode ? __( 'Enabled', 'woocommerce-fraud-protection' ) : __( 'Disabled', 'woocommerce-fraud-protection' ) );
-		if ( array() === $callbacks ) {
-			$this->write_line( __( 'Learning mode callbacks', 'woocommerce-fraud-protection' ), __( 'None', 'woocommerce-fraud-protection' ) );
-		} else {
-			foreach ( $callbacks as $callback ) {
-				$this->write_line( __( 'Learning mode callback', 'woocommerce-fraud-protection' ), $callback );
-			}
-		}
+		$this->write_line( __( 'Automatic protection status', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_status()->value );
+		$this->write_line( __( 'Automatic protection source', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_source()->value );
 		$this->write_line( __( 'Jetpack blog ID', 'woocommerce-fraud-protection' ), self::value_or_unavailable( $this->get_jetpack_blog_id() ) );
 		$this->write_line( __( 'Required schema version', 'woocommerce-fraud-protection' ), (string) $schema_status['required_version'] );
 		$this->write_line( __( 'Installed schema version', 'woocommerce-fraud-protection' ), (string) $schema_status['installed_version'] );
@@ -266,99 +257,6 @@ class FraudProtectionCommands {
 	 */
 	private static function value_or_unavailable( $value ): string {
 		return is_scalar( $value ) && '' !== (string) $value ? (string) $value : __( 'Unavailable', 'woocommerce-fraud-protection' );
-	}
-
-	/**
-	 * Get safe identities for callbacks registered on the learning-mode filter.
-	 *
-	 * @return string[]
-	 */
-	private static function get_learning_mode_callbacks(): array {
-		global $wp_filter;
-
-		$hook = is_array( $wp_filter ?? null ) ? ( $wp_filter['woocommerce_fraud_protection_learning_mode'] ?? null ) : null;
-		if ( ! $hook instanceof \WP_Hook || ! is_array( $hook->callbacks ) ) {
-			return array();
-		}
-
-		$callbacks = array();
-		foreach ( $hook->callbacks as $priority => $priority_callbacks ) {
-			if ( ! is_numeric( $priority ) || ! is_array( $priority_callbacks ) ) {
-				continue;
-			}
-
-			foreach ( $priority_callbacks as $callback_data ) {
-				$callback    = is_array( $callback_data ) ? ( $callback_data['function'] ?? null ) : null;
-				$callbacks[] = sprintf( '%s (priority %d)', self::format_callback_identity( $callback ), (int) $priority );
-			}
-		}
-
-		return $callbacks;
-	}
-
-	/**
-	 * Format a callback without invoking it.
-	 *
-	 * @param mixed $callback Registered callback.
-	 * @return string
-	 */
-	private static function format_callback_identity( $callback ): string {
-		if ( $callback instanceof \Closure ) {
-			try {
-				$reflection = new \ReflectionFunction( $callback );
-				$file       = $reflection->getFileName();
-				$line       = $reflection->getStartLine();
-
-				if ( is_string( $file ) && '' !== $file && is_int( $line ) && $line > 0 ) {
-					return sprintf( 'Closure (%s:%d)', basename( $file ), $line );
-				}
-			} catch ( \ReflectionException $e ) {
-				unset( $e );
-			}
-
-			return 'Closure';
-		}
-
-		if ( is_string( $callback ) ) {
-			if ( function_exists( $callback ) ) {
-				return $callback;
-			}
-
-			$separator = strrpos( $callback, '::' );
-			if ( false !== $separator ) {
-				$class  = substr( $callback, 0, $separator );
-				$method = substr( $callback, $separator + 2 );
-
-				if ( self::is_safe_class_name( $class ) && preg_match( '/\A[A-Za-z_][A-Za-z0-9_]*\z/', $method ) ) {
-					return $callback;
-				}
-			}
-		}
-
-		if ( is_array( $callback ) && 2 === count( $callback ) && is_string( $callback[1] ) ) {
-			$target = $callback[0] ?? null;
-			$class  = is_object( $target ) ? $target::class : ( is_string( $target ) ? $target : '' );
-
-			if ( '' !== $class && self::is_safe_class_name( $class ) && preg_match( '/\A[A-Za-z_][A-Za-z0-9_]*\z/', $callback[1] ) ) {
-				return $class . '::' . $callback[1];
-			}
-		}
-
-		if ( is_object( $callback ) && method_exists( $callback, '__invoke' ) && self::is_safe_class_name( $callback::class ) ) {
-			return $callback::class;
-		}
-
-		return 'Unknown callback';
-	}
-
-	/**
-	 * Check that a class name does not contain implementation details.
-	 *
-	 * @param string $class_name Class name.
-	 * @return bool
-	 */
-	private static function is_safe_class_name( string $class_name ): bool {
-		return 1 === preg_match( '/\A[A-Za-z_][A-Za-z0-9_\\\\]*\z/', $class_name );
 	}
 
 	/**

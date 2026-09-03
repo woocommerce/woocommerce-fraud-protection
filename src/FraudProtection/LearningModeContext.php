@@ -12,7 +12,9 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Context passed to learning-mode callbacks for a verification attempt.
+ * Deprecated context formerly passed to learning-mode callbacks.
+ *
+ * @deprecated 0.2.2 The learning-mode filter no longer runs. Use the automatic-protection setting.
  */
 final class LearningModeContext {
 
@@ -24,6 +26,7 @@ final class LearningModeContext {
 	 * @param PaymentMode $transaction_mode Transaction mode.
 	 *
 	 * @since 0.2.0
+	 * @deprecated 0.2.2 The learning-mode filter no longer runs.
 	 */
 	public function __construct(
 		public readonly string $gateway,

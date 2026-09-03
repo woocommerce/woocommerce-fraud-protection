@@ -10,11 +10,10 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Outcome actually applied to a recorded fraud-protection session, as opposed
- * to what Blackbox said (the received decision). The *reason* for an outcome
- * is not part of this vocabulary: a block suppressed by learning mode or a
- * filter override reads as `decision = block` paired with
- * `final_status = allowed`.
+ * Outcome applied to a recorded fraud-protection session. This can differ from
+ * the received decision. For example, a block decision that is not enforced
+ * has `decision = block` and `final_status = allowed`. This vocabulary does not
+ * record why the outcomes differ.
  *
  * Stored as the backing string in the `final_status` column of the sessions
  * table. The vocabulary is deliberately open-ended: the future challenge flow

@@ -18,6 +18,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheck
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 
@@ -53,12 +54,21 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 	private $original_session;
 
 	/**
+	 * Automatic-protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private $automatic_protection;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->original_session = WC()->session;
+		$this->original_session     = WC()->session;
+		$this->automatic_protection = new AutomaticProtectionSetting();
+		$this->automatic_protection->set_enabled( true );
 		wc_load_cart();
 
 		$this->api_client = $this->getMockBuilder( ApiClient::class )
@@ -68,7 +78,7 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->api_client->init( wc_get_container()->get( VisitorIpResolver::class ), $session_id_normalizer );
 
 		$decision_handler = new DecisionHandler();
-		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $this->createMock( RuleEvaluator::class ) );
+		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $this->createMock( RuleEvaluator::class ), $this->automatic_protection );
 
 		$session_verifier = new SessionVerifier();
 		$session_verifier->init(
@@ -92,7 +102,7 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 			WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, null );
 		}
 		WC()->session = $this->original_session;
-		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
+		$this->automatic_protection->reset();
 		parent::tearDown();
 	}
 
@@ -100,8 +110,6 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should reject a blocked attempt without persisting block state, and re-verify the next attempt from scratch.
 	 */
 	public function test_block_applies_to_single_attempt_and_next_attempt_is_reverified(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
-
 		// The transport must be hit once per attempt: a block verdict is not
 		// cached anywhere, so the second attempt triggers a fresh verify.
 		$this->api_client
@@ -150,7 +158,6 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox A received 413 blocks only that attempt and the next attempt verifies again.
 	 */
 	public function test_rejected_request_blocks_single_attempt_and_next_attempt_is_reverified(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
 		$this->api_client
 			->expects( $this->exactly( 2 ) )
 			->method( 'jetpack_remote_request' )

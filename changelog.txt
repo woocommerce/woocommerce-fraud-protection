@@ -4,6 +4,7 @@ YYYY-xx-xx - version 0.2.2
 * Added - PayPal setup-token and vault-order requests now run Fraud Protection before remote object creation.
 * Fixed - Fraud Protection now limits retained shopper identity and event history, and handles oversized verification attempts per request.
 * Fixed - Subscription change-payment forms now load the Fraud Protection payment scripts.
+* Dev - The woocommerce_fraud_protection_learning_mode filter was removed; automatic checkout blocking now uses the persistent automatic-protection setting.
 
 2026-08-31 - version 0.2.1
 * Fixed - Checkout and payment-method retries now use the current Fraud Protection session value instead of retaining one from an earlier attempt.
