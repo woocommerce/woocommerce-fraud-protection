@@ -7,8 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\McStats;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -17,11 +16,9 @@ defined( 'ABSPATH' ) || exit;
  */
 class SettingsTelemetry {
 
-	private const MC_GROUP = 'fraud-protection-automatic-protection';
+	private const MC_NAMESPACE = 'fraud-protection';
 
-	public const CHANNEL_SETTINGS = 'settings';
-
-	public const CHANNEL_CLI = 'cli';
+	private const MC_GROUP = 'automatic-protection';
 
 	/**
 	 * Merchant-experience feature gate.
@@ -38,11 +35,18 @@ class SettingsTelemetry {
 	private AutomaticProtectionSetting $automatic_protection;
 
 	/**
-	 * WooCommerce MC Stats service.
+	 * Plugin MC Stats service.
 	 *
 	 * @var McStats
 	 */
 	private McStats $mc_stats;
+
+	/**
+	 * Logger instance.
+	 *
+	 * @var FraudProtectionLogger
+	 */
+	private FraudProtectionLogger $logger;
 
 	/**
 	 * Initialize with dependencies.
@@ -51,12 +55,14 @@ class SettingsTelemetry {
 	 *
 	 * @param MerchantExperienceFeature  $merchant_experience  Merchant-experience feature gate.
 	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
-	 * @param McStats                    $mc_stats             WooCommerce MC Stats service.
+	 * @param McStats                    $mc_stats             Plugin MC Stats service.
+	 * @param FraudProtectionLogger      $logger               Logger instance.
 	 */
-	final public function init( MerchantExperienceFeature $merchant_experience, AutomaticProtectionSetting $automatic_protection, McStats $mc_stats ): void {
+	final public function init( MerchantExperienceFeature $merchant_experience, AutomaticProtectionSetting $automatic_protection, McStats $mc_stats, FraudProtectionLogger $logger ): void {
 		$this->merchant_experience  = $merchant_experience;
 		$this->automatic_protection = $automatic_protection;
 		$this->mc_stats             = $mc_stats;
+		$this->logger               = $logger;
 	}
 
 	/**
@@ -79,16 +85,12 @@ class SettingsTelemetry {
 		$extensions = is_array( $data['extensions'] ?? null ) ? $data['extensions'] : array();
 		$plugin     = is_array( $extensions['woocommerce_fraud_protection'] ?? null ) ? $extensions['woocommerce_fraud_protection'] : array();
 
-		$merchant_status = $this->merchant_experience->get_stored_status();
-		if ( MerchantExperienceFeature::STATUS_DEFAULT === $merchant_status ) {
-			$merchant_status = $this->merchant_experience->get_code_default() ? 'default_enabled' : 'default_disabled';
-		}
+		$merchant_status  = $this->merchant_experience->get_status();
+		$automatic_status = $this->automatic_protection->get_status();
 
-		$automatic_status = $this->automatic_protection->get_stored_status();
-
-		$plugin['merchant_experience_status']  = $merchant_status;
-		$plugin['automatic_protection_status'] = $automatic_status;
-		$plugin['automatic_protection_source'] = AutomaticProtectionSetting::STATUS_ENABLED === $automatic_status ? 'manual' : 'none';
+		$plugin['merchant_experience_status']  = $merchant_status->value;
+		$plugin['automatic_protection_status'] = $automatic_status->value;
+		$plugin['automatic_protection_source'] = $this->automatic_protection->get_source()->value;
 
 		$extensions['woocommerce_fraud_protection'] = $plugin;
 		$data['extensions']                         = $extensions;
@@ -99,26 +101,19 @@ class SettingsTelemetry {
 	/**
 	 * Record a confirmed automatic-protection transition.
 	 *
-	 * @param string $outcome One of enabled, disabled, or reset.
-	 * @param string $channel One of the CHANNEL_* constants.
+	 * @param AutomaticProtectionChange $change Setting change.
+	 * @param SettingsChangeChannel     $channel Change channel.
 	 */
-	public function record_automatic_protection_change( string $outcome, string $channel ): void {
-		if ( ! in_array( $outcome, array( 'enabled', 'disabled', 'reset' ), true ) || ! in_array( $channel, array( self::CHANNEL_SETTINGS, self::CHANNEL_CLI ), true ) ) {
-			return;
-		}
-
-		if ( 'reset' === $outcome && self::CHANNEL_CLI !== $channel ) {
-			return;
-		}
-
+	public function record_automatic_protection_change( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): void {
 		try {
-			$this->mc_stats->add( self::MC_GROUP, $outcome );
-			$this->mc_stats->add( self::MC_GROUP, $outcome . '-' . $channel );
+			$group = self::MC_NAMESPACE . '-' . self::MC_GROUP;
+			$this->mc_stats->add( $group, $change->value );
+			$this->mc_stats->add( $group, $change->value . '-' . $channel->value );
 			$this->mc_stats->do_server_side_stats();
 		} catch ( \Throwable $error ) {
-			FraudProtectionController::log(
+			$this->logger->log(
 				'warning',
-				'Unable to record a Fraud Protection settings statistic.',
+				'Unable to record a Fraud Protection settings stat.',
 				array(
 					'exception_class'   => $error::class,
 					'exception_message' => $error->getMessage(),

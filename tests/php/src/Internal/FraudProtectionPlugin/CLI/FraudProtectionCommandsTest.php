@@ -10,9 +10,14 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionChange;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
@@ -234,10 +239,11 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'sentinel' => true ), get_option( SchemaManager::DB_INSTALL_STATE_OPTION ), 'Status must not change the install state' );
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
-		$this->assertStringContainsString( 'Merchant experience override: default', $output );
-		$this->assertStringContainsString( 'Merchant experience code default: Disabled', $output );
-		$this->assertStringContainsString( 'Automatic protection stored state: default_disabled', $output );
-		$this->assertStringContainsString( 'Automatic protection: Disabled', $output );
+		$this->assertStringContainsString( 'Merchant experience status: default_disabled', $output );
+		$this->assertStringContainsString( 'Automatic protection status: default_disabled', $output );
+		$this->assertStringContainsString( 'Automatic protection source: none', $output );
+		$this->assertStringNotContainsString( 'code default', $output );
+		$this->assertStringNotContainsString( 'stored state', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
 		$this->assertStringContainsString( 'Required schema version:', $output );
 		$this->assertStringContainsString( 'Installed schema version:', $output );
@@ -257,15 +263,40 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Status reports explicit setting states and the manual enabled source.
+	 */
+	public function test_status_reports_explicit_setting_states(): void {
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+		$this->merchant_experience->set_enabled( true );
+		$this->automatic_protection->set_enabled( true );
+
+		$this->sut->status();
+
+		$output = implode( "\n", $this->wp_cli_lines );
+		$this->assertStringContainsString( 'Merchant experience status: enabled', $output );
+		$this->assertStringContainsString( 'Automatic protection status: enabled', $output );
+		$this->assertStringContainsString( 'Automatic protection source: manual', $output );
+
+		$this->wp_cli_lines = array();
+		$this->automatic_protection->set_enabled( false );
+		$this->sut->status();
+
+		$output = implode( "\n", $this->wp_cli_lines );
+		$this->assertStringContainsString( 'Automatic protection status: disabled', $output );
+		$this->assertStringContainsString( 'Automatic protection source: manual', $output );
+	}
+
+	/**
 	 * @testdox Automatic-protection CLI changes write the shared setting and record CLI stats only for transitions.
 	 */
 	public function test_automatic_protection_set_records_real_transitions(): void {
 		$this->settings_telemetry->expects( $this->exactly( 3 ) )
 			->method( 'record_automatic_protection_change' )
 			->withConsecutive(
-				array( 'enabled', SettingsTelemetry::CHANNEL_CLI ),
-				array( 'disabled', SettingsTelemetry::CHANNEL_CLI ),
-				array( 'reset', SettingsTelemetry::CHANNEL_CLI )
+				array( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Cli ),
+				array( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli ),
+				array( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli )
 			);
 
 		$this->sut->automatic_protection_set( array( 'enabled' ) );
@@ -281,16 +312,13 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox A failed automatic-protection set reports an error without telemetry.
 	 */
 	public function test_automatic_protection_set_failure_reports_error_without_telemetry(): void {
-		$setting = $this->createMock( AutomaticProtectionSetting::class );
-		$setting->expects( $this->once() )
-			->method( 'get_stored_status' )
-			->willReturn( AutomaticProtectionSetting::STATUS_DEFAULT_DISABLED );
-		$setting->expects( $this->once() )
+		$updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
+		$updater->expects( $this->once() )
 			->method( 'set_enabled' )
-			->with( true )
+			->with( true, SettingsChangeChannel::Cli )
 			->willReturn( false );
 		$this->settings_telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
-		$this->initialize_sut( $setting );
+		$this->initialize_sut( $this->automatic_protection, $updater );
 
 		try {
 			$this->sut->automatic_protection_set( array( 'enabled' ) );
@@ -306,15 +334,13 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox A failed automatic-protection reset reports an error without telemetry.
 	 */
 	public function test_automatic_protection_reset_failure_reports_error_without_telemetry(): void {
-		$setting = $this->createMock( AutomaticProtectionSetting::class );
-		$setting->expects( $this->once() )
-			->method( 'get_stored_status' )
-			->willReturn( AutomaticProtectionSetting::STATUS_ENABLED );
-		$setting->expects( $this->once() )
+		$updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
+		$updater->expects( $this->once() )
 			->method( 'reset' )
+			->with( SettingsChangeChannel::Cli )
 			->willReturn( false );
 		$this->settings_telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
-		$this->initialize_sut( $setting );
+		$this->initialize_sut( $this->automatic_protection, $updater );
 
 		try {
 			$this->sut->automatic_protection_set( array( 'default' ) );
@@ -334,7 +360,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( $this->merchant_experience->is_enabled() );
 
 		$this->sut->merchant_experience_set( array( 'default' ) );
-		$this->assertSame( MerchantExperienceFeature::STATUS_DEFAULT, $this->merchant_experience->get_stored_status() );
+		$this->assertSame( SettingStatus::DefaultDisabled, $this->merchant_experience->get_status() );
 	}
 
 	/**
@@ -350,17 +376,23 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			$this->assertStringContainsString( 'enabled, disabled, or default', $error->getMessage() );
 		}
 
-		$this->assertSame( AutomaticProtectionSetting::STATUS_ENABLED, $this->automatic_protection->get_stored_status() );
+		$this->assertSame( SettingStatus::Enabled, $this->automatic_protection->get_status() );
 	}
 
 	/**
 	 * Initialize the command with an automatic-protection setting.
 	 *
-	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
+	 * @param AutomaticProtectionSetting         $automatic_protection Automatic-protection setting.
+	 * @param ?AutomaticProtectionSettingUpdater $updater              Automatic-protection setting updater.
 	 */
-	private function initialize_sut( AutomaticProtectionSetting $automatic_protection ): void {
+	private function initialize_sut( AutomaticProtectionSetting $automatic_protection, ?AutomaticProtectionSettingUpdater $updater = null ): void {
+		if ( null === $updater ) {
+			$updater = new AutomaticProtectionSettingUpdater();
+			$updater->init( $automatic_protection, $this->settings_telemetry, $this->createMock( FraudProtectionLogger::class ) );
+		}
+
 		$this->sut = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_experience, $automatic_protection, $this->settings_telemetry );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_experience, $automatic_protection, $updater );
 	}
 
 	/**

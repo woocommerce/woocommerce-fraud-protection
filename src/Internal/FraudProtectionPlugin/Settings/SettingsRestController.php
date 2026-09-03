@@ -22,25 +22,25 @@ class SettingsRestController extends \WP_REST_Controller {
 	private AutomaticProtectionSetting $automatic_protection;
 
 	/**
-	 * Settings telemetry.
+	 * Automatic-protection setting updater.
 	 *
-	 * @var SettingsTelemetry
+	 * @var AutomaticProtectionSettingUpdater
 	 */
-	private SettingsTelemetry $telemetry;
+	private AutomaticProtectionSettingUpdater $updater;
 
 	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
-	 * @param SettingsTelemetry          $telemetry            Settings telemetry.
+	 * @param AutomaticProtectionSetting        $automatic_protection Automatic-protection setting.
+	 * @param AutomaticProtectionSettingUpdater $updater              Automatic-protection setting updater.
 	 */
-	final public function init( AutomaticProtectionSetting $automatic_protection, SettingsTelemetry $telemetry ): void {
+	final public function init( AutomaticProtectionSetting $automatic_protection, AutomaticProtectionSettingUpdater $updater ): void {
 		$this->namespace            = 'wc-fraud-protection/v1';
 		$this->rest_base            = 'settings';
 		$this->automatic_protection = $automatic_protection;
-		$this->telemetry            = $telemetry;
+		$this->updater              = $updater;
 	}
 
 	/**
@@ -72,6 +72,7 @@ class SettingsRestController extends \WP_REST_Controller {
 					'args'                => array(
 						'automatic_protection' => array(
 							'type'              => 'boolean',
+							'required'          => true,
 							'validate_callback' => 'rest_validate_request_arg',
 							'sanitize_callback' => 'rest_sanitize_boolean',
 						),
@@ -88,7 +89,7 @@ class SettingsRestController extends \WP_REST_Controller {
 	 * @internal
 	 */
 	public function permissions_check(): bool {
-		return current_user_can( 'manage_woocommerce' ); // phpcs:ignore WordPress.WP.Capabilities.Unknown -- WooCommerce registers this capability.
+		return current_user_can( 'manage_woocommerce' );
 	}
 
 	/**
@@ -99,7 +100,7 @@ class SettingsRestController extends \WP_REST_Controller {
 	 * @return \WP_REST_Response
 	 */
 	public function get_settings(): \WP_REST_Response {
-		return rest_ensure_response( $this->prepare_response_data() );
+		return rest_ensure_response( array( 'automatic_protection' => $this->automatic_protection->is_enabled() ) );
 	}
 
 	/**
@@ -111,24 +112,13 @@ class SettingsRestController extends \WP_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function update_settings( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		if ( ! $request->has_param( 'automatic_protection' ) ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_missing_setting', __( 'Provide a supported Fraud Protection setting.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
-		}
+		$enabled = true === $request->get_param( 'automatic_protection' );
 
-		$value         = $request->get_param( 'automatic_protection' );
-		$enabled       = true === $value;
-		$before_status = $this->automatic_protection->get_stored_status();
-
-		if ( ! $this->automatic_protection->set_enabled( $enabled ) ) {
+		if ( ! $this->updater->set_enabled( $enabled, SettingsChangeChannel::Settings ) ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The Fraud Protection setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
-		$after_status = $this->automatic_protection->get_stored_status();
-		if ( $before_status !== $after_status ) {
-			$this->telemetry->record_automatic_protection_change( $enabled ? 'enabled' : 'disabled', SettingsTelemetry::CHANNEL_SETTINGS );
-		}
-
-		return rest_ensure_response( $this->prepare_response_data() );
+		return $this->get_settings();
 	}
 
 	/**
@@ -149,14 +139,5 @@ class SettingsRestController extends \WP_REST_Controller {
 				),
 			),
 		);
-	}
-
-	/**
-	 * Build the response body.
-	 *
-	 * @return array{automatic_protection: bool}
-	 */
-	private function prepare_response_data(): array {
-		return array( 'automatic_protection' => $this->automatic_protection->is_enabled() );
 	}
 }

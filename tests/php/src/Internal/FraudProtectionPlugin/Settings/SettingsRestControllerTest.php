@@ -8,8 +8,12 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionChange;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
 /**
@@ -57,8 +61,10 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 		$this->setting   = new AutomaticProtectionSetting();
 		$this->telemetry = $this->createMock( SettingsTelemetry::class );
 		$this->setting->reset();
+		$updater = new AutomaticProtectionSettingUpdater();
+		$updater->init( $this->setting, $this->telemetry, $this->createMock( FraudProtectionLogger::class ) );
 		$this->sut = new SettingsRestController();
-		$this->sut->init( $this->setting, $this->telemetry );
+		$this->sut->init( $this->setting, $updater );
 		$this->sut->register();
 		do_action( 'rest_api_init', rest_get_server() );
 		wp_set_current_user( 1 );
@@ -92,7 +98,7 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 	public function test_post_updates_setting_and_records_transition(): void {
 		$this->telemetry->expects( $this->once() )
 			->method( 'record_automatic_protection_change' )
-			->with( 'enabled', SettingsTelemetry::CHANNEL_SETTINGS );
+			->with( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
 
 		$response = rest_get_server()->dispatch( $this->post_request( array( 'automatic_protection' => true ) ) );
 
@@ -111,7 +117,7 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 	public function test_post_normalizes_supported_enabled_values( mixed $value ): void {
 		$this->telemetry->expects( $this->once() )
 			->method( 'record_automatic_protection_change' )
-			->with( 'enabled', SettingsTelemetry::CHANNEL_SETTINGS );
+			->with( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
 
 		$response = rest_get_server()->dispatch( $this->post_request( array( 'automatic_protection' => $value ) ) );
 
@@ -139,7 +145,7 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 		$this->setting->set_enabled( true );
 		$this->telemetry->expects( $this->once() )
 			->method( 'record_automatic_protection_change' )
-			->with( 'disabled', SettingsTelemetry::CHANNEL_SETTINGS );
+			->with( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Settings );
 
 		$response = rest_get_server()->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
 
@@ -179,13 +185,12 @@ class SettingsRestControllerTest extends FraudProtectionUnitTestCase {
 	public function test_storage_failure_returns_error_without_telemetry(): void {
 		$GLOBALS['wp_rest_server'] = new \WP_REST_Server();
 		remove_action( 'rest_api_init', array( $this->sut, 'register_routes' ) );
-		$setting                   = $this->createMock( AutomaticProtectionSetting::class );
-		$setting->method( 'get_stored_status' )->willReturn( AutomaticProtectionSetting::STATUS_DEFAULT_DISABLED );
-		$setting->method( 'set_enabled' )->willReturn( false );
+		$updater                   = $this->createMock( AutomaticProtectionSettingUpdater::class );
+		$updater->method( 'set_enabled' )->willReturn( false );
 		$this->telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
 
 		$controller = new SettingsRestController();
-		$controller->init( $setting, $this->telemetry );
+		$controller->init( $this->setting, $updater );
 		$controller->register();
 		do_action( 'rest_api_init', rest_get_server() );
 

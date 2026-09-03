@@ -8,10 +8,14 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionChange;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\McStats;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
-use Automattic\WooCommerce\Internal\McStats;
 
 /**
  * Tests for SettingsTelemetry.
@@ -88,7 +92,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Tracker data reports an explicit disabled automatic-protection state without a source.
+	 * @testdox Tracker data reports an explicit disabled automatic-protection state with a manual source.
 	 */
 	public function test_tracker_reports_explicit_disabled_state(): void {
 		$this->automatic_protection->set_enabled( false );
@@ -97,22 +101,42 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$plugin = $sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
 		$this->assertSame( 'disabled', $plugin['automatic_protection_status'] );
-		$this->assertSame( 'none', $plugin['automatic_protection_source'] );
+		$this->assertSame( 'manual', $plugin['automatic_protection_source'] );
 	}
 
 	/**
 	 * @testdox Tracker data reports an enabled merchant-experience code default.
 	 */
 	public function test_tracker_reports_enabled_code_default(): void {
-		$merchant_experience = $this->createMock( MerchantExperienceFeature::class );
-		$merchant_experience->method( 'get_stored_status' )->willReturn( MerchantExperienceFeature::STATUS_DEFAULT );
-		$merchant_experience->method( 'get_code_default' )->willReturn( true );
+		$merchant_experience = new class() extends MerchantExperienceFeature {
+			public function get_default(): SettingStatus {
+				return SettingStatus::Enabled;
+			}
+		};
 		$sut = new SettingsTelemetry();
-		$sut->init( $merchant_experience, $this->automatic_protection, $this->createMock( McStats::class ) );
+		$sut->init( $merchant_experience, $this->automatic_protection, $this->createMock( McStats::class ), $this->createMock( FraudProtectionLogger::class ) );
 
 		$plugin = $sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
 		$this->assertSame( 'default_enabled', $plugin['merchant_experience_status'] );
+	}
+
+	/**
+	 * @testdox An enabled automatic-protection default has no manual source.
+	 */
+	public function test_tracker_reports_enabled_automatic_protection_default_without_source(): void {
+		$automatic_protection = new class() extends AutomaticProtectionSetting {
+			public function get_default(): SettingStatus {
+				return SettingStatus::Enabled;
+			}
+		};
+		$sut = new SettingsTelemetry();
+		$sut->init( $this->merchant_experience, $automatic_protection, $this->createMock( McStats::class ), $this->createMock( FraudProtectionLogger::class ) );
+
+		$plugin = $sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+
+		$this->assertSame( 'default_enabled', $plugin['automatic_protection_status'] );
+		$this->assertSame( 'none', $plugin['automatic_protection_source'] );
 	}
 
 	/**
@@ -128,7 +152,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 			);
 		$mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
 
-		$this->make_sut( $mc_stats )->record_automatic_protection_change( 'enabled', SettingsTelemetry::CHANNEL_SETTINGS );
+		$this->make_sut( $mc_stats )->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
 	}
 
 	/**
@@ -136,34 +160,34 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider supported_action_provider
 	 *
-	 * @param string $outcome Expected action outcome.
-	 * @param string $channel Expected action channel.
+	 * @param AutomaticProtectionChange $change  Expected action outcome.
+	 * @param SettingsChangeChannel      $channel Expected action channel.
 	 */
-	public function test_supported_actions_use_exact_stat_names( string $outcome, string $channel ): void {
+	public function test_supported_actions_use_exact_stat_names( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): void {
 		$mc_stats = $this->createMock( McStats::class );
 		$mc_stats->expects( $this->exactly( 2 ) )
 			->method( 'add' )
 			->withConsecutive(
-				array( 'fraud-protection-automatic-protection', $outcome ),
-				array( 'fraud-protection-automatic-protection', $outcome . '-' . $channel )
+				array( 'fraud-protection-automatic-protection', $change->value ),
+				array( 'fraud-protection-automatic-protection', $change->value . '-' . $channel->value )
 			);
 		$mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
 
-		$this->make_sut( $mc_stats )->record_automatic_protection_change( $outcome, $channel );
+		$this->make_sut( $mc_stats )->record_automatic_protection_change( $change, $channel );
 	}
 
 	/**
 	 * Provide supported action and channel combinations.
 	 *
-	 * @return array<string, array{string, string}>
+	 * @return array<string, array{AutomaticProtectionChange, SettingsChangeChannel}>
 	 */
 	public function supported_action_provider(): array {
 		return array(
-			'enabled from settings'  => array( 'enabled', SettingsTelemetry::CHANNEL_SETTINGS ),
-			'disabled from settings' => array( 'disabled', SettingsTelemetry::CHANNEL_SETTINGS ),
-			'enabled from CLI'       => array( 'enabled', SettingsTelemetry::CHANNEL_CLI ),
-			'disabled from CLI'      => array( 'disabled', SettingsTelemetry::CHANNEL_CLI ),
-			'reset from CLI'         => array( 'reset', SettingsTelemetry::CHANNEL_CLI ),
+			'enabled from settings'  => array( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings ),
+			'disabled from settings' => array( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Settings ),
+			'enabled from CLI'       => array( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Cli ),
+			'disabled from CLI'      => array( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli ),
+			'reset from CLI'         => array( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli ),
 		);
 	}
 
@@ -173,15 +197,17 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	public function test_record_change_isolates_telemetry_failure(): void {
 		$mc_stats = $this->createMock( McStats::class );
 		$mc_stats->method( 'add' )->willThrowException( new \RuntimeException( 'stats unavailable' ) );
+		$logger = $this->createMock( FraudProtectionLogger::class );
+		$logger->expects( $this->once() )
+			->method( 'log' )
+			->with( 'warning', 'Unable to record a Fraud Protection settings stat.', $this->isType( 'array' ) );
 
-		$this->make_sut( $mc_stats )->record_automatic_protection_change( 'disabled', SettingsTelemetry::CHANNEL_CLI );
-
-		$this->assertLogged( 'warning', 'Unable to record a Fraud Protection settings statistic.' );
+		$this->make_sut( $mc_stats, $logger )->record_automatic_protection_change( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli );
 	}
 
-	private function make_sut( McStats $mc_stats ): SettingsTelemetry {
+	private function make_sut( McStats $mc_stats, ?FraudProtectionLogger $logger = null ): SettingsTelemetry {
 		$sut = new SettingsTelemetry();
-		$sut->init( $this->merchant_experience, $this->automatic_protection, $mc_stats );
+		$sut->init( $this->merchant_experience, $this->automatic_protection, $mc_stats, $logger ?? $this->createMock( FraudProtectionLogger::class ) );
 
 		return $sut;
 	}

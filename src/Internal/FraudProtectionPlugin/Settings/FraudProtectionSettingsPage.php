@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,6 +21,13 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	private const SCRIPT_HANDLE = 'wc-fraud-protection-admin-settings';
 
 	/**
+	 * Logger instance.
+	 *
+	 * @var FraudProtectionLogger
+	 */
+	private FraudProtectionLogger $logger;
+
+	/**
 	 * Initialize the WooCommerce settings page.
 	 */
 	public function __construct() {
@@ -28,6 +35,17 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 		$this->label = __( 'Fraud prevention', 'woocommerce-fraud-protection' );
 
 		parent::__construct();
+	}
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param FraudProtectionLogger $logger Logger instance.
+	 */
+	final public function init( FraudProtectionLogger $logger ): void {
+		$this->logger = $logger;
 	}
 
 	/**
@@ -62,34 +80,32 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	 * Load settings assets only on this WooCommerce settings tab.
 	 *
 	 * @internal
+	 *
+	 * @param mixed $hook_suffix Current admin page hook suffix.
 	 */
-	public function enqueue_assets(): void {
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only routing parameters.
-		$page = isset( $_GET['page'] ) && is_string( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-		$tab  = isset( $_GET['tab'] ) && is_string( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : '';
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+	public function enqueue_assets( $hook_suffix ): void {
+		global $current_tab;
 
-		if ( 'wc-settings' !== $page || self::PAGE_ID !== $tab ) {
+		if ( 'woocommerce_page_wc-settings' !== $hook_suffix || ! is_string( $current_tab ) || self::PAGE_ID !== $current_tab ) {
 			return;
 		}
 
 		$asset_file = dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/build/admin-settings.asset.php';
 		if ( ! is_readable( $asset_file ) ) {
-			FraudProtectionController::log( 'error', 'Fraud Protection settings asset metadata is unavailable.' );
+			$this->logger->log( 'error', 'Fraud Protection settings asset metadata is unavailable.', array(), true );
 			return;
 		}
 
 		$asset = require $asset_file;
 		if ( ! is_array( $asset ) || ! is_array( $asset['dependencies'] ?? null ) || ! is_string( $asset['version'] ?? null ) ) {
-			FraudProtectionController::log( 'error', 'Fraud Protection settings asset metadata is invalid.' );
+			$this->logger->log( 'error', 'Fraud Protection settings asset metadata is invalid.', array(), true );
 			return;
 		}
 
-		wp_enqueue_style( 'wp-components' );
 		wp_enqueue_style(
 			self::SCRIPT_HANDLE,
 			plugins_url( 'build/admin-settings.css', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
-			array( 'wp-components' ),
+			array(),
 			$asset['version']
 		);
 		wp_enqueue_script(
@@ -99,7 +115,14 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			$asset['version'],
 			array( 'in_footer' => true )
 		);
+		wp_set_script_translations( self::SCRIPT_HANDLE, 'woocommerce-fraud-protection', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages' );
+		$this->setup_rest_preload();
+	}
 
+	/**
+	 * Preload the settings REST response for the application.
+	 */
+	private function setup_rest_preload(): void {
 		$preload_data = rest_preload_api_request( array(), '/wc-fraud-protection/v1/settings' );
 		wp_add_inline_script(
 			self::SCRIPT_HANDLE,

@@ -16,36 +16,46 @@ class AutomaticProtectionSetting {
 
 	private const OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection';
 
-	public const STATUS_DEFAULT_DISABLED = 'default_disabled';
+	/**
+	 * Get the setting status.
+	 */
+	public function get_status(): SettingStatus {
+		$option_value = get_option( self::OPTION_NAME, null );
 
-	public const STATUS_ENABLED = 'enabled';
+		if ( 'yes' === $option_value ) {
+			return SettingStatus::Enabled;
+		}
 
-	public const STATUS_DISABLED = 'disabled';
+		if ( 'no' === $option_value ) {
+			return SettingStatus::Disabled;
+		}
+
+		return SettingStatus::Enabled === $this->get_default() ? SettingStatus::DefaultEnabled : SettingStatus::DefaultDisabled;
+	}
 
 	/**
-	 * Get the stored state.
-	 *
-	 * @return string One of the STATUS_* constants.
+	 * Get the code default.
 	 */
-	public function get_stored_status(): string {
-		$value = get_option( self::OPTION_NAME, null );
-
-		if ( 'yes' === $value ) {
-			return self::STATUS_ENABLED;
-		}
-
-		if ( 'no' === $value ) {
-			return self::STATUS_DISABLED;
-		}
-
-		return self::STATUS_DEFAULT_DISABLED;
+	public function get_default(): SettingStatus {
+		return SettingStatus::Disabled;
 	}
 
 	/**
 	 * Check whether automatic protection is enabled.
 	 */
 	public function is_enabled(): bool {
-		return self::STATUS_ENABLED === $this->get_stored_status();
+		$status = $this->get_status();
+
+		return in_array( $status, array( SettingStatus::Enabled, SettingStatus::DefaultEnabled ), true );
+	}
+
+	/**
+	 * Get the source of the current setting state.
+	 */
+	public function get_source(): AutomaticProtectionSource {
+		return in_array( $this->get_status(), array( SettingStatus::Enabled, SettingStatus::Disabled ), true )
+			? AutomaticProtectionSource::Manual
+			: AutomaticProtectionSource::None;
 	}
 
 	/**
@@ -55,10 +65,10 @@ class AutomaticProtectionSetting {
 	 * @return bool Whether the requested value is stored.
 	 */
 	public function set_enabled( bool $enabled ): bool {
-		$stored = $enabled ? 'yes' : 'no';
-		update_option( self::OPTION_NAME, $stored );
+		$option_value = $enabled ? 'yes' : 'no';
+		update_option( self::OPTION_NAME, $option_value );
 
-		return get_option( self::OPTION_NAME, null ) === $stored;
+		return get_option( self::OPTION_NAME, null ) === $option_value;
 	}
 
 	/**

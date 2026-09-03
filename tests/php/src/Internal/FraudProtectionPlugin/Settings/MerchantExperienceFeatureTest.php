@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 
 /**
  * Tests for MerchantExperienceFeature.
@@ -39,8 +40,8 @@ class MerchantExperienceFeatureTest extends FraudProtectionUnitTestCase {
 	 * @testdox An absent override follows the disabled code default.
 	 */
 	public function test_absent_override_is_disabled_by_default(): void {
-		$this->assertSame( MerchantExperienceFeature::STATUS_DEFAULT, $this->sut->get_stored_status() );
-		$this->assertFalse( $this->sut->get_code_default() );
+		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
+		$this->assertSame( SettingStatus::Disabled, $this->sut->get_default() );
 		$this->assertFalse( $this->sut->is_enabled() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
 	}
@@ -50,22 +51,30 @@ class MerchantExperienceFeatureTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_explicit_overrides_take_precedence(): void {
 		$this->assertTrue( $this->sut->set_enabled( true ) );
-		$this->assertSame( MerchantExperienceFeature::STATUS_ENABLED, $this->sut->get_stored_status() );
+		$this->assertSame( SettingStatus::Enabled, $this->sut->get_status() );
 		$this->assertTrue( $this->sut->is_enabled() );
 
 		$this->assertTrue( $this->sut->set_enabled( false ) );
-		$this->assertSame( MerchantExperienceFeature::STATUS_DISABLED, $this->sut->get_stored_status() );
+		$this->assertSame( SettingStatus::Disabled, $this->sut->get_status() );
 		$this->assertFalse( $this->sut->is_enabled() );
 	}
 
 	/**
-	 * @testdox Invalid stored values fail to disabled.
+	 * @testdox Invalid stored values follow the code default.
 	 */
-	public function test_invalid_value_fails_to_disabled(): void {
+	public function test_invalid_value_follows_code_default(): void {
 		update_option( self::OPTION_NAME, 'invalid' );
 
-		$this->assertSame( MerchantExperienceFeature::STATUS_DEFAULT, $this->sut->get_stored_status() );
+		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
 		$this->assertFalse( $this->sut->is_enabled() );
+
+		$enabled_default = new class() extends MerchantExperienceFeature {
+			public function get_default(): SettingStatus {
+				return SettingStatus::Enabled;
+			}
+		};
+		$this->assertSame( SettingStatus::DefaultEnabled, $enabled_default->get_status() );
+		$this->assertTrue( $enabled_default->is_enabled() );
 	}
 
 	/**

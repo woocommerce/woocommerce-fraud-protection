@@ -16,57 +16,37 @@ class MerchantExperienceFeature {
 
 	private const OPTION_NAME = 'woocommerce_fraud_protection_merchant_experience';
 
-	private const CODE_DEFAULT = false;
-
-	public const STATUS_DEFAULT = 'default';
-
-	public const STATUS_ENABLED = 'enabled';
-
-	public const STATUS_DISABLED = 'disabled';
-
 	/**
-	 * Get the stored override state.
-	 *
-	 * @return string One of the STATUS_* constants.
+	 * Get the setting status.
 	 */
-	public function get_stored_status(): string {
-		$value = get_option( self::OPTION_NAME, null );
+	public function get_status(): SettingStatus {
+		$option_value = get_option( self::OPTION_NAME, null );
 
-		if ( 'yes' === $value ) {
-			return self::STATUS_ENABLED;
+		if ( 'yes' === $option_value ) {
+			return SettingStatus::Enabled;
 		}
 
-		if ( 'no' === $value ) {
-			return self::STATUS_DISABLED;
+		if ( 'no' === $option_value ) {
+			return SettingStatus::Disabled;
 		}
 
-		return self::STATUS_DEFAULT;
+		return SettingStatus::Enabled === $this->get_default() ? SettingStatus::DefaultEnabled : SettingStatus::DefaultDisabled;
 	}
 
 	/**
 	 * Get the code default.
 	 */
-	public function get_code_default(): bool {
-		return self::CODE_DEFAULT;
+	public function get_default(): SettingStatus {
+		return SettingStatus::Disabled;
 	}
 
 	/**
 	 * Check whether merchant-facing features are enabled.
 	 */
 	public function is_enabled(): bool {
-		$status = $this->get_stored_status();
+		$status = $this->get_status();
 
-		if ( self::STATUS_ENABLED === $status ) {
-			return true;
-		}
-
-		if ( self::STATUS_DISABLED === $status ) {
-			return false;
-		}
-
-		$value = get_option( self::OPTION_NAME, null );
-
-		return null === $value ? $this->get_code_default() : false;
+		return in_array( $status, array( SettingStatus::Enabled, SettingStatus::DefaultEnabled ), true );
 	}
 
 	/**
@@ -76,10 +56,10 @@ class MerchantExperienceFeature {
 	 * @return bool Whether the requested value is stored.
 	 */
 	public function set_enabled( bool $enabled ): bool {
-		$stored = $enabled ? 'yes' : 'no';
-		update_option( self::OPTION_NAME, $stored );
+		$option_value = $enabled ? 'yes' : 'no';
+		update_option( self::OPTION_NAME, $option_value );
 
-		return get_option( self::OPTION_NAME, null ) === $stored;
+		return get_option( self::OPTION_NAME, null ) === $option_value;
 	}
 
 	/**
