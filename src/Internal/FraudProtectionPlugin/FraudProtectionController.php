@@ -123,18 +123,18 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SessionEventPruner $session_event_pruner;
 
 	/**
-	 * Merchant-facing feature gate.
-	 *
-	 * @var MerchantFacingFeaturesGate
-	 */
-	private MerchantFacingFeaturesGate $merchant_facing_features_gate;
-
-	/**
 	 * Settings telemetry instance.
 	 *
 	 * @var SettingsTelemetry
 	 */
 	private SettingsTelemetry $settings_telemetry;
+
+	/**
+	 * Merchant-facing feature gate.
+	 *
+	 * @var MerchantFacingFeaturesGate
+	 */
+	private MerchantFacingFeaturesGate $merchant_facing_features_gate;
 
 	/**
 	 * Register hooks. To be run at `woocommerce_loaded`.

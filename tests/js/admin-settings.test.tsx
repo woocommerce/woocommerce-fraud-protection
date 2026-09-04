@@ -85,7 +85,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		window.onbeforeunload = null;
 	} );
 
-	it( 'disables controls while loading and renders the disabled value', async () => {
+	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
 		let resolveLoad: ( response: {
 			automatic_protection: boolean;
 		} ) => void = () => {};
@@ -122,6 +122,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		expect( screen.queryByRole( 'presentation' ) ).not.toBeInTheDocument();
 
+		// Clicking the disabled button must not start a save request.
 		await userEvent.click( save );
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
@@ -161,6 +162,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 
+		// Clicking the disabled button must not retry the failed request.
 		await userEvent.click( save );
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );

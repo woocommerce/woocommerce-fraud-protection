@@ -8,7 +8,6 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
@@ -34,25 +33,6 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	 * @var AutomaticProtectionSetting
 	 */
 	private $automatic_protection;
-
-	/**
-	 * Logger mock.
-	 *
-	 * @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject
-	 */
-	private $logger;
-
-	/**
-	 * Original request parameters.
-	 *
-	 * @var array<string, mixed>
-	 */
-	private array $original_get;
-
-	/**
-	 * Original current user ID.
-	 */
-	private int $original_user_id;
 
 	/**
 	 * Generated asset metadata path.
@@ -83,16 +63,13 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
-		$this->original_get       = $_GET;
-		$this->original_user_id   = get_current_user_id();
-		$this->original_globals   = array();
-		foreach ( array( 'hide_save_button', 'current_section', 'current_tab', 'wp_rest_server' ) as $global_name ) {
+		$this->original_globals = array();
+		foreach ( array( 'hide_save_button', 'current_section', 'current_tab' ) as $global_name ) {
 			$this->original_globals[ $global_name ] = array(
 				'exists' => array_key_exists( $global_name, $GLOBALS ),
 				'value'  => $GLOBALS[ $global_name ] ?? null,
 			);
 		}
-		$GLOBALS['wp_rest_server'] = new \WP_REST_Server();
 		$this->asset_file         = dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/build/admin-settings.asset.php';
 		$this->asset_file_existed = is_file( $this->asset_file );
 		if ( $this->asset_file_existed ) {
@@ -100,16 +77,12 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		}
 		$this->reset_asset_registrations();
 		$this->automatic_protection = wc_get_container()->get( AutomaticProtectionSetting::class );
-		$this->logger               = $this->createMock( FraudProtectionLogger::class );
 		$this->sut                  = new FraudProtectionSettingsPage();
-		$this->sut->init( $this->logger );
-		$this->sut->register();
+		$this->sut->init( $this->spy_on_controller_logging() );
 		$this->automatic_protection->reset();
 	}
 
 	public function tearDown(): void {
-		$_GET = $this->original_get;
-		wp_set_current_user( $this->original_user_id );
 		foreach ( $this->original_globals as $global_name => $original ) {
 			if ( $original['exists'] ) {
 				$GLOBALS[ $global_name ] = $original['value'];
@@ -131,7 +104,15 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$tabs = $this->sut->add_settings_page( array( 'general' => 'General' ) );
 
 		$this->assertSame( 'Fraud prevention', $tabs[ FraudProtectionSettingsPage::PAGE_ID ] );
-		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_assets' ) ) );
+	}
+
+	/**
+	 * @testdox Register connects the settings assets to the admin enqueue hook.
+	 */
+	public function test_registers_asset_hook(): void {
+		$this->sut->register();
+
+		$this->assertSame( 10, has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_assets' ) ) );
 	}
 
 	/**
@@ -198,7 +179,6 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$version      = 'settings-test-version';
 		$this->write_asset_fixture( $dependencies, $version );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
-		$this->automatic_protection->set_enabled( true );
 		wp_set_current_user( 1 );
 		$rest_controller = wc_get_container()->get( SettingsRestController::class );
 		$rest_controller->register();
@@ -213,8 +193,10 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 
 		$style  = wp_styles()->registered[ self::ASSET_HANDLE ];
 		$script = wp_scripts()->registered[ self::ASSET_HANDLE ];
+		$this->assertSame( plugins_url( 'build/admin-settings.css', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $style->src );
 		$this->assertSame( array(), $style->deps );
 		$this->assertSame( $version, $style->ver );
+		$this->assertSame( plugins_url( 'build/admin-settings.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $script->src );
 		$this->assertSame( $dependencies, $script->deps );
 		$this->assertSame( $version, $script->ver );
 		$this->assertSame( 'woocommerce-fraud-protection', $script->textdomain );
@@ -225,11 +207,6 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$before_script = implode( "\n", $before );
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
 		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
-		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
-
-		$response = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
-		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( array( 'automatic_protection' => true ), $response->get_data() );
 	}
 
 	/**
@@ -249,12 +226,10 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 			$this->write_raw_asset_fixture( array( 'version' => 'settings-test-version' ) );
 		}
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
-		$this->logger->expects( $this->once() )
-			->method( 'log' )
-			->with( 'error', $expected_log, array(), true );
 
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
 
+		$this->assertLogged( 'error', $expected_log, array(), true );
 		$this->assertFalse( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertFalse( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
 	}

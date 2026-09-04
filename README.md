@@ -16,12 +16,13 @@ npm install
 ## Build
 
 ```bash
+npm start               # watch and rebuild the admin settings assets
 npm run build           # development build of the JS/CSS assets
 npm run build:qit       # release ZIP plus a QIT ZIP with dependency manifests
 npm run build:release   # production build plus a distributable plugin zip
 ```
 
-The assets in `assets/` are served as-is, so a build step is not required for everyday development.
+The browser-ready files in `assets/` are served as-is. The admin settings application in `client/` must be compiled into `build/`; use `npm start` while developing it or run `npm run build` before loading the settings page.
 
 ## Releases
 
