@@ -56,13 +56,6 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	}
 
 	/**
-	 * Register this settings page's assets.
-	 */
-	public function register(): void {
-		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
-	}
-
-	/**
 	 * Return no classic settings fields.
 	 *
 	 * @param string $section_id Settings section ID.

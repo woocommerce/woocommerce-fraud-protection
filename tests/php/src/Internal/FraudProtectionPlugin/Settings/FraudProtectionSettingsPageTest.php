@@ -92,7 +92,6 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->restore_asset_fixture();
 		$this->reset_asset_registrations();
 		$this->automatic_protection->reset();
-		remove_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_assets' ) );
 		parent::tearDown();
 	}
 
@@ -103,15 +102,6 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$tabs = $this->sut->add_settings_page( array( 'general' => 'General' ) );
 
 		$this->assertSame( 'Fraud prevention', $tabs[ FraudProtectionSettingsPage::PAGE_ID ] );
-	}
-
-	/**
-	 * @testdox Register connects the settings assets to the admin enqueue hook.
-	 */
-	public function test_registers_asset_hook(): void {
-		$this->sut->register();
-
-		$this->assertSame( 10, has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_assets' ) ) );
 	}
 
 	/**

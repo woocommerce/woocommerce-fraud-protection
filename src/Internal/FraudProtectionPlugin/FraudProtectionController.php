@@ -237,6 +237,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {
 			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
+			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_settings_page_assets' ) );
 			wc_get_container()->get( SettingsRestController::class )->register();
 		}
 	}
@@ -250,11 +251,24 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @return array<int, \WC_Settings_Page>
 	 */
 	public function add_settings_page( array $pages ): array {
-		$page = wc_get_container()->get( FraudProtectionSettingsPage::class );
-		$page->register();
-		$pages[] = $page;
+		$pages[] = wc_get_container()->get( FraudProtectionSettingsPage::class );
 
 		return $pages;
+	}
+
+	/**
+	 * Load settings assets after WooCommerce initializes its settings pages.
+	 *
+	 * @internal
+	 *
+	 * @param mixed $hook_suffix Current admin page hook suffix.
+	 */
+	public function enqueue_settings_page_assets( $hook_suffix ): void {
+		if ( 'woocommerce_page_wc-settings' !== $hook_suffix ) {
+			return;
+		}
+
+		wc_get_container()->get( FraudProtectionSettingsPage::class )->enqueue_assets( $hook_suffix );
 	}
 
 	/**

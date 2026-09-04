@@ -211,6 +211,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( $container->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
 		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
+		$this->assertFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
 	}
 
 	/**
@@ -224,6 +225,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->sut->handle_init();
 
 		$this->assertNotFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
+		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
 		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );
 		$this->assertContains( $container->get( FraudProtectionSettingsPage::class ), $pages );
