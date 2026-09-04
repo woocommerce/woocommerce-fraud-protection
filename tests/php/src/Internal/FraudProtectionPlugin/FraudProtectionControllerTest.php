@@ -359,7 +359,6 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		// Clean up any filters or options.
 		remove_all_filters( 'woocommerce_logging_class' );
-		remove_all_filters( 'woocommerce_tracker_data' );
 		delete_option( 'woocommerce_feature_fraud_protection_enabled' );
 		delete_option( 'jetpack_activation_source' );
 

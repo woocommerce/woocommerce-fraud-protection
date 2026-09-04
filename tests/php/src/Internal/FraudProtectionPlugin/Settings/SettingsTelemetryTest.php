@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionChange;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\McStats;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
@@ -22,31 +23,38 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelem
 class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 
 	/**
-	 * Automatic protection setting.
+	 * The System Under Test.
 	 *
-	 * @var AutomaticProtectionSetting
+	 * @var SettingsTelemetry
 	 */
+	private $sut;
+
+	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection;
+
+	/** @var McStats&\PHPUnit\Framework\MockObject\MockObject */
+	private $mc_stats;
+
+	/** @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject */
+	private $logger;
 
 	public function setUp(): void {
 		parent::setUp();
-		$this->automatic_protection = new AutomaticProtectionSetting();
-		$this->automatic_protection->reset();
-	}
-
-	public function tearDown(): void {
-		$this->automatic_protection->reset();
-		remove_all_filters( 'woocommerce_tracker_data' );
-		parent::tearDown();
+		$this->automatic_protection = $this->createMock( AutomaticProtectionSetting::class );
+		$this->mc_stats             = $this->createMock( McStats::class );
+		$this->logger               = $this->createMock( FraudProtectionLogger::class );
+		$this->sut                  = new SettingsTelemetry();
+		$this->sut->init( $this->automatic_protection, $this->mc_stats, $this->logger );
 	}
 
 	/**
 	 * @testdox Tracker data preserves existing fields and reports default states.
 	 */
 	public function test_tracker_preserves_existing_data_and_reports_defaults(): void {
-		$sut = $this->make_sut( $this->createMock( McStats::class ) );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 
-		$result = $sut->add_tracker_data(
+		$result = $this->sut->add_tracker_data(
 			array(
 				'root'       => 'preserved',
 				'extensions' => array(
@@ -68,10 +76,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox Tracker data reports explicit settings and a manual enabled source.
 	 */
 	public function test_tracker_reports_explicit_states(): void {
-		$this->automatic_protection->set_enabled( true );
-		$sut = $this->make_sut( $this->createMock( McStats::class ) );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Enabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
 
-		$plugin = $sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
 		$this->assertSame( 'enabled', $plugin['automatic_protection_status'] );
 		$this->assertSame( 'manual', $plugin['automatic_protection_source'] );
@@ -81,10 +89,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox Tracker data reports an explicit disabled automatic-protection state with a manual source.
 	 */
 	public function test_tracker_reports_explicit_disabled_state(): void {
-		$this->automatic_protection->set_enabled( false );
-		$sut = $this->make_sut( $this->createMock( McStats::class ) );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Disabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
 
-		$plugin = $sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
 		$this->assertSame( 'disabled', $plugin['automatic_protection_status'] );
 		$this->assertSame( 'manual', $plugin['automatic_protection_source'] );
@@ -94,15 +102,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox An enabled automatic-protection default has no manual source.
 	 */
 	public function test_tracker_reports_enabled_automatic_protection_default_without_source(): void {
-		$automatic_protection = new class() extends AutomaticProtectionSetting {
-			public function get_default(): SettingStatus {
-				return SettingStatus::Enabled;
-			}
-		};
-		$sut = new SettingsTelemetry();
-		$sut->init( $automatic_protection, $this->createMock( McStats::class ), $this->createMock( FraudProtectionLogger::class ) );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultEnabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 
-		$plugin = $sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
 		$this->assertSame( 'default_enabled', $plugin['automatic_protection_status'] );
 		$this->assertSame( 'none', $plugin['automatic_protection_source'] );
@@ -112,16 +115,15 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox A confirmed action sends aggregate and channel stats in the focused group.
 	 */
 	public function test_record_change_sends_aggregate_and_channel_stats(): void {
-		$mc_stats = $this->createMock( McStats::class );
-		$mc_stats->expects( $this->exactly( 2 ) )
+		$this->mc_stats->expects( $this->exactly( 2 ) )
 			->method( 'add' )
 			->withConsecutive(
 				array( 'fraud-protection-automatic-protection', 'enabled' ),
 				array( 'fraud-protection-automatic-protection', 'enabled-settings' )
 			);
-		$mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
+		$this->mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
 
-		$this->make_sut( $mc_stats )->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
+		$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
 	}
 
 	/**
@@ -133,16 +135,15 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param SettingsChangeChannel      $channel Expected action channel.
 	 */
 	public function test_supported_actions_use_exact_stat_names( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): void {
-		$mc_stats = $this->createMock( McStats::class );
-		$mc_stats->expects( $this->exactly( 2 ) )
+		$this->mc_stats->expects( $this->exactly( 2 ) )
 			->method( 'add' )
 			->withConsecutive(
 				array( 'fraud-protection-automatic-protection', $change->value ),
 				array( 'fraud-protection-automatic-protection', $change->value . '-' . $channel->value )
 			);
-		$mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
+		$this->mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
 
-		$this->make_sut( $mc_stats )->record_automatic_protection_change( $change, $channel );
+		$this->sut->record_automatic_protection_change( $change, $channel );
 	}
 
 	/**
@@ -164,20 +165,11 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox Telemetry failures do not escape into a setting operation.
 	 */
 	public function test_record_change_isolates_telemetry_failure(): void {
-		$mc_stats = $this->createMock( McStats::class );
-		$mc_stats->method( 'add' )->willThrowException( new \RuntimeException( 'stats unavailable' ) );
-		$logger = $this->createMock( FraudProtectionLogger::class );
-		$logger->expects( $this->once() )
+		$this->mc_stats->method( 'add' )->willThrowException( new \RuntimeException( 'stats unavailable' ) );
+		$this->logger->expects( $this->once() )
 			->method( 'log' )
 			->with( 'warning', 'Unable to record a Fraud Protection settings stat.', $this->isType( 'array' ) );
 
-		$this->make_sut( $mc_stats, $logger )->record_automatic_protection_change( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli );
-	}
-
-	private function make_sut( McStats $mc_stats, ?FraudProtectionLogger $logger = null ): SettingsTelemetry {
-		$sut = new SettingsTelemetry();
-		$sut->init( $this->automatic_protection, $mc_stats, $logger ?? $this->createMock( FraudProtectionLogger::class ) );
-
-		return $sut;
+		$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli );
 	}
 }

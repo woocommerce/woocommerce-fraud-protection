@@ -10,14 +10,12 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionChange;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -52,11 +50,11 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 */
 	private $session_event_pruner;
 
-	/** @var AutomaticProtectionSetting */
+	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection;
 
-	/** @var SettingsTelemetry&\PHPUnit\Framework\MockObject\MockObject */
-	private $settings_telemetry;
+	/** @var AutomaticProtectionSettingUpdater&\PHPUnit\Framework\MockObject\MockObject */
+	private $automatic_protection_updater;
 
 	/** @var array<string, callable> */
 	private array $wp_cli_hooks;
@@ -110,10 +108,12 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->schema_manager       = $this->createMock( SchemaManager::class );
 		$this->session_event_pruner = $this->createMock( SessionEventPruner::class );
-		$this->automatic_protection = new AutomaticProtectionSetting();
-		$this->settings_telemetry   = $this->createMock( SettingsTelemetry::class );
-		$this->automatic_protection->reset();
-		$this->initialize_sut();
+		$this->automatic_protection         = $this->createMock( AutomaticProtectionSetting::class );
+		$this->automatic_protection_updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
+		$this->sut = new FraudProtectionCommands();
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->automatic_protection, $this->automatic_protection_updater );
 	}
 
 	/**
@@ -121,7 +121,6 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		remove_all_filters( 'pre_option_jetpack_options' );
-		$this->automatic_protection->reset();
 		delete_option( SchemaManager::DB_VERSION_OPTION );
 		delete_option( SchemaManager::DB_INSTALL_STATE_OPTION );
 		parent::tearDown();
@@ -179,49 +178,38 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Automatic-protection CLI changes write the shared setting and record CLI stats only for transitions.
+	 * @testdox Automatic-protection CLI changes pass supported values to the updater.
 	 */
-	public function test_automatic_protection_set_records_real_transitions(): void {
-		$this->settings_telemetry->expects( $this->exactly( 3 ) )
-			->method( 'record_automatic_protection_change' )
+	public function test_automatic_protection_set_routes_supported_values(): void {
+		$this->automatic_protection_updater->expects( $this->exactly( 2 ) )
+			->method( 'set_enabled' )
 			->withConsecutive(
-				array( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Cli ),
-				array( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli ),
-				array( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli )
-			);
+				array( true, SettingsChangeChannel::Cli ),
+				array( false, SettingsChangeChannel::Cli )
+			)
+			->willReturn( true );
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'reset' )
+			->with( SettingsChangeChannel::Cli )
+			->willReturn( true );
 
-		$this->sut->automatic_protection_set( array( 'enabled' ) );
 		$this->sut->automatic_protection_set( array( 'enabled' ) );
 		$this->sut->automatic_protection_set( array( 'disabled' ) );
 		$this->sut->automatic_protection_set( array( 'default' ) );
 
-		$this->assertSame( SettingStatus::DefaultDisabled, $this->automatic_protection->get_status() );
-		$this->assertCount( 4, $this->wp_cli_successes );
+		$this->assertCount( 3, $this->wp_cli_successes );
 	}
 
 	/**
 	 * @testdox Invalid automatic-protection values do not change stored state.
 	 */
 	public function test_automatic_protection_set_rejects_invalid_values(): void {
-		$this->automatic_protection->set_enabled( true );
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'set_enabled' );
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
 
 		$this->expectException( WPCLIErrorException::class );
 		$this->expectExceptionMessage( 'enabled, disabled, or default' );
-		try {
-			$this->sut->automatic_protection_set( array( 'invalid' ) );
-		} finally {
-			$this->assertSame( SettingStatus::Enabled, $this->automatic_protection->get_status() );
-		}
-	}
-
-	/**
-	 * Initialize the command with its automatic-protection updater.
-	 */
-	private function initialize_sut(): void {
-		$updater = new AutomaticProtectionSettingUpdater();
-		$updater->init( $this->automatic_protection, $this->settings_telemetry, $this->createMock( FraudProtectionLogger::class ) );
-		$this->sut = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->automatic_protection, $updater );
+		$this->sut->automatic_protection_set( array( 'invalid' ) );
 	}
 
 	/**

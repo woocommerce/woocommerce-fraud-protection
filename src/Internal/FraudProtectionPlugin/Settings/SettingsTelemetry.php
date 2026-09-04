@@ -76,9 +76,7 @@ class SettingsTelemetry {
 		$extensions = is_array( $data['extensions'] ?? null ) ? $data['extensions'] : array();
 		$plugin     = is_array( $extensions['woocommerce_fraud_protection'] ?? null ) ? $extensions['woocommerce_fraud_protection'] : array();
 
-		$automatic_status = $this->automatic_protection->get_status();
-
-		$plugin['automatic_protection_status'] = $automatic_status->value;
+		$plugin['automatic_protection_status'] = $this->automatic_protection->get_status()->value;
 		$plugin['automatic_protection_source'] = $this->automatic_protection->get_source()->value;
 
 		$extensions['woocommerce_fraud_protection'] = $plugin;

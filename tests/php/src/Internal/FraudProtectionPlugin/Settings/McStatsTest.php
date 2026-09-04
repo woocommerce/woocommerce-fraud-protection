@@ -16,25 +16,15 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\McStats;
 class McStatsTest extends FraudProtectionUnitTestCase {
 
 	/**
-	 * Original WooCommerce tracking option.
+	 * The System Under Test.
 	 *
-	 * @var mixed
+	 * @var McStats
 	 */
-	private $original_tracking_option;
+	private $sut;
 
 	public function setUp(): void {
 		parent::setUp();
-		$this->original_tracking_option = get_option( 'woocommerce_allow_tracking', null );
-	}
-
-	public function tearDown(): void {
-		remove_all_filters( 'pre_http_request' );
-		if ( null === $this->original_tracking_option ) {
-			delete_option( 'woocommerce_allow_tracking' );
-		} else {
-			update_option( 'woocommerce_allow_tracking', $this->original_tracking_option );
-		}
-		parent::tearDown();
+		$this->sut = new McStats();
 	}
 
 	/**
@@ -45,7 +35,7 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 		$urls = array();
 		add_filter(
 			'pre_http_request',
-			static function ( $preempt, $args, $url ) use ( &$urls ) {
+			function ( $preempt, $args, $url ) use ( &$urls ) {
 				unset( $preempt, $args );
 				$urls[] = $url;
 				return array(
@@ -59,13 +49,12 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 			3
 		);
 
-		$sut = new McStats();
-		$this->assertTrue( $sut->add( 'first-group', 'one' ) );
-		$this->assertTrue( $sut->add( 'first-group', 'two' ) );
-		$this->assertFalse( $sut->add( 'first-group', 'one' ) );
-		$this->assertTrue( $sut->add( 'second-group', 'three' ) );
-		$sut->do_server_side_stats();
-		$sut->do_server_side_stats();
+		$this->assertTrue( $this->sut->add( 'first-group', 'one' ) );
+		$this->assertTrue( $this->sut->add( 'first-group', 'two' ) );
+		$this->assertFalse( $this->sut->add( 'first-group', 'one' ) );
+		$this->assertTrue( $this->sut->add( 'second-group', 'three' ) );
+		$this->sut->do_server_side_stats();
+		$this->sut->do_server_side_stats();
 
 		$this->assertCount( 2, $urls );
 		$this->assertSame( 'https://pixel.wp.com/b.gif', preg_replace( '/\?.*/', '', $urls[0] ) );
@@ -81,20 +70,24 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 		$requests = 0;
 		add_filter(
 			'pre_http_request',
-			static function () use ( &$requests ) {
+			function () use ( &$requests ) {
 				++$requests;
-				return new \WP_Error( 'unexpected_request' );
+				return array(
+					'headers'  => array(),
+					'body'     => '',
+					'response' => array( 'code' => 200 ),
+					'cookies'  => array(),
+				);
 			}
 		);
 
-		$sut = new McStats();
-		$sut->add( 'group', 'stat' );
+		$this->sut->add( 'group', 'stat' );
 		update_option( 'woocommerce_allow_tracking', 'no' );
-		$sut->do_server_side_stats();
+		$this->sut->do_server_side_stats();
 		$this->assertSame( 0, $requests );
 
 		update_option( 'woocommerce_allow_tracking', 'yes' );
-		$sut->do_server_side_stats();
+		$this->sut->do_server_side_stats();
 		$this->assertSame( 1, $requests );
 	}
 
