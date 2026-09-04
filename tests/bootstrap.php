@@ -69,7 +69,7 @@ class WC_Fraud_Protection_Unit_Tests_Bootstrap {
 		self::$wp_tests_dir = getenv( 'WP_TESTS_DIR' ) ? getenv( 'WP_TESTS_DIR' ) : rtrim( sys_get_temp_dir(), '/\\' ) . '/wordpress-tests-lib';
 
 		if ( ! file_exists( self::$wp_tests_dir . '/includes/functions.php' ) ) {
-			echo 'Could not find ' . self::$wp_tests_dir . '/includes/functions.php, have you run bin/install-wp-tests.sh ?' . PHP_EOL; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			echo 'Could not find ' . self::$wp_tests_dir . '/includes/functions.php. Run npm run test:php:env or prepare the direct test environment first.' . PHP_EOL; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			exit( 1 );
 		}
 

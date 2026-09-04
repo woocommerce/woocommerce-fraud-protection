@@ -120,22 +120,16 @@ npm run test:js
 
 ### PHP tests (PHPUnit)
 
-PHP tests run against WooCommerce core's test framework, so they need a WordPress test environment (WordPress, the test library, and WooCommerce) and a MySQL database.
-
-Set up the environment once. This creates the database and downloads WordPress, the test library, and WooCommerce:
+PHP tests run in an isolated wp-env configuration. The first run creates the environment and installs the matching WooCommerce test framework. It does not change the local development store.
 
 ```bash
-tests/bin/install-wp-tests.sh <db-name> <db-user> <db-pass> [db-host] [wp-version] [wc-version]
+npm run test:php:env                          # all PHP tests
+npm run test:php:env -- --filter <ClassName>  # a single test class
 ```
 
-Then run the tests:
+The test environment uses port 8889 by default. Add a gitignored `.wp-env.phpunit.override.json` with another `port` when that port is unavailable.
 
-```bash
-npm run test:php                          # all PHP tests
-npm run test:php -- --filter <ClassName>  # a single test class
-```
-
-The test bootstrap locates WooCommerce automatically. To run against an existing WooCommerce checkout instead, set the `WC_DIR` environment variable to its plugin directory. That checkout must have its own dependencies installed: run `composer install` in the WooCommerce plugin directory, otherwise WooCommerce fails to load. (The `install-wp-tests.sh` setup above does not need this; it uses the prebuilt plugin from wordpress.org.)
+Use `npm run test:php` to run PHPUnit directly against an existing WordPress test installation. Set `WC_DIR` to an existing WooCommerce plugin directory when the bootstrap cannot locate it. This path requires the WordPress test library, a MySQL database, and the WooCommerce test framework. The CI workflows prepare these dependencies with `tests/bin/install-wp-tests.sh`.
 
 ## Public API
 

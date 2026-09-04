@@ -1,0 +1,10 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/wp-env.json",
+	"testsEnvironment": false,
+	"phpVersion": "8.1",
+	"port": 8889,
+	"plugins": [
+		"https://downloads.wordpress.org/plugin/woocommerce.zip",
+		"."
+	]
+}
