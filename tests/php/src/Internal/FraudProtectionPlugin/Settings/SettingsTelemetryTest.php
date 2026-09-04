@@ -73,57 +73,88 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Tracker data reports explicit settings and a manual enabled source.
+	 * @testdox Tracker data normalizes malformed input while preserving valid fields.
+	 *
+	 * @dataProvider malformed_tracker_data_provider
+	 *
+	 * @param mixed                $input    Existing Tracker data.
+	 * @param array<string, mixed> $expected Expected Tracker data.
 	 */
-	public function test_tracker_reports_explicit_states(): void {
-		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Enabled );
-		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
-
-		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
-
-		$this->assertSame( 'enabled', $plugin['automatic_protection_status'] );
-		$this->assertSame( 'manual', $plugin['automatic_protection_source'] );
-	}
-
-	/**
-	 * @testdox Tracker data reports an explicit disabled automatic-protection state with a manual source.
-	 */
-	public function test_tracker_reports_explicit_disabled_state(): void {
-		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Disabled );
-		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
-
-		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
-
-		$this->assertSame( 'disabled', $plugin['automatic_protection_status'] );
-		$this->assertSame( 'manual', $plugin['automatic_protection_source'] );
-	}
-
-	/**
-	 * @testdox An enabled automatic-protection default has no manual source.
-	 */
-	public function test_tracker_reports_enabled_automatic_protection_default_without_source(): void {
-		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultEnabled );
+	public function test_tracker_normalizes_malformed_data( $input, array $expected ): void {
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 
-		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
-
-		$this->assertSame( 'default_enabled', $plugin['automatic_protection_status'] );
-		$this->assertSame( 'none', $plugin['automatic_protection_source'] );
+		$this->assertSame( $expected, $this->sut->add_tracker_data( $input ) );
 	}
 
 	/**
-	 * @testdox A confirmed action sends aggregate and channel stats in the focused group.
+	 * Provide malformed Tracker data.
+	 *
+	 * @return array<string, array{mixed, array<string, mixed>}>
 	 */
-	public function test_record_change_sends_aggregate_and_channel_stats(): void {
-		$this->mc_stats->expects( $this->exactly( 2 ) )
-			->method( 'add' )
-			->withConsecutive(
-				array( 'fraud-protection-automatic-protection', 'enabled' ),
-				array( 'fraud-protection-automatic-protection', 'enabled-settings' )
-			);
-		$this->mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
+	public function malformed_tracker_data_provider(): array {
+		$plugin = array(
+			'automatic_protection_status' => 'default_disabled',
+			'automatic_protection_source' => 'none',
+		);
 
-		$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
+		return array(
+			'non-array data' => array(
+				null,
+				array( 'extensions' => array( 'woocommerce_fraud_protection' => $plugin ) ),
+			),
+			'non-array extensions' => array(
+				array( 'root' => 'preserved', 'extensions' => 'invalid' ),
+				array( 'root' => 'preserved', 'extensions' => array( 'woocommerce_fraud_protection' => $plugin ) ),
+			),
+			'non-array plugin data' => array(
+				array(
+					'extensions' => array(
+						'existing'                       => array( 'value' => 1 ),
+						'woocommerce_fraud_protection' => 'invalid',
+					),
+				),
+				array(
+					'extensions' => array(
+						'existing'                       => array( 'value' => 1 ),
+						'woocommerce_fraud_protection' => $plugin,
+					),
+				),
+			),
+		);
+	}
+
+	/**
+	 * @testdox Tracker data reports each automatic-protection status and source.
+	 *
+	 * @dataProvider automatic_protection_status_provider
+	 *
+	 * @param SettingStatus             $status          Setting status.
+	 * @param AutomaticProtectionSource $source          Setting source.
+	 * @param string                    $expected_status Expected Tracker status.
+	 * @param string                    $expected_source Expected Tracker source.
+	 */
+	public function test_tracker_reports_status_and_source( SettingStatus $status, AutomaticProtectionSource $source, string $expected_status, string $expected_source ): void {
+		$this->automatic_protection->method( 'get_status' )->willReturn( $status );
+		$this->automatic_protection->method( 'get_source' )->willReturn( $source );
+
+		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+
+		$this->assertSame( $expected_status, $plugin['automatic_protection_status'] );
+		$this->assertSame( $expected_source, $plugin['automatic_protection_source'] );
+	}
+
+	/**
+	 * Provide automatic-protection statuses and sources.
+	 *
+	 * @return array<string, array{SettingStatus, AutomaticProtectionSource, string, string}>
+	 */
+	public function automatic_protection_status_provider(): array {
+		return array(
+			'enabled'         => array( SettingStatus::Enabled, AutomaticProtectionSource::Manual, 'enabled', 'manual' ),
+			'disabled'        => array( SettingStatus::Disabled, AutomaticProtectionSource::Manual, 'disabled', 'manual' ),
+			'default enabled' => array( SettingStatus::DefaultEnabled, AutomaticProtectionSource::None, 'default_enabled', 'none' ),
+		);
 	}
 
 	/**
@@ -168,7 +199,14 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->mc_stats->method( 'add' )->willThrowException( new \RuntimeException( 'stats unavailable' ) );
 		$this->logger->expects( $this->once() )
 			->method( 'log' )
-			->with( 'warning', 'Unable to record a Fraud Protection settings stat.', $this->isType( 'array' ) );
+			->with(
+				'warning',
+				'Unable to record a Fraud Protection settings stat.',
+				array(
+					'exception_class'   => \RuntimeException::class,
+					'exception_message' => 'stats unavailable',
+				)
+			);
 
 		$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Cli );
 	}

@@ -17,6 +17,13 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelem
 class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 	/**
+	 * The System Under Test.
+	 *
+	 * @var FraudProtectionController
+	 */
+	private $sut;
+
+	/**
 	 * These tests exercise the controller's real logging implementation, so the
 	 * static facade must resolve to a real controller rather than the in-memory spy.
 	 *
@@ -40,15 +47,8 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		if ( WC()->session ) {
 			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
 		}
-	}
 
-	/**
-	 * Create a new controller instance.
-	 *
-	 * @return FraudProtectionController
-	 */
-	private function create_controller(): FraudProtectionController {
-		return wc_get_container()->get( FraudProtectionController::class );
+		$this->sut = wc_get_container()->get( FraudProtectionController::class );
 	}
 
 	/**
@@ -141,9 +141,8 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	 * than being registered directly by the plugin initializer).
 	 */
 	public function test_compat_layer_hooks_are_registered(): void {
-		$container  = wc_get_container();
-		$controller = $this->create_controller();
-		$controller->register();
+		$container = wc_get_container();
+		$this->sut->register();
 
 		// Payment-data resolvers (Stripe, Square, PayPal, WooPayments) all hook this filter.
 		$this->assertNotFalse(
@@ -188,11 +187,10 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	 * Test that register method registers init action.
 	 */
 	public function test_register_registers_init_action(): void {
-		$controller = $this->create_controller();
-		$controller->register();
+		$this->sut->register();
 
 		// Check if the init action is registered for our callback.
-		$priority = has_action( 'init', array( $controller, 'handle_init' ) );
+		$priority = has_action( 'init', array( $this->sut, 'handle_init' ) );
 
 		// The priority should be 10 (default).
 		$this->assertSame( 10, $priority, 'Init action should be registered with default priority 10' );
@@ -202,9 +200,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Settings telemetry registers with the other first-party components.
 	 */
 	public function test_handle_init_registers_settings_telemetry(): void {
-		$controller = $this->create_controller();
-
-		$controller->handle_init();
+		$this->sut->handle_init();
 
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( wc_get_container()->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
 	}
@@ -215,8 +211,6 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	public function test_feature_is_enabled_returns_true_when_enabled(): void {
 		// Enable the feature.
 		update_option( 'woocommerce_feature_fraud_protection_enabled', 'yes' );
-
-		$controller = $this->create_controller();
 
 		// Check if the method returns true.
 		$this->assertTrue( FraudProtectionController::feature_is_enabled() );
@@ -231,8 +225,6 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	public function test_feature_is_enabled_always_returns_true_as_standalone_plugin(): void {
 		// Even with the option set to 'no', the standalone plugin is always enabled.
 		update_option( 'woocommerce_feature_fraud_protection_enabled', 'no' );
-
-		$controller = $this->create_controller();
 
 		// Standalone plugin is always enabled.
 		$this->assertTrue( FraudProtectionController::feature_is_enabled() );
@@ -355,20 +347,11 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	 * Cleanup after test.
 	 */
 	public function tearDown(): void {
-		parent::tearDown();
-
-		// Clean up any filters or options.
-		remove_all_filters( 'woocommerce_logging_class' );
-		delete_option( 'woocommerce_feature_fraud_protection_enabled' );
-		delete_option( 'jetpack_activation_source' );
-
-		// Remove any init hooks registered by the controller.
-		remove_all_actions( 'init' );
-
-		// Clean up session identity ID.
 		if ( WC()->session ) {
 			WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, null );
 		}
+
+		parent::tearDown();
 	}
 
 	/**

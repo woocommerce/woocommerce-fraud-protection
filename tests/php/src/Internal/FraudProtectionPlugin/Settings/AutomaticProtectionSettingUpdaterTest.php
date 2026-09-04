@@ -27,7 +27,7 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 	 */
 	private $sut;
 
-	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
+	/** @var AutomaticProtectionSetting */
 	private $setting;
 
 	/** @var SettingsTelemetry&\PHPUnit\Framework\MockObject\MockObject */
@@ -38,7 +38,8 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 
 	public function setUp(): void {
 		parent::setUp();
-		$this->setting   = $this->createMock( AutomaticProtectionSetting::class );
+		$this->setting   = new AutomaticProtectionSetting();
+		$this->setting->reset();
 		$this->telemetry = $this->createMock( SettingsTelemetry::class );
 		$this->logger    = $this->createMock( FraudProtectionLogger::class );
 		$this->sut       = new AutomaticProtectionSettingUpdater();
@@ -47,37 +48,43 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 
 	/**
 	 * @testdox Changed writes record their action and channel.
+	 *
+	 * @dataProvider changed_write_provider
+	 *
+	 * @param bool                      $enabled Requested enabled state.
+	 * @param SettingStatus             $after   Status after the write.
+	 * @param AutomaticProtectionChange $change  Expected recorded change.
 	 */
-	public function test_changed_write_records_action(): void {
-		$this->setting->expects( $this->exactly( 2 ) )->method( 'get_status' )->willReturnOnConsecutiveCalls( SettingStatus::DefaultDisabled, SettingStatus::Enabled );
-		$this->setting->expects( $this->once() )->method( 'set_enabled' )->with( true )->willReturn( true );
+	public function test_changed_write_records_action( bool $enabled, SettingStatus $after, AutomaticProtectionChange $change ): void {
 		$this->telemetry->expects( $this->once() )
 			->method( 'record_automatic_protection_change' )
-			->with( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
+			->with( $change, SettingsChangeChannel::Settings );
 
-		$this->assertTrue( $this->sut->set_enabled( true, SettingsChangeChannel::Settings ) );
+		$this->assertTrue( $this->sut->set_enabled( $enabled, SettingsChangeChannel::Settings ) );
+		$this->assertSame( $after, $this->setting->get_status() );
 	}
 
 	/**
-	 * @testdox An explicit disabled choice from the disabled default records the selected channel.
+	 * Provide changed automatic-protection writes.
+	 *
+	 * @return array<string, array{bool, SettingStatus, AutomaticProtectionChange}>
 	 */
-	public function test_default_disabled_to_disabled_records_action(): void {
-		$this->setting->expects( $this->exactly( 2 ) )->method( 'get_status' )->willReturnOnConsecutiveCalls( SettingStatus::DefaultDisabled, SettingStatus::Disabled );
-		$this->setting->expects( $this->once() )->method( 'set_enabled' )->with( false )->willReturn( true );
-		$this->telemetry->expects( $this->once() )
-			->method( 'record_automatic_protection_change' )
-			->with( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Settings );
-
-		$this->assertTrue( $this->sut->set_enabled( false, SettingsChangeChannel::Settings ) );
+	public function changed_write_provider(): array {
+		return array(
+			'enable from default'          => array( true, SettingStatus::Enabled, AutomaticProtectionChange::Enabled ),
+			'explicitly disable a default' => array( false, SettingStatus::Disabled, AutomaticProtectionChange::Disabled ),
+		);
 	}
 
 	/**
 	 * @testdox A failed write does not record an action.
 	 */
 	public function test_failed_write_records_no_action(): void {
+		$setting = $this->createMock( AutomaticProtectionSetting::class );
+		$setting->expects( $this->once() )->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$setting->expects( $this->once() )->method( 'set_enabled' )->willReturn( false );
+		$this->sut->init( $setting, $this->telemetry, $this->logger );
 		$this->telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
-		$this->setting->expects( $this->once() )->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
-		$this->setting->expects( $this->once() )->method( 'set_enabled' )->willReturn( false );
 
 		$this->assertFalse( $this->sut->set_enabled( true, SettingsChangeChannel::Cli ) );
 	}
@@ -86,60 +93,65 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 	 * @testdox An unchanged write does not record an action.
 	 */
 	public function test_unchanged_write_records_no_action(): void {
+		$this->setting->set_enabled( false );
 		$this->telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
-		$this->setting->expects( $this->exactly( 2 ) )->method( 'get_status' )->willReturn( SettingStatus::Disabled );
-		$this->setting->expects( $this->once() )->method( 'set_enabled' )->willReturn( true );
 
 		$this->assertTrue( $this->sut->set_enabled( false, SettingsChangeChannel::Cli ) );
+		$this->assertSame( SettingStatus::Disabled, $this->setting->get_status() );
 	}
 
 	/**
-	 * @testdox A changed reset records the CLI reset action.
+	 * @testdox Changed resets record the CLI reset action.
+	 *
+	 * @dataProvider changed_reset_provider
+	 *
+	 * @param bool $enabled Stored state before the reset.
 	 */
-	public function test_changed_reset_records_cli_action(): void {
-		$this->setting->expects( $this->exactly( 2 ) )->method( 'get_status' )->willReturnOnConsecutiveCalls( SettingStatus::Enabled, SettingStatus::DefaultDisabled );
-		$this->setting->expects( $this->once() )->method( 'reset' )->willReturn( true );
+	public function test_changed_reset_records_cli_action( bool $enabled ): void {
+		$this->setting->set_enabled( $enabled );
 		$this->telemetry->expects( $this->once() )
 			->method( 'record_automatic_protection_change' )
 			->with( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli );
 
 		$this->assertTrue( $this->sut->reset( SettingsChangeChannel::Cli ) );
+		$this->assertSame( SettingStatus::DefaultDisabled, $this->setting->get_status() );
 	}
 
 	/**
-	 * @testdox Resetting an explicit disabled choice records the CLI reset action.
+	 * Provide changed automatic-protection resets.
+	 *
+	 * @return array<string, array{bool}>
 	 */
-	public function test_disabled_to_default_disabled_reset_records_cli_action(): void {
-		$this->setting->expects( $this->exactly( 2 ) )->method( 'get_status' )->willReturnOnConsecutiveCalls( SettingStatus::Disabled, SettingStatus::DefaultDisabled );
-		$this->setting->expects( $this->once() )->method( 'reset' )->willReturn( true );
-		$this->telemetry->expects( $this->once() )
-			->method( 'record_automatic_protection_change' )
-			->with( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli );
-
-		$this->assertTrue( $this->sut->reset( SettingsChangeChannel::Cli ) );
+	public function changed_reset_provider(): array {
+		return array(
+			'enabled'  => array( true ),
+			'disabled' => array( false ),
+		);
 	}
 
 	/**
 	 * @testdox A settings-channel reset is rejected before storage or telemetry.
 	 */
 	public function test_settings_reset_is_rejected_and_logged(): void {
-		$this->setting->expects( $this->never() )->method( 'get_status' );
-		$this->setting->expects( $this->never() )->method( 'reset' );
+		$this->setting->set_enabled( true );
 		$this->telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
 		$this->logger->expects( $this->once() )
 			->method( 'log' )
 			->with( 'warning', 'Automatic protection reset is only available through WP-CLI.' );
 
 		$this->assertFalse( $this->sut->reset( SettingsChangeChannel::Settings ) );
+		$this->assertSame( SettingStatus::Enabled, $this->setting->get_status() );
 	}
 
 	/**
 	 * @testdox A failed reset does not record an action.
 	 */
 	public function test_failed_reset_records_no_action(): void {
+		$setting = $this->createMock( AutomaticProtectionSetting::class );
+		$setting->expects( $this->once() )->method( 'get_status' )->willReturn( SettingStatus::Enabled );
+		$setting->expects( $this->once() )->method( 'reset' )->willReturn( false );
+		$this->sut->init( $setting, $this->telemetry, $this->logger );
 		$this->telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
-		$this->setting->expects( $this->once() )->method( 'get_status' )->willReturn( SettingStatus::Enabled );
-		$this->setting->expects( $this->once() )->method( 'reset' )->willReturn( false );
 
 		$this->assertFalse( $this->sut->reset( SettingsChangeChannel::Cli ) );
 	}
@@ -149,9 +161,8 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 	 */
 	public function test_unchanged_reset_records_no_action(): void {
 		$this->telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
-		$this->setting->expects( $this->exactly( 2 ) )->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
-		$this->setting->expects( $this->once() )->method( 'reset' )->willReturn( true );
 
 		$this->assertTrue( $this->sut->reset( SettingsChangeChannel::Cli ) );
+		$this->assertSame( SettingStatus::DefaultDisabled, $this->setting->get_status() );
 	}
 }

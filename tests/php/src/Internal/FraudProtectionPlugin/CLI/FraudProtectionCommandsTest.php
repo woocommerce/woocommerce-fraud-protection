@@ -106,24 +106,14 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->schema_manager       = $this->createMock( SchemaManager::class );
-		$this->session_event_pruner = $this->createMock( SessionEventPruner::class );
+		$this->schema_manager               = $this->createMock( SchemaManager::class );
+		$this->session_event_pruner         = $this->createMock( SessionEventPruner::class );
 		$this->automatic_protection         = $this->createMock( AutomaticProtectionSetting::class );
 		$this->automatic_protection_updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
-		$this->sut = new FraudProtectionCommands();
+		$this->sut                          = new FraudProtectionCommands();
 		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->automatic_protection, $this->automatic_protection_updater );
-	}
-
-	/**
-	 * Tear down test fixtures.
-	 */
-	public function tearDown(): void {
-		remove_all_filters( 'pre_option_jetpack_options' );
-		delete_option( SchemaManager::DB_VERSION_OPTION );
-		delete_option( SchemaManager::DB_INSTALL_STATE_OPTION );
-		parent::tearDown();
 	}
 
 	/**
@@ -178,26 +168,38 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Automatic-protection CLI changes pass supported values to the updater.
+	 * @testdox Explicit automatic-protection CLI values are passed to the updater.
+	 *
+	 * @dataProvider automatic_protection_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state.
 	 */
-	public function test_automatic_protection_set_routes_supported_values(): void {
-		$this->automatic_protection_updater->expects( $this->exactly( 2 ) )
+	public function test_automatic_protection_set_routes_explicit_values( string $value, bool $enabled ): void {
+		$this->automatic_protection_updater->expects( $this->once() )
 			->method( 'set_enabled' )
-			->withConsecutive(
-				array( true, SettingsChangeChannel::Cli ),
-				array( false, SettingsChangeChannel::Cli )
-			)
+			->with( $enabled, SettingsChangeChannel::Cli )
 			->willReturn( true );
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
+
+		$this->sut->automatic_protection_set( array( $value ) );
+
+		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox The default automatic-protection CLI value resets the setting.
+	 */
+	public function test_automatic_protection_set_routes_default_to_reset(): void {
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'set_enabled' );
 		$this->automatic_protection_updater->expects( $this->once() )
 			->method( 'reset' )
 			->with( SettingsChangeChannel::Cli )
 			->willReturn( true );
 
-		$this->sut->automatic_protection_set( array( 'enabled' ) );
-		$this->sut->automatic_protection_set( array( 'disabled' ) );
 		$this->sut->automatic_protection_set( array( 'default' ) );
 
-		$this->assertCount( 3, $this->wp_cli_successes );
+		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
 	}
 
 	/**
@@ -210,6 +212,53 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->expectException( WPCLIErrorException::class );
 		$this->expectExceptionMessage( 'enabled, disabled, or default' );
 		$this->sut->automatic_protection_set( array( 'invalid' ) );
+	}
+
+	/**
+	 * @testdox Automatic-protection CLI changes report failed setting writes.
+	 *
+	 * @dataProvider automatic_protection_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state for explicit values.
+	 */
+	public function test_automatic_protection_set_reports_failed_explicit_updates( string $value, bool $enabled ): void {
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'set_enabled' )
+			->with( $enabled, SettingsChangeChannel::Cli )
+			->willReturn( false );
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->sut->automatic_protection_set( array( $value ) );
+	}
+
+	/**
+	 * @testdox A failed automatic-protection reset is reported as a CLI error.
+	 */
+	public function test_automatic_protection_set_reports_failed_reset(): void {
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'set_enabled' );
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'reset' )
+			->with( SettingsChangeChannel::Cli )
+			->willReturn( false );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->sut->automatic_protection_set( array( 'default' ) );
+	}
+
+	/**
+	 * Provide explicit automatic-protection values.
+	 *
+	 * @return array<string, array{string, bool}>
+	 */
+	public function automatic_protection_value_provider(): array {
+		return array(
+			'enable'  => array( 'enabled', true ),
+			'disable' => array( 'disabled', false ),
+		);
 	}
 
 	/**

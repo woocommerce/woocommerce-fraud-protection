@@ -54,6 +54,7 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $this->sut->add( 'first-group', 'one' ) );
 		$this->assertTrue( $this->sut->add( 'second-group', 'three' ) );
 		$this->sut->do_server_side_stats();
+		// Confirm that sent stats are removed from the queue.
 		$this->sut->do_server_side_stats();
 
 		$this->assertCount( 2, $urls );
@@ -89,6 +90,32 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 		update_option( 'woocommerce_allow_tracking', 'yes' );
 		$this->sut->do_server_side_stats();
 		$this->assertSame( 1, $requests );
+	}
+
+	/**
+	 * @testdox Non-string stat names and groups are rejected.
+	 *
+	 * @dataProvider invalid_stat_provider
+	 *
+	 * @param mixed $group Group name.
+	 * @param mixed $stat  Statistic name.
+	 */
+	public function test_rejects_non_string_values( $group, $stat ): void {
+		$this->assertFalse( $this->sut->add( $group, $stat ) );
+	}
+
+	/**
+	 * Provide invalid statistic values.
+	 *
+	 * @return array<string, array{mixed, mixed}>
+	 */
+	public function invalid_stat_provider(): array {
+		return array(
+			'integer group' => array( 1, 'stat' ),
+			'null group'    => array( null, 'stat' ),
+			'array stat'    => array( 'group', array( 'stat' ) ),
+			'boolean stat'  => array( 'group', false ),
+		);
 	}
 
 	/**
