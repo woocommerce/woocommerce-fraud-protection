@@ -21,7 +21,7 @@ class SettingsTelemetry {
 	private const MC_GROUP_AUTOMATIC_PROTECTION = 'automatic-protection';
 
 	/**
-	 * Merchant-experience feature gate.
+	 * Merchant-facing features gate.
 	 *
 	 * @var MerchantFacingFeaturesGate
 	 */

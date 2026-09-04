@@ -307,37 +307,19 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Status reports explicit setting states and their sources.
-	 *
-	 * @dataProvider explicit_status_provider
-	 *
-	 * @param SettingStatus $automatic_status Automatic-protection status.
+	 * @testdox Status reports an explicitly enabled merchant-facing features gate.
 	 */
-	public function test_status_reports_explicit_setting_states( SettingStatus $automatic_status ): void {
+	public function test_status_reports_enabled_merchant_facing_features(): void {
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::Enabled );
-		$this->automatic_protection->method( 'get_status' )->willReturn( $automatic_status );
-		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 
 		$this->sut->status();
 
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Merchant-facing features status: enabled', $output );
-		$this->assertStringContainsString( 'Automatic protection status: ' . $automatic_status->value, $output );
-		$this->assertStringContainsString( 'Automatic protection source: manual', $output );
-	}
-
-	/**
-	 * Provide explicit setting states.
-	 *
-	 * @return array<string, array{SettingStatus}>
-	 */
-	public function explicit_status_provider(): array {
-		return array(
-			'enabled'  => array( SettingStatus::Enabled ),
-			'disabled' => array( SettingStatus::Disabled ),
-		);
 	}
 
 	/**

@@ -46,10 +46,12 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_explicit_overrides_take_precedence(): void {
 		$this->assertTrue( $this->sut->set_enabled( true ) );
+		$this->assertSame( 'yes', get_option( self::OPTION_NAME ) );
 		$this->assertSame( SettingStatus::Enabled, $this->sut->get_status() );
 		$this->assertTrue( $this->sut->is_enabled() );
 
 		$this->assertTrue( $this->sut->set_enabled( false ) );
+		$this->assertSame( 'no', get_option( self::OPTION_NAME ) );
 		$this->assertSame( SettingStatus::Disabled, $this->sut->get_status() );
 		$this->assertFalse( $this->sut->is_enabled() );
 	}
@@ -58,7 +60,7 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 	 * @testdox Invalid stored values follow the code default.
 	 */
 	public function test_invalid_value_follows_code_default(): void {
-		update_option( self::OPTION_NAME, 'invalid' );
+		update_option( self::OPTION_NAME, array( 'invalid' ) );
 
 		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
 		$this->assertFalse( $this->sut->is_enabled() );
@@ -86,7 +88,7 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 	 * @testdox Reset removes an explicit override.
 	 */
 	public function test_reset_deletes_override(): void {
-		$this->sut->set_enabled( true );
+		$this->sut->set_enabled( false );
 
 		$this->assertTrue( $this->sut->reset() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
