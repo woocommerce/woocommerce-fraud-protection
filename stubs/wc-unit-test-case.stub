@@ -6,3 +6,12 @@
  * included in woocommerce-stubs.
  */
 class WC_Unit_Test_Case extends WP_UnitTestCase {}
+
+/**
+ * Stub for WooCommerce's REST API unit test base class.
+ */
+class WC_REST_Unit_Test_Case extends WC_Unit_Test_Case {
+
+	/** @var WP_REST_Server */
+	protected $server;
+}

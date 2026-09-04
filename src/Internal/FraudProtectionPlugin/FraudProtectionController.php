@@ -23,6 +23,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheck
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CartEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
@@ -127,6 +129,13 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private SettingsTelemetry $settings_telemetry;
 
 	/**
+	 * Merchant-facing feature gate.
+	 *
+	 * @var MerchantFacingFeaturesGate
+	 */
+	private MerchantFacingFeaturesGate $merchant_facing_features_gate;
+
+	/**
 	 * Register hooks. To be run at `woocommerce_loaded`.
 	 */
 	public function register(): void {
@@ -174,6 +183,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param SessionEventPruner         $session_event_pruner         The instance of SessionEventPruner to use.
 	 * @param FraudProtectionLogger      $logger                       The logger instance.
 	 * @param SettingsTelemetry          $settings_telemetry           Settings telemetry instance.
+	 * @param MerchantFacingFeaturesGate $merchant_facing_features_gate Merchant-facing features gate.
 	 */
 	final public function init(
 		CartEventTracker $cart_event_tracker,
@@ -187,21 +197,23 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		SchemaManager $schema_manager,
 		SessionEventPruner $session_event_pruner,
 		FraudProtectionLogger $logger,
-		SettingsTelemetry $settings_telemetry
+		SettingsTelemetry $settings_telemetry,
+		MerchantFacingFeaturesGate $merchant_facing_features_gate
 	): void {
 		self::$logger = $logger;
 
-		$this->cart_event_tracker           = $cart_event_tracker;
-		$this->checkout_event_tracker       = $checkout_event_tracker;
-		$this->payment_method_event_tracker = $payment_method_event_tracker;
-		$this->session_verifier             = $session_verifier;
-		$this->blocks_checkout_protector    = $blocks_checkout_protector;
-		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
-		$this->add_payment_method_protector = $add_payment_method_protector;
-		$this->pay_for_order_protector      = $pay_for_order_protector;
-		$this->schema_manager               = $schema_manager;
-		$this->session_event_pruner         = $session_event_pruner;
-		$this->settings_telemetry           = $settings_telemetry;
+		$this->cart_event_tracker            = $cart_event_tracker;
+		$this->checkout_event_tracker        = $checkout_event_tracker;
+		$this->payment_method_event_tracker  = $payment_method_event_tracker;
+		$this->session_verifier              = $session_verifier;
+		$this->blocks_checkout_protector     = $blocks_checkout_protector;
+		$this->shortcode_checkout_protector  = $shortcode_checkout_protector;
+		$this->add_payment_method_protector  = $add_payment_method_protector;
+		$this->pay_for_order_protector       = $pay_for_order_protector;
+		$this->schema_manager                = $schema_manager;
+		$this->session_event_pruner          = $session_event_pruner;
+		$this->settings_telemetry            = $settings_telemetry;
+		$this->merchant_facing_features_gate = $merchant_facing_features_gate;
 	}
 
 	/**
@@ -221,6 +233,10 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->checkout_event_tracker->register();
 		$this->payment_method_event_tracker->register();
 		$this->settings_telemetry->register();
+
+		if ( $this->merchant_facing_features_gate->is_enabled() ) {
+			wc_get_container()->get( SettingsRestController::class )->register();
+		}
 	}
 
 	/**

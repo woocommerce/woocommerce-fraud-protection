@@ -9,6 +9,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
 /**
@@ -203,6 +205,32 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->sut->handle_init();
 
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( wc_get_container()->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
+	}
+
+	/**
+	 * @testdox The settings endpoint is not registered when merchant-facing features are disabled.
+	 */
+	public function test_handle_init_does_not_register_settings_endpoint_when_merchant_facing_features_are_disabled(): void {
+		$container = wc_get_container();
+		$feature   = $container->get( MerchantFacingFeaturesGate::class );
+		$feature->reset();
+
+		$this->sut->handle_init();
+
+		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+	}
+
+	/**
+	 * @testdox The settings endpoint is registered when merchant-facing features are enabled.
+	 */
+	public function test_handle_init_registers_settings_endpoint_when_merchant_facing_features_are_enabled(): void {
+		$container = wc_get_container();
+		$feature   = $container->get( MerchantFacingFeaturesGate::class );
+
+		$feature->set_enabled( true );
+		$this->sut->handle_init();
+
+		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 	}
 
 	/**

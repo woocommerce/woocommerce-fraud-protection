@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventP
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
@@ -36,19 +37,14 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 */
 	private $sut;
 
-	/**
-	 * Schema manager mock.
-	 *
-	 * @var SchemaManager&\PHPUnit\Framework\MockObject\MockObject
-	 */
+	/** @var SchemaManager&\PHPUnit\Framework\MockObject\MockObject */
 	private $schema_manager;
 
-	/**
-	 * Session pruner mock.
-	 *
-	 * @var SessionEventPruner&\PHPUnit\Framework\MockObject\MockObject
-	 */
+	/** @var SessionEventPruner&\PHPUnit\Framework\MockObject\MockObject */
 	private $session_event_pruner;
+
+	/** @var MerchantFacingFeaturesGate&\PHPUnit\Framework\MockObject\MockObject */
+	private $merchant_facing_features_gate;
 
 	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection;
@@ -108,12 +104,11 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->schema_manager               = $this->createMock( SchemaManager::class );
 		$this->session_event_pruner         = $this->createMock( SessionEventPruner::class );
+		$this->merchant_facing_features_gate = $this->createMock( MerchantFacingFeaturesGate::class );
 		$this->automatic_protection         = $this->createMock( AutomaticProtectionSetting::class );
 		$this->automatic_protection_updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
-		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
-		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 		$this->sut                          = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->automatic_protection, $this->automatic_protection_updater );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater );
 	}
 
 	/**
@@ -158,6 +153,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
+				'wc fraud-protection merchant-facing-features set',
 				'wc fraud-protection automatic-protection set',
 				'wc fraud-protection status',
 				'wc fraud-protection database install',
@@ -170,7 +166,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox Explicit automatic-protection CLI values are passed to the updater.
 	 *
-	 * @dataProvider automatic_protection_value_provider
+	 * @dataProvider explicit_setting_value_provider
 	 *
 	 * @param string $value   Requested setting value.
 	 * @param bool   $enabled Requested enabled state.
@@ -217,7 +213,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox Automatic-protection CLI changes report failed setting writes.
 	 *
-	 * @dataProvider automatic_protection_value_provider
+	 * @dataProvider explicit_setting_value_provider
 	 *
 	 * @param string $value   Requested setting value.
 	 * @param bool   $enabled Requested enabled state for explicit values.
@@ -254,7 +250,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @return array<string, array{string, bool}>
 	 */
-	public function automatic_protection_value_provider(): array {
+	public function explicit_setting_value_provider(): array {
 		return array(
 			'enable'  => array( 'enabled', true ),
 			'disable' => array( 'disabled', false ),
@@ -265,6 +261,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Status should report all local diagnostic groups without mutation.
 	 */
 	public function test_status_reports_local_state_without_mutation(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn(
 			self::schema_status(
 				array(
@@ -286,8 +283,11 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'sentinel' => true ), get_option( SchemaManager::DB_INSTALL_STATE_OPTION ), 'Status must not change the install state' );
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
+		$this->assertStringContainsString( 'Merchant-facing features status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic protection status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic protection source: none', $output );
+		$this->assertStringNotContainsString( 'code default', $output );
+		$this->assertStringNotContainsString( 'stored state', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
 		$this->assertStringContainsString( 'Required schema version:', $output );
 		$this->assertStringContainsString( 'Installed schema version:', $output );
@@ -307,9 +307,84 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Status reports an explicitly enabled merchant-facing features gate.
+	 */
+	public function test_status_reports_enabled_merchant_facing_features(): void {
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::Enabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
+
+		$this->sut->status();
+
+		$output = implode( "\n", $this->wp_cli_lines );
+		$this->assertStringContainsString( 'Merchant-facing features status: enabled', $output );
+	}
+
+	/**
+	 * @testdox Explicit merchant-facing feature values are passed to the gate.
+	 *
+	 * @dataProvider explicit_setting_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state.
+	 */
+	public function test_merchant_facing_features_set_routes_explicit_values( string $value, bool $enabled ): void {
+		$this->merchant_facing_features_gate->expects( $this->once() )->method( 'set_enabled' )->with( $enabled )->willReturn( true );
+		$this->merchant_facing_features_gate->expects( $this->never() )->method( 'reset' );
+
+		$this->sut->merchant_facing_features_set( array( $value ) );
+
+		$this->assertSame( array( 'The merchant-facing features setting was updated.' ), $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox The default merchant-facing feature value resets the gate.
+	 */
+	public function test_merchant_facing_features_set_routes_default_to_reset(): void {
+		$this->merchant_facing_features_gate->expects( $this->never() )->method( 'set_enabled' );
+		$this->merchant_facing_features_gate->expects( $this->once() )->method( 'reset' )->willReturn( true );
+
+		$this->sut->merchant_facing_features_set( array( 'default' ) );
+
+		$this->assertSame( array( 'The merchant-facing features setting was updated.' ), $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox Failed explicit merchant-facing feature updates are reported as CLI errors.
+	 *
+	 * @dataProvider explicit_setting_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state.
+	 */
+	public function test_merchant_facing_features_set_reports_failed_explicit_updates( string $value, bool $enabled ): void {
+		$this->merchant_facing_features_gate->expects( $this->once() )->method( 'set_enabled' )->with( $enabled )->willReturn( false );
+		$this->merchant_facing_features_gate->expects( $this->never() )->method( 'reset' );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The merchant-facing features setting could not be saved.' );
+		$this->sut->merchant_facing_features_set( array( $value ) );
+	}
+
+	/**
+	 * @testdox A failed merchant-facing feature reset is reported as a CLI error.
+	 */
+	public function test_merchant_facing_features_set_reports_failed_reset(): void {
+		$this->merchant_facing_features_gate->expects( $this->never() )->method( 'set_enabled' );
+		$this->merchant_facing_features_gate->expects( $this->once() )->method( 'reset' )->willReturn( false );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The merchant-facing features setting could not be saved.' );
+		$this->sut->merchant_facing_features_set( array( 'default' ) );
+	}
+
+	/**
 	 * @testdox Status should report the numeric Jetpack ID and missing tables.
 	 */
 	public function test_status_reports_jetpack_id_and_missing_tables(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn(
 			self::schema_status(
 				array(
@@ -348,6 +423,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Status should hide empty schema installation retry state.
 	 */
 	public function test_status_hides_empty_schema_installation_retry_state(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn(
 			self::schema_status(
 				array(
@@ -373,12 +449,22 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Status should report an in-progress pruning action.
 	 */
 	public function test_status_reports_in_progress_pruning_action(): void {
+		$this->mock_default_settings_status();
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( true );
 
 		$this->sut->status();
 
 		$this->assertContains( 'Next session pruning action: In progress', $this->wp_cli_lines );
+	}
+
+	/**
+	 * Configure the default setting states used by status tests.
+	 */
+	private function mock_default_settings_status(): void {
+		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 	}
 
 	/**

@@ -2,6 +2,7 @@
 
 YYYY-xx-xx - version 0.2.2
 * Added - WP-CLI command to manage automatic checkout protection.
+* Added - WP-CLI command to manage the merchant-facing features gate.
 * Added - PayPal setup-token and vault-order requests now run Fraud Protection before remote object creation.
 * Fixed - Fraud Protection now limits retained shopper identity and event history, and handles oversized verification attempts per request.
 * Fixed - Subscription change-payment forms now load the Fraud Protection payment scripts.

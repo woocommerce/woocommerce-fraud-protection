@@ -1,6 +1,6 @@
 <?php
 /**
- * AutomaticProtectionSettingTest class file.
+ * MerchantFacingFeaturesGateTest class file.
  */
 
 declare( strict_types = 1 );
@@ -8,61 +8,52 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 
 /**
- * Tests for AutomaticProtectionSetting.
+ * Tests for MerchantFacingFeaturesGate.
  */
-class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
+class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 
-	private const OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection';
+	private const OPTION_NAME = 'woocommerce_fraud_protection_merchant_facing_features';
 
 	/**
-	 * Automatic protection setting.
+	 * Merchant-facing features gate.
 	 *
-	 * @var AutomaticProtectionSetting
+	 * @var MerchantFacingFeaturesGate
 	 */
 	private $sut;
 
 	public function setUp(): void {
 		parent::setUp();
-		$this->sut = new AutomaticProtectionSetting();
+		$this->sut = new MerchantFacingFeaturesGate();
 		$this->sut->reset();
-	}
-
-	public function tearDown(): void {
-		$this->sut->reset();
-		parent::tearDown();
 	}
 
 	/**
-	 * @testdox An absent setting is disabled without writing an opt-out.
+	 * @testdox An absent override follows the disabled code default.
 	 */
-	public function test_absent_setting_is_default_disabled(): void {
+	public function test_absent_override_is_disabled_by_default(): void {
 		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
 		$this->assertSame( SettingStatus::Disabled, $this->sut->get_default() );
 		$this->assertFalse( $this->sut->is_enabled() );
-		$this->assertSame( AutomaticProtectionSource::None, $this->sut->get_source() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
 	}
 
 	/**
-	 * @testdox Enabled and disabled values persist as explicit choices.
+	 * @testdox Explicit enabled and disabled overrides take precedence.
 	 */
-	public function test_explicit_values_persist(): void {
+	public function test_explicit_overrides_take_precedence(): void {
 		$this->assertTrue( $this->sut->set_enabled( true ) );
 		$this->assertSame( 'yes', get_option( self::OPTION_NAME ) );
 		$this->assertSame( SettingStatus::Enabled, $this->sut->get_status() );
 		$this->assertTrue( $this->sut->is_enabled() );
-		$this->assertSame( AutomaticProtectionSource::Manual, $this->sut->get_source() );
 
 		$this->assertTrue( $this->sut->set_enabled( false ) );
 		$this->assertSame( 'no', get_option( self::OPTION_NAME ) );
 		$this->assertSame( SettingStatus::Disabled, $this->sut->get_status() );
 		$this->assertFalse( $this->sut->is_enabled() );
-		$this->assertSame( AutomaticProtectionSource::Manual, $this->sut->get_source() );
 	}
 
 	/**
@@ -74,14 +65,13 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
 		$this->assertFalse( $this->sut->is_enabled() );
 
-		$enabled_default = new class() extends AutomaticProtectionSetting {
+		$enabled_default = new class() extends MerchantFacingFeaturesGate {
 			public function get_default(): SettingStatus {
 				return SettingStatus::Enabled;
 			}
 		};
 		$this->assertSame( SettingStatus::DefaultEnabled, $enabled_default->get_status() );
 		$this->assertTrue( $enabled_default->is_enabled() );
-		$this->assertSame( AutomaticProtectionSource::None, $enabled_default->get_source() );
 	}
 
 	/**
@@ -95,9 +85,9 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Reset removes an explicit value.
+	 * @testdox Reset removes an explicit override.
 	 */
-	public function test_reset_deletes_value(): void {
+	public function test_reset_deletes_override(): void {
 		$this->sut->set_enabled( false );
 
 		$this->assertTrue( $this->sut->reset() );
