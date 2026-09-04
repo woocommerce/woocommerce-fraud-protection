@@ -9,6 +9,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
@@ -199,38 +200,35 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Settings telemetry registers with the other first-party components.
+	 * @testdox Settings telemetry registers while merchant-facing settings stay disabled by default.
 	 */
-	public function test_handle_init_registers_settings_telemetry(): void {
-		$this->sut->handle_init();
-
-		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( wc_get_container()->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
-	}
-
-	/**
-	 * @testdox The settings endpoint is not registered when merchant-facing features are disabled.
-	 */
-	public function test_handle_init_does_not_register_settings_endpoint_when_merchant_facing_features_are_disabled(): void {
+	public function test_default_gate_registers_telemetry_without_merchant_surfaces(): void {
 		$container = wc_get_container();
-		$feature   = $container->get( MerchantFacingFeaturesGate::class );
-		$feature->reset();
+		$container->get( MerchantFacingFeaturesGate::class )->reset();
 
 		$this->sut->handle_init();
 
+		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( $container->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
 		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
+		$this->assertFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
 	}
 
 	/**
-	 * @testdox The settings endpoint is registered when merchant-facing features are enabled.
+	 * @testdox Enabling merchant-facing features registers the page and settings endpoint.
 	 */
-	public function test_handle_init_registers_settings_endpoint_when_merchant_facing_features_are_enabled(): void {
+	public function test_enabled_gate_registers_page_and_endpoint(): void {
 		$container = wc_get_container();
 		$feature   = $container->get( MerchantFacingFeaturesGate::class );
-
 		$feature->set_enabled( true );
+
 		$this->sut->handle_init();
 
+		$this->assertNotFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
+		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
 		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );
+		$this->assertContains( $container->get( FraudProtectionSettingsPage::class ), $pages );
 	}
 
 	/**

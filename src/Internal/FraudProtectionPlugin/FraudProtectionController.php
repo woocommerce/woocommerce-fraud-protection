@@ -23,6 +23,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheck
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
@@ -181,8 +182,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 * @param PayForOrderProtector       $pay_for_order_protector      The instance of PayForOrderProtector to use.
 	 * @param SchemaManager              $schema_manager               The instance of SchemaManager to use.
 	 * @param SessionEventPruner         $session_event_pruner         The instance of SessionEventPruner to use.
-	 * @param FraudProtectionLogger      $logger                       The logger instance.
-	 * @param SettingsTelemetry          $settings_telemetry           Settings telemetry instance.
+	 * @param FraudProtectionLogger      $logger                        The logger instance.
+	 * @param SettingsTelemetry          $settings_telemetry            Settings telemetry instance.
 	 * @param MerchantFacingFeaturesGate $merchant_facing_features_gate Merchant-facing features gate.
 	 */
 	final public function init(
@@ -235,8 +236,39 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->settings_telemetry->register();
 
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {
+			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
+			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_settings_page_assets' ) );
 			wc_get_container()->get( SettingsRestController::class )->register();
 		}
+	}
+
+	/**
+	 * Add the settings page after WooCommerce loads its settings base class.
+	 *
+	 * @internal
+	 *
+	 * @param array<int, \WC_Settings_Page> $pages Existing settings pages.
+	 * @return array<int, \WC_Settings_Page>
+	 */
+	public function add_settings_page( array $pages ): array {
+		$pages[] = wc_get_container()->get( FraudProtectionSettingsPage::class );
+
+		return $pages;
+	}
+
+	/**
+	 * Load settings assets after WooCommerce initializes its settings pages.
+	 *
+	 * @internal
+	 *
+	 * @param mixed $hook_suffix Current admin page hook suffix.
+	 */
+	public function enqueue_settings_page_assets( $hook_suffix ): void {
+		if ( 'woocommerce_page_wc-settings' !== $hook_suffix ) {
+			return;
+		}
+
+		wc_get_container()->get( FraudProtectionSettingsPage::class )->enqueue_assets( $hook_suffix );
 	}
 
 	/**

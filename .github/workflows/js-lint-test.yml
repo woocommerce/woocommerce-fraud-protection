@@ -41,6 +41,9 @@ jobs:
       - name: Run CSS linting
         run: npm run lint:css
 
+      - name: Run TypeScript checks
+        run: npm run lint:types
+
   test:
     name: JS Testing
     timeout-minutes: 5
