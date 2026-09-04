@@ -48,7 +48,7 @@ npm run env:destroy   # remove the containers and data
 Each worktree gets separate containers. To run several at once, add a gitignored `.wp-env.override.json` to each worktree with unique ports:
 
 ```json
-{ "port": 8890, "testsPort": 8891 }
+{ "port": 8890 }
 ```
 
 Live service testing is disabled by default. Local UI, checkout, hook, and fail-open testing still work.
