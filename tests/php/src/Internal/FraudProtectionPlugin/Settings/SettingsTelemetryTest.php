@@ -96,29 +96,34 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Tracker data reports an explicit merchant-experience status.
+	 * @testdox Tracker data reports each merchant-experience status.
+	 *
+	 * @dataProvider merchant_experience_status_provider
+	 *
+	 * @param SettingStatus $status Merchant-experience status.
 	 */
-	public function test_tracker_reports_explicit_merchant_status(): void {
-		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::Disabled );
+	public function test_tracker_reports_merchant_experience_status( SettingStatus $status ): void {
+		$this->merchant_experience->method( 'get_status' )->willReturn( $status );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 
 		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
-		$this->assertSame( 'disabled', $plugin['merchant_experience_status'] );
+		$this->assertSame( $status->value, $plugin['merchant_experience_status'] );
 	}
 
 	/**
-	 * @testdox Tracker data reports an enabled merchant-experience code default.
+	 * Provide merchant-experience statuses.
+	 *
+	 * @return array<string, array{SettingStatus}>
 	 */
-	public function test_tracker_reports_enabled_code_default(): void {
-		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::DefaultEnabled );
-		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
-		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
-
-		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
-
-		$this->assertSame( 'default_enabled', $plugin['merchant_experience_status'] );
+	public function merchant_experience_status_provider(): array {
+		return array(
+			'enabled'          => array( SettingStatus::Enabled ),
+			'disabled'         => array( SettingStatus::Disabled ),
+			'default enabled'  => array( SettingStatus::DefaultEnabled ),
+			'default disabled' => array( SettingStatus::DefaultDisabled ),
+		);
 	}
 
 	/**

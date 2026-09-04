@@ -208,18 +208,28 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The settings endpoint follows the merchant-experience gate.
+	 * @testdox The settings endpoint is not registered when the merchant experience is disabled.
 	 */
-	public function test_handle_init_gates_settings_endpoint(): void {
+	public function test_handle_init_does_not_register_settings_endpoint_when_merchant_experience_is_disabled(): void {
 		$container = wc_get_container();
 		$feature   = $container->get( MerchantExperienceFeature::class );
 		$feature->reset();
 
-		$this->create_controller()->handle_init();
+		$this->sut->handle_init();
+
 		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+	}
+
+	/**
+	 * @testdox The settings endpoint is registered when the merchant experience is enabled.
+	 */
+	public function test_handle_init_registers_settings_endpoint_when_merchant_experience_is_enabled(): void {
+		$container = wc_get_container();
+		$feature   = $container->get( MerchantExperienceFeature::class );
 
 		$feature->set_enabled( true );
-		$this->create_controller()->handle_init();
+		$this->sut->handle_init();
+
 		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 	}
 

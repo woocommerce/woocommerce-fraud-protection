@@ -37,63 +37,31 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 */
 	private $sut;
 
-	/**
-	 * Schema manager mock.
-	 *
-	 * @var SchemaManager&\PHPUnit\Framework\MockObject\MockObject
-	 */
+	/** @var SchemaManager&\PHPUnit\Framework\MockObject\MockObject */
 	private $schema_manager;
 
-	/**
-	 * Session pruner mock.
-	 *
-	 * @var SessionEventPruner&\PHPUnit\Framework\MockObject\MockObject
-	 */
+	/** @var SessionEventPruner&\PHPUnit\Framework\MockObject\MockObject */
 	private $session_event_pruner;
 
-	/**
-	 * Merchant experience feature.
-	 *
-	 * @var MerchantExperienceFeature&\PHPUnit\Framework\MockObject\MockObject
-	 */
+	/** @var MerchantExperienceFeature&\PHPUnit\Framework\MockObject\MockObject */
 	private $merchant_experience;
 
-	/**
-	 * Automatic protection setting.
-	 *
-	 * @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject
-	 */
+	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection;
 
 	/** @var AutomaticProtectionSettingUpdater&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection_updater;
 
-	/**
-	 * Registered commands.
-	 *
-	 * @var array<string, callable>
-	 */
+	/** @var array<string, callable> */
 	private array $wp_cli_hooks;
 
-	/**
-	 * Registered command callbacks.
-	 *
-	 * @var array<string, callable>
-	 */
+	/** @var array<string, callable> */
 	private array $wp_cli_commands;
 
-	/**
-	 * Successful command messages.
-	 *
-	 * @var string[]
-	 */
+	/** @var string[] */
 	private array $wp_cli_lines;
 
-	/**
-	 * Command errors.
-	 *
-	 * @var string[]
-	 */
+	/** @var string[] */
 	private array $wp_cli_successes;
 
 	/**
@@ -139,8 +107,6 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->merchant_experience          = $this->createMock( MerchantExperienceFeature::class );
 		$this->automatic_protection         = $this->createMock( AutomaticProtectionSetting::class );
 		$this->automatic_protection_updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
-		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
-		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
 		$this->sut                          = new FraudProtectionCommands();
 		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_experience, $this->automatic_protection, $this->automatic_protection_updater );
 	}
@@ -200,7 +166,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox Explicit automatic-protection CLI values are passed to the updater.
 	 *
-	 * @dataProvider automatic_protection_value_provider
+	 * @dataProvider explicit_setting_value_provider
 	 *
 	 * @param string $value   Requested setting value.
 	 * @param bool   $enabled Requested enabled state.
@@ -247,7 +213,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox Automatic-protection CLI changes report failed setting writes.
 	 *
-	 * @dataProvider automatic_protection_value_provider
+	 * @dataProvider explicit_setting_value_provider
 	 *
 	 * @param string $value   Requested setting value.
 	 * @param bool   $enabled Requested enabled state for explicit values.
@@ -284,7 +250,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @return array<string, array{string, bool}>
 	 */
-	public function automatic_protection_value_provider(): array {
+	public function explicit_setting_value_provider(): array {
 		return array(
 			'enable'  => array( 'enabled', true ),
 			'disable' => array( 'disabled', false ),
@@ -341,69 +307,95 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Status reports explicit setting states and the manual enabled source.
+	 * @testdox Status reports explicit setting states and their sources.
+	 *
+	 * @dataProvider explicit_status_provider
+	 *
+	 * @param SettingStatus $automatic_status Automatic-protection status.
 	 */
-	public function test_status_reports_explicit_setting_states(): void {
+	public function test_status_reports_explicit_setting_states( SettingStatus $automatic_status ): void {
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
 		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
 		$this->merchant_experience->method( 'get_status' )->willReturn( SettingStatus::Enabled );
-		$this->automatic_protection->method( 'get_status' )->willReturnOnConsecutiveCalls( SettingStatus::Enabled, SettingStatus::Disabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( $automatic_status );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
 
 		$this->sut->status();
 
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Merchant experience status: enabled', $output );
-		$this->assertStringContainsString( 'Automatic protection status: enabled', $output );
-		$this->assertStringContainsString( 'Automatic protection source: manual', $output );
-
-		$this->wp_cli_lines = array();
-		$this->sut->status();
-
-		$output = implode( "\n", $this->wp_cli_lines );
-		$this->assertStringContainsString( 'Automatic protection status: disabled', $output );
+		$this->assertStringContainsString( 'Automatic protection status: ' . $automatic_status->value, $output );
 		$this->assertStringContainsString( 'Automatic protection source: manual', $output );
 	}
 
 	/**
-	 * @testdox A failed automatic-protection set reports an error.
+	 * Provide explicit setting states.
+	 *
+	 * @return array<string, array{SettingStatus}>
 	 */
-	public function test_automatic_protection_set_failure_reports_error(): void {
-		$this->automatic_protection_updater->expects( $this->once() )
-			->method( 'set_enabled' )
-			->with( true, SettingsChangeChannel::Cli )
-			->willReturn( false );
-
-		$this->expectException( WPCLIErrorException::class );
-		$this->expectExceptionMessage( 'could not be saved' );
-		$this->sut->automatic_protection_set( array( 'enabled' ) );
+	public function explicit_status_provider(): array {
+		return array(
+			'enabled'  => array( SettingStatus::Enabled ),
+			'disabled' => array( SettingStatus::Disabled ),
+		);
 	}
 
 	/**
-	 * @testdox A failed automatic-protection reset reports an error.
+	 * @testdox Explicit merchant-experience CLI values are passed to the feature.
+	 *
+	 * @dataProvider explicit_setting_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state.
 	 */
-	public function test_automatic_protection_reset_failure_reports_error(): void {
-		$this->automatic_protection_updater->expects( $this->once() )
-			->method( 'reset' )
-			->with( SettingsChangeChannel::Cli )
-			->willReturn( false );
+	public function test_merchant_experience_set_routes_explicit_values( string $value, bool $enabled ): void {
+		$this->merchant_experience->expects( $this->once() )->method( 'set_enabled' )->with( $enabled )->willReturn( true );
+		$this->merchant_experience->expects( $this->never() )->method( 'reset' );
 
-		$this->expectException( WPCLIErrorException::class );
-		$this->expectExceptionMessage( 'could not be saved' );
-		$this->sut->automatic_protection_set( array( 'default' ) );
+		$this->sut->merchant_experience_set( array( $value ) );
+
+		$this->assertSame( array( 'The merchant-experience setting was updated.' ), $this->wp_cli_successes );
 	}
 
 	/**
-	 * @testdox Merchant-experience CLI changes write and reset the shared override.
+	 * @testdox The default merchant-experience CLI value resets the feature.
 	 */
-	public function test_merchant_experience_set_updates_shared_override(): void {
-		$this->merchant_experience->expects( $this->once() )->method( 'set_enabled' )->with( true )->willReturn( true );
+	public function test_merchant_experience_set_routes_default_to_reset(): void {
+		$this->merchant_experience->expects( $this->never() )->method( 'set_enabled' );
 		$this->merchant_experience->expects( $this->once() )->method( 'reset' )->willReturn( true );
 
-		$this->sut->merchant_experience_set( array( 'enabled' ) );
 		$this->sut->merchant_experience_set( array( 'default' ) );
 
-		$this->assertCount( 2, $this->wp_cli_successes );
+		$this->assertSame( array( 'The merchant-experience setting was updated.' ), $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox Failed explicit merchant-experience updates are reported as CLI errors.
+	 *
+	 * @dataProvider explicit_setting_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state.
+	 */
+	public function test_merchant_experience_set_reports_failed_explicit_updates( string $value, bool $enabled ): void {
+		$this->merchant_experience->expects( $this->once() )->method( 'set_enabled' )->with( $enabled )->willReturn( false );
+		$this->merchant_experience->expects( $this->never() )->method( 'reset' );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The merchant-experience setting could not be saved.' );
+		$this->sut->merchant_experience_set( array( $value ) );
+	}
+
+	/**
+	 * @testdox A failed merchant-experience reset is reported as a CLI error.
+	 */
+	public function test_merchant_experience_set_reports_failed_reset(): void {
+		$this->merchant_experience->expects( $this->never() )->method( 'set_enabled' );
+		$this->merchant_experience->expects( $this->once() )->method( 'reset' )->willReturn( false );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The merchant-experience setting could not be saved.' );
+		$this->sut->merchant_experience_set( array( 'default' ) );
 	}
 
 	/**

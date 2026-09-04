@@ -31,11 +31,6 @@ class MerchantExperienceFeatureTest extends FraudProtectionUnitTestCase {
 		$this->sut->reset();
 	}
 
-	public function tearDown(): void {
-		$this->sut->reset();
-		parent::tearDown();
-	}
-
 	/**
 	 * @testdox An absent override follows the disabled code default.
 	 */
@@ -75,6 +70,16 @@ class MerchantExperienceFeatureTest extends FraudProtectionUnitTestCase {
 		};
 		$this->assertSame( SettingStatus::DefaultEnabled, $enabled_default->get_status() );
 		$this->assertTrue( $enabled_default->is_enabled() );
+	}
+
+	/**
+	 * @testdox A failed option write is reported to the caller.
+	 */
+	public function test_failed_write_is_reported(): void {
+		add_filter( 'pre_update_option_' . self::OPTION_NAME, '__return_false' );
+
+		$this->assertFalse( $this->sut->set_enabled( true ) );
+		$this->assertNull( get_option( self::OPTION_NAME, null ) );
 	}
 
 	/**

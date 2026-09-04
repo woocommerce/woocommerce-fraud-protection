@@ -90,12 +90,8 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	public function test_failed_write_is_reported(): void {
 		add_filter( 'pre_update_option_' . self::OPTION_NAME, '__return_false' );
 
-		try {
-			$this->assertFalse( $this->sut->set_enabled( true ) );
-			$this->assertNull( get_option( self::OPTION_NAME, null ) );
-		} finally {
-			remove_filter( 'pre_update_option_' . self::OPTION_NAME, '__return_false' );
-		}
+		$this->assertFalse( $this->sut->set_enabled( true ) );
+		$this->assertNull( get_option( self::OPTION_NAME, null ) );
 	}
 
 	/**

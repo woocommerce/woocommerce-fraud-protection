@@ -144,6 +144,46 @@ class FraudProtectionCommands {
 	}
 
 	/**
+	 * Set the merchant-experience override.
+	 *
+	 * @internal
+	 *
+	 * @param string[] $args Positional command arguments.
+	 */
+	public function merchant_experience_set( array $args ): void {
+		$value = $this->validate_state_argument( $args );
+
+		$success = 'default' === $value ? $this->merchant_experience->reset() : $this->merchant_experience->set_enabled( 'enabled' === $value );
+		if ( ! $success ) {
+			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The merchant-experience setting could not be saved.', 'woocommerce-fraud-protection' ) );
+			return;
+		}
+
+		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The merchant-experience setting was updated.', 'woocommerce-fraud-protection' ) );
+	}
+
+	/**
+	 * Set the automatic-protection state.
+	 *
+	 * @internal
+	 *
+	 * @param string[] $args Positional command arguments.
+	 */
+	public function automatic_protection_set( array $args ): void {
+		$value = $this->validate_state_argument( $args );
+
+		$success = 'default' === $value
+			? $this->automatic_protection_updater->reset( SettingsChangeChannel::Cli )
+			: $this->automatic_protection_updater->set_enabled( 'enabled' === $value, SettingsChangeChannel::Cli );
+		if ( ! $success ) {
+			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The automatic-protection setting could not be saved.', 'woocommerce-fraud-protection' ) );
+			return;
+		}
+
+		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The automatic-protection setting was updated.', 'woocommerce-fraud-protection' ) );
+	}
+
+	/**
 	 * Show local Fraud Protection status.
 	 *
 	 * @internal
@@ -184,46 +224,6 @@ class FraudProtectionCommands {
 		$this->write_line( __( 'Database default collation', 'woocommerce-fraud-protection' ), self::value_or_unavailable( $database_defaults['collation'] ?? null ) );
 		$next_pruning_action = $this->session_event_pruner->get_next_scheduled_action();
 		$this->write_line( __( 'Next session pruning action', 'woocommerce-fraud-protection' ), true === $next_pruning_action ? __( 'In progress', 'woocommerce-fraud-protection' ) : $this->format_timestamp( $next_pruning_action, __( 'Not scheduled', 'woocommerce-fraud-protection' ) ) );
-	}
-
-	/**
-	 * Set the merchant-experience override.
-	 *
-	 * @internal
-	 *
-	 * @param string[] $args Positional command arguments.
-	 */
-	public function merchant_experience_set( array $args ): void {
-		$value = $this->validate_state_argument( $args );
-
-		$success = 'default' === $value ? $this->merchant_experience->reset() : $this->merchant_experience->set_enabled( 'enabled' === $value );
-		if ( ! $success ) {
-			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The merchant-experience setting could not be saved.', 'woocommerce-fraud-protection' ) );
-			return;
-		}
-
-		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The merchant-experience setting was updated.', 'woocommerce-fraud-protection' ) );
-	}
-
-	/**
-	 * Set the automatic-protection state.
-	 *
-	 * @internal
-	 *
-	 * @param string[] $args Positional command arguments.
-	 */
-	public function automatic_protection_set( array $args ): void {
-		$value = $this->validate_state_argument( $args );
-
-		$success = 'default' === $value
-			? $this->automatic_protection_updater->reset( SettingsChangeChannel::Cli )
-			: $this->automatic_protection_updater->set_enabled( 'enabled' === $value, SettingsChangeChannel::Cli );
-		if ( ! $success ) {
-			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The automatic-protection setting could not be saved.', 'woocommerce-fraud-protection' ) );
-			return;
-		}
-
-		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The automatic-protection setting was updated.', 'woocommerce-fraud-protection' ) );
 	}
 
 	/**
