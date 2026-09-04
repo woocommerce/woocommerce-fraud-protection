@@ -28,6 +28,13 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	private FraudProtectionLogger $logger;
 
 	/**
+	 * Whether the settings asset metadata failed to load.
+	 *
+	 * @var bool
+	 */
+	private bool $asset_error = false;
+
+	/**
 	 * Initialize the WooCommerce settings page.
 	 */
 	public function __construct() {
@@ -73,6 +80,13 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	public function output(): void {
 		$GLOBALS['hide_save_button'] = true;
 
+		if ( $this->asset_error ) {
+			echo '<div class="notice notice-error"><p>';
+			esc_html_e( 'The Fraud Protection settings could not be loaded.', 'woocommerce-fraud-protection' );
+			echo '</p></div>';
+			return;
+		}
+
 		echo '<div id="wc-fraud-protection-settings" class="wc-settings-prevent-change-event"></div>';
 	}
 
@@ -92,12 +106,14 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 
 		$asset_file = dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/build/admin-settings.asset.php';
 		if ( ! is_readable( $asset_file ) ) {
+			$this->asset_error = true;
 			$this->logger->log( 'error', 'Fraud Protection settings asset metadata is unavailable.', array(), true );
 			return;
 		}
 
 		$asset = require $asset_file;
 		if ( ! is_array( $asset ) || ! is_array( $asset['dependencies'] ?? null ) || ! is_string( $asset['version'] ?? null ) ) {
+			$this->asset_error = true;
 			$this->logger->log( 'error', 'Fraud Protection settings asset metadata is invalid.', array(), true );
 			return;
 		}

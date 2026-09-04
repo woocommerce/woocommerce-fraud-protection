@@ -99,6 +99,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( screen.queryByRole( 'checkbox' ) ).not.toBeInTheDocument();
 		expect( screen.getByRole( 'presentation' ) ).toBeInTheDocument();
+		expect( screen.getByRole( 'status' ) ).toHaveTextContent(
+			'Loading automatic protection setting.'
+		);
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
 			screen.getByRole( 'heading', { name: 'Automatic protection' } )
@@ -113,6 +116,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 				path: '/wc-fraud-protection/v1/settings',
 			} );
 		} );
+		// Save is disabled while loading, so this click must not start a save request.
+		await userEvent.click( save );
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 
 		await act( async () => {
 			resolveLoad( { automatic_protection: false } );
@@ -121,10 +127,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( checkbox ).not.toBeChecked();
 		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		expect( screen.queryByRole( 'presentation' ) ).not.toBeInTheDocument();
-
-		// Clicking the disabled button must not start a save request.
-		await userEvent.click( save );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
 	} );
 
 	it( 'loads the enabled value', async () => {

@@ -210,7 +210,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Missing or invalid asset metadata prevents settings assets from loading and records the error.
+	 * @testdox Missing or invalid asset metadata shows an error, prevents settings assets from loading, and records the failure.
 	 *
 	 * @dataProvider asset_metadata_failures
 	 *
@@ -228,10 +228,17 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
 
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
+		ob_start();
+		$this->sut->output();
+		$output = (string) ob_get_clean();
 
 		$this->assertLogged( 'error', $expected_log, array(), true );
 		$this->assertFalse( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertFalse( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
+		$this->assertStringContainsString( 'class="notice notice-error"', $output );
+		$this->assertStringContainsString( 'The Fraud Protection settings could not be loaded.', $output );
+		$this->assertStringNotContainsString( 'id="wc-fraud-protection-settings"', $output );
+		$this->assertTrue( $GLOBALS['hide_save_button'] );
 	}
 
 	/**

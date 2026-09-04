@@ -46,7 +46,18 @@ export function AutomaticProtectionCard( {
 						gap="sm"
 					>
 						{ isLoading ? (
-							<Spinner />
+							<>
+								<Spinner />
+								<span
+									className="screen-reader-text"
+									role="status"
+								>
+									{ __(
+										'Loading automatic protection setting.',
+										'woocommerce-fraud-protection'
+									) }
+								</span>
+							</>
 						) : (
 							<>
 								<Checkbox
