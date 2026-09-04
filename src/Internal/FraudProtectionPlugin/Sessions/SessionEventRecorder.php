@@ -23,12 +23,9 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Records fraud decisions into the sessions log.
  *
- * Invoked from `DecisionHandler::apply_decision()` with the decision as
- * received from the API — not the enforcement outcome — so that block and
- * challenge decisions are recorded faithfully even when enforcement is
- * suppressed (learning mode, filter overrides). Every parsed decision is
- * recorded, allowed sessions included, so merchants can act on any session
- * from its row (e.g. create an allow or block rule for the shopper).
+ * `DecisionHandler::apply_decision()` provides both the received decision and
+ * the applied outcome. Every parsed decision is recorded, including allowed
+ * decisions and decisions that automatic protection does not enforce.
  * Verifies that failed to produce a real verdict (transport errors,
  * unparseable responses, unknown decision values) fail open to a synthetic
  * allow and are recorded under the {@see SessionTrigger::VerifyError}

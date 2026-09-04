@@ -58,7 +58,7 @@ An error before an actionable decision exists must not create a Block. Continue 
 
 Treat request data and values received from WordPress or WooCommerce hooks and filters as mixed input, even when the normal caller provides a documented type. Validate their types before operations that require a specific type. On invalid input, preserve the original safe value or skip only the invalid field while keeping usable data.
 
-If the `woocommerce_fraud_protection_automated_decision` filter throws after an actionable decision exists, keep the actionable decision that entered the filter. Apply learning mode afterward. An error fallback must not create a new block.
+If the `woocommerce_fraud_protection_automated_decision` filter throws after an actionable decision exists, keep the actionable decision that entered the filter. Apply the automatic-protection setting afterward. An error fallback must not create a new block.
 
 ### Use FraudDecision
 
@@ -68,7 +68,7 @@ Use `FraudDecision::Allow`, `FraudDecision::Block`, and `FraudDecision::ACTIONAB
 
 Automated decisions apply only to the payment attempt that produced them. A bounded record may preserve that attempt's decision across requests when a payment flow requires it. Key the record to evidence produced by the plugin and limit its reuse. Do not persist verdict-derived state that affects later attempts, add store-wide blocking gates, or empty the cart.
 
-Merchant rules are persistent merchant configuration. They are evaluated on each attempt until the merchant changes them. A matching rule takes priority over the service decision and bypasses the automated-decision filter and learning mode. A merchant Block rule remains enforced during learning mode.
+Merchant rules are persistent merchant configuration. They are evaluated on each attempt until the merchant changes them. A matching rule takes priority over the service decision and bypasses the automated-decision filter and automatic-protection setting. A merchant Block rule remains enforced when automatic protection is disabled.
 
 A component that verified earlier in the same attempt must preserve and return the decision it received. Skipping a later verification must not turn a previous block into an allow.
 

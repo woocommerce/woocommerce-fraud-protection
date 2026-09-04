@@ -153,11 +153,11 @@ $decision = $verifier->verify_session( $session_id, $source, $order_id, $request
 
 Use a stable application-defined ASCII source identifier of 32 characters or fewer. The verifier shortens longer values to 32 characters at ingestion before it applies filters, sends the request, or records the local event.
 
-The remaining public classes are used directly: `BlockedSessionMessage`, `LearningModeContext`, `PaymentMethodData`, and `SuppliedDecision` have public constructors (`new`), while the other DTOs have private constructors and are built via their static factories (`ReportContextData::from_array()`, `PaymentInstrumentData::from_array()` / `::empty()`). The enums are used as cases (e.g. `MessageContext::Purchase`).
+The remaining public classes are used directly: `BlockedSessionMessage`, `PaymentMethodData`, and `SuppliedDecision` have public constructors (`new`), while the other DTOs have private constructors and are built via their static factories (`ReportContextData::from_array()`, `PaymentInstrumentData::from_array()` / `::empty()`). The enums are used as cases (e.g. `MessageContext::Purchase`). `LearningModeContext` remains available for source compatibility but is deprecated because the learning-mode filter no longer runs.
 
 ### Extension filters
 
-Three hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Callback errors in the first two hooks fail open.
+Two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Callback errors in both hooks fail open.
 
 - **`woocommerce_fraud_protection_resolved_payment_data`** — the primary hook for payment gateways: enrich or replace the resolved payment data included in the fraud-check payload (card brand, last4, transaction mode, and so on). Return a `PaymentMethodData`; an invalid return falls back to the baseline resolved from the WC payment token.
 
@@ -178,14 +178,6 @@ Three hooks let an extension (e.g. a payment gateway with a non-standard checkou
   ```
 
   `SuppliedDecision::$decision` and `SuppliedDecision::$session_id_for_order` are read-only.
-
-- **`woocommerce_fraud_protection_learning_mode`** — control whether automated block decisions are suppressed during a controlled deployment. The second argument is a nullable `LearningModeContext`; it is `null` when learning mode is evaluated outside a verification attempt. During a verification attempt, the context exposes only the `gateway` and `verify_source` strings and the `transaction_mode` `PaymentMode` enum. Callbacks that accept one argument continue to work. This filter is a limited learning-mode interface and is separate from any future merchant enforcement API.
-
-  ```php
-  apply_filters( 'woocommerce_fraud_protection_learning_mode', bool $learning_mode, ?LearningModeContext $context );
-  ```
-
-  `LearningModeContext::$gateway`, `LearningModeContext::$verify_source`, and `LearningModeContext::$transaction_mode` are read-only.
 
 ### JavaScript integration
 

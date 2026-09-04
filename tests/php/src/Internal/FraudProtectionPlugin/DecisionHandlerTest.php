@@ -7,14 +7,13 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
-use Automattic\WooCommerce\FraudProtection\LearningModeContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -51,6 +50,13 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	private $rule_evaluator;
 
 	/**
+	 * Automatic-protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private $automatic_protection;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -60,8 +66,10 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->event_recorder = $this->createMock( SessionEventRecorder::class );
 		$this->rule_evaluator = $this->createMock( RuleEvaluator::class );
+		$this->automatic_protection = new AutomaticProtectionSetting();
+		$this->automatic_protection->reset();
 		$this->sut            = new DecisionHandler();
-		$this->sut->init( $this->event_recorder, $this->rule_evaluator );
+		$this->sut->init( $this->event_recorder, $this->rule_evaluator, $this->automatic_protection );
 	}
 
 	/**
@@ -70,7 +78,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		WC()->session = $this->original_session;
 		remove_all_filters( 'woocommerce_fraud_protection_automated_decision' );
-		remove_all_filters( 'woocommerce_fraud_protection_learning_mode' );
+		$this->automatic_protection->reset();
 		remove_all_actions( 'woocommerce_fraud_protection_rule_applied' );
 		parent::tearDown();
 	}
@@ -89,10 +97,10 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Test apply block decision.
 	 *
-	 * @testdox Should return the block decision unchanged when learning mode is off.
+	 * @testdox Should return the block decision when automatic protection is enabled.
 	 */
 	public function test_apply_block_decision(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->automatic_protection->set_enabled( true );
 
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
@@ -110,7 +118,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should honor an allow decision on the attempt following a block.
 	 */
 	public function test_block_decision_is_not_sticky_across_attempts(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->automatic_protection->set_enabled( true );
 
 		$first_result  = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 		$second_result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
@@ -128,7 +136,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should leave the WC session and cart untouched on a block decision.
 	 */
 	public function test_block_decision_leaves_session_and_cart_untouched(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->automatic_protection->set_enabled( true );
 
 		WC()->session = new \WC_Session_Handler();
 		WC()->session->init();
@@ -185,7 +193,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should allow filter to override decision from allow to block.
 	 */
 	public function test_filter_can_override_allow_to_block(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->automatic_protection->set_enabled( true );
 
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
@@ -206,7 +214,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should reject invalid filter return value and use original decision.
 	 */
 	public function test_filter_invalid_return_uses_original_decision(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->automatic_protection->set_enabled( true );
 
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
@@ -230,7 +238,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @param bool          $add_allow_before_throw Whether an earlier callback returns Allow.
 	 */
 	public function test_automated_filter_throw_uses_entry_decision_and_records( FraudDecision $entry_decision, \Throwable $throwable, bool $add_allow_before_throw ): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->automatic_protection->set_enabled( true );
 
 		if ( $add_allow_before_throw ) {
 			add_filter(
@@ -289,9 +297,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Default learning mode suppresses a Block recovered after an automated-decision filter error.
+	 * @testdox Disabled automatic protection suppresses a Block recovered after an automated-decision filter error.
 	 */
-	public function test_automated_filter_throw_still_applies_default_learning_mode(): void {
+	public function test_automated_filter_throw_still_applies_automatic_protection_setting(): void {
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
 			function () {
@@ -390,94 +398,24 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 	/*
 	|--------------------------------------------------------------------------
-	| Learning Mode Tests
+		| Automatic Protection Tests
 	|--------------------------------------------------------------------------
 	*/
 
 	/**
-	 * @testdox Learning mode suppresses block decision from API.
+	 * @testdox Disabled automatic protection suppresses a block decision from the service.
 	 */
-	public function test_learning_mode_suppresses_block(): void {
+	public function test_disabled_automatic_protection_suppresses_block(): void {
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
+		$this->assertLogged( 'info', 'Automatic protection is disabled: suppressing the "block" decision' );
 	}
 
 	/**
-	 * @testdox Learning mode receives the typed context for a verification attempt.
+	 * @testdox Disabled automatic protection suppresses a filter override to block.
 	 */
-	public function test_learning_mode_receives_typed_context(): void {
-		$received_context = null;
-		add_filter(
-			'woocommerce_fraud_protection_learning_mode',
-			function ( $learning_mode, $context ) use ( &$received_context ) {
-				$received_context = $context;
-				return $learning_mode;
-			},
-			10,
-			2
-		);
-
-		$this->sut->apply_decision(
-			VerifyResult::create( FraudDecision::Allow, 'test-session' ),
-			array(
-				'source'  => 'checkout',
-				'payment' => array(
-					'gateway'          => 'stripe',
-					'transaction_mode' => 'live',
-				),
-			)
-		);
-
-		$this->assertInstanceOf( LearningModeContext::class, $received_context );
-		$this->assertSame( 'stripe', $received_context->gateway );
-		$this->assertSame( 'checkout', $received_context->verify_source );
-		$this->assertSame( PaymentMode::Live, $received_context->transaction_mode );
-	}
-
-	/**
-	 * @testdox Learning mode receives safe fallback values when payload context is invalid.
-	 */
-	public function test_learning_mode_receives_safe_fallback_context(): void {
-		$received_contexts = array();
-		add_filter(
-			'woocommerce_fraud_protection_learning_mode',
-			function ( $learning_mode, $context ) use ( &$received_contexts ) {
-				$received_contexts[] = $context;
-				return $learning_mode;
-			},
-			10,
-			2
-		);
-
-		$this->sut->apply_decision(
-			VerifyResult::create( FraudDecision::Allow, 'test-session' ),
-			array(
-				'source'  => array( 'invalid' ),
-				'payment' => array(
-					'gateway'          => 123,
-					'transaction_mode' => 'invalid',
-				),
-			)
-		);
-
-		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
-
-		$this->assertCount( 2, $received_contexts );
-		$this->assertInstanceOf( LearningModeContext::class, $received_contexts[0] );
-		$this->assertSame( '', $received_contexts[0]->gateway );
-		$this->assertSame( '', $received_contexts[0]->verify_source );
-		$this->assertSame( PaymentMode::Unknown, $received_contexts[0]->transaction_mode );
-		$this->assertSame( '', $received_contexts[1]->gateway );
-		$this->assertSame( '', $received_contexts[1]->verify_source );
-		$this->assertSame( PaymentMode::Unknown, $received_contexts[1]->transaction_mode );
-	}
-
-	/**
-	 * @testdox Learning mode suppresses filter override to block.
-	 */
-	public function test_learning_mode_suppresses_filter_override_to_block(): void {
+	public function test_disabled_automatic_protection_suppresses_filter_override_to_block(): void {
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
 			function () {
@@ -488,11 +426,11 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
-		$this->assertLogged( 'info', 'Learning mode: suppressing "block" decision' );
+		$this->assertLogged( 'info', 'Automatic protection is disabled: suppressing the "block" decision' );
 	}
 
 	/**
-	 * @testdox Records the received block decision with the applied allow when learning mode suppresses it.
+	 * @testdox Records the received block with the applied allow when automatic protection suppresses it.
 	 */
 	public function test_records_suppressed_block_decision(): void {
 		$result = VerifyResult::create( FraudDecision::Block, 'test-session' );
@@ -509,7 +447,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Records the block decision as both received and applied when enforcement is active.
 	 */
 	public function test_records_enforced_block_decision(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
+		$this->automatic_protection->set_enabled( true );
 
 		$verify_result = VerifyResult::create( FraudDecision::Block, 'test-session' );
 
@@ -593,14 +531,14 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A matching merchant block rule enforces even in learning mode.
+	 * @testdox A matching merchant block rule enforces when automatic protection is disabled.
 	 */
-	public function test_matching_block_rule_enforces_in_learning_mode(): void {
+	public function test_matching_block_rule_enforces_when_automatic_protection_is_disabled(): void {
 		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Block ) );
 
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
-		$this->assertSame( FraudDecision::Block, $result, 'The merchant block rule must enforce even while learning mode (default) is on' );
+		$this->assertSame( FraudDecision::Block, $result, 'The merchant block rule must enforce while automatic protection is disabled' );
 		$this->assertLogged( 'info', 'Merchant rule 7 decided the session: "block"' );
 	}
 
@@ -608,8 +546,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox A matching merchant allow rule overrides a Blackbox block verdict.
 	 */
 	public function test_matching_allow_rule_overrides_block_verdict(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
-
 		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Allow ) );
 
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
@@ -621,8 +557,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox A matching rule bypasses the decision filter entirely.
 	 */
 	public function test_matching_rule_bypasses_decision_filter(): void {
-		add_filter( 'woocommerce_fraud_protection_learning_mode', '__return_false' );
-
 		$filter_called = false;
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
