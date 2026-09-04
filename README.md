@@ -39,7 +39,7 @@ With Docker running, start a test store for the current checkout or worktree:
 npm run env:start
 ```
 
-Open the store URL reported by `env:start` (default: http://localhost:8888). Add `/wp-admin` for the admin (`admin` / `password`). The first start seeds a test store. Later starts keep its data.
+Open the store URL reported by `env:start` (default: <http://localhost:8888>). Add `/wp-admin` for the admin (`admin` / `password`). The first start seeds a test store. Later starts keep its data.
 
 ```bash
 npm run env:stop      # stop the containers (keeps data)
@@ -190,20 +190,20 @@ Request the Blackbox scripts from the hook that renders your payment surface, th
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 
 add_action(
-	'my_gateway_payment_surface_render',
-	function (): void {
-		if ( ! wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts() ) {
-			return;
-		}
+ 'my_gateway_payment_surface_render',
+ function (): void {
+  if ( ! wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts() ) {
+   return;
+  }
 
-		wp_enqueue_script(
-			'my-gateway-fraud-integration',
-			plugins_url( 'js/fraud-integration.js', __FILE__ ),
-			array( 'wc-fraud-protection-blackbox-init' ),
-			'1.0.0',
-			array( 'in_footer' => true )
-		);
-	}
+  wp_enqueue_script(
+   'my-gateway-fraud-integration',
+   plugins_url( 'js/fraud-integration.js', __FILE__ ),
+   array( 'wc-fraud-protection-blackbox-init' ),
+   '1.0.0',
+   array( 'in_footer' => true )
+  );
+ }
 );
 ```
 
@@ -216,25 +216,25 @@ Then, in your integration script:
 // only once the Blackbox SDK has loaded, possibly after your script runs,
 // or never (e.g. content blockers).
 function withSessionId( requestBody ) {
-	const fp = window.wcFraudProtection;
+ const fp = window.wcFraudProtection;
 
-	if ( ! fp || typeof fp.acquireSessionId !== 'function' ) {
-		// Fail-open: send the request without a session ID. Never block
-		// the payment because fraud protection is unavailable.
-		return Promise.resolve( requestBody );
-	}
+ if ( ! fp || typeof fp.acquireSessionId !== 'function' ) {
+  // Fail-open: send the request without a session ID. Never block
+  // the payment because fraud protection is unavailable.
+  return Promise.resolve( requestBody );
+ }
 
-	return fp.acquireSessionId().then( function ( sessionId ) {
-		requestBody[ fp.config.sessionIdField ] = sessionId;
-		return requestBody;
-	} );
+ return fp.acquireSessionId().then( function ( sessionId ) {
+  requestBody[ fp.config.sessionIdField ] = sessionId;
+  return requestBody;
+ } );
 }
 
 withSessionId( requestBody ).then( function ( body ) {
-	// ... send the request, then reset for the next attempt:
-	if ( window.wcFraudProtection && window.wcFraudProtection.reset ) {
-		window.wcFraudProtection.reset();
-	}
+ // ... send the request, then reset for the next attempt:
+ if ( window.wcFraudProtection && window.wcFraudProtection.reset ) {
+  window.wcFraudProtection.reset();
+ }
 } );
 ```
 
