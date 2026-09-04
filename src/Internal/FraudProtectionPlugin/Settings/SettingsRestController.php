@@ -14,6 +14,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class SettingsRestController extends \WP_REST_Controller {
 
+	private const REST_NAMESPACE = 'wc-fraud-protection/v1';
+
 	/**
 	 * Automatic-protection setting.
 	 *
@@ -37,7 +39,7 @@ class SettingsRestController extends \WP_REST_Controller {
 	 * @param AutomaticProtectionSettingUpdater $updater              Automatic-protection setting updater.
 	 */
 	final public function init( AutomaticProtectionSetting $automatic_protection, AutomaticProtectionSettingUpdater $updater ): void {
-		$this->namespace            = 'wc-fraud-protection/v1';
+		$this->namespace            = self::REST_NAMESPACE;
 		$this->rest_base            = 'settings';
 		$this->automatic_protection = $automatic_protection;
 		$this->updater              = $updater;
@@ -57,7 +59,7 @@ class SettingsRestController extends \WP_REST_Controller {
 	 */
 	public function register_routes(): void {
 		register_rest_route(
-			$this->namespace,
+			self::REST_NAMESPACE,
 			'/' . $this->rest_base,
 			array(
 				array(
