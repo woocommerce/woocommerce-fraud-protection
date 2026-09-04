@@ -32,7 +32,7 @@
 			if ( typeof fp.reset === 'function' ) {
 				fp.reset();
 			}
-		} catch ( e ) {
+		} catch {
 			// Fail open.
 		}
 	}
@@ -45,7 +45,7 @@
 		try {
 			const data = await response.clone().json();
 			return data && false === data.success ? 'failure' : 'success';
-		} catch ( e ) {
+		} catch {
 			return 'unknown';
 		}
 	}
@@ -66,7 +66,7 @@
 			const body = JSON.parse( init.body );
 			body[ fp.config.sessionIdField ] = sessionId;
 			init.body = JSON.stringify( body );
-		} catch ( e ) {
+		} catch {
 			// Fail open with the original request data.
 		}
 
@@ -103,7 +103,7 @@
 					init || {}
 				);
 			}
-		} catch ( e ) {
+		} catch {
 			// Fail open.
 		}
 

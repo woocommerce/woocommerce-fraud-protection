@@ -15,11 +15,11 @@ Before changing code:
 
 ## Runtime and commands
 
-The plugin supports PHP 8.1 or later, but production code must not use features added after PHP 8.1. It uses Node.js 20.
+The plugin supports PHP 8.1 or later, but production code must not use features added after PHP 8.1. It uses Node.js 24.
 
 Common commands:
 
-- `npm run test:php -- --filter <ClassName>` — focused PHP test
+- `npm run test:php:env -- --filter <ClassName>` — focused PHP test in the isolated wp-env environment
 - `npm run test:js` — JavaScript tests
 - `npm run test` — smoke, PHP, and JavaScript tests
 - `npm run lint` — PHP, JavaScript, and CSS linting

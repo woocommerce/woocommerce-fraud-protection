@@ -22,6 +22,7 @@ TMPDIR=${TMPDIR-/tmp}
 TMPDIR=$(echo $TMPDIR | sed -e "s/\/$//")
 WP_TESTS_DIR=${WP_TESTS_DIR-$TMPDIR/wordpress-tests-lib}
 WP_CORE_DIR=${WP_CORE_DIR-$TMPDIR/wordpress/}
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
 download() {
 	if [ $(which curl) ]; then
@@ -254,13 +255,7 @@ overlay_wc_test_framework() {
 		exit 1
 	fi
 
-	local src_dir="$TMPDIR/woocommerce-src"
-	echo "Overlaying WooCommerce $wc_version test framework from source..."
-	rm -rf "$src_dir"
-	git clone --quiet --depth 1 --branch "$wc_version" --filter=blob:none --sparse \
-		https://github.com/woocommerce/woocommerce.git "$src_dir"
-	git -C "$src_dir" sparse-checkout set plugins/woocommerce/tests
-	cp -r "$src_dir/plugins/woocommerce/tests" "$wc_plugin_dir/"
+	"$SCRIPT_DIR/install-wc-test-framework.sh" "$wc_plugin_dir" "$wc_version"
 }
 
 install_wp

@@ -2,9 +2,10 @@
 
 - PHP 8.1+
 - WooCommerce 9.8+
-- Node.js 20
+- Node.js 24
 - Composer
-- MySQL (for the PHP test suite)
+- Docker (for local development and isolated PHP tests)
+- MySQL (for direct PHP tests)
 
 ## Installing dependencies
 
@@ -38,7 +39,7 @@ With Docker running, start a test store for the current checkout or worktree:
 npm run env:start
 ```
 
-Open the store URL reported by `env:start` (default: http://localhost:8888). Add `/wp-admin` for the admin (`admin` / `password`). The first start seeds a test store. Later starts keep its data.
+Open the store URL reported by `env:start` (default: <http://localhost:8888>). Add `/wp-admin` for the admin (`admin` / `password`). The first start seeds a test store. Later starts keep its data.
 
 ```bash
 npm run env:stop      # stop the containers (keeps data)
@@ -48,7 +49,7 @@ npm run env:destroy   # remove the containers and data
 Each worktree gets separate containers. To run several at once, add a gitignored `.wp-env.override.json` to each worktree with unique ports:
 
 ```json
-{ "port": 8890, "testsPort": 8891 }
+{ "port": 8890 }
 ```
 
 Live service testing is disabled by default. Local UI, checkout, hook, and fail-open testing still work.
@@ -120,22 +121,16 @@ npm run test:js
 
 ### PHP tests (PHPUnit)
 
-PHP tests run against WooCommerce core's test framework, so they need a WordPress test environment (WordPress, the test library, and WooCommerce) and a MySQL database.
-
-Set up the environment once. This creates the database and downloads WordPress, the test library, and WooCommerce:
+PHP tests run in an isolated wp-env configuration. The first run creates the environment and installs the matching WooCommerce test framework. It does not change the local development store.
 
 ```bash
-tests/bin/install-wp-tests.sh <db-name> <db-user> <db-pass> [db-host] [wp-version] [wc-version]
+npm run test:php:env                          # all PHP tests
+npm run test:php:env -- --filter <ClassName>  # a single test class
 ```
 
-Then run the tests:
+The test environment uses port 8889 by default. Add a gitignored `.wp-env.phpunit.override.json` with another `port` when that port is unavailable.
 
-```bash
-npm run test:php                          # all PHP tests
-npm run test:php -- --filter <ClassName>  # a single test class
-```
-
-The test bootstrap locates WooCommerce automatically. To run against an existing WooCommerce checkout instead, set the `WC_DIR` environment variable to its plugin directory. That checkout must have its own dependencies installed: run `composer install` in the WooCommerce plugin directory, otherwise WooCommerce fails to load. (The `install-wp-tests.sh` setup above does not need this; it uses the prebuilt plugin from wordpress.org.)
+Use `npm run test:php` to run PHPUnit directly against an existing WordPress test installation. Set `WC_DIR` to an existing WooCommerce plugin directory when the bootstrap cannot locate it. This path requires the WordPress test library, a MySQL database, and the WooCommerce test framework. The CI workflows prepare these dependencies with `tests/bin/install-wp-tests.sh`.
 
 ## Public API
 
@@ -195,20 +190,20 @@ Request the Blackbox scripts from the hook that renders your payment surface, th
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 
 add_action(
-	'my_gateway_payment_surface_render',
-	function (): void {
-		if ( ! wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts() ) {
-			return;
-		}
+ 'my_gateway_payment_surface_render',
+ function (): void {
+  if ( ! wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts() ) {
+   return;
+  }
 
-		wp_enqueue_script(
-			'my-gateway-fraud-integration',
-			plugins_url( 'js/fraud-integration.js', __FILE__ ),
-			array( 'wc-fraud-protection-blackbox-init' ),
-			'1.0.0',
-			array( 'in_footer' => true )
-		);
-	}
+  wp_enqueue_script(
+   'my-gateway-fraud-integration',
+   plugins_url( 'js/fraud-integration.js', __FILE__ ),
+   array( 'wc-fraud-protection-blackbox-init' ),
+   '1.0.0',
+   array( 'in_footer' => true )
+  );
+ }
 );
 ```
 
@@ -221,25 +216,25 @@ Then, in your integration script:
 // only once the Blackbox SDK has loaded, possibly after your script runs,
 // or never (e.g. content blockers).
 function withSessionId( requestBody ) {
-	const fp = window.wcFraudProtection;
+ const fp = window.wcFraudProtection;
 
-	if ( ! fp || typeof fp.acquireSessionId !== 'function' ) {
-		// Fail-open: send the request without a session ID. Never block
-		// the payment because fraud protection is unavailable.
-		return Promise.resolve( requestBody );
-	}
+ if ( ! fp || typeof fp.acquireSessionId !== 'function' ) {
+  // Fail-open: send the request without a session ID. Never block
+  // the payment because fraud protection is unavailable.
+  return Promise.resolve( requestBody );
+ }
 
-	return fp.acquireSessionId().then( function ( sessionId ) {
-		requestBody[ fp.config.sessionIdField ] = sessionId;
-		return requestBody;
-	} );
+ return fp.acquireSessionId().then( function ( sessionId ) {
+  requestBody[ fp.config.sessionIdField ] = sessionId;
+  return requestBody;
+ } );
 }
 
 withSessionId( requestBody ).then( function ( body ) {
-	// ... send the request, then reset for the next attempt:
-	if ( window.wcFraudProtection && window.wcFraudProtection.reset ) {
-		window.wcFraudProtection.reset();
-	}
+ // ... send the request, then reset for the next attempt:
+ if ( window.wcFraudProtection && window.wcFraudProtection.reset ) {
+  window.wcFraudProtection.reset();
+ }
 } );
 ```
 

@@ -213,11 +213,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 			$this->sut->verify_and_block( $subscription );
 			$this->fail( 'Expected RedirectInterceptedException' );
 		} catch ( RedirectInterceptedException $e ) {
-			$this->assertMatchesRegularExpression(
-				'#^http://example\.org/my-account/view-subscription/99/$#',
-				$e->getMessage(),
-				'Should redirect to view-subscription page'
-			);
+			$this->assertSame( $subscription->get_view_order_url(), $e->getMessage(), 'Should redirect to view-subscription page' );
 		}
 
 		$this->assertTrue(
@@ -299,7 +295,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$subscription = $this->createMock( \WC_Order::class );
 		$subscription->method( 'get_id' )->willReturn( $id );
 		$subscription->method( 'get_view_order_url' )->willReturn(
-			'http://example.org/my-account/view-subscription/' . $id . '/'
+			home_url( '/my-account/view-subscription/' . $id . '/' )
 		);
 		return $subscription;
 	}

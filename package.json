@@ -21,7 +21,7 @@
 		"env": "wp-env",
 		"env:start": "wp-env start",
 		"env:stop": "wp-env stop",
-		"env:clean": "wp-env clean",
+		"env:clean": "wp-env reset",
 		"env:destroy": "wp-env destroy",
 		"env:update": "wp-env start --update",
 		"env:setup": "bash ./bin/wp-env-setup.sh",
@@ -34,10 +34,10 @@
 		"lint:php": "vendor/bin/phpcs",
 		"lint:php:autofix": "vendor/bin/phpcbf",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
-		"test": "npm run test:smoke && npm run test:php && npm run test:js",
-		"test:js": "wp-scripts test-unit-js",
+		"test": "npm run test:smoke && npm run test:php:env && npm run test:js",
+		"test:js": "NODE_OPTIONS=--experimental-vm-modules wp-scripts test-unit-js",
 		"test:php": "vendor/bin/phpunit",
-		"test:php:env": "vendor/bin/phpunit",
+		"test:php:env": "bash ./bin/run-php-tests-wp-env.sh",
 		"test:smoke": "tests/php/smoke/run.sh",
 		"phpstan": "vendor/bin/phpstan analyse --memory-limit=2G",
 		"phpstan:baseline": "vendor/bin/phpstan analyse --memory-limit=2G --generate-baseline=phpstan-baseline.neon"
@@ -47,31 +47,27 @@
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.3",
 		"@testing-library/user-event": "^14.6.7",
-		"@types/jest": "^29.5.14",
+		"@types/jest": "^30.0.0",
 		"@types/react": "^18.3.28",
 		"@types/react-dom": "^18.3.7",
 		"@wordpress/api-fetch": "^7.54.0",
 		"@wordpress/base-styles": "^6.20.0",
 		"@wordpress/data": "^10.54.0",
 		"@wordpress/element": "^8.6.0",
-		"@wordpress/env": "10.39.0",
+		"@wordpress/env": "11.14.0",
 		"@wordpress/i18n": "^6.27.0",
-		"@wordpress/jest-preset-default": "^12.42.0",
+		"@wordpress/jest-preset-default": "^14.1.0",
 		"@wordpress/notices": "^5.54.0",
-		"@wordpress/scripts": "^31.7.0",
+		"@wordpress/scripts": "^34.2.0",
 		"@wordpress/ui": "^0.21.0",
 		"jquery": "^3.7.1",
-		"typescript": "^5.7.3"
+		"typescript": "^5.9.3"
 	},
 	"engines": {
-		"node": "^20.11.1"
+		"node": "^24.15.0"
 	},
 	"jest": {
 		"preset": "@wordpress/jest-preset-default",
-		"moduleNameMapper": {
-			"^@wordpress/ui$": "<rootDir>/node_modules/@wordpress/ui/build/index.cjs",
-			"^@wordpress/theme$": "<rootDir>/node_modules/@wordpress/theme/build/index.cjs"
-		},
 		"testMatch": [
 			"**/tests/js/**/*.test.js",
 			"**/tests/js/**/*.test.ts",
