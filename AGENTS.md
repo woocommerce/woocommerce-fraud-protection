@@ -15,7 +15,7 @@ Before changing code:
 
 ## Runtime and commands
 
-The plugin supports PHP 8.1 or later, but production code must not use features added after PHP 8.1. It uses Node.js 20.
+The plugin supports PHP 8.1 or later, but production code must not use features added after PHP 8.1. It uses Node.js 24.
 
 Common commands:
 

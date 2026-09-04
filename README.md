@@ -2,7 +2,7 @@
 
 - PHP 8.1+
 - WooCommerce 9.8+
-- Node.js 20
+- Node.js 24
 - Composer
 - MySQL (for the PHP test suite)
 
