@@ -11,7 +11,6 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 
 /**
  * Tests for FraudProtectionSettingsPage.
@@ -179,14 +178,22 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$version      = 'settings-test-version';
 		$this->write_asset_fixture( $dependencies, $version );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
-		wp_set_current_user( 1 );
-		$rest_controller = wc_get_container()->get( SettingsRestController::class );
-		$rest_controller->register();
-		do_action( 'rest_api_init', rest_get_server() );
-		remove_action( 'rest_api_init', array( $rest_controller, 'register_routes' ) );
+		$rest_requests = array();
+		$rest_mock     = function ( $result, $server, $request ) use ( &$rest_requests ) {
+			if ( '/wc-fraud-protection/v1/settings' !== $request->get_route() ) {
+				return $result;
+			}
+
+			$rest_requests[] = array( $request->get_method(), $request->get_route() );
+
+			return rest_ensure_response( array( 'automatic_protection' => true ) );
+		};
+		add_filter( 'rest_pre_dispatch', $rest_mock, 10, 3 );
 
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
+		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
+		$this->assertSame( array( array( 'GET', '/wc-fraud-protection/v1/settings' ) ), $rest_requests );
 		$this->assertFalse( wp_style_is( 'wp-components', 'enqueued' ) );
 		$this->assertTrue( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
@@ -207,6 +214,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$before_script = implode( "\n", $before );
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
 		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
+		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
 	}
 
 	/**
