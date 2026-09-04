@@ -10,6 +10,8 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -49,20 +51,29 @@ class FraudProtectionCommands {
 	private AutomaticProtectionSetting $automatic_protection;
 
 	/**
+	 * Automatic-protection setting updater.
+	 *
+	 * @var AutomaticProtectionSettingUpdater
+	 */
+	private AutomaticProtectionSettingUpdater $automatic_protection_updater;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SchemaManager              $schema_manager       The schema manager instance.
-	 * @param SessionEventPruner         $session_event_pruner The session pruner instance.
-	 * @param LegacyProxy                $legacy_proxy         The legacy proxy instance.
-	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
+	 * @param SchemaManager                     $schema_manager               The schema manager instance.
+	 * @param SessionEventPruner                $session_event_pruner         The session pruner instance.
+	 * @param LegacyProxy                       $legacy_proxy                 The legacy proxy instance.
+	 * @param AutomaticProtectionSetting        $automatic_protection         Automatic-protection setting.
+	 * @param AutomaticProtectionSettingUpdater $automatic_protection_updater Automatic-protection setting updater.
 	 */
-	final public function init( SchemaManager $schema_manager, SessionEventPruner $session_event_pruner, LegacyProxy $legacy_proxy, AutomaticProtectionSetting $automatic_protection ): void {
-		$this->schema_manager       = $schema_manager;
-		$this->session_event_pruner = $session_event_pruner;
-		$this->legacy_proxy         = $legacy_proxy;
-		$this->automatic_protection = $automatic_protection;
+	final public function init( SchemaManager $schema_manager, SessionEventPruner $session_event_pruner, LegacyProxy $legacy_proxy, AutomaticProtectionSetting $automatic_protection, AutomaticProtectionSettingUpdater $automatic_protection_updater ): void {
+		$this->schema_manager               = $schema_manager;
+		$this->session_event_pruner         = $session_event_pruner;
+		$this->legacy_proxy                 = $legacy_proxy;
+		$this->automatic_protection         = $automatic_protection;
+		$this->automatic_protection_updater = $automatic_protection_updater;
 	}
 
 	/**
@@ -78,6 +89,13 @@ class FraudProtectionCommands {
 	 * @internal
 	 */
 	public function register_commands(): void {
+		$this->legacy_proxy->call_static(
+			WP_CLI::class,
+			'add_command',
+			'wc fraud-protection automatic-protection set',
+			array( $this, 'automatic_protection_set' ),
+			array( 'shortdesc' => __( 'Set automatic protection for this site.', 'woocommerce-fraud-protection' ) )
+		);
 		$this->legacy_proxy->call_static(
 			WP_CLI::class,
 			'add_command',
@@ -99,6 +117,27 @@ class FraudProtectionCommands {
 			array( $this, 'sessions_prune' ),
 			array( 'shortdesc' => __( 'Prune expired Fraud Protection sessions.', 'woocommerce-fraud-protection' ) )
 		);
+	}
+
+	/**
+	 * Set the automatic-protection state.
+	 *
+	 * @internal
+	 *
+	 * @param string[] $args Positional command arguments.
+	 */
+	public function automatic_protection_set( array $args ): void {
+		$value = $this->validate_state_argument( $args );
+
+		$success = 'default' === $value
+			? $this->automatic_protection_updater->reset( SettingsChangeChannel::Cli )
+			: $this->automatic_protection_updater->set_enabled( 'enabled' === $value, SettingsChangeChannel::Cli );
+		if ( ! $success ) {
+			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The automatic-protection setting could not be saved.', 'woocommerce-fraud-protection' ) );
+			return;
+		}
+
+		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The automatic-protection setting was updated.', 'woocommerce-fraud-protection' ) );
 	}
 
 	/**
@@ -257,6 +296,22 @@ class FraudProtectionCommands {
 	 */
 	private static function value_or_unavailable( $value ): string {
 		return is_scalar( $value ) && '' !== (string) $value ? (string) $value : __( 'Unavailable', 'woocommerce-fraud-protection' );
+	}
+
+	/**
+	 * Validate a settings command argument.
+	 *
+	 * @param string[] $args Positional command arguments.
+	 * @return string
+	 */
+	private function validate_state_argument( array $args ): string {
+		$value = $args[0] ?? '';
+		if ( 1 !== count( $args ) || ! in_array( $value, array( 'enabled', 'disabled', 'default' ), true ) ) {
+			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'Use one of: enabled, disabled, or default.', 'woocommerce-fraud-protection' ) );
+			return '';
+		}
+
+		return $value;
 	}
 
 	/**

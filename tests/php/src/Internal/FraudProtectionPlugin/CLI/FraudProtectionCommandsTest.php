@@ -11,7 +11,11 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -45,6 +49,12 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	 * @var SessionEventPruner&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $session_event_pruner;
+
+	/** @var AutomaticProtectionSetting&\PHPUnit\Framework\MockObject\MockObject */
+	private $automatic_protection;
+
+	/** @var AutomaticProtectionSettingUpdater&\PHPUnit\Framework\MockObject\MockObject */
+	private $automatic_protection_updater;
 
 	/** @var array<string, callable> */
 	private array $wp_cli_hooks;
@@ -96,21 +106,14 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$this->schema_manager       = $this->createMock( SchemaManager::class );
-		$this->session_event_pruner = $this->createMock( SessionEventPruner::class );
-		$this->sut                  = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), wc_get_container()->get( AutomaticProtectionSetting::class ) );
-	}
-
-	/**
-	 * Tear down test fixtures.
-	 */
-	public function tearDown(): void {
-		remove_all_filters( 'pre_option_jetpack_options' );
-		delete_option( 'woocommerce_fraud_protection_automatic_protection' );
-		delete_option( SchemaManager::DB_VERSION_OPTION );
-		delete_option( SchemaManager::DB_INSTALL_STATE_OPTION );
-		parent::tearDown();
+		$this->schema_manager               = $this->createMock( SchemaManager::class );
+		$this->session_event_pruner         = $this->createMock( SessionEventPruner::class );
+		$this->automatic_protection         = $this->createMock( AutomaticProtectionSetting::class );
+		$this->automatic_protection_updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
+		$this->sut                          = new FraudProtectionCommands();
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->automatic_protection, $this->automatic_protection_updater );
 	}
 
 	/**
@@ -155,11 +158,106 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
+				'wc fraud-protection automatic-protection set',
 				'wc fraud-protection status',
 				'wc fraud-protection database install',
 				'wc fraud-protection sessions prune',
 			),
 			array_keys( $this->wp_cli_commands )
+		);
+	}
+
+	/**
+	 * @testdox Explicit automatic-protection CLI values are passed to the updater.
+	 *
+	 * @dataProvider automatic_protection_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state.
+	 */
+	public function test_automatic_protection_set_routes_explicit_values( string $value, bool $enabled ): void {
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'set_enabled' )
+			->with( $enabled, SettingsChangeChannel::Cli )
+			->willReturn( true );
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
+
+		$this->sut->automatic_protection_set( array( $value ) );
+
+		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox The default automatic-protection CLI value resets the setting.
+	 */
+	public function test_automatic_protection_set_routes_default_to_reset(): void {
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'set_enabled' );
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'reset' )
+			->with( SettingsChangeChannel::Cli )
+			->willReturn( true );
+
+		$this->sut->automatic_protection_set( array( 'default' ) );
+
+		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox Invalid automatic-protection values do not change stored state.
+	 */
+	public function test_automatic_protection_set_rejects_invalid_values(): void {
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'set_enabled' );
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'enabled, disabled, or default' );
+		$this->sut->automatic_protection_set( array( 'invalid' ) );
+	}
+
+	/**
+	 * @testdox Automatic-protection CLI changes report failed setting writes.
+	 *
+	 * @dataProvider automatic_protection_value_provider
+	 *
+	 * @param string $value   Requested setting value.
+	 * @param bool   $enabled Requested enabled state for explicit values.
+	 */
+	public function test_automatic_protection_set_reports_failed_explicit_updates( string $value, bool $enabled ): void {
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'set_enabled' )
+			->with( $enabled, SettingsChangeChannel::Cli )
+			->willReturn( false );
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->sut->automatic_protection_set( array( $value ) );
+	}
+
+	/**
+	 * @testdox A failed automatic-protection reset is reported as a CLI error.
+	 */
+	public function test_automatic_protection_set_reports_failed_reset(): void {
+		$this->automatic_protection_updater->expects( $this->never() )->method( 'set_enabled' );
+		$this->automatic_protection_updater->expects( $this->once() )
+			->method( 'reset' )
+			->with( SettingsChangeChannel::Cli )
+			->willReturn( false );
+
+		$this->expectException( WPCLIErrorException::class );
+		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->sut->automatic_protection_set( array( 'default' ) );
+	}
+
+	/**
+	 * Provide explicit automatic-protection values.
+	 *
+	 * @return array<string, array{string, bool}>
+	 */
+	public function automatic_protection_value_provider(): array {
+		return array(
+			'enable'  => array( 'enabled', true ),
+			'disable' => array( 'disabled', false ),
 		);
 	}
 
