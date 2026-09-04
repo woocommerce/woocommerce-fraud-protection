@@ -58,8 +58,11 @@
 		"@wordpress/i18n": "^6.27.0",
 		"@wordpress/jest-preset-default": "^14.1.0",
 		"@wordpress/notices": "^5.54.0",
+		"@wordpress/postcss-plugins-preset": "^5.54.0",
 		"@wordpress/scripts": "^34.2.0",
+		"@wordpress/theme": "^2.0.0",
 		"@wordpress/ui": "^0.21.0",
+		"cssnano": "^6.1.2",
 		"jquery": "^3.7.1",
 		"typescript": "^5.9.3"
 	},

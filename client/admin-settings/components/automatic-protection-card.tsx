@@ -15,12 +15,12 @@ export function AutomaticProtectionCard( {
 	onChange,
 }: AutomaticProtectionCardProps ) {
 	return (
-		<Card.Root render={ <section /> }>
+		<Card.Root
+			className="wc-fraud-protection-settings__card"
+			render={ <section /> }
+		>
 			<Card.Header>
-				<Card.Title
-					// eslint-disable-next-line jsx-a11y/heading-has-content -- Card.Title injects its children into the render element.
-					render={ <h2 /> }
-				>
+				<Card.Title render={ <h2 /> }>
 					{ __(
 						'Automatic protection',
 						'woocommerce-fraud-protection'
@@ -66,18 +66,14 @@ export function AutomaticProtectionCard( {
 									disabled={ disabled }
 									onCheckedChange={ onChange }
 								/>
-								<Text
-									variant="body-md"
-									render={
-										// eslint-disable-next-line jsx-a11y/label-has-associated-control -- Text injects its children into the render element.
-										<label htmlFor="automatic-protection-checkbox" />
-									}
-								>
-									{ __(
-										'Automatically block checkout attempts flagged by fraud prevention.',
-										'woocommerce-fraud-protection'
-									) }
-								</Text>
+								<label htmlFor="automatic-protection-checkbox">
+									<Text variant="body-md">
+										{ __(
+											'Automatically block checkout attempts flagged by fraud prevention.',
+											'woocommerce-fraud-protection'
+										) }
+									</Text>
+								</label>
 							</>
 						) }
 					</Stack>
