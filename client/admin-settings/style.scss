@@ -1,11 +1,18 @@
-@use '@wordpress/base-styles/colors' as *;
-
 .wc-fraud-protection-settings__content {
 	max-width: 720px;
 	margin: 0 auto;
 
+	.wc-fraud-protection-settings__card {
+		border-color: var(--wpds-color-stroke-surface-neutral-weak);
+		border-radius: 10px;
+
+		> :first-child h2 {
+			font-weight: 500;
+		}
+	}
+
 	.wc-fraud-protection-settings__description {
-		color: $gray-700;
+		color: var(--wpds-color-foreground-content-neutral-weak);
 	}
 
 	.wc-fraud-protection-settings__control {
