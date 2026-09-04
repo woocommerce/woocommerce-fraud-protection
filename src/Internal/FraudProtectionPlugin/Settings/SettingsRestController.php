@@ -115,7 +115,7 @@ class SettingsRestController extends \WP_REST_Controller {
 		$enabled = true === $request->get_param( 'automatic_protection' );
 
 		if ( ! $this->updater->set_enabled( $enabled, SettingsChangeChannel::Settings ) ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The Fraud Protection setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
 		return $this->get_settings();

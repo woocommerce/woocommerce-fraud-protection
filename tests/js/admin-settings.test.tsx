@@ -155,7 +155,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		expect(
 			await findVisibleText(
-				'The Fraud Protection settings could not be loaded. Check your connection and try again.'
+				'The fraud prevention settings could not be loaded. Check your connection and try again.'
 			)
 		).toBeVisible();
 		expect( screen.getByRole( 'checkbox' ) ).toHaveAttribute(
@@ -316,7 +316,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		expect(
 			await findVisibleText(
-				'The Fraud Protection setting could not be saved. Try again later.'
+				'The fraud prevention setting could not be saved. Try again later.'
 			)
 		).toBeVisible();
 		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
@@ -339,7 +339,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect(
 			screen
 				.queryAllByText(
-					'The Fraud Protection setting could not be saved. Try again later.',
+					'The fraud prevention setting could not be saved. Try again later.',
 					{ exact: true }
 				)
 				.filter( ( element ) => ! element.hasAttribute( 'aria-live' ) )

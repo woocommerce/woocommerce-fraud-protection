@@ -75,7 +75,7 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 
 		if ( $this->asset_error ) {
 			echo '<div class="notice notice-error"><p>';
-			esc_html_e( 'The Fraud Protection settings could not be loaded.', 'woocommerce-fraud-protection' );
+			esc_html_e( 'The fraud prevention settings could not be loaded.', 'woocommerce-fraud-protection' );
 			echo '</p></div>';
 			return;
 		}

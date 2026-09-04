@@ -21,12 +21,12 @@ export function FraudProtectionSettingsPage() {
 	let errorMessage = null;
 	if ( error?.operation === 'load' ) {
 		errorMessage = __(
-			'The Fraud Protection settings could not be loaded.',
+			'The fraud prevention settings could not be loaded.',
 			'woocommerce-fraud-protection'
 		);
 	} else if ( error?.operation === 'save' ) {
 		errorMessage = __(
-			'The Fraud Protection setting could not be saved.',
+			'The fraud prevention setting could not be saved.',
 			'woocommerce-fraud-protection'
 		);
 	}

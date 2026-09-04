@@ -234,7 +234,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertFalse( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertStringContainsString( 'class="notice notice-error"', $output );
-		$this->assertStringContainsString( 'The Fraud Protection settings could not be loaded.', $output );
+		$this->assertStringContainsString( 'The fraud prevention settings could not be loaded.', $output );
 		$this->assertStringNotContainsString( 'id="wc-fraud-protection-settings"', $output );
 		$this->assertTrue( $GLOBALS['hide_save_button'] );
 	}
