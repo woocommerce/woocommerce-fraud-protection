@@ -169,8 +169,8 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->mc_stats->expects( $this->exactly( 2 ) )
 			->method( 'add' )
 			->withConsecutive(
-				array( 'fraud-protection-automatic-protection', $change->value ),
-				array( 'fraud-protection-automatic-protection', $change->value . '-' . $channel->value )
+				array( 'wcfp-automatic-protection', $change->value ),
+				array( 'wcfp-automatic-protection', $change->value . '-' . $channel->value )
 			);
 		$this->mc_stats->expects( $this->once() )->method( 'do_server_side_stats' );
 

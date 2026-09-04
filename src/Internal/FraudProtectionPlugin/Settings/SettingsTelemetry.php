@@ -16,9 +16,9 @@ defined( 'ABSPATH' ) || exit;
  */
 class SettingsTelemetry {
 
-	private const MC_NAMESPACE = 'fraud-protection';
+	private const MC_NAMESPACE = 'wcfp';
 
-	private const MC_GROUP = 'automatic-protection';
+	private const MC_GROUP_AUTOMATIC_PROTECTION = 'automatic-protection';
 
 	/**
 	 * Automatic-protection setting.
@@ -93,9 +93,8 @@ class SettingsTelemetry {
 	 */
 	public function record_automatic_protection_change( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): void {
 		try {
-			$group = self::MC_NAMESPACE . '-' . self::MC_GROUP;
-			$this->mc_stats->add( $group, $change->value );
-			$this->mc_stats->add( $group, $change->value . '-' . $channel->value );
+			$this->mc_stats->add( self::MC_NAMESPACE . '-' . self::MC_GROUP_AUTOMATIC_PROTECTION, $change->value );
+			$this->mc_stats->add( self::MC_NAMESPACE . '-' . self::MC_GROUP_AUTOMATIC_PROTECTION, $change->value . '-' . $channel->value );
 			$this->mc_stats->do_server_side_stats();
 		} catch ( \Throwable $error ) {
 			$this->logger->log(

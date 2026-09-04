@@ -62,9 +62,9 @@ class McStats {
 		foreach ( $stats as $group => $group_stats ) {
 			$url = add_query_arg(
 				array(
-					'v'                       => 'wpcom2',
-					'rand'                    => md5( (string) wp_rand( 0, 999 ) . time() ),
-					'x_woocommerce-' . $group => implode( ',', $group_stats ),
+					'v'           => 'wpcom2',
+					'rand'        => md5( (string) wp_rand( 0, 999 ) . time() ),
+					'x_' . $group => implode( ',', $group_stats ),
 				),
 				self::PIXEL_URL
 			);

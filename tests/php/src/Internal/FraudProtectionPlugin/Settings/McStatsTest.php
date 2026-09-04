@@ -59,8 +59,8 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertCount( 2, $urls );
 		$this->assertSame( 'https://pixel.wp.com/b.gif', preg_replace( '/\?.*/', '', $urls[0] ) );
-		$this->assertSame( 'one,two', $this->query_value( $urls[0], 'x_woocommerce-first-group' ) );
-		$this->assertSame( 'three', $this->query_value( $urls[1], 'x_woocommerce-second-group' ) );
+		$this->assertSame( 'one,two', $this->query_value( $urls[0], 'x_first-group' ) );
+		$this->assertSame( 'three', $this->query_value( $urls[1], 'x_second-group' ) );
 		$this->assertSame( 'wpcom2', $this->query_value( $urls[0], 'v' ) );
 	}
 
