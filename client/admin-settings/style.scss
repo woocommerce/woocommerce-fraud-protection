@@ -18,4 +18,57 @@
 	.wc-fraud-protection-settings__control {
 		min-height: 20px;
 	}
+
+	.wc-fraud-protection-settings__performance-period {
+		color: var(--wpds-color-foreground-content-neutral-weak);
+	}
+
+	.wc-fraud-protection-settings__performance-metrics {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		padding: 0;
+		margin: 0;
+		border-block: var(--wpds-border-width-xs) solid
+			var(--wpds-color-stroke-surface-neutral-weak);
+
+		dt,
+		dd {
+			margin: 0;
+		}
+
+		dt {
+			color: var(--wpds-color-foreground-content-neutral-weak);
+		}
+	}
+
+	.wc-fraud-protection-settings__performance-metric {
+		display: flex;
+		min-height: 104px;
+		box-sizing: border-box;
+		flex-direction: column;
+		justify-content: center;
+		gap: var(--wpds-dimension-gap-sm);
+		padding: var(--wpds-dimension-padding-sm)
+			var(--wpds-dimension-padding-2xl);
+	}
+
+	.wc-fraud-protection-settings__performance-skeleton {
+		width: 32px;
+		height: var(--wpds-typography-line-height-md);
+		border-radius: var(--wpds-border-radius-sm);
+	}
+
+	@media (max-width: 782px) {
+
+		.wc-fraud-protection-settings__performance-metrics {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	@media (max-width: 480px) {
+
+		.wc-fraud-protection-settings__performance-metrics {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
 }

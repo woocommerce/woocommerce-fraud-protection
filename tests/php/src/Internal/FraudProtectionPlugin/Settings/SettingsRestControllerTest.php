@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
@@ -23,6 +24,15 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	/** @var AutomaticProtectionSetting */
 	private $setting;
 
+	/** @var SessionEventStore&\PHPUnit\Framework\MockObject\MockObject */
+	private $event_store;
+
+	/** @var AutomaticProtectionSettingUpdater */
+	private $updater;
+
+	/** @var array{recommended_for_blocking: int, blocked_automatically: int, allowed_by_rules: int, blocked_by_rules: int} */
+	private $performance_counts;
+
 	/**
 	 * The System Under Test.
 	 *
@@ -34,10 +44,18 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		parent::setUp();
 		$this->setting = new AutomaticProtectionSetting();
 		$this->setting->reset();
-		$updater = new AutomaticProtectionSettingUpdater();
-		$updater->init( $this->setting, $this->createMock( SettingsTelemetry::class ), $this->createMock( FraudProtectionLogger::class ) );
+		$this->performance_counts = array(
+			'recommended_for_blocking' => 0,
+			'blocked_automatically'     => 0,
+			'allowed_by_rules'          => 0,
+			'blocked_by_rules'          => 0,
+		);
+		$this->event_store = $this->createMock( SessionEventStore::class );
+		$this->event_store->method( 'get_performance_counts' )->willReturnCallback( fn() => $this->performance_counts );
+		$this->updater = new AutomaticProtectionSettingUpdater();
+		$this->updater->init( $this->setting, $this->createMock( SettingsTelemetry::class ), $this->createMock( FraudProtectionLogger::class ) );
 		$this->sut = new SettingsRestController();
-		$this->sut->init( $this->setting, $updater );
+		$this->sut->init( $this->setting, $this->updater, $this->event_store );
 		$this->sut->register_routes();
 		wp_set_current_user( 1 );
 	}
@@ -49,14 +67,39 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( array( 'automatic_protection' => false ), $response->get_data() );
+		$this->assertSame(
+			array(
+				'automatic_protection' => false,
+				'performance'          => $this->performance_counts,
+			),
+			$response->get_data()
+		);
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
+	}
+
+	/**
+	 * @testdox An authorized read returns the recorded performance counts.
+	 */
+	public function test_get_returns_performance_counts(): void {
+		$this->performance_counts = array(
+			'recommended_for_blocking' => 12,
+			'blocked_automatically'     => 3,
+			'allowed_by_rules'          => 4,
+			'blocked_by_rules'          => 5,
+		);
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( $this->performance_counts, $response->get_data()['performance'] );
 	}
 
 	/**
 	 * @testdox An enabled update stores and returns the setting.
 	 */
 	public function test_post_stores_enabled_setting(): void {
+		$this->event_store->expects( $this->never() )->method( 'get_performance_counts' );
+
 		$response = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => true ) ) );
 
 		$this->assertSame( 200, $response->get_status() );
@@ -75,6 +118,21 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( array( 'automatic_protection' => false ), $response->get_data() );
 		$this->assertSame( 'no', get_option( self::OPTION_NAME ) );
+	}
+
+	/**
+	 * @testdox A performance query failure returns the generic settings load error.
+	 */
+	public function test_get_returns_error_when_performance_query_fails(): void {
+		$event_store = $this->createMock( SessionEventStore::class );
+		$event_store->method( 'get_performance_counts' )->willThrowException( new \RuntimeException( 'Database details' ) );
+		$this->sut->init( $this->setting, $this->updater, $event_store );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_settings_not_loaded', $response->get_data()['code'] );
+		$this->assertSame( 'The fraud prevention settings could not be loaded.', $response->get_data()['message'] );
 	}
 
 	/**
