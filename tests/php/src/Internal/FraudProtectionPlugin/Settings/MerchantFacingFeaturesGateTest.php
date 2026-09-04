@@ -1,6 +1,6 @@
 <?php
 /**
- * MerchantExperienceFeatureTest class file.
+ * MerchantFacingFeaturesGateTest class file.
  */
 
 declare( strict_types = 1 );
@@ -8,26 +8,26 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 
 /**
- * Tests for MerchantExperienceFeature.
+ * Tests for MerchantFacingFeaturesGate.
  */
-class MerchantExperienceFeatureTest extends FraudProtectionUnitTestCase {
+class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 
-	private const OPTION_NAME = 'woocommerce_fraud_protection_merchant_experience';
+	private const OPTION_NAME = 'woocommerce_fraud_protection_merchant_facing_features';
 
 	/**
-	 * Merchant experience feature.
+	 * Merchant-facing features gate.
 	 *
-	 * @var MerchantExperienceFeature
+	 * @var MerchantFacingFeaturesGate
 	 */
 	private $sut;
 
 	public function setUp(): void {
 		parent::setUp();
-		$this->sut = new MerchantExperienceFeature();
+		$this->sut = new MerchantFacingFeaturesGate();
 		$this->sut->reset();
 	}
 
@@ -63,7 +63,7 @@ class MerchantExperienceFeatureTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
 		$this->assertFalse( $this->sut->is_enabled() );
 
-		$enabled_default = new class() extends MerchantExperienceFeature {
+		$enabled_default = new class() extends MerchantFacingFeaturesGate {
 			public function get_default(): SettingStatus {
 				return SettingStatus::Enabled;
 			}

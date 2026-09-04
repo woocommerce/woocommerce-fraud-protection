@@ -23,9 +23,9 @@ class SettingsTelemetry {
 	/**
 	 * Merchant-experience feature gate.
 	 *
-	 * @var MerchantExperienceFeature
+	 * @var MerchantFacingFeaturesGate
 	 */
-	private MerchantExperienceFeature $merchant_experience;
+	private MerchantFacingFeaturesGate $merchant_facing_features_gate;
 
 	/**
 	 * Automatic-protection setting.
@@ -53,16 +53,16 @@ class SettingsTelemetry {
 	 *
 	 * @internal
 	 *
-	 * @param MerchantExperienceFeature  $merchant_experience  Merchant-experience feature gate.
+	 * @param MerchantFacingFeaturesGate $merchant_facing_features_gate Merchant-facing features gate.
 	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
 	 * @param McStats                    $mc_stats             Plugin MC Stats service.
 	 * @param FraudProtectionLogger      $logger               Logger instance.
 	 */
-	final public function init( MerchantExperienceFeature $merchant_experience, AutomaticProtectionSetting $automatic_protection, McStats $mc_stats, FraudProtectionLogger $logger ): void {
-		$this->merchant_experience  = $merchant_experience;
-		$this->automatic_protection = $automatic_protection;
-		$this->mc_stats             = $mc_stats;
-		$this->logger               = $logger;
+	final public function init( MerchantFacingFeaturesGate $merchant_facing_features_gate, AutomaticProtectionSetting $automatic_protection, McStats $mc_stats, FraudProtectionLogger $logger ): void {
+		$this->merchant_facing_features_gate = $merchant_facing_features_gate;
+		$this->automatic_protection          = $automatic_protection;
+		$this->mc_stats                      = $mc_stats;
+		$this->logger                        = $logger;
 	}
 
 	/**
@@ -85,9 +85,9 @@ class SettingsTelemetry {
 		$extensions = is_array( $data['extensions'] ?? null ) ? $data['extensions'] : array();
 		$plugin     = is_array( $extensions['woocommerce_fraud_protection'] ?? null ) ? $extensions['woocommerce_fraud_protection'] : array();
 
-		$plugin['merchant_experience_status']  = $this->merchant_experience->get_status()->value;
-		$plugin['automatic_protection_status'] = $this->automatic_protection->get_status()->value;
-		$plugin['automatic_protection_source'] = $this->automatic_protection->get_source()->value;
+		$plugin['merchant_facing_features_status'] = $this->merchant_facing_features_gate->get_status()->value;
+		$plugin['automatic_protection_status']     = $this->automatic_protection->get_status()->value;
+		$plugin['automatic_protection_source']     = $this->automatic_protection->get_source()->value;
 
 		$extensions['woocommerce_fraud_protection'] = $plugin;
 		$data['extensions']                         = $extensions;

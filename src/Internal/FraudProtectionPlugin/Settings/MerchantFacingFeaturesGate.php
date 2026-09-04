@@ -1,6 +1,6 @@
 <?php
 /**
- * MerchantExperienceFeature class file.
+ * MerchantFacingFeaturesGate class file.
  */
 
 declare( strict_types=1 );
@@ -12,9 +12,9 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Controls merchant-facing Fraud Protection features.
  */
-class MerchantExperienceFeature {
+class MerchantFacingFeaturesGate {
 
-	private const OPTION_NAME = 'woocommerce_fraud_protection_merchant_experience';
+	private const OPTION_NAME = 'woocommerce_fraud_protection_merchant_facing_features';
 
 	/**
 	 * Get the setting status.

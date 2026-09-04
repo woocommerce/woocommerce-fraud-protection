@@ -11,7 +11,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
@@ -45,11 +45,11 @@ class FraudProtectionCommands {
 	private LegacyProxy $legacy_proxy;
 
 	/**
-	 * Merchant-experience feature gate.
+	 * Merchant-facing features gate.
 	 *
-	 * @var MerchantExperienceFeature
+	 * @var MerchantFacingFeaturesGate
 	 */
-	private MerchantExperienceFeature $merchant_experience;
+	private MerchantFacingFeaturesGate $merchant_facing_features_gate;
 
 	/**
 	 * Automatic-protection setting.
@@ -73,7 +73,7 @@ class FraudProtectionCommands {
 	 * @param SchemaManager                     $schema_manager               The schema manager instance.
 	 * @param SessionEventPruner                $session_event_pruner         The session pruner instance.
 	 * @param LegacyProxy                       $legacy_proxy                 The legacy proxy instance.
-	 * @param MerchantExperienceFeature         $merchant_experience          Merchant-facing feature gate.
+	 * @param MerchantFacingFeaturesGate        $merchant_facing_features_gate Merchant-facing features gate.
 	 * @param AutomaticProtectionSetting        $automatic_protection         Automatic-protection setting.
 	 * @param AutomaticProtectionSettingUpdater $automatic_protection_updater Automatic-protection setting updater.
 	 */
@@ -81,16 +81,16 @@ class FraudProtectionCommands {
 		SchemaManager $schema_manager,
 		SessionEventPruner $session_event_pruner,
 		LegacyProxy $legacy_proxy,
-		MerchantExperienceFeature $merchant_experience,
+		MerchantFacingFeaturesGate $merchant_facing_features_gate,
 		AutomaticProtectionSetting $automatic_protection,
 		AutomaticProtectionSettingUpdater $automatic_protection_updater
 	): void {
-		$this->schema_manager               = $schema_manager;
-		$this->session_event_pruner         = $session_event_pruner;
-		$this->legacy_proxy                 = $legacy_proxy;
-		$this->merchant_experience          = $merchant_experience;
-		$this->automatic_protection         = $automatic_protection;
-		$this->automatic_protection_updater = $automatic_protection_updater;
+		$this->schema_manager                = $schema_manager;
+		$this->session_event_pruner          = $session_event_pruner;
+		$this->legacy_proxy                  = $legacy_proxy;
+		$this->merchant_facing_features_gate = $merchant_facing_features_gate;
+		$this->automatic_protection          = $automatic_protection;
+		$this->automatic_protection_updater  = $automatic_protection_updater;
 	}
 
 	/**
@@ -109,9 +109,9 @@ class FraudProtectionCommands {
 		$this->legacy_proxy->call_static(
 			WP_CLI::class,
 			'add_command',
-			'wc fraud-protection merchant-experience set',
-			array( $this, 'merchant_experience_set' ),
-			array( 'shortdesc' => __( 'Set the Fraud Protection merchant experience for this site.', 'woocommerce-fraud-protection' ) )
+			'wc fraud-protection merchant-facing-features set',
+			array( $this, 'merchant_facing_features_set' ),
+			array( 'shortdesc' => __( 'Set the merchant-facing Fraud Protection features for this site.', 'woocommerce-fraud-protection' ) )
 		);
 		$this->legacy_proxy->call_static(
 			WP_CLI::class,
@@ -144,22 +144,22 @@ class FraudProtectionCommands {
 	}
 
 	/**
-	 * Set the merchant-experience override.
+	 * Set the merchant-facing features override.
 	 *
 	 * @internal
 	 *
 	 * @param string[] $args Positional command arguments.
 	 */
-	public function merchant_experience_set( array $args ): void {
+	public function merchant_facing_features_set( array $args ): void {
 		$value = $this->validate_state_argument( $args );
 
-		$success = 'default' === $value ? $this->merchant_experience->reset() : $this->merchant_experience->set_enabled( 'enabled' === $value );
+		$success = 'default' === $value ? $this->merchant_facing_features_gate->reset() : $this->merchant_facing_features_gate->set_enabled( 'enabled' === $value );
 		if ( ! $success ) {
-			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The merchant-experience setting could not be saved.', 'woocommerce-fraud-protection' ) );
+			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The merchant-facing features setting could not be saved.', 'woocommerce-fraud-protection' ) );
 			return;
 		}
 
-		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The merchant-experience setting was updated.', 'woocommerce-fraud-protection' ) );
+		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The merchant-facing features setting was updated.', 'woocommerce-fraud-protection' ) );
 	}
 
 	/**
@@ -199,7 +199,7 @@ class FraudProtectionCommands {
 		$database_defaults = is_array( $database_defaults ) ? $database_defaults : array();
 
 		$this->write_line( __( 'Plugin version', 'woocommerce-fraud-protection' ), defined( 'WC_FRAUD_PROTECTION_VERSION' ) ? (string) WC_FRAUD_PROTECTION_VERSION : __( 'Unknown', 'woocommerce-fraud-protection' ) );
-		$this->write_line( __( 'Merchant experience status', 'woocommerce-fraud-protection' ), $this->merchant_experience->get_status()->value );
+		$this->write_line( __( 'Merchant-facing features status', 'woocommerce-fraud-protection' ), $this->merchant_facing_features_gate->get_status()->value );
 		$this->write_line( __( 'Automatic protection status', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_status()->value );
 		$this->write_line( __( 'Automatic protection source', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_source()->value );
 		$this->write_line( __( 'Jetpack blog ID', 'woocommerce-fraud-protection' ), self::value_or_unavailable( $this->get_jetpack_blog_id() ) );

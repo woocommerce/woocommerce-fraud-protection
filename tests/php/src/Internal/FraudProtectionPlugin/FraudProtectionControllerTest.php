@@ -9,7 +9,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantExperienceFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
@@ -208,11 +208,11 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The settings endpoint is not registered when the merchant experience is disabled.
+	 * @testdox The settings endpoint is not registered when merchant-facing features are disabled.
 	 */
-	public function test_handle_init_does_not_register_settings_endpoint_when_merchant_experience_is_disabled(): void {
+	public function test_handle_init_does_not_register_settings_endpoint_when_merchant_facing_features_are_disabled(): void {
 		$container = wc_get_container();
-		$feature   = $container->get( MerchantExperienceFeature::class );
+		$feature   = $container->get( MerchantFacingFeaturesGate::class );
 		$feature->reset();
 
 		$this->sut->handle_init();
@@ -221,11 +221,11 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The settings endpoint is registered when the merchant experience is enabled.
+	 * @testdox The settings endpoint is registered when merchant-facing features are enabled.
 	 */
-	public function test_handle_init_registers_settings_endpoint_when_merchant_experience_is_enabled(): void {
+	public function test_handle_init_registers_settings_endpoint_when_merchant_facing_features_are_enabled(): void {
 		$container = wc_get_container();
-		$feature   = $container->get( MerchantExperienceFeature::class );
+		$feature   = $container->get( MerchantFacingFeaturesGate::class );
 
 		$feature->set_enabled( true );
 		$this->sut->handle_init();
