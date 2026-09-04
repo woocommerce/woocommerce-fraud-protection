@@ -32,12 +32,14 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_batches_distinct_stats_by_group_and_clears_them(): void {
 		update_option( 'woocommerce_allow_tracking', 'yes' );
-		$urls = array();
+		$urls         = array();
+		$request_args = array();
 		add_filter(
 			'pre_http_request',
-			function ( $preempt, $args, $url ) use ( &$urls ) {
-				unset( $preempt, $args );
-				$urls[] = $url;
+			function ( $preempt, $args, $url ) use ( &$urls, &$request_args ) {
+				unset( $preempt );
+				$urls[]         = $url;
+				$request_args[] = $args;
 				return array(
 					'headers'  => array(),
 					'body'     => '',
@@ -62,6 +64,10 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'one,two', $this->query_value( $urls[0], 'x_first-group' ) );
 		$this->assertSame( 'three', $this->query_value( $urls[1], 'x_second-group' ) );
 		$this->assertSame( 'wpcom2', $this->query_value( $urls[0], 'v' ) );
+		foreach ( $request_args as $args ) {
+			$this->assertFalse( $args['blocking'] );
+			$this->assertSame( 1, $args['timeout'] );
+		}
 	}
 
 	/**

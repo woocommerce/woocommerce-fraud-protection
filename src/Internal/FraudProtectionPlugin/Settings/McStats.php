@@ -69,7 +69,13 @@ class McStats {
 				self::PIXEL_URL
 			);
 
-			wp_remote_get( esc_url_raw( $url ) );
+			wp_remote_get(
+				esc_url_raw( $url ),
+				array(
+					'blocking' => false,
+					'timeout'  => 1,
+				)
+			);
 		}
 	}
 }
