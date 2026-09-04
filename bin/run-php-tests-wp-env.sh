@@ -22,4 +22,4 @@ fi
 	tests/bin/install-wc-test-framework.sh /var/www/html/wp-content/plugins/woocommerce "$WC_VERSION"
 '
 
-"$WP_ENV" run cli --config="$CONFIG_FILE" --env-cwd="$PLUGIN_DIR" vendor/bin/phpunit "$@"
+"$WP_ENV" run cli --config="$CONFIG_FILE" --env-cwd="$PLUGIN_DIR" -- vendor/bin/phpunit "$@"
