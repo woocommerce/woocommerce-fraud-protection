@@ -10,7 +10,10 @@ import {
 } from '@wordpress/data';
 
 import { FraudProtectionSettingsPage } from '../../client/admin-settings/settings-page';
-import { settingsStore } from '../../client/admin-settings/data/store';
+import {
+	type Performance,
+	settingsStore,
+} from '../../client/admin-settings/data/store';
 
 const mockCreateSuccessNotice = jest.fn();
 const noticesStore = createReduxStore( 'core/notices', {
@@ -45,6 +48,21 @@ if ( ! window.PointerEvent ) {
 }
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
+
+const zeroPerformance: Performance = {
+	recommended_for_blocking: 0,
+	blocked_automatically: 0,
+	allowed_by_rules: 0,
+	blocked_by_rules: 0,
+};
+
+const settingsResponse = (
+	automaticProtection: boolean,
+	performance: Performance = zeroPerformance
+) => ( {
+	automatic_protection: automaticProtection,
+	performance,
+} );
 
 const dispatchBeforeUnload = () => {
 	const event = new Event( 'beforeunload', { cancelable: true } );
@@ -86,22 +104,38 @@ describe( 'FraudProtectionSettingsPage', () => {
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
-		let resolveLoad: ( response: {
-			automatic_protection: boolean;
-		} ) => void = () => {};
+		let resolveLoad: (
+			response: ReturnType< typeof settingsResponse >
+		) => void = () => {};
 		mockedApiFetch.mockReturnValueOnce(
-			new Promise< { automatic_protection: boolean } >( ( resolve ) => {
-				resolveLoad = resolve;
-			} )
+			new Promise< ReturnType< typeof settingsResponse > >(
+				( resolve ) => {
+					resolveLoad = resolve;
+				}
+			)
 		);
 		renderSettings();
 
 		const save = screen.getByRole( 'button', { name: 'Save' } );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
 		expect( screen.queryByRole( 'checkbox' ) ).not.toBeInTheDocument();
 		expect( screen.getByRole( 'presentation' ) ).toBeInTheDocument();
-		expect( screen.getByRole( 'status' ) ).toHaveTextContent(
-			'Loading automatic protection setting.'
+		expect( screen.getAllByRole( 'status' ) ).toHaveLength( 2 );
+		expect(
+			screen.getByText( 'Loading automatic protection setting.' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByText( 'Loading performance results.' )
+		).toBeInTheDocument();
+		expect( performanceCard?.querySelector( 'dl' ) ).toHaveAttribute(
+			'aria-busy',
+			'true'
 		);
+		expect(
+			performanceCard?.querySelectorAll( '[aria-hidden="true"]' )
+		).toHaveLength( 4 );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
 			screen.getByRole( 'heading', { name: 'Automatic protection' } )
@@ -121,17 +155,18 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 
 		await act( async () => {
-			resolveLoad( { automatic_protection: false } );
+			resolveLoad( settingsResponse( false ) );
 		} );
 		const checkbox = await screen.findByRole( 'checkbox' );
 		expect( checkbox ).not.toBeChecked();
 		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		expect( screen.queryByRole( 'presentation' ) ).not.toBeInTheDocument();
 		expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
+		expect( screen.getAllByText( '0' ) ).toHaveLength( 4 );
 	} );
 
 	it( 'loads the enabled value', async () => {
-		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: true } );
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( true ) );
 		renderSettings();
 
 		await waitFor( () => {
@@ -145,6 +180,43 @@ describe( 'FraudProtectionSettingsPage', () => {
 			screen.getByRole( 'button', { name: 'Save' } )
 		).toHaveAttribute( 'aria-disabled', 'true' );
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	it( 'shows all four performance outcomes with semantic labels', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, {
+				recommended_for_blocking: 12,
+				blocked_automatically: 3,
+				allowed_by_rules: 4,
+				blocked_by_rules: 5,
+			} )
+		);
+		renderSettings();
+
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
+		await screen.findByText( '12' );
+
+		expect( performanceCard ).toHaveTextContent(
+			'See how fraud prevention is evaluating recent checkout activity.'
+		);
+		expect( performanceCard ).toHaveTextContent( 'Last 30 days' );
+		expect(
+			Array.from( performanceCard?.querySelectorAll( 'dt' ) ?? [] ).map(
+				( element ) => element.textContent
+			)
+		).toEqual( [
+			'Recommended for blocking',
+			'Blocked automatically',
+			'Allowed by rules',
+			'Blocked by rules',
+		] );
+		expect(
+			Array.from( performanceCard?.querySelectorAll( 'dd' ) ?? [] ).map(
+				( element ) => element.textContent
+			)
+		).toEqual( [ '12', '3', '4', '5' ] );
 	} );
 
 	it( 'shows an error and keeps controls disabled when loading fails', async () => {
@@ -164,6 +236,15 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
+		expect( performanceCard?.querySelectorAll( 'dd' ) ).toHaveLength( 4 );
+		expect(
+			Array.from( performanceCard?.querySelectorAll( 'dd' ) ?? [] ).map(
+				( value ) => value.textContent
+			)
+		).toEqual( [ '—', '—', '—', '—' ] );
 
 		// Clicking the disabled button must not retry the failed request.
 		await userEvent.click( save );
@@ -171,7 +252,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 	} );
 
 	it( 'updates the unload warning through repeated dirty transitions', async () => {
-		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: false } );
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
@@ -205,7 +286,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 	} );
 
 	it( 'removes the unload warning when unmounted while dirty', async () => {
-		mockedApiFetch.mockResolvedValueOnce( { automatic_protection: false } );
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
 		const { unmount } = renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
@@ -219,7 +300,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 	it( 'clears the unload warning after a successful save', async () => {
 		mockedApiFetch
-			.mockResolvedValueOnce( { automatic_protection: false } )
+			.mockResolvedValueOnce( settingsResponse( false ) )
 			.mockResolvedValueOnce( { automatic_protection: true } );
 		renderSettings();
 
@@ -238,7 +319,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 	it( 'saves a changed Boolean and queues the success Snackbar', async () => {
 		mockedApiFetch
-			.mockResolvedValueOnce( { automatic_protection: false } )
+			.mockResolvedValueOnce(
+				settingsResponse( false, {
+					recommended_for_blocking: 12,
+					blocked_automatically: 3,
+					allowed_by_rules: 4,
+					blocked_by_rules: 5,
+				} )
+			)
 			.mockResolvedValueOnce( { automatic_protection: true } );
 		renderSettings();
 
@@ -264,6 +352,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 				}
 			);
 		} );
+		expect( screen.getByText( '12' ) ).toBeInTheDocument();
+		expect( screen.getByText( '3' ) ).toBeInTheDocument();
+		expect( screen.getByText( '4' ) ).toBeInTheDocument();
+		expect( screen.getByText( '5' ) ).toBeInTheDocument();
 	} );
 
 	it( 'keeps the controls disabled while a changed value is saving', async () => {
@@ -276,7 +368,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			}
 		);
 		mockedApiFetch
-			.mockResolvedValueOnce( { automatic_protection: false } )
+			.mockResolvedValueOnce( settingsResponse( false ) )
 			.mockReturnValueOnce( pendingSave );
 		renderSettings();
 
@@ -301,7 +393,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 	it( 'shows an inline Notice when saving fails', async () => {
 		mockedApiFetch
-			.mockResolvedValueOnce( { automatic_protection: true } )
+			.mockResolvedValueOnce( settingsResponse( true ) )
 			.mockRejectedValueOnce( new Error( 'Try again later.' ) )
 			.mockResolvedValueOnce( { automatic_protection: false } );
 		renderSettings();

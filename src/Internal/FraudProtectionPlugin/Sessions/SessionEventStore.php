@@ -7,7 +7,10 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -101,6 +104,61 @@ class SessionEventStore {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
 		return false !== $wpdb->query( $wpdb->prepare( $sql, $values ) );
+	}
+
+	/**
+	 * Count performance outcomes recorded during the previous 30 days.
+	 *
+	 * @return array{recommended_for_blocking: int, blocked_automatically: int, allowed_by_rules: int, blocked_by_rules: int}
+	 * @throws \RuntimeException When the aggregate query fails.
+	 */
+	public function get_performance_counts(): array {
+		global $wpdb;
+
+		$table       = $this->schema_manager->get_sessions_table_name();
+		$query_time  = time();
+		$cutoff      = gmdate( 'Y-m-d H:i:s', $query_time - ( 30 * DAY_IN_SECONDS ) );
+		$upper_bound = gmdate( 'Y-m-d H:i:s', $query_time );
+
+		$sql = "SELECT
+			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS recommended_for_blocking,
+			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS blocked_automatically,
+			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS allowed_by_rules,
+			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS blocked_by_rules
+			FROM {$table}
+			WHERE recorded_at >= %s AND recorded_at <= %s";
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$prepared_query = $wpdb->prepare(
+			$sql,
+			SessionTrigger::Blackbox->value,
+			SessionTrigger::RequestRejected->value,
+			FraudDecision::Block->value,
+			SessionFinalStatus::Allowed->value,
+			SessionTrigger::Blackbox->value,
+			SessionTrigger::RequestRejected->value,
+			FraudDecision::Block->value,
+			SessionFinalStatus::Blocked->value,
+			SessionTrigger::AllowRule->value,
+			SessionTrigger::BlockRule->value,
+			$cutoff,
+			$upper_bound
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$counts = $wpdb->get_row( $prepared_query, ARRAY_A );
+
+		if ( ! is_array( $counts ) ) {
+			throw new \RuntimeException( 'Session event performance query failed.' );
+		}
+
+		return array(
+			'recommended_for_blocking' => (int) $counts['recommended_for_blocking'],
+			'blocked_automatically'    => (int) $counts['blocked_automatically'],
+			'allowed_by_rules'         => (int) $counts['allowed_by_rules'],
+			'blocked_by_rules'         => (int) $counts['blocked_by_rules'],
+		);
 	}
 
 	/**

@@ -93,6 +93,19 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Set the recording time for a stored session event.
+	 *
+	 * @param string $session_id Session ID to update.
+	 * @param string $recorded_at UTC database timestamp.
+	 */
+	private function set_recorded_at( string $session_id, string $recorded_at ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . $this->schema_manager->get_sessions_table_name() . ' SET recorded_at = %s WHERE session_id = %s', $recorded_at, $session_id ) );
+	}
+
+	/**
 	 * A complete event row with overridable fields.
 	 *
 	 * @param array $overrides Fields to override.
@@ -201,6 +214,112 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 2, $this->count_rows() );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$this->assertSame( 2, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $this->schema_manager->get_sessions_table_name() . ' WHERE session_id IS NULL' ) );
+	}
+
+	/**
+	 * @testdox Should return zeroes when no performance outcomes were recorded.
+	 */
+	public function test_performance_counts_return_zeroes_without_events(): void {
+		$this->assertSame(
+			array(
+				'recommended_for_blocking' => 0,
+				'blocked_automatically'     => 0,
+				'allowed_by_rules'          => 0,
+				'blocked_by_rules'          => 0,
+			),
+			$this->sut->get_performance_counts()
+		);
+	}
+
+	/**
+	 * @testdox Should count matching outcomes from every gateway and source and exclude other events.
+	 */
+	public function test_performance_counts_map_all_supported_outcomes(): void {
+		$events = array(
+			array( 'session_id' => 'recommended-blackbox', 'source' => 'blocks_checkout', 'payment_method' => 'woocommerce_payments' ),
+			array( 'session_id' => 'recommended-rejected', 'source' => 'paypal_setup_token', 'payment_method' => 'ppcp-gateway', 'trigger_type' => 'request_rejected' ),
+			array( 'session_id' => 'blocked-blackbox', 'source' => 'shortcode_checkout', 'payment_method' => 'stripe', 'final_status' => 'blocked' ),
+			array( 'session_id' => 'blocked-rejected', 'source' => 'change_payment_method', 'payment_method' => 'ppcp-gateway', 'trigger_type' => 'request_rejected', 'final_status' => 'blocked' ),
+			array( 'session_id' => 'allowed-rule', 'source' => 'add_payment_method', 'payment_method' => 'bacs', 'decision' => 'allow', 'trigger_type' => 'allow_rule' ),
+			array( 'session_id' => 'blocked-rule', 'source' => 'pay_for_order', 'payment_method' => 'cod', 'final_status' => 'blocked', 'trigger_type' => 'block_rule' ),
+			array( 'session_id' => 'normal-allow', 'decision' => 'allow' ),
+			array( 'session_id' => 'verify-error', 'decision' => 'allow', 'trigger_type' => 'verify_error' ),
+			array( 'session_id' => 'challenge', 'decision' => 'challenge' ),
+			array( 'session_id' => 'unmatched-status', 'final_status' => 'challenge' ),
+			array( 'session_id' => 'too-old' ),
+			array( 'session_id' => 'after-query-time' ),
+		);
+
+		foreach ( $events as $event ) {
+			$this->assertTrue( $this->sut->record_event( $this->an_event( $event ) ) );
+		}
+		$this->set_recorded_at( 'too-old', gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) );
+		$this->set_recorded_at( 'after-query-time', gmdate( 'Y-m-d H:i:s', time() + DAY_IN_SECONDS ) );
+
+		$this->assertSame(
+			array(
+				'recommended_for_blocking' => 2,
+				'blocked_automatically'     => 2,
+				'allowed_by_rules'          => 1,
+				'blocked_by_rules'          => 1,
+			),
+			$this->sut->get_performance_counts()
+		);
+	}
+
+	/**
+	 * @testdox Should use inclusive lower and upper UTC window boundaries.
+	 */
+	public function test_performance_counts_use_inclusive_window_boundaries(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database query boundary.
+		$wpdb->expects( $this->once() )
+			->method( 'prepare' )
+			->willReturnCallback(
+				function ( string $query, ...$values ): string {
+					$this->assertStringContainsString( 'recorded_at >= %s AND recorded_at <= %s', $query );
+					$this->assertSame( 30 * DAY_IN_SECONDS, strtotime( $values[11] ) - strtotime( $values[10] ) );
+
+					return $query;
+				}
+			);
+		$wpdb->method( 'get_row' )->willReturn(
+			array(
+				'recommended_for_blocking' => '0',
+				'blocked_automatically'     => '0',
+				'allowed_by_rules'          => '0',
+				'blocked_by_rules'          => '0',
+			)
+		);
+
+		try {
+			$this->sut->get_performance_counts();
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
+	 * @testdox Should throw when the performance aggregate query fails.
+	 */
+	public function test_performance_counts_throw_on_database_failure(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
+		$wpdb->method( 'prepare' )->willReturn( 'SELECT failed' );
+		$wpdb->method( 'get_row' )->willReturn( null );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'Session event performance query failed.' );
+
+		try {
+			$this->sut->get_performance_counts();
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
 	}
 
 	/**
