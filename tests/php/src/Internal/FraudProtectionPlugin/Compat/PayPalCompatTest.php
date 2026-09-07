@@ -217,7 +217,16 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 		$this->assertIsArray( $record );
-		$this->assertTrue( $record['used'] );
+		$this->assertFalse( $record['used'] );
+
+		$supplied_decision = $this->decision_reuse->supply_decision_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-gateway' ),
+			'response-session'
+		);
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
+		$this->assertSame( FraudDecision::Allow, $supplied_decision->decision );
 	}
 
 	/**

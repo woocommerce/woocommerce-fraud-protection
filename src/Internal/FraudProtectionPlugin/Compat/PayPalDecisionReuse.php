@@ -121,24 +121,13 @@ class PayPalDecisionReuse {
 	 */
 	public function consume_order_creation_session_id(): string {
 		try {
-			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			$session_id = $this->get_order_creation_session_id();
+			if ( '' === $session_id ) {
 				return '';
 			}
 
-			$record           = $this->get_verified_session_record();
-			$session_id       = null === $record ? '' : $record['session_id'];
-			$paypal_order_id  = $this->paypal_order_id_in_session();
-			$record_order_id  = null === $record ? '' : $record['order_id'];
-			$record_is_usable = null !== $record
-				&& ! $record['used']
-				&& self::ORDER_CREATION_SOURCE === $record['origin']
-				&& '' !== $session_id
-				&& '' !== $record_order_id
-				&& '' !== $paypal_order_id
-				&& $record_order_id === $paypal_order_id;
-
-			if ( ! $record_is_usable ) {
-				$this->retire_verification_record();
+			$record = $this->get_verified_session_record();
+			if ( null === $record ) {
 				return '';
 			}
 
@@ -151,6 +140,57 @@ class PayPalDecisionReuse {
 			FraudProtectionController::log(
 				'warning',
 				'Reading or consuming the direct PayPal order verification record failed; the order will have no stored session',
+				array(
+					'event_source'      => self::ORDER_CREATION_SOURCE,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				),
+				true
+			);
+
+			return '';
+		}
+	}
+
+	/**
+	 * Read the response-backed session ID for a directly created WC order.
+	 *
+	 * This does not consume the record. The later checkout request can still
+	 * reuse the recorded decision through the supplied-decision filter.
+	 *
+	 * @internal
+	 *
+	 * @return string The response-backed session ID, or an empty string when the
+	 *                stored verification cannot be trusted for this order.
+	 */
+	public function get_order_creation_session_id(): string {
+		try {
+			$record = $this->get_verified_session_record();
+			if ( null === $record ) {
+				$this->retire_verification_record();
+				return '';
+			}
+
+			$session_id      = $record['session_id'];
+			$paypal_order_id = $this->paypal_order_id_in_session();
+			if (
+				$record['used']
+				|| self::ORDER_CREATION_SOURCE !== $record['origin']
+				|| '' === $session_id
+				|| '' === $record['order_id']
+				|| '' === $paypal_order_id
+				|| $record['order_id'] !== $paypal_order_id
+			) {
+				$this->retire_verification_record();
+				return '';
+			}
+
+			return $session_id;
+		} catch ( \Throwable $e ) {
+			$this->retire_verification_record();
+			FraudProtectionController::log(
+				'warning',
+				'Reading the direct PayPal order verification record failed; the order will have no stored session',
 				array(
 					'event_source'      => self::ORDER_CREATION_SOURCE,
 					'exception_class'   => $e::class,

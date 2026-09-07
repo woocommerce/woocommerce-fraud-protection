@@ -224,7 +224,7 @@ class PayPalCompat {
 			return;
 		}
 
-		$session_id = $this->decision_reuse->consume_order_creation_session_id();
+		$session_id = $this->decision_reuse->get_order_creation_session_id();
 		if ( '' === $session_id ) {
 			return;
 		}
