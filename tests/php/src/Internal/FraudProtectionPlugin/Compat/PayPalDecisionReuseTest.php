@@ -781,28 +781,50 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox A bound PayPal order can supply its decision when the browser session differs or is empty.
 	 *
 	 * @dataProvider changed_or_empty_session_provider
+	 *
+	 * @param string $session_id Submitted session ID.
+	 * @param string $origin     Verification origin.
+	 * @param string $source     Final request source.
+	 * @param bool   $expected   Whether the record should be reused.
 	 */
-	public function test_supply_falls_back_to_matching_active_order( string $session_id ): void {
-		$this->record_order( 'scored-session' );
+	public function test_supply_falls_back_to_matching_active_order( string $session_id, string $origin, string $source, bool $expected ): void {
+		$this->record_order( 'scored-session', 'PP-123', null, $origin );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
 		$supplied_decision = $this->decision_reuse->supply_decision_for_paypal_express(
 			false,
-			'blocks_checkout',
+			$source,
 			array( 'payment_method' => 'ppcp-gateway' ),
 			$session_id
 		);
 
-		$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
-		$this->assertSame( FraudDecision::Allow, $supplied_decision->decision );
-		$this->assertSame( 'scored-session', $supplied_decision->session_id_for_order );
+		if ( $expected ) {
+			$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
+			$this->assertSame( FraudDecision::Allow, $supplied_decision->decision );
+			$this->assertSame( 'scored-session', $supplied_decision->session_id_for_order );
+		} else {
+			$this->assertFalse( $supplied_decision );
+			$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+		}
 	}
 
-	/** @return array<string, array{string}> */
+	/** @return array<string, array{string, string, string, bool}> */
 	public function changed_or_empty_session_provider(): array {
 		return array(
-			'changed session' => array( 'new-session' ),
-			'empty session'   => array( '' ),
+			'create shortcode changed' => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
+			'create shortcode empty'   => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
+			'create blocks changed'    => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
+			'create blocks empty'      => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
+			'create pay-for-order changed' => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'pay_for_order', true ),
+			'create pay-for-order empty'   => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'pay_for_order', true ),
+			'vault shortcode changed'  => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
+			'vault shortcode empty'    => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
+			'vault blocks changed'     => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
+			'vault blocks empty'       => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
+			'vault pay-for-order changed' => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
+			'vault pay-for-order empty'   => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
+			'vault subscription changed'  => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
+			'vault subscription empty'    => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
 		);
 	}
 
@@ -890,14 +912,36 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/** @testdox An explicit final order ID takes precedence over the WC PayPal session order. */
-	public function test_explicit_final_order_mismatch_defers_and_retires(): void {
-		$request = $this->create_protected_paypal_request_record( 'create' );
+	/**
+	 * @testdox An explicit final order ID takes precedence over the WC PayPal session order.
+	 *
+	 * @dataProvider explicit_final_order_mismatch_provider
+	 *
+	 * @param string $origin     Verification origin.
+	 * @param string $session_id Submitted session ID.
+	 */
+	public function test_explicit_final_order_mismatch_defers_and_retires( string $origin, string $session_id ): void {
+		$this->record_order( 'browser-session', 'PP-123', 'response-session', $origin );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
-		$request['payment_data']['paypal_order_id'] = 'PP-OTHER';
+		$request = array(
+			'payment_method' => 'ppcp-gateway',
+			'payment_data'   => array( 'paypal_order_id' => 'PP-OTHER' ),
+		);
 
-		$this->assert_incoming_decision_is_preserved( 'blocks_checkout', $request, 'response-session' );
+		$this->assert_incoming_decision_is_preserved( 'blocks_checkout', $request, $session_id );
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, string}> */
+	public function explicit_final_order_mismatch_provider(): array {
+		return array(
+			'create exact session'   => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'response-session' ),
+			'create changed session' => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'new-session' ),
+			'create empty session'   => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, '' ),
+			'vault exact session'    => array( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'response-session' ),
+			'vault changed session'  => array( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'new-session' ),
+			'vault empty session'    => array( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, '' ),
+		);
 	}
 
 	/**

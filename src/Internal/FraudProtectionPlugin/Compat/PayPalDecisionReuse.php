@@ -111,8 +111,7 @@ class PayPalDecisionReuse {
 	/**
 	 * Read the response-backed session ID for a directly created WC order.
 	 *
-	 * This does not consume the record. The later checkout request can still
-	 * reuse the recorded decision through the supplied-decision filter.
+	 * This does not consume the record.
 	 *
 	 * @internal
 	 *
@@ -126,7 +125,6 @@ class PayPalDecisionReuse {
 				return '';
 			}
 
-			$session_id      = $record['session_id'];
 			$paypal_order_id = $this->paypal_order_id_in_session();
 			if (
 				$record['used']
@@ -139,7 +137,7 @@ class PayPalDecisionReuse {
 				return '';
 			}
 
-			return $session_id;
+			return $record['session_id'];
 		} catch ( \Throwable $e ) {
 			$this->retire_verification_record();
 			FraudProtectionController::log(
@@ -351,14 +349,20 @@ class PayPalDecisionReuse {
 			return false;
 		}
 
+		$payment_data = is_array( $request_data['payment_data'] ?? null ) ? $request_data['payment_data'] : array();
+		$order_id     = is_string( $payment_data['paypal_order_id'] ?? null ) ? $payment_data['paypal_order_id'] : '';
+		if ( '' !== $order_id && $record['order_id'] !== $order_id ) {
+			return false;
+		}
+
 		if ( '' === $session_id || $record['session_id'] !== $session_id ) {
 			$paypal_order_id = $this->paypal_order_id_in_session();
 
-			return '' !== $paypal_order_id && $record['order_id'] === $paypal_order_id;
+			return self::ORDER_CREATION_SOURCE === $record['origin']
+				&& '' !== $paypal_order_id
+				&& $record['order_id'] === $paypal_order_id;
 		}
 
-		$payment_data = is_array( $request_data['payment_data'] ?? null ) ? $request_data['payment_data'] : array();
-		$order_id     = is_string( $payment_data['paypal_order_id'] ?? null ) ? $payment_data['paypal_order_id'] : '';
 		if ( '' === $order_id ) {
 			$order_id = $this->paypal_order_id_in_session();
 		}
