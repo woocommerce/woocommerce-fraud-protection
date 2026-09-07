@@ -36,7 +36,7 @@ export function PerformanceCard( {
 }: PerformanceCardProps ) {
 	return (
 		<Card.Root
-			className="wc-fraud-protection-settings__card wc-fraud-protection-settings__performance-card"
+			className="wc-fraud-protection-settings__card"
 			render={ <section /> }
 		>
 			<Card.Header>

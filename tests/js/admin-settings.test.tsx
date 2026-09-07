@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import apiFetch from '@wordpress/api-fetch';
@@ -197,15 +197,17 @@ describe( 'FraudProtectionSettingsPage', () => {
 			.getByRole( 'heading', { name: 'Performance' } )
 			.closest( 'section' );
 		await screen.findByText( '12' );
+		expect( performanceCard ).not.toBeNull();
+		const performance = within( performanceCard as HTMLElement );
 
 		expect( performanceCard ).toHaveTextContent(
 			'See how fraud prevention is evaluating recent checkout activity.'
 		);
 		expect( performanceCard ).toHaveTextContent( 'Last 30 days' );
 		expect(
-			Array.from( performanceCard?.querySelectorAll( 'dt' ) ?? [] ).map(
-				( element ) => element.textContent
-			)
+			performance
+				.getAllByRole( 'term' )
+				.map( ( element ) => element.textContent )
 		).toEqual( [
 			'Recommended for blocking',
 			'Blocked automatically',
@@ -213,9 +215,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 			'Blocked by rules',
 		] );
 		expect(
-			Array.from( performanceCard?.querySelectorAll( 'dd' ) ?? [] ).map(
-				( element ) => element.textContent
-			)
+			performance
+				.getAllByRole( 'definition' )
+				.map( ( element ) => element.textContent )
 		).toEqual( [ '12', '3', '4', '5' ] );
 	} );
 
@@ -239,12 +241,17 @@ describe( 'FraudProtectionSettingsPage', () => {
 		const performanceCard = screen
 			.getByRole( 'heading', { name: 'Performance' } )
 			.closest( 'section' );
-		expect( performanceCard?.querySelectorAll( 'dd' ) ).toHaveLength( 4 );
-		expect(
-			Array.from( performanceCard?.querySelectorAll( 'dd' ) ?? [] ).map(
-				( value ) => value.textContent
-			)
-		).toEqual( [ '—', '—', '—', '—' ] );
+		expect( performanceCard ).not.toBeNull();
+		const definitions = within(
+			performanceCard as HTMLElement
+		).getAllByRole( 'definition' );
+		expect( definitions ).toHaveLength( 4 );
+		expect( definitions.map( ( value ) => value.textContent ) ).toEqual( [
+			'—',
+			'—',
+			'—',
+			'—',
+		] );
 
 		// Clicking the disabled button must not retry the failed request.
 		await userEvent.click( save );
