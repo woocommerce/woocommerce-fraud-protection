@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 require_once dirname( __DIR__, 4 ) . '/Support/PayPalPPCPStubs.php';
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -46,11 +47,20 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	private PayPalPaymentDataCompat $sut;
 
 	/**
+	 * The logged-in test customer ID.
+	 *
+	 * @var int
+	 */
+	private int $customer_id;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
+		$this->customer_id = $this->factory->user->create( array( 'role' => 'customer' ) );
+		wp_set_current_user( $this->customer_id );
 		add_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10, 2 );
 		$this->sut = new PayPalPaymentDataCompat();
 	}
@@ -59,9 +69,11 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
+		remove_all_filters( 'woocommerce_fraud_protection_resolved_payment_data' );
 		remove_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10 );
 		PayPalConnectionStateStub::set_sandbox( null );
 		PayPalContainerStub::reset();
+		wp_set_current_user( 0 );
 		parent::tearDown();
 	}
 
@@ -142,13 +154,16 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Marks a valid saved PayPal token as a saved payment method with empty instrument data.
+	 * @testdox Registers and resolves a valid saved PayPal token as a saved payment method with empty instrument data.
 	 */
-	public function test_marks_valid_saved_paypal_token_as_saved(): void {
+	public function test_register_resolves_valid_saved_paypal_token(): void {
+		PayPalConnectionStateStub::set_sandbox( true );
+		PayPalContainerStub::set_merchant_id( 'merchant_123' );
+		$this->sut->register();
 		$token = $this->create_paypal_token();
 
-		$result = $this->sut->resolve(
-			new PaymentMethodData( 'ppcp-gateway' ),
+		$result = ( new PaymentDataResolver() )->resolve(
+			'ppcp-gateway',
 			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
 		);
 		$array = $result->to_array();
@@ -156,6 +171,9 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( $array['is_saved_payment_method'] );
 		$this->assertSame( 'paypal', $array['payment_type'] );
 		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+		$this->assertSame( 'merchant_123', $array['merchant_identifier'] );
+		$this->assertSame( 'account', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -192,7 +210,8 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Does not mark a PayPal token owned by another customer as saved.
 	 */
 	public function test_does_not_mark_another_customers_token_as_saved(): void {
-		$token = $this->create_paypal_token( 'ppcp-gateway', 99999 );
+		$other_customer_id = $this->factory->user->create( array( 'role' => 'customer' ) );
+		$token             = $this->create_paypal_token( 'ppcp-gateway', $other_customer_id );
 
 		$array = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' ),
@@ -203,10 +222,10 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Does not mark a PayPal token from another gateway as saved.
+	 * @testdox Does not mark a PayPal token from another PayPal gateway as saved.
 	 */
 	public function test_does_not_mark_token_from_another_gateway_as_saved(): void {
-		$token = $this->create_paypal_token( 'stripe' );
+		$token = $this->create_paypal_token( 'ppcp-credit-card-gateway' );
 
 		$array = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' ),
@@ -297,7 +316,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$token = new PayPalPaymentTokenStub();
 		$token->set_gateway_id( $gateway_id );
 		$token->set_token( 'paypal_' . wp_unique_id() );
-		$token->set_user_id( null === $user_id ? get_current_user_id() : $user_id );
+		$token->set_user_id( null === $user_id ? $this->customer_id : $user_id );
 		$token->save();
 
 		return $token;
