@@ -247,14 +247,12 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			array( 'session_id' => 'challenge', 'decision' => 'challenge' ),
 			array( 'session_id' => 'unmatched-status', 'final_status' => 'challenge' ),
 			array( 'session_id' => 'too-old' ),
-			array( 'session_id' => 'after-query-time' ),
 		);
 
 		foreach ( $events as $event ) {
 			$this->assertTrue( $this->sut->record_event( $this->an_event( $event ) ) );
 		}
 		$this->set_recorded_at( 'too-old', gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) );
-		$this->set_recorded_at( 'after-query-time', gmdate( 'Y-m-d H:i:s', time() + DAY_IN_SECONDS ) );
 
 		$this->assertSame(
 			array(
@@ -265,40 +263,6 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			),
 			$this->sut->get_performance_counts()
 		);
-	}
-
-	/**
-	 * @testdox Should use inclusive lower and upper UTC window boundaries.
-	 */
-	public function test_performance_counts_use_inclusive_window_boundaries(): void {
-		global $wpdb;
-
-		$original_wpdb = $wpdb;
-		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database query boundary.
-		$wpdb->expects( $this->once() )
-			->method( 'prepare' )
-			->willReturnCallback(
-				function ( string $query, ...$values ): string {
-					$this->assertStringContainsString( 'recorded_at >= %s AND recorded_at <= %s', $query );
-					$this->assertSame( 30 * DAY_IN_SECONDS, strtotime( $values[11] ) - strtotime( $values[10] ) );
-
-					return $query;
-				}
-			);
-		$wpdb->method( 'get_row' )->willReturn(
-			array(
-				'recommended_for_blocking' => '0',
-				'blocked_automatically'     => '0',
-				'allowed_by_rules'          => '0',
-				'blocked_by_rules'          => '0',
-			)
-		);
-
-		try {
-			$this->sut->get_performance_counts();
-		} finally {
-			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
-		}
 	}
 
 	/**

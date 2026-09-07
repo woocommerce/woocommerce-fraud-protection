@@ -115,39 +115,32 @@ class SessionEventStore {
 	public function get_performance_counts(): array {
 		global $wpdb;
 
-		$table       = $this->schema_manager->get_sessions_table_name();
-		$query_time  = time();
-		$cutoff      = gmdate( 'Y-m-d H:i:s', $query_time - ( 30 * DAY_IN_SECONDS ) );
-		$upper_bound = gmdate( 'Y-m-d H:i:s', $query_time );
+		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
 
-		$sql = "SELECT
-			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS recommended_for_blocking,
-			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS blocked_automatically,
-			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS allowed_by_rules,
-			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS blocked_by_rules
-			FROM {$table}
-			WHERE recorded_at >= %s AND recorded_at <= %s";
-
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-		$prepared_query = $wpdb->prepare(
-			$sql,
-			SessionTrigger::Blackbox->value,
-			SessionTrigger::RequestRejected->value,
-			FraudDecision::Block->value,
-			SessionFinalStatus::Allowed->value,
-			SessionTrigger::Blackbox->value,
-			SessionTrigger::RequestRejected->value,
-			FraudDecision::Block->value,
-			SessionFinalStatus::Blocked->value,
-			SessionTrigger::AllowRule->value,
-			SessionTrigger::BlockRule->value,
-			$cutoff,
-			$upper_bound
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$counts = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT
+					SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS recommended_for_blocking,
+					SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS blocked_automatically,
+					SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS allowed_by_rules,
+					SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS blocked_by_rules
+					FROM {$wpdb->prefix}wc_fraud_protection_sessions
+					WHERE recorded_at >= %s",
+				SessionTrigger::Blackbox->value,
+				SessionTrigger::RequestRejected->value,
+				FraudDecision::Block->value,
+				SessionFinalStatus::Allowed->value,
+				SessionTrigger::Blackbox->value,
+				SessionTrigger::RequestRejected->value,
+				FraudDecision::Block->value,
+				SessionFinalStatus::Blocked->value,
+				SessionTrigger::AllowRule->value,
+				SessionTrigger::BlockRule->value,
+				$cutoff
+			),
+			ARRAY_A
 		);
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
-		$counts = $wpdb->get_row( $prepared_query, ARRAY_A );
 
 		if ( ! is_array( $counts ) ) {
 			throw new \RuntimeException( 'Session event performance query failed.' );
