@@ -126,7 +126,7 @@ class PayPalDecisionReuse {
 			}
 
 			$record           = $this->get_verified_session_record();
-			$session_id       = null === $record ? '' : $this->session_id_normalizer->normalize_stored( $record['session_id'] );
+			$session_id       = null === $record ? '' : $record['session_id'];
 			$paypal_order_id  = $this->paypal_order_id_in_session();
 			$record_order_id  = null === $record ? '' : $record['order_id'];
 			$record_is_usable = null !== $record

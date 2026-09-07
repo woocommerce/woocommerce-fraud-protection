@@ -70,6 +70,15 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( '', $this->decision_reuse->consume_order_creation_session_id() );
 	}
 
+	/** @testdox A direct order preserves an opaque response-backed session ID unchanged. */
+	public function test_consume_order_creation_session_id_preserves_opaque_response_id(): void {
+		$response_id = 'response.session/id';
+		$this->record_order( 'browser-session', 'PP-123', $response_id );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame( $response_id, $this->decision_reuse->consume_order_creation_session_id() );
+	}
+
 	/**
 	 * @testdox A direct order does not consume a mismatched, missing, used, or invalid record.
 	 *
@@ -93,7 +102,6 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 			'mismatched order' => array( 'response-session', false, 'PP-OTHER' ),
 			'missing order'    => array( 'response-session', false, '' ),
 			'used record'      => array( 'response-session', true, 'PP-123' ),
-			'invalid session'  => array( '.', false, 'PP-123' ),
 		);
 	}
 
