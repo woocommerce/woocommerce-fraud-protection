@@ -61,6 +61,42 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/** @testdox A direct order consumes only an unused record bound to the active PayPal order. */
+	public function test_consume_order_creation_session_id_returns_matching_response_id_once(): void {
+		$this->record_order( 'browser-session', 'PP-123', 'response-session' );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame( 'response-session', $this->decision_reuse->consume_order_creation_session_id() );
+		$this->assertSame( '', $this->decision_reuse->consume_order_creation_session_id() );
+	}
+
+	/**
+	 * @testdox A direct order does not consume a mismatched, missing, used, or invalid record.
+	 *
+	 * @dataProvider direct_order_record_rejection_provider
+	 *
+	 * @param string $session_id Stored session ID.
+	 * @param bool   $used       Whether the record was already consumed.
+	 * @param string $order_id   Bound PayPal order ID.
+	 */
+	public function test_consume_order_creation_session_id_rejects_unsafe_records( string $session_id, bool $used, string $order_id ): void {
+		$this->set_verification_record( session_id: $session_id, used: $used, order_id: $order_id );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame( '', $this->decision_reuse->consume_order_creation_session_id() );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, bool, string}> */
+	public function direct_order_record_rejection_provider(): array {
+		return array(
+			'mismatched order' => array( 'response-session', false, 'PP-OTHER' ),
+			'missing order'    => array( 'response-session', false, '' ),
+			'used record'      => array( 'response-session', true, 'PP-123' ),
+			'invalid session'  => array( '.', false, 'PP-123' ),
+		);
+	}
+
 	/**
 	 * @testdox Protected PayPal request sources preserve an incoming supplied decision.
 	 *

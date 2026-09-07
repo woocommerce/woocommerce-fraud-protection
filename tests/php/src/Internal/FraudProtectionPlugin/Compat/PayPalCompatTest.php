@@ -139,6 +139,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			has_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this->sut, 'associate_created_order_with_verification' ) ),
 			'paypal_order_created action should be registered'
 		);
+		$this->assertNotFalse(
+			has_action( 'woocommerce_paypal_payments_woocommerce_order_created_from_cart', array( $this->sut, 'persist_session_id_to_created_order' ) ),
+			'woocommerce_order_created_from_cart action should be registered'
+		);
 	}
 
 	/*
@@ -192,6 +196,28 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
 		$this->assertIsArray( $record );
 		$this->assertSame( 'PP-1', $record['order_id'] );
+	}
+
+	/** @testdox A direct Express WC order receives the matching response-backed session ID. */
+	public function test_direct_express_order_persists_matching_response_session_id(): void {
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
+		$order = \WC_Helper_Order::create_order();
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'persist_verified_session_id_to_order' )
+			->with( 'response-session', $order );
+
+		$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->sut->associate_created_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->sut->persist_session_id_to_created_order( $order );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertTrue( $record['used'] );
 	}
 
 	/**

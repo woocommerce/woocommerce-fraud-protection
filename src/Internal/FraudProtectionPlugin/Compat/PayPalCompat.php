@@ -97,6 +97,7 @@ class PayPalCompat {
 	public function register(): void {
 		add_action( 'woocommerce_paypal_payments_create_order_request_started', array( $this, 'verify_and_block_create_order' ) );
 		add_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this, 'associate_created_order_with_verification' ) );
+		add_action( 'woocommerce_paypal_payments_woocommerce_order_created_from_cart', array( $this, 'persist_session_id_to_created_order' ) );
 		add_filter( 'ppcp_request_args', array( $this, 'verify_protected_paypal_request' ), 10, 2 );
 	}
 
@@ -208,6 +209,40 @@ class PayPalCompat {
 		$this->origin_recorded_this_request  = '';
 
 		$this->decision_reuse->associate_created_order( $order, $session_id, $origin );
+	}
+
+	/**
+	 * Persist the direct Express verification session ID on the final WC order.
+	 *
+	 * @internal
+	 *
+	 * @param mixed $order The newly created WooCommerce order.
+	 * @return void
+	 */
+	public function persist_session_id_to_created_order( $order ): void {
+		if ( ! $order instanceof \WC_Order ) {
+			return;
+		}
+
+		$session_id = $this->decision_reuse->consume_order_creation_session_id();
+		if ( '' === $session_id ) {
+			return;
+		}
+
+		try {
+			$this->session_verifier->persist_verified_session_id_to_order( $session_id, $order );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Persisting the direct PayPal order verification session failed; the order will have no stored session',
+				array(
+					'event_source'      => PayPalDecisionReuse::ORDER_CREATION_SOURCE,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				),
+				true
+			);
+		}
 	}
 
 	/**

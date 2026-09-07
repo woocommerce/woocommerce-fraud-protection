@@ -109,6 +109,61 @@ class PayPalDecisionReuse {
 	}
 
 	/**
+	 * Consume the response-backed session ID for a directly created WC order.
+	 *
+	 * The direct Express order hook runs after PayPal creates the WC order. The
+	 * PayPal order in the WC session is the only order identity available here.
+	 *
+	 * @internal
+	 *
+	 * @return string The response-backed session ID, or an empty string when the
+	 *                stored verification cannot be trusted for this order.
+	 */
+	public function consume_order_creation_session_id(): string {
+		try {
+			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+				return '';
+			}
+
+			$record           = $this->get_verified_session_record();
+			$session_id       = null === $record ? '' : $this->session_id_normalizer->normalize_stored( $record['session_id'] );
+			$paypal_order_id  = $this->paypal_order_id_in_session();
+			$record_order_id  = null === $record ? '' : $record['order_id'];
+			$record_is_usable = null !== $record
+				&& ! $record['used']
+				&& self::ORDER_CREATION_SOURCE === $record['origin']
+				&& '' !== $session_id
+				&& '' !== $record_order_id
+				&& '' !== $paypal_order_id
+				&& $record_order_id === $paypal_order_id;
+
+			if ( ! $record_is_usable ) {
+				$this->retire_verification_record();
+				return '';
+			}
+
+			$record['used'] = true;
+			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
+
+			return $session_id;
+		} catch ( \Throwable $e ) {
+			$this->retire_verification_record();
+			FraudProtectionController::log(
+				'warning',
+				'Reading or consuming the direct PayPal order verification record failed; the order will have no stored session',
+				array(
+					'event_source'      => self::ORDER_CREATION_SOURCE,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				),
+				true
+			);
+
+			return '';
+		}
+	}
+
+	/**
 	 * Skip redundant verification for PayPal flows handled by PayPalCompat.
 	 *
 	 * Answers requests this class already scored with the decision that scoring
