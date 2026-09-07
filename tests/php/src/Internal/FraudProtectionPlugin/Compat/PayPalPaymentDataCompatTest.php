@@ -10,12 +10,22 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 require_once dirname( __DIR__, 4 ) . '/Support/PayPalPPCPStubs.php';
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalConnectionStateStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalContainerStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalPPCPStub;
+
+if ( ! class_exists( __NAMESPACE__ . '\\PayPalPaymentTokenStub', false ) ) {
+	/** PayPal payment token test stub. */
+	class PayPalPaymentTokenStub extends \WC_Payment_Token {
+
+		/** @var string */
+		protected $type = 'PayPal';
+	}
+}
 
 if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
 	class_alias( PayPalPPCPStub::class, 'WooCommerce\PayPalCommerce\PPCP' );
@@ -41,6 +51,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
+		add_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10, 2 );
 		$this->sut = new PayPalPaymentDataCompat();
 	}
 
@@ -48,6 +59,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
+		remove_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10 );
 		PayPalConnectionStateStub::set_sandbox( null );
 		PayPalContainerStub::reset();
 		parent::tearDown();
@@ -130,6 +142,103 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Marks a valid saved PayPal token as a saved payment method with empty instrument data.
+	 */
+	public function test_marks_valid_saved_paypal_token_as_saved(): void {
+		$token = $this->create_paypal_token();
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
+		);
+		$array = $result->to_array();
+
+		$this->assertTrue( $array['is_saved_payment_method'] );
+		$this->assertSame( 'paypal', $array['payment_type'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+	}
+
+	/**
+	 * @testdox Does not mark a missing or invalid PayPal token as a saved payment method.
+	 *
+	 * @dataProvider invalid_saved_token_provider
+	 *
+	 * @param mixed $token_value Submitted token value.
+	 */
+	public function test_does_not_mark_missing_or_invalid_token_as_saved( $token_value ): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'wc-ppcp-gateway-payment-token' => $token_value )
+		)->to_array();
+
+		$this->assertFalse( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public function invalid_saved_token_provider(): array {
+		return array(
+			'missing'   => array( null ),
+			'new'       => array( 'new' ),
+			'empty'     => array( '' ),
+			'malformed' => array( 'not-a-token' ),
+			'unknown'   => array( '999999' ),
+			'array'     => array( array( 'id' => 1 ) ),
+		);
+	}
+
+	/**
+	 * @testdox Does not mark a PayPal token owned by another customer as saved.
+	 */
+	public function test_does_not_mark_another_customers_token_as_saved(): void {
+		$token = $this->create_paypal_token( 'ppcp-gateway', 99999 );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
+		)->to_array();
+
+		$this->assertFalse( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @testdox Does not mark a PayPal token from another gateway as saved.
+	 */
+	public function test_does_not_mark_token_from_another_gateway_as_saved(): void {
+		$token = $this->create_paypal_token( 'stripe' );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
+		)->to_array();
+
+		$this->assertFalse( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @testdox Does not mark a non-PayPal token as a saved PayPal payment method.
+	 */
+	public function test_does_not_mark_non_paypal_token_as_saved(): void {
+		$token = new \WC_Payment_Token_CC();
+		$token->set_gateway_id( 'ppcp-gateway' );
+		$token->set_token( 'card_token_' . wp_unique_id() );
+		$token->set_card_type( 'visa' );
+		$token->set_last4( '4242' );
+		$token->set_expiry_month( '12' );
+		$token->set_expiry_year( '2028' );
+		$token->set_user_id( get_current_user_id() );
+		$token->save();
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
+		)->to_array();
+
+		$this->assertFalse( $array['is_saved_payment_method'] );
+	}
+
+	/**
 	 * @testdox Omits the merchant account identifier when the PayPal source is invalid or throws.
 	 *
 	 * @dataProvider invalid_merchant_identifier_provider
@@ -175,5 +284,33 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'paypal', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * Create a saved PayPal token.
+	 *
+	 * @param string $gateway_id Gateway ID.
+	 * @param ?int   $user_id    Token owner.
+	 * @return PayPalPaymentTokenStub
+	 */
+	private function create_paypal_token( string $gateway_id = 'ppcp-gateway', ?int $user_id = null ): PayPalPaymentTokenStub {
+		$token = new PayPalPaymentTokenStub();
+		$token->set_gateway_id( $gateway_id );
+		$token->set_token( 'paypal_' . wp_unique_id() );
+		$token->set_user_id( null === $user_id ? get_current_user_id() : $user_id );
+		$token->save();
+
+		return $token;
+	}
+
+	/**
+	 * Map the PayPal token type to the test token class.
+	 *
+	 * @param string $class Token class name.
+	 * @param string $type Token type.
+	 * @return string
+	 */
+	public function map_paypal_token_class( string $class, string $type ): string {
+		return 'PayPal' === $type ? PayPalPaymentTokenStub::class : $class;
 	}
 }

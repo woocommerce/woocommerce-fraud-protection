@@ -33,7 +33,7 @@ class PayPalPaymentDataCompat {
 	 * @return void
 	 */
 	public function register(): void {
-		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10 );
+		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 2 );
 	}
 
 	/**
@@ -41,17 +41,72 @@ class PayPalPaymentDataCompat {
 	 *
 	 * @internal
 	 *
-	 * @param PaymentMethodData $resolved Previously resolved data.
+	 * @param PaymentMethodData $resolved               Previously resolved data.
+	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.
 	 * @return PaymentMethodData Resolved data, or pass-through.
 	 */
-	public function resolve( PaymentMethodData $resolved ): PaymentMethodData {
+	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields = array() ): PaymentMethodData {
 		if ( ! $this->is_paypal_gateway( $resolved->get_gateway() ) ) {
 			return $resolved;
 		}
 
+		$transaction_mode    = $this->resolve_transaction_mode();
+		$merchant_identifier = $this->resolve_merchant_identifier();
+		$token_id            = $this->resolve_saved_token_id( $resolved->get_gateway(), $checkout_payment_fields );
+
+		if ( null !== $token_id ) {
+			return new PaymentMethodData(
+				$resolved->get_gateway(),
+				'paypal',
+				true,
+				null,
+				$transaction_mode,
+				$merchant_identifier,
+				'account'
+			);
+		}
+
 		return $resolved
-			->with_transaction_mode( $this->resolve_transaction_mode() )
-			->with_merchant_identifier( $this->resolve_merchant_identifier(), 'account' );
+			->with_transaction_mode( $transaction_mode )
+			->with_merchant_identifier( $merchant_identifier, 'account' );
+	}
+
+	/**
+	 * Resolve a valid saved PayPal token selected for the active gateway.
+	 *
+	 * @param string               $gateway                  Active gateway ID.
+	 * @param array<string, mixed> $checkout_payment_fields Flat key-value map of checkout payment fields.
+	 * @return ?int The token ID, if valid and owned by the current customer.
+	 */
+	private function resolve_saved_token_id( string $gateway, array $checkout_payment_fields ): ?int {
+		$token_value = $checkout_payment_fields[ 'wc-' . $gateway . '-payment-token' ] ?? null;
+
+		if ( is_int( $token_value ) ) {
+			$token_id = $token_value;
+		} elseif ( is_string( $token_value ) && preg_match( '/^[1-9][0-9]*$/D', $token_value ) ) {
+			$token_id = (int) $token_value;
+		} else {
+			return null;
+		}
+
+		if ( $token_id < 1 ) {
+			return null;
+		}
+
+		try {
+			$token = \WC_Payment_Tokens::get( $token_id );
+
+			if ( ! $token instanceof \WC_Payment_Token
+				|| 'PayPal' !== $token->get_type()
+				|| $gateway !== $token->get_gateway_id()
+				|| get_current_user_id() !== $token->get_user_id() ) {
+				return null;
+			}
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+
+		return $token_id;
 	}
 
 	/**
