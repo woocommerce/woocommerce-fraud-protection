@@ -31,6 +31,7 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 				'country'     => 'US',
 				'exp_month'   => 12,
 				'exp_year'    => 2025,
+				'payer_email' => 'payer@example.com',
 			)
 		);
 
@@ -45,6 +46,7 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 				'exp_year'         => 2025,
 				'billing_postcode' => null,
 				'wallet'           => null,
+				'payer_email'      => 'payer@example.com',
 				'bank_code'        => null,
 				'bin'                => null,
 				'cvc_check'          => null,
@@ -72,6 +74,7 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 				'exp_year'         => null,
 				'billing_postcode' => null,
 				'wallet'           => null,
+				'payer_email'      => null,
 				'bank_code'        => null,
 				'bin'                => null,
 				'cvc_check'          => null,
@@ -80,6 +83,16 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 			),
 			$instrument->to_array()
 		);
+	}
+
+	/**
+	 * @testdox from_array() sanitizes payer_email as a string.
+	 */
+	public function test_payer_email_is_sanitized(): void {
+		$instrument = PaymentInstrumentData::from_array( array( 'payer_email' => 12345 ) );
+
+		$this->assertSame( '12345', $instrument->to_array()['payer_email'] );
+		$this->assertLogged( 'warning', 'Coerced PaymentInstrumentData field "payer_email" from integer to string.' );
 	}
 
 

@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 
@@ -16,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  * Resolves the PayPal Payments merchant identifier and transaction mode into PaymentMethodData.
  *
  * PayPal does not expose structured card/instrument data, so this compat
- * resolves the merchant identifier and test/live transaction mode.
+ * resolves the merchant identifier, test/live transaction mode, and saved payer email.
  */
 class PayPalPaymentDataCompat {
 
@@ -52,14 +53,29 @@ class PayPalPaymentDataCompat {
 
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
-		$token_id            = $this->resolve_saved_token_id( $resolved->get_gateway(), $checkout_payment_fields );
+		$token               = $this->resolve_saved_token( $resolved->get_gateway(), $checkout_payment_fields );
 
-		if ( null !== $token_id ) {
+		if ( null !== $token ) {
+			$instrument = PaymentInstrumentData::empty();
+
+			if ( method_exists( $token, 'get_email' ) ) {
+				try {
+					$email = $token->get_email();
+
+					if ( is_string( $email ) && is_email( $email ) ) {
+						$instrument = PaymentInstrumentData::from_array( array( 'payer_email' => $email ) );
+					}
+				} catch ( \Throwable $e ) {
+					// Saved state remains valid when the optional email is unavailable.
+					$instrument = PaymentInstrumentData::empty();
+				}
+			}
+
 			return new PaymentMethodData(
 				$resolved->get_gateway(),
 				'paypal',
 				true,
-				null,
+				$instrument,
 				$transaction_mode,
 				$merchant_identifier,
 				'account'
@@ -76,9 +92,9 @@ class PayPalPaymentDataCompat {
 	 *
 	 * @param string               $gateway                  Active gateway ID.
 	 * @param array<string, mixed> $checkout_payment_fields Flat key-value map of checkout payment fields.
-	 * @return ?int The token ID, if valid and owned by the current customer.
+	 * @return ?\WC_Payment_Token The token, if valid and owned by the current customer.
 	 */
-	private function resolve_saved_token_id( string $gateway, array $checkout_payment_fields ): ?int {
+	private function resolve_saved_token( string $gateway, array $checkout_payment_fields ): ?\WC_Payment_Token {
 		$token_value = $checkout_payment_fields[ 'wc-' . $gateway . '-payment-token' ] ?? null;
 
 		if ( is_int( $token_value ) ) {
@@ -106,7 +122,7 @@ class PayPalPaymentDataCompat {
 			return null;
 		}
 
-		return $token_id;
+		return $token;
 	}
 
 	/**

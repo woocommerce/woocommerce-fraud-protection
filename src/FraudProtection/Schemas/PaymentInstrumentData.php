@@ -44,7 +44,7 @@ class PaymentInstrumentData {
 	 * Recognized keys (all optional); missing keys default to null and unrecognized
 	 * keys are ignored:
 	 *   - strings: brand, funding, last4, fingerprint, country, billing_postcode,
-	 *     wallet, bank_code, bin
+	 *     wallet, payer_email, bank_code, bin
 	 *   - ints: exp_month, exp_year
 	 *   - CheckResult (a case or its backing string): cvc_check, avs_address_check,
 	 *     avs_postcode_check
@@ -68,6 +68,7 @@ class PaymentInstrumentData {
 			self::sanitize_int_field( $data, 'exp_year' ),
 			self::sanitize_string_field( $data, 'billing_postcode' ),
 			self::sanitize_string_field( $data, 'wallet' ),
+			self::sanitize_string_field( $data, 'payer_email' ),
 			self::sanitize_string_field( $data, 'bank_code' ),
 			self::sanitize_string_field( $data, 'bin' ),
 			self::sanitize_enum( $data, 'cvc_check', CheckResult::cases() ),
@@ -88,6 +89,7 @@ class PaymentInstrumentData {
 	 * @param ?int         $exp_year           Card expiration year (4-digit).
 	 * @param ?string      $billing_postcode   Billing postcode associated with the payment.
 	 * @param ?string      $wallet             Digital wallet type for express checkout methods (e.g. 'apple_pay', 'google_pay', 'link').
+	 * @param ?string      $payer_email        Email address associated with the payment instrument.
 	 * @param ?string      $bank_code          Bank routing code (e.g. SEPA bank_code, BECS bsb_number, US routing_number, iDEAL bic).
 	 * @param ?string      $bin                Bank Identification Number (first 6 digits of card number, a.k.a. IIN).
 	 * @param ?CheckResult $cvc_check          CVC verification result.
@@ -104,6 +106,7 @@ class PaymentInstrumentData {
 		private readonly ?int $exp_year,
 		private readonly ?string $billing_postcode,
 		private readonly ?string $wallet,
+		private readonly ?string $payer_email,
 		private readonly ?string $bank_code,
 		private readonly ?string $bin,
 		private readonly ?CheckResult $cvc_check,
@@ -127,6 +130,7 @@ class PaymentInstrumentData {
 			'exp_year'           => $this->exp_year,
 			'billing_postcode'   => $this->billing_postcode,
 			'wallet'             => $this->wallet,
+			'payer_email'        => $this->payer_email,
 			'bank_code'          => $this->bank_code,
 			'bin'                => $this->bin,
 			'cvc_check'          => $this->cvc_check?->value,

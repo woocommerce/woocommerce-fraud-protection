@@ -25,6 +25,31 @@ if ( ! class_exists( __NAMESPACE__ . '\\PayPalPaymentTokenStub', false ) ) {
 
 		/** @var string */
 		protected $type = 'PayPal';
+
+		/** @var array<string, string> */
+		protected $extra_data = array( 'email' => '' );
+
+		/** @var bool */
+		private static bool $email_throws = false;
+
+		/** Set whether reading the email should throw. */
+		public static function set_email_throws( bool $throws ): void {
+			self::$email_throws = $throws;
+		}
+
+		/** Get the saved payer email. */
+		public function get_email( $context = 'view' ) {
+			if ( self::$email_throws ) {
+				throw new \RuntimeException( 'Email lookup failed' );
+			}
+
+			return $this->get_prop( 'email', $context );
+		}
+
+		/** Set the saved payer email. */
+		public function set_email( $email ): void {
+			$this->set_prop( 'email', $email );
+		}
 	}
 }
 
@@ -70,6 +95,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->sut, 'resolve' ), 10 );
+		PayPalPaymentTokenStub::set_email_throws( false );
 		remove_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10 );
 		PayPalConnectionStateStub::set_sandbox( null );
 		PayPalContainerStub::reset();
@@ -161,6 +187,8 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		PayPalContainerStub::set_merchant_id( 'merchant_123' );
 		$this->sut->register();
 		$token = $this->create_paypal_token();
+		$token->set_email( 'payer@example.com' );
+		$token->save();
 
 		$result = ( new PaymentDataResolver() )->resolve(
 			'ppcp-gateway',
@@ -170,10 +198,44 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertTrue( $array['is_saved_payment_method'] );
 		$this->assertSame( 'paypal', $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$expected_instrument = PaymentInstrumentData::empty()->to_array();
+		$expected_instrument['payer_email'] = 'payer@example.com';
+		$this->assertSame( $expected_instrument, $array['instrument'] );
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'merchant_123', $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
+	}
+
+	/**
+	 * @testdox Preserves saved state with empty instrument data when the PayPal email is unavailable.
+	 *
+	 * @dataProvider unavailable_email_provider
+	 *
+	 * @param ?string $email   Saved email value.
+	 * @param bool    $throws  Whether reading the email throws.
+	 */
+	public function test_saved_paypal_token_without_valid_email_remains_saved( ?string $email, bool $throws ): void {
+		PayPalPaymentTokenStub::set_email_throws( $throws );
+		$token = $this->create_paypal_token( 'ppcp-gateway', null, $email );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
+		)->to_array();
+
+		$this->assertTrue( $array['is_saved_payment_method'] );
+		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+	}
+
+	/**
+	 * @return array<string, array{?string, bool}>
+	 */
+	public function unavailable_email_provider(): array {
+		return array(
+			'missing'  => array( null, false ),
+			'invalid'  => array( 'not-an-email', false ),
+			'throwing' => array( null, true ),
+		);
 	}
 
 	/**
@@ -312,11 +374,14 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @param ?int   $user_id    Token owner.
 	 * @return PayPalPaymentTokenStub
 	 */
-	private function create_paypal_token( string $gateway_id = 'ppcp-gateway', ?int $user_id = null ): PayPalPaymentTokenStub {
+	private function create_paypal_token( string $gateway_id = 'ppcp-gateway', ?int $user_id = null, ?string $email = null ): PayPalPaymentTokenStub {
 		$token = new PayPalPaymentTokenStub();
 		$token->set_gateway_id( $gateway_id );
 		$token->set_token( 'paypal_' . wp_unique_id() );
 		$token->set_user_id( null === $user_id ? $this->customer_id : $user_id );
+		if ( null !== $email ) {
+			$token->set_email( $email );
+		}
 		$token->save();
 
 		return $token;

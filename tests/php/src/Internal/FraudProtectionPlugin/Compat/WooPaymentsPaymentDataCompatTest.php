@@ -422,6 +422,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'exp_year'         => 2025,
 					'billing_postcode' => '10001',
 					'wallet'           => null,
+					'payer_email'      => null,
 					'bank_code'        => null,
 					'bin'                => '424242',
 					'cvc_check'          => CheckResult::Pass->value,
