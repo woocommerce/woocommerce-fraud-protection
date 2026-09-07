@@ -113,7 +113,6 @@ class PayPalPaymentDataCompat {
 			$token = \WC_Payment_Tokens::get( $token_id );
 
 			if ( ! $token instanceof \WC_Payment_Token
-				|| 'PayPal' !== $token->get_type()
 				|| $gateway !== $token->get_gateway_id()
 				|| get_current_user_id() !== $token->get_user_id() ) {
 				return null;

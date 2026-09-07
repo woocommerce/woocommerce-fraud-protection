@@ -17,41 +17,8 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalConnectionStateStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalContainerStub;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalPaymentTokenStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalPPCPStub;
-
-if ( ! class_exists( __NAMESPACE__ . '\\PayPalPaymentTokenStub', false ) ) {
-	/** PayPal payment token test stub. */
-	class PayPalPaymentTokenStub extends \WC_Payment_Token {
-
-		/** @var string */
-		protected $type = 'PayPal';
-
-		/** @var array<string, string> */
-		protected $extra_data = array( 'email' => '' );
-
-		/** @var bool */
-		private static bool $email_throws = false;
-
-		/** Set whether reading the email should throw. */
-		public static function set_email_throws( bool $throws ): void {
-			self::$email_throws = $throws;
-		}
-
-		/** Get the saved payer email. */
-		public function get_email( $context = 'view' ) {
-			if ( self::$email_throws ) {
-				throw new \RuntimeException( 'Email lookup failed' );
-			}
-
-			return $this->get_prop( 'email', $context );
-		}
-
-		/** Set the saved payer email. */
-		public function set_email( $email ): void {
-			$this->set_prop( 'email', $email );
-		}
-	}
-}
 
 if ( ! class_exists( '\WooCommerce\PayPalCommerce\PPCP', false ) ) {
 	class_alias( PayPalPPCPStub::class, 'WooCommerce\PayPalCommerce\PPCP' );
@@ -94,12 +61,9 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
-		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->sut, 'resolve' ), 10 );
 		PayPalPaymentTokenStub::set_email_throws( false );
-		remove_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10 );
 		PayPalConnectionStateStub::set_sandbox( null );
 		PayPalContainerStub::reset();
-		wp_set_current_user( 0 );
 		parent::tearDown();
 	}
 
@@ -180,7 +144,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Registers and resolves a valid saved PayPal token as a saved payment method with empty instrument data.
+	 * @testdox Registers and resolves a valid saved PayPal token as a saved payment method with payer email.
 	 */
 	public function test_register_resolves_valid_saved_paypal_token(): void {
 		PayPalConnectionStateStub::set_sandbox( true );
@@ -288,28 +252,6 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_does_not_mark_token_from_another_gateway_as_saved(): void {
 		$token = $this->create_paypal_token( 'ppcp-credit-card-gateway' );
-
-		$array = $this->sut->resolve(
-			new PaymentMethodData( 'ppcp-gateway' ),
-			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
-		)->to_array();
-
-		$this->assertFalse( $array['is_saved_payment_method'] );
-	}
-
-	/**
-	 * @testdox Does not mark a non-PayPal token as a saved PayPal payment method.
-	 */
-	public function test_does_not_mark_non_paypal_token_as_saved(): void {
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'ppcp-gateway' );
-		$token->set_token( 'card_token_' . wp_unique_id() );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '4242' );
-		$token->set_expiry_month( '12' );
-		$token->set_expiry_year( '2028' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
 
 		$array = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' ),

@@ -7,6 +7,38 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Tests\Support;
 
+/** PayPal payment token test stub. */
+class PayPalPaymentTokenStub extends \WC_Payment_Token {
+
+	/** @var string */
+	protected $type = 'PayPal';
+
+	/** @var array<string, string> */
+	protected $extra_data = array( 'email' => '' );
+
+	/** @var bool */
+	private static bool $email_throws = false;
+
+	/** Set whether reading the email should throw. */
+	public static function set_email_throws( bool $throws ): void {
+		self::$email_throws = $throws;
+	}
+
+	/** Get the saved payer email. */
+	public function get_email( $context = 'view' ) {
+		if ( self::$email_throws ) {
+			throw new \RuntimeException( 'Email lookup failed' );
+		}
+
+		return $this->get_prop( 'email', $context );
+	}
+
+	/** Set the saved payer email. */
+	public function set_email( $email ): void {
+		$this->set_prop( 'email', $email );
+	}
+}
+
 /** PayPal connection-state stub. */
 class PayPalConnectionStateStub {
 
