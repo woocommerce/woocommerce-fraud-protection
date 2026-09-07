@@ -76,21 +76,19 @@ export function PerformanceCard( {
 									className="wc-fraud-protection-settings__performance-metric"
 									key={ metric.key }
 								>
-									<dt>
-										<Text variant="heading-sm">
-											{ metric.label }
-										</Text>
-									</dt>
-									<dd>
+									<Text
+										variant="heading-sm"
+										render={ <dt /> }
+									>
+										{ metric.label }
+									</Text>
+									<Text variant="body-lg" render={ <dd /> }>
 										{ isLoading ? (
 											<Skeleton className="wc-fraud-protection-settings__performance-skeleton" />
 										) : (
-											<Text variant="body-lg">
-												{ performance?.[ metric.key ] ??
-													'—' }
-											</Text>
+											performance?.[ metric.key ] ?? '—'
 										) }
-									</dd>
+									</Text>
 								</div>
 							) ) }
 						</dl>
