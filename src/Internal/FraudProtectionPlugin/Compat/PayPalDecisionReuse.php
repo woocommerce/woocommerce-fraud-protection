@@ -109,6 +109,53 @@ class PayPalDecisionReuse {
 	}
 
 	/**
+	 * Read the response-backed session ID for a directly created WC order.
+	 *
+	 * This does not consume the record.
+	 *
+	 * @internal
+	 *
+	 * @return string The response-backed session ID, or an empty string when the
+	 *                stored verification cannot be trusted for this order.
+	 */
+	public function get_order_creation_session_id(): string {
+		try {
+			$record = $this->get_verified_session_record();
+			if ( null === $record ) {
+				return '';
+			}
+
+			$paypal_order_id = $this->paypal_order_id_in_session();
+			if (
+				$record['used']
+				|| self::ORDER_CREATION_SOURCE !== $record['origin']
+				|| '' === $record['order_id']
+				|| '' === $paypal_order_id
+				|| $record['order_id'] !== $paypal_order_id
+			) {
+				$this->retire_verification_record();
+				return '';
+			}
+
+			return $record['session_id'];
+		} catch ( \Throwable $e ) {
+			$this->retire_verification_record();
+			FraudProtectionController::log(
+				'warning',
+				'Reading the direct PayPal order verification record failed; the order will have no stored session',
+				array(
+					'event_source'      => self::ORDER_CREATION_SOURCE,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				),
+				true
+			);
+
+			return '';
+		}
+	}
+
+	/**
 	 * Skip redundant verification for PayPal flows handled by PayPalCompat.
 	 *
 	 * Answers requests this class already scored with the decision that scoring
@@ -138,17 +185,19 @@ class PayPalDecisionReuse {
 
 		$resolved_session_id = '';
 		try {
-			$record            = $this->get_verified_session_record();
-			$stored_session_id = null === $record ? '' : $this->session_id_normalizer->normalize_stored( $record['session_id'] );
-			if ( null === $record || $record['used'] || '' === $session_id || '' === $stored_session_id || $stored_session_id !== $session_id ) {
+			$record = $this->get_verified_session_record();
+			if ( null === $record ) {
+				return $supplied_decision;
+			}
+			if ( $record['used'] ) {
 				$this->retire_verification_record();
 				return $supplied_decision;
 			}
 
-			$resolved_session_id = $stored_session_id;
+			$resolved_session_id = $record['session_id'];
 			$matches             = self::SETUP_TOKEN_CREATION_SOURCE === $record['origin']
-				? $this->setup_record_matches( $record, $source )
-				: $this->order_record_matches( $record, $source, $request_data );
+				? $this->setup_record_matches( $record, $source, $session_id )
+				: $this->order_record_matches( $record, $source, $request_data, $session_id );
 			if ( ! $matches ) {
 				$this->retire_verification_record();
 				return $supplied_decision;
@@ -252,23 +301,24 @@ class PayPalDecisionReuse {
 		$stored = WC()->session->get( self::VERIFICATION_RECORD_KEY );
 
 		if ( ! is_array( $stored ) ) {
+			$this->retire_verification_record();
 			return null;
 		}
 
 		$origin     = $stored['origin'] ?? null;
-		$session_id = $stored['session_id'] ?? null;
+		$session_id = $this->session_id_normalizer->normalize_stored( $stored['session_id'] ?? null );
 		$decision   = $stored['decision'] ?? null;
 		$used       = $stored['used'] ?? null;
 
 		if (
 			! is_string( $origin )
 			|| ! in_array( $origin, array( self::ORDER_CREATION_SOURCE, self::SETUP_TOKEN_CREATION_SOURCE, self::VAULT_ORDER_CREATION_SOURCE ), true )
-			|| ! is_string( $session_id )
 			|| '' === $session_id
 			|| ! $decision instanceof FraudDecision
 			|| ! in_array( $decision, FraudDecision::ACTIONABLE, true )
 			|| ! is_bool( $used )
 		) {
+			$this->retire_verification_record();
 			return null;
 		}
 
@@ -288,9 +338,10 @@ class PayPalDecisionReuse {
 	 * @param array{origin: string, session_id: string, decision: FraudDecision, used: bool, order_id: string, cart_hash: string} $record       Verification record.
 	 * @param string                                                                                                              $source       Verification source.
 	 * @param array                                                                                                               $request_data Final request data.
+	 * @param string                                                                                                              $session_id   Submitted session ID.
 	 * @return bool Whether the request matches.
 	 */
-	private function order_record_matches( array $record, string $source, array $request_data ): bool {
+	private function order_record_matches( array $record, string $source, array $request_data, string $session_id ): bool {
 		$allowed_sources = self::VAULT_ORDER_CREATION_SOURCE === $record['origin']
 			? array( 'shortcode_checkout', 'blocks_checkout', 'pay_for_order', 'subscriptions_change_payment' )
 			: array( 'shortcode_checkout', 'blocks_checkout', 'pay_for_order' );
@@ -300,6 +351,18 @@ class PayPalDecisionReuse {
 
 		$payment_data = is_array( $request_data['payment_data'] ?? null ) ? $request_data['payment_data'] : array();
 		$order_id     = is_string( $payment_data['paypal_order_id'] ?? null ) ? $payment_data['paypal_order_id'] : '';
+		if ( '' !== $order_id && $record['order_id'] !== $order_id ) {
+			return false;
+		}
+
+		if ( '' === $session_id || $record['session_id'] !== $session_id ) {
+			$paypal_order_id = $this->paypal_order_id_in_session();
+
+			return self::ORDER_CREATION_SOURCE === $record['origin']
+				&& '' !== $paypal_order_id
+				&& $record['order_id'] === $paypal_order_id;
+		}
+
 		if ( '' === $order_id ) {
 			$order_id = $this->paypal_order_id_in_session();
 		}
@@ -312,10 +375,13 @@ class PayPalDecisionReuse {
 	 *
 	 * @param array{origin: string, session_id: string, decision: FraudDecision, used: bool, order_id: string, cart_hash: string} $record Verification record.
 	 * @param string                                                                                                              $source Verification source.
+	 * @param string                                                                                                              $session_id Submitted session ID.
 	 * @return bool Whether the request matches.
 	 */
-	private function setup_record_matches( array $record, string $source ): bool {
+	private function setup_record_matches( array $record, string $source, string $session_id ): bool {
 		return in_array( $source, array( 'shortcode_checkout', 'blocks_checkout' ), true )
+			&& '' !== $session_id
+			&& $record['session_id'] === $session_id
 			&& '' !== $record['cart_hash']
 			&& $record['cart_hash'] === $this->eligible_setup_cart_hash();
 	}

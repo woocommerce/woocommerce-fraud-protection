@@ -609,6 +609,22 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/** @testdox An explicit response-backed session ID is persisted on the supplied order. */
+	public function test_persist_verified_session_id_to_order_uses_explicit_id(): void {
+		$order = \WC_Helper_Order::create_order();
+		WC()->session->set( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'unrelated-session' );
+
+		$this->sut->persist_verified_session_id_to_order( 'response-session', $order );
+
+		$saved_order = wc_get_order( $order->get_id() );
+		$this->assertInstanceOf( \WC_Order::class, $saved_order );
+		$this->assertSame(
+			'response-session',
+			$saved_order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY )
+		);
+		$this->assertSame( 'unrelated-session', WC()->session->get( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) );
+	}
+
 	/**
 	 * @testdox persist_session_id_to_order() preserves an existing invalid marker
 	 *
