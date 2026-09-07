@@ -69,7 +69,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * Clean up after each test.
 	 */
 	public function tearDown(): void {
-		remove_all_filters( 'woocommerce_fraud_protection_resolved_payment_data' );
+		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->sut, 'resolve' ), 10 );
 		remove_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10 );
 		PayPalConnectionStateStub::set_sandbox( null );
 		PayPalContainerStub::reset();
