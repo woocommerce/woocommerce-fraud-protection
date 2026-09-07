@@ -233,17 +233,22 @@ class PayPalDecisionReuse {
 
 		$resolved_session_id = '';
 		try {
-			$record            = $this->get_verified_session_record();
-			$stored_session_id = null === $record ? '' : $this->session_id_normalizer->normalize_stored( $record['session_id'] );
-			if ( null === $record || $record['used'] || '' === $session_id || '' === $stored_session_id || $stored_session_id !== $session_id ) {
+			$record = $this->get_verified_session_record();
+			if ( null === $record || $record['used'] ) {
 				$this->retire_verification_record();
 				return $supplied_decision;
 			}
 
+			$stored_session_id   = $this->session_id_normalizer->normalize_stored( $record['session_id'] );
+			$session_matches     = '' !== $session_id && '' !== $stored_session_id && $stored_session_id === $session_id;
 			$resolved_session_id = $stored_session_id;
-			$matches             = self::SETUP_TOKEN_CREATION_SOURCE === $record['origin']
-				? $this->setup_record_matches( $record, $source )
-				: $this->order_record_matches( $record, $source, $request_data );
+			$matches             = $session_matches
+				? ( self::SETUP_TOKEN_CREATION_SOURCE === $record['origin']
+					? $this->setup_record_matches( $record, $source )
+					: $this->order_record_matches( $record, $source, $request_data ) )
+				: ( self::SETUP_TOKEN_CREATION_SOURCE !== $record['origin']
+					? $this->order_record_matches_active_paypal_order( $record, $source )
+					: false );
 			if ( ! $matches ) {
 				$this->retire_verification_record();
 				return $supplied_decision;
@@ -400,6 +405,29 @@ class PayPalDecisionReuse {
 		}
 
 		return '' !== $order_id && $record['order_id'] === $order_id;
+	}
+
+	/**
+	 * Check an order record against the active PayPal order only.
+	 *
+	 * This is used when the final request has no matching browser session. The
+	 * request data cannot identify the PayPal order for this fallback.
+	 *
+	 * @param array{origin: string, session_id: string, decision: FraudDecision, used: bool, order_id: string, cart_hash: string} $record Verification record.
+	 * @param string                                                                                                              $source Final request source.
+	 * @return bool Whether the active PayPal order matches.
+	 */
+	private function order_record_matches_active_paypal_order( array $record, string $source ): bool {
+		$allowed_sources = self::VAULT_ORDER_CREATION_SOURCE === $record['origin']
+			? array( 'shortcode_checkout', 'blocks_checkout', 'pay_for_order', 'subscriptions_change_payment' )
+			: array( 'shortcode_checkout', 'blocks_checkout', 'pay_for_order' );
+
+		$paypal_order_id = $this->paypal_order_id_in_session();
+
+		return in_array( $source, $allowed_sources, true )
+			&& '' !== $record['order_id']
+			&& '' !== $paypal_order_id
+			&& $record['order_id'] === $paypal_order_id;
 	}
 
 	/**
