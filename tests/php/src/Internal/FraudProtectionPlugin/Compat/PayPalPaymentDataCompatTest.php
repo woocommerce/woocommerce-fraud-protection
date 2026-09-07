@@ -215,8 +215,8 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @param bool    $throws  Whether reading the email throws.
 	 */
 	public function test_saved_paypal_token_without_valid_email_remains_saved( ?string $email, bool $throws ): void {
-		PayPalPaymentTokenStub::set_email_throws( $throws );
 		$token = $this->create_paypal_token( 'ppcp-gateway', null, $email );
+		PayPalPaymentTokenStub::set_email_throws( $throws );
 
 		$array = $this->sut->resolve(
 			new PaymentMethodData( 'ppcp-gateway' ),
