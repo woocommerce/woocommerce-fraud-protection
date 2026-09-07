@@ -79,6 +79,27 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( $response_id, $this->decision_reuse->consume_order_creation_session_id() );
 	}
 
+	/** @testdox A direct order does not consume a record from another PayPal verification origin. */
+	public function test_consume_order_creation_session_id_retires_another_origin_record(): void {
+		$this->set_verification_record(
+			origin: PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE,
+			session_id: 'response-session',
+			order_id: 'PP-123'
+		);
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame( '', $this->decision_reuse->consume_order_creation_session_id() );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @testdox A direct order does not consume a record when no active PayPal order is available. */
+	public function test_consume_order_creation_session_id_retires_without_active_paypal_order(): void {
+		$this->record_order( 'browser-session', 'PP-123', 'response-session' );
+
+		$this->assertSame( '', $this->decision_reuse->consume_order_creation_session_id() );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
 	/**
 	 * @testdox A direct order does not consume a mismatched, missing, used, or invalid record.
 	 *
