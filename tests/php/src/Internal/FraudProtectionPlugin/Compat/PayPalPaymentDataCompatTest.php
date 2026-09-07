@@ -196,15 +196,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		PayPalConnectionStateStub::set_sandbox( true );
 		PayPalContainerStub::set_merchant_id( 'merchant_123' );
 		$this->sut->register();
-		$token = new \WC_Payment_Token_CC();
-		$token->set_gateway_id( 'ppcp-credit-card-gateway' );
-		$token->set_token( 'card_token_' . wp_unique_id() );
-		$token->set_card_type( 'visa' );
-		$token->set_last4( '4242' );
-		$token->set_expiry_month( '12' );
-		$token->set_expiry_year( '2028' );
-		$token->set_user_id( get_current_user_id() );
-		$token->save();
+		$token = $this->create_saved_token( 'CC', 'ppcp-credit-card-gateway' );
 
 		$array = ( new PaymentDataResolver() )->resolve(
 			'ppcp-credit-card-gateway',
@@ -372,6 +364,13 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	private function create_saved_token( string $token_type, string $gateway_id = 'ppcp-gateway', ?int $user_id = null, ?string $email = null ): \WC_Payment_Token {
 		switch ( $token_type ) {
+			case 'CC':
+				$token = new \WC_Payment_Token_CC();
+				$token->set_card_type( 'visa' );
+				$token->set_last4( '4242' );
+				$token->set_expiry_month( '12' );
+				$token->set_expiry_year( '2028' );
+				break;
 			case 'PayPal':
 				$token = new PayPalPaymentTokenStub();
 				break;

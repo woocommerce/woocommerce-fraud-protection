@@ -58,6 +58,7 @@ class PayPalPaymentDataCompat {
 			$payment_type = null;
 			$instrument   = null;
 
+			// Card tokens are resolved by PaymentDataResolver; this switch handles PayPal wallet tokens.
 			switch ( $token->get_type() ) {
 				case 'PayPal':
 					$payment_type = 'paypal';
