@@ -44,7 +44,7 @@ export function PerformanceCard( {
 					{ __( 'Performance', 'woocommerce-fraud-protection' ) }
 				</Card.Title>
 			</Card.Header>
-			<Card.Content>
+			<Card.Content className="wc-fraud-protection-settings__performance-content">
 				<Stack direction="column" gap="xl">
 					<Text
 						className="wc-fraud-protection-settings__description"
