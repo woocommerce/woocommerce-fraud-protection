@@ -61,6 +61,51 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/** @testdox A direct order getter returns the matching response ID without consuming its record. */
+	public function test_get_order_creation_session_id_returns_matching_response_id_without_consuming(): void {
+		$response_id = 'response.session/id';
+		$this->record_order( 'browser-session', 'PP-123', $response_id );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame( $response_id, $this->decision_reuse->get_order_creation_session_id() );
+		$this->assertSame( $response_id, $this->decision_reuse->get_order_creation_session_id() );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertFalse( $record['used'] );
+	}
+
+	/**
+	 * @testdox An unsafe direct-order record is retired instead of returning a session ID.
+	 *
+	 * @dataProvider unsafe_order_creation_record_provider
+	 *
+	 * @param string      $origin          Verification origin.
+	 * @param bool        $used            Whether the record was already consumed.
+	 * @param string      $order_id        Bound PayPal order ID.
+	 * @param ?string     $active_order_id Active PayPal order ID, or null when absent.
+	 */
+	public function test_get_order_creation_session_id_retires_unsafe_records( string $origin, bool $used, string $order_id, ?string $active_order_id ): void {
+		$this->set_verification_record( origin: $origin, used: $used, order_id: $order_id );
+		if ( null !== $active_order_id ) {
+			WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( $active_order_id ) ) );
+		}
+
+		$this->assertSame( '', $this->decision_reuse->get_order_creation_session_id() );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, bool, string, ?string}> */
+	public function unsafe_order_creation_record_provider(): array {
+		return array(
+			'wrong origin'          => array( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE, false, 'response-session', 'PP-123' ),
+			'used record'           => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, true, 'response-session', 'PP-123' ),
+			'missing bound order'     => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, '', 'PP-123' ),
+			'mismatched active order' => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, 'response-session', 'PP-OTHER' ),
+			'missing active order'    => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, 'response-session', null ),
+		);
+	}
+
 	/**
 	 * @testdox Protected PayPal request sources preserve an incoming supplied decision.
 	 *
