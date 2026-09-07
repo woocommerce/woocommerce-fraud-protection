@@ -25,18 +25,35 @@ class PayPalPaymentTokenStub extends \WC_Payment_Token {
 	}
 
 	/** Get the saved payer email. */
-	public function get_email( $context = 'view' ) {
+	public function get_email() {
 		if ( self::$email_throws ) {
 			throw new \RuntimeException( 'Email lookup failed' );
 		}
 
-		return $this->get_prop( 'email', $context );
+		return $this->get_meta( 'email' );
 	}
 
 	/** Set the saved payer email. */
 	public function set_email( $email ): void {
-		$this->set_prop( 'email', $email );
+		$this->add_meta_data( 'email', $email, true );
 	}
+}
+
+/** Venmo payment token test stub. */
+class VenmoPaymentTokenStub extends PayPalPaymentTokenStub {
+
+	/** @var string */
+	protected $type = 'Venmo';
+}
+
+/** Apple Pay payment token test stub. */
+class ApplePayPaymentTokenStub extends \WC_Payment_Token {
+
+	/** @var string */
+	protected $type = 'ApplePay';
+
+	/** @var array */
+	protected $extra_data = array();
 }
 
 /** PayPal connection-state stub. */

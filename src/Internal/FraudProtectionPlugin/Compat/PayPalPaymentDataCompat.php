@@ -16,8 +16,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Resolves the PayPal Payments merchant identifier and transaction mode into PaymentMethodData.
  *
- * PayPal does not expose structured card/instrument data, so this compat
- * resolves the merchant identifier, test/live transaction mode, and saved payer email.
+ * This compat resolves saved wallet data and the PayPal merchant identifier and transaction mode.
  */
 class PayPalPaymentDataCompat {
 
@@ -56,30 +55,32 @@ class PayPalPaymentDataCompat {
 		$token               = $this->resolve_saved_token( $resolved->get_gateway(), $checkout_payment_fields );
 
 		if ( null !== $token ) {
-			$instrument = PaymentInstrumentData::empty();
+			$payment_type = null;
+			$instrument   = null;
 
-			if ( method_exists( $token, 'get_email' ) ) {
-				try {
-					$email = $token->get_email();
-
-					if ( is_string( $email ) && is_email( $email ) ) {
-						$instrument = PaymentInstrumentData::from_array( array( 'payer_email' => $email ) );
-					}
-				} catch ( \Throwable $e ) {
-					// Saved state remains valid when the optional email is unavailable.
-					$instrument = PaymentInstrumentData::empty();
-				}
+			switch ( $token->get_type() ) {
+				case 'PayPal':
+					$payment_type = 'paypal';
+					$instrument   = $this->resolve_payer_email( $token );
+					break;
+				case 'Venmo':
+					$payment_type = 'venmo';
+					$instrument   = $this->resolve_payer_email( $token );
+					break;
+				case 'ApplePay':
+					$payment_type = 'card';
+					$instrument   = PaymentInstrumentData::from_array( array( 'wallet' => 'apple_pay' ) );
+					break;
 			}
 
-			return new PaymentMethodData(
-				$resolved->get_gateway(),
-				'paypal',
-				true,
-				$instrument,
-				$transaction_mode,
-				$merchant_identifier,
-				'account'
-			);
+			if ( null !== $payment_type ) {
+				$resolved = new PaymentMethodData(
+					$resolved->get_gateway(),
+					$payment_type,
+					true,
+					$instrument
+				);
+			}
 		}
 
 		return $resolved
@@ -122,6 +123,28 @@ class PayPalPaymentDataCompat {
 		}
 
 		return $token;
+	}
+
+	/**
+	 * Resolve the payer email from a PayPal Payments wallet token.
+	 *
+	 * @param \WC_Payment_Token $token PayPal Payments wallet token.
+	 * @return PaymentInstrumentData Instrument data, empty when the email is unavailable.
+	 */
+	private function resolve_payer_email( \WC_Payment_Token $token ): PaymentInstrumentData {
+		if ( ! method_exists( $token, 'get_email' ) ) {
+			return PaymentInstrumentData::empty();
+		}
+
+		try {
+			$email = $token->get_email();
+
+			return is_string( $email ) && is_email( $email )
+				? PaymentInstrumentData::from_array( array( 'payer_email' => $email ) )
+				: PaymentInstrumentData::empty();
+		} catch ( \Throwable $e ) {
+			return PaymentInstrumentData::empty();
+		}
 	}
 
 	/**
