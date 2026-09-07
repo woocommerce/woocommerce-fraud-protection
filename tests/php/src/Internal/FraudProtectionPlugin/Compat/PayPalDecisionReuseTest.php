@@ -63,7 +63,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 	/** @testdox A direct order getter returns the matching response ID without consuming its record. */
 	public function test_get_order_creation_session_id_returns_matching_response_id_without_consuming(): void {
-		$response_id = 'response.session/id';
+		$response_id = 'response-session';
 		$this->record_order( 'browser-session', 'PP-123', $response_id );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
@@ -98,11 +98,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string, bool, string, ?string}> */
 	public function unsafe_order_creation_record_provider(): array {
 		return array(
-			'wrong origin'          => array( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE, false, 'response-session', 'PP-123' ),
-			'used record'           => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, true, 'response-session', 'PP-123' ),
+			'wrong origin'            => array( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE, false, 'PP-123', 'PP-123' ),
+			'used record'             => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, true, 'PP-123', 'PP-123' ),
 			'missing bound order'     => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, '', 'PP-123' ),
 			'mismatched active order' => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, 'response-session', 'PP-OTHER' ),
-			'missing active order'    => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, 'response-session', null ),
+			'missing active order'    => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, 'PP-123', null ),
 		);
 	}
 
@@ -573,7 +573,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Block, $this->ask( 'blocks_checkout', 'ppcp-gateway', $normalized ) );
 		$stored_record = WC()->session->get( '_fraud_protection_paypal_verification' );
-		$this->assertSame( $stored, $stored_record['session_id'] );
+		$this->assertSame( $normalized, $stored_record['session_id'] );
 		$this->assertTrue( $stored_record['used'] );
 	}
 
@@ -588,7 +588,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$this->assertIsArray( $record );
 		$record['session_id'] = $stored_session_id;
 		WC()->session->set( '_fraud_protection_paypal_verification', $record );
-		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-OTHER' ) ) );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
 		$incoming = '' === $submitted_session_id ? new SuppliedDecision( FraudDecision::Block ) : false;
 		$returned = $this->decision_reuse->supply_decision_for_paypal_express(
@@ -611,6 +611,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 			'single dot'           => array( '.', 'wcfp-invalid-characters' ),
 			'double dot'           => array( '..', 'wcfp-invalid-characters' ),
 			'empty submitted value' => array( '.', '' ),
+			'reserved marker'       => array( 'wcfp-invalid-array', '' ),
 		);
 	}
 
@@ -949,6 +950,21 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 		$this->assertIsArray( $record );
 		$this->assertSame( '', $record['order_id'], 'A request that verified nothing must associate no order.' );
+	}
+
+	/** @testdox Association retires a malformed verification record. */
+	public function test_association_retires_a_malformed_record(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id' => 'scored-session',
+				'decision'   => FraudDecision::Allow,
+			)
+		);
+
+		$this->associate_order();
+
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
 	/**

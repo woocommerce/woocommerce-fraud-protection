@@ -96,8 +96,8 @@ class PayPalCompat {
 	 */
 	public function register(): void {
 		add_action( 'woocommerce_paypal_payments_create_order_request_started', array( $this, 'verify_and_block_create_order' ) );
-		add_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this, 'associate_created_order_with_verification' ) );
-		add_action( 'woocommerce_paypal_payments_woocommerce_order_created_from_cart', array( $this, 'persist_session_id_to_created_order' ) );
+		add_action( 'woocommerce_paypal_payments_paypal_order_created', array( $this, 'associate_paypal_order_with_verification' ) );
+		add_action( 'woocommerce_paypal_payments_woocommerce_order_created_from_cart', array( $this, 'persist_session_id_to_wc_order' ) );
 		add_filter( 'ppcp_request_args', array( $this, 'verify_protected_paypal_request' ), 10, 2 );
 	}
 
@@ -201,7 +201,7 @@ class PayPalCompat {
 	 * @param mixed $order PayPal order entity.
 	 * @return void
 	 */
-	public function associate_created_order_with_verification( $order ): void {
+	public function associate_paypal_order_with_verification( $order ): void {
 		$session_id = $this->session_recorded_this_request;
 		$origin     = $this->origin_recorded_this_request;
 
@@ -219,7 +219,7 @@ class PayPalCompat {
 	 * @param mixed $order The newly created WooCommerce order.
 	 * @return void
 	 */
-	public function persist_session_id_to_created_order( $order ): void {
+	public function persist_session_id_to_wc_order( $order ): void {
 		if ( ! $order instanceof \WC_Order ) {
 			return;
 		}
