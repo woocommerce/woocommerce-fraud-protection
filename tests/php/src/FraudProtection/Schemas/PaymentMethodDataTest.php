@@ -78,6 +78,7 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 					'exp_year'         => 2026,
 					'billing_postcode' => null,
 					'wallet'           => null,
+					'payer_email'      => null,
 					'bank_code'        => null,
 					'bin'                => null,
 					'cvc_check'          => null,
