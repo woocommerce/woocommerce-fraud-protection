@@ -1,15 +1,15 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-YYYY-xx-xx - version 0.2.2
+2026-09-07 - version 0.2.2
 * Added - WP-CLI command to manage automatic checkout protection.
 * Added - WP-CLI command to manage the merchant-facing features gate.
 * Added - Merchants can control automatic checkout protection from the new Fraud prevention settings page.
 * Added - PayPal setup-token and vault-order requests now run Fraud Protection before remote object creation.
-* Fixed - Fraud Protection now limits retained shopper identity and event history, and handles oversized verification attempts per request.
+* Added - Fraud Protection now limits retained shopper identity and event history, and handles oversized verification attempts per request.
+* Updated - Saved PayPal Payments wallet methods report their payment type and saved status during verification, with payer email when available.
 * Fixed - Subscription change-payment forms now load the Fraud Protection payment scripts.
 * Fixed - PayPal Express orders now store the verified session ID on the completed order.
 * Fixed - PayPal Express purchases that return to checkout now reuse their earlier verification.
-* Updated - Saved PayPal Payments wallet methods report their payment type and saved status during verification, with payer email when available.
 * Dev - The woocommerce_fraud_protection_learning_mode filter was removed; automatic checkout blocking now uses the persistent automatic-protection setting.
 
 2026-08-31 - version 0.2.1
