@@ -63,7 +63,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 		$this->original_globals = array();
-		foreach ( array( 'hide_save_button', 'current_section', 'current_tab' ) as $global_name ) {
+		foreach ( array( 'hide_save_button', 'current_section', 'current_tab', '_GET' ) as $global_name ) {
 			$this->original_globals[ $global_name ] = array(
 				'exists' => array_key_exists( $global_name, $GLOBALS ),
 				'value'  => $GLOBALS[ $global_name ] ?? null,
@@ -205,6 +205,31 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
 		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
+	}
+
+	/**
+	 * @testdox The checkout attempts route does not preload settings data.
+	 */
+	public function test_checkout_attempts_route_does_not_preload_settings(): void {
+		$this->write_asset_fixture( array( 'wp-api-fetch' ), 'settings-test-version' );
+		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
+		$_GET['path']           = '/checkout-attempts';
+		$rest_requests          = 0;
+		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
+			if ( '/wc-fraud-protection/v1/settings' === $request->get_route() ) {
+				++$rest_requests;
+			}
+
+			return $result;
+		};
+		add_filter( 'rest_pre_dispatch', $rest_mock, 10, 3 );
+
+		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
+		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
+
+		$this->assertSame( 0, $rest_requests );
+		$this->assertFalse( wp_scripts()->get_data( self::ASSET_HANDLE, 'before' ) );
+		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 	}
 
 	/**

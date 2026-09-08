@@ -125,13 +125,23 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			array( 'in_footer' => true )
 		);
 		wp_set_script_translations( self::SCRIPT_HANDLE, 'woocommerce-fraud-protection', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages' );
-		$this->setup_rest_preload();
+		$this->maybe_preload_settings_data();
 	}
 
 	/**
-	 * Preload the settings REST response for the application.
+	 * Preload settings data on the settings route.
 	 */
-	private function setup_rest_preload(): void {
+	private function maybe_preload_settings_data(): void {
+		$route_path = null;
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- The route only controls which read-only data is preloaded.
+		if ( isset( $_GET['path'] ) ) {
+			$route_path = sanitize_text_field( wp_unslash( $_GET['path'] ) );
+		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		if ( null !== $route_path && '/' !== $route_path ) {
+			return;
+		}
+
 		$preload_data = rest_preload_api_request( array(), '/wc-fraud-protection/v1/settings' );
 		wp_add_inline_script(
 			self::SCRIPT_HANDLE,
