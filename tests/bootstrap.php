@@ -17,6 +17,9 @@
 
 use Automattic\WooCommerce\Testing\Tools\TestingContainer;
 
+// The test bootstrap controls PHP error reporting before WordPress loads.
+// phpcs:disable WordPress.PHP.IniSet.display_errors_Disallowed, WordPress.PHP.DevelopmentFunctions.prevent_path_disclosure_error_reporting
+
 /**
  * Class WC_Fraud_Protection_Unit_Tests_Bootstrap
  */
@@ -140,15 +143,15 @@ class WC_Fraud_Protection_Unit_Tests_Bootstrap {
 		$base_dir = self::$wc_tests_root . '/Tools/';
 
 		spl_autoload_register(
-			function ( $class ) use ( $base_dir ) {
+			function ( $class_name ) use ( $base_dir ) {
 				$prefix = 'Automattic\\WooCommerce\\Testing\\Tools\\';
 				$len    = strlen( $prefix );
-				if ( strncmp( $prefix, $class, $len ) !== 0 ) {
+				if ( strncmp( $prefix, $class_name, $len ) !== 0 ) {
 					// Not ours; let the next registered autoloader handle it.
 					return;
 				}
 
-				$relative_class = substr( $class, $len );
+				$relative_class = substr( $class_name, $len );
 				$file           = $base_dir . str_replace( '\\', '/', $relative_class ) . '.php';
 				if ( file_exists( $file ) ) {
 					require $file;

@@ -70,38 +70,38 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'square_credit_card' ),
 			array(
-				'wc-square-credit-card-card-type'         => 'visa',
-				'wc-square-credit-card-last-four'         => '1234',
-				'wc-square-credit-card-exp-month'         => '6',
-				'wc-square-credit-card-exp-year'          => '2028',
-				'wc-square-credit-card-payment-postcode'  => '90210',
+				'wc-square-credit-card-card-type'        => 'visa',
+				'wc-square-credit-card-last-four'        => '1234',
+				'wc-square-credit-card-exp-month'        => '6',
+				'wc-square-credit-card-exp-year'         => '2028',
+				'wc-square-credit-card-payment-postcode' => '90210',
 			)
 		);
 
 		$this->assertSame(
 			array(
-				'gateway'                 => 'square_credit_card',
-				'payment_type'            => 'card',
-				'is_saved_payment_method' => false,
-				'instrument'              => array(
-					'brand'            => 'visa',
-					'funding'          => null,
-					'last4'            => '1234',
-					'fingerprint'      => null,
-					'country'          => null,
-					'exp_month'        => 6,
-					'exp_year'         => 2028,
-					'billing_postcode' => '90210',
-					'wallet'           => null,
-					'payer_email'      => null,
-					'bank_code'        => null,
+				'gateway'                  => 'square_credit_card',
+				'payment_type'             => 'card',
+				'is_saved_payment_method'  => false,
+				'instrument'               => array(
+					'brand'              => 'visa',
+					'funding'            => null,
+					'last4'              => '1234',
+					'fingerprint'        => null,
+					'country'            => null,
+					'exp_month'          => 6,
+					'exp_year'           => 2028,
+					'billing_postcode'   => '90210',
+					'wallet'             => null,
+					'payer_email'        => null,
+					'bank_code'          => null,
 					'bin'                => null,
 					'cvc_check'          => null,
 					'avs_address_check'  => null,
 					'avs_postcode_check' => null,
 				),
-				'transaction_mode'        => PaymentMode::Live->value,
-				'merchant_identifier'     => null,
+				'transaction_mode'         => PaymentMode::Live->value,
+				'merchant_identifier'      => null,
 				'merchant_identifier_type' => 'location',
 			),
 			$result->to_array()
@@ -149,7 +149,14 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			'square_credit_card',
 			'card',
 			true,
-			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242', 'exp_month' => 12, 'exp_year' => 2028 ) )
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'     => 'visa',
+					'last4'     => '4242',
+					'exp_month' => 12,
+					'exp_year'  => 2028,
+				)
+			)
 		);
 
 		$result = $this->sut->resolve(
@@ -179,7 +186,14 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			'square_credit_card',
 			'card',
 			true,
-			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242', 'exp_month' => 12, 'exp_year' => 2028 ) )
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'     => 'visa',
+					'last4'     => '4242',
+					'exp_month' => 12,
+					'exp_year'  => 2028,
+				)
+			)
 		);
 
 		$result = $this->sut->resolve(

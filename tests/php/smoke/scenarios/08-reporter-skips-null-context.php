@@ -20,9 +20,13 @@
 
 declare( strict_types = 1 );
 
+// This smoke test uses diagnostic output before WordPress loads.
+// phpcs:disable WordPress.PHP.DevelopmentFunctions.error_log_var_export
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 if ( ! class_exists( 'WC_Order' ) ) {
+	/** WooCommerce order test stub. */
 	class WC_Order {} // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 }
 

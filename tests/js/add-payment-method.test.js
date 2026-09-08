@@ -1,6 +1,4 @@
-/**
- * @jest-environment jsdom
- */
+/** @jest-environment jsdom */ // eslint-disable-line jsdoc/check-tag-names
 
 /**
  * Tests for add-payment-method fraud protection integration.
@@ -17,11 +15,10 @@
  *
  * acquireSessionId is tested in blackbox-init.test.js.
  * Consumer tests mock wcFraudProtection directly.
- *
- * @package WooCommerce\FraudProtection
  */
 
-const flushPromises = () => new Promise( jest.requireActual( 'timers' ).setImmediate );
+const flushPromises = () =>
+	new Promise( jest.requireActual( 'timers' ).setImmediate );
 
 const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 
@@ -115,9 +112,8 @@ describe( 'add-payment-method', () => {
 		// to handle submission itself (tokenize, then submit).
 		let fieldDuringGatewaySubmit;
 		form.addEventListener( 'submit', ( e ) => {
-			fieldDuringGatewaySubmit = document.getElementById(
-				SESSION_ID_FIELD
-			);
+			fieldDuringGatewaySubmit =
+				document.getElementById( SESSION_ID_FIELD );
 			e.preventDefault();
 		} );
 
@@ -166,14 +162,16 @@ describe( 'add-payment-method', () => {
 		let resolveSecond;
 		mockAcquireSessionId
 			.mockImplementationOnce(
-				() => new Promise( ( resolve ) => {
-					resolveFirst = resolve;
-				} )
+				() =>
+					new Promise( ( resolve ) => {
+						resolveFirst = resolve;
+					} )
 			)
 			.mockImplementationOnce(
-				() => new Promise( ( resolve ) => {
-					resolveSecond = resolve;
-				} )
+				() =>
+					new Promise( ( resolve ) => {
+						resolveSecond = resolve;
+					} )
 			);
 		setupFraudProtection();
 		loadScript();
@@ -206,14 +204,16 @@ describe( 'add-payment-method', () => {
 		let resolveNonempty;
 		mockAcquireSessionId
 			.mockImplementationOnce(
-				() => new Promise( ( resolve ) => {
-					resolveEmpty = resolve;
-				} )
+				() =>
+					new Promise( ( resolve ) => {
+						resolveEmpty = resolve;
+					} )
 			)
 			.mockImplementationOnce(
-				() => new Promise( ( resolve ) => {
-					resolveNonempty = resolve;
-				} )
+				() =>
+					new Promise( ( resolve ) => {
+						resolveNonempty = resolve;
+					} )
 			);
 		setupFraudProtection();
 		loadScript();
@@ -246,9 +246,8 @@ describe( 'add-payment-method', () => {
 			fieldDuringReplay = document.getElementById( SESSION_ID_FIELD );
 		} );
 		form.submit = jest.fn( () => {
-			fieldDuringNativeSubmit = document.getElementById(
-				SESSION_ID_FIELD
-			);
+			fieldDuringNativeSubmit =
+				document.getElementById( SESSION_ID_FIELD );
 		} );
 
 		const notCancelled = dispatchSubmit();

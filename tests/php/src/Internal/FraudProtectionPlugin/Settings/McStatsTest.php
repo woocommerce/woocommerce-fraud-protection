@@ -22,6 +22,9 @@ class McStatsTest extends FraudProtectionUnitTestCase {
 	 */
 	private $sut;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->sut = new McStats();

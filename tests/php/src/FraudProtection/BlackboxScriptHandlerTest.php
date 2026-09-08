@@ -188,7 +188,7 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox A missing blog ID is checked on every request_scripts() call and logged once per hour.
 	 */
 	public function test_missing_blog_id_is_checked_each_time_and_logged_once_per_hour(): void {
-		$logging_spy = $this->spy_on_controller_logging();
+		$logging_spy  = $this->spy_on_controller_logging();
 		$option_reads = 0;
 		$this->add_jetpack_option_filter(
 			function ( $value, string $name ) use ( &$option_reads ) {
@@ -387,7 +387,7 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$previewing->setAccessible( true );
 		$previewing->setValue( $manager, true );
 
-		$GLOBALS['wp_customize'] = $manager;
+		$GLOBALS['wp_customize'] = $manager; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Test enters the WordPress customizer state.
 	}
 
 	/**

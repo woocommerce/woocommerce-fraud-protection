@@ -107,6 +107,7 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	 * Assert the tracker logged a contained callback failure.
 	 *
 	 * @param string $hook Registered hook name.
+	 * @param string $exception_class Test value.
 	 */
 	private function assert_tracker_failure_logged( string $hook, string $exception_class = \RuntimeException::class ): void {
 		$this->assertCount( 1, $this->logger->entries );
@@ -202,6 +203,7 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 			->method( 'collect' )
 			->willReturnCallback(
 				function ( $event_type, $event_data ) use ( &$collected_events ) {
+					unset( $event_data );
 					$collected_events[] = $event_type;
 					return array();
 				}
@@ -409,15 +411,15 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 		);
 
 		return array(
-			'array billing email' => array(
+			'array billing email'     => array(
 				'billing_email[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
 				$event_with_payment,
 			),
-			'array fallback email' => array(
+			'array fallback email'    => array(
 				'email[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
 				$event_with_payment,
 			),
-			'array payment method' => array(
+			'array payment method'    => array(
 				'billing_email=test%40example.com&billing_country=US&billing_city=Paris&payment_method[]=cod',
 				array(
 					'action'          => 'field_update',
@@ -704,14 +706,14 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	public function successful_checkout_transitions(): array {
 		return array(
 			'checkout-draft → processing (pay-for-order link)' => array( 'checkout-draft', 'processing' ),
-			'checkout-draft → completed (pay-for-order link)'  => array( 'checkout-draft', 'completed' ),
-			'checkout-draft → on-hold (pay-for-order link)'    => array( 'checkout-draft', 'on-hold' ),
-			'pending → processing (online gateway)'            => array( 'pending', 'processing' ),
-			'pending → completed (virtual product)'            => array( 'pending', 'completed' ),
-			'pending → on-hold (offline gateway)'              => array( 'pending', 'on-hold' ),
-			'failed → processing (pay-for-order)'              => array( 'failed', 'processing' ),
-			'failed → completed (pay-for-order)'               => array( 'failed', 'completed' ),
-			'failed → on-hold (pay-for-order offline)'         => array( 'failed', 'on-hold' ),
+			'checkout-draft → completed (pay-for-order link)' => array( 'checkout-draft', 'completed' ),
+			'checkout-draft → on-hold (pay-for-order link)' => array( 'checkout-draft', 'on-hold' ),
+			'pending → processing (online gateway)'    => array( 'pending', 'processing' ),
+			'pending → completed (virtual product)'    => array( 'pending', 'completed' ),
+			'pending → on-hold (offline gateway)'      => array( 'pending', 'on-hold' ),
+			'failed → processing (pay-for-order)'      => array( 'failed', 'processing' ),
+			'failed → completed (pay-for-order)'       => array( 'failed', 'completed' ),
+			'failed → on-hold (pay-for-order offline)' => array( 'failed', 'on-hold' ),
 		);
 	}
 
@@ -732,6 +734,8 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox clear_events_on_successful_payment() clears events on successful checkout transitions.
 	 * @dataProvider successful_checkout_transitions
+	 * @param string $old_status Test value.
+	 * @param string $new_status Test value.
 	 */
 	public function test_clear_events_on_successful_payment_clears( string $old_status, string $new_status ): void {
 		$this->mock_collector
@@ -744,6 +748,8 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox clear_events_on_successful_payment() does NOT clear events for non checkout or unsuccessful transitions.
 	 * @dataProvider non_clearing_transitions
+	 * @param string $old_status Test value.
+	 * @param string $new_status Test value.
 	 */
 	public function test_clear_events_on_successful_payment_skips( string $old_status, string $new_status ): void {
 		$this->mock_collector

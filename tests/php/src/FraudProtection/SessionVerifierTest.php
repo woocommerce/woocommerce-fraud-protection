@@ -80,7 +80,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->api_client            = $this->createMock( ApiClient::class );
 		$this->decision_handler      = $this->createMock( DecisionHandler::class );
 		$this->payment_data_resolver = $this->createMock( PaymentDataResolver::class );
-		$this->session_id_normalizer  = new SessionIdNormalizer();
+		$this->session_id_normalizer = new SessionIdNormalizer();
 
 		$this->sut = new SessionVerifier();
 		$this->sut->init(
@@ -121,7 +121,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			'session'  => array( 'wc_identity_id' => 'abc' ),
 			'customer' => array(),
 		);
-		$request_data = array(
+		$request_data   = array(
 			'billing_address' => array( 'first_name' => 'John' ),
 			'payment_method'  => 'woocommerce_payments',
 			'payment_data'    => array(),
@@ -276,7 +276,12 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	public function test_verify_session_returns_filtered_decision(): void {
 		$this->data_collector
 			->method( 'get_collected_data' )
-			->willReturn( array( 'session' => array(), 'customer' => array() ) );
+			->willReturn(
+				array(
+					'session'  => array(),
+					'customer' => array(),
+				)
+			);
 
 		// API returns BLOCK, but a filter overrides to ALLOW.
 		$this->api_client
@@ -331,7 +336,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			'stripe',
 			'card',
 			false,
-			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) ),
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'   => 'visa',
+					'funding' => 'credit',
+					'last4'   => '4242',
+				)
+			),
 			PaymentMode::Live,
 			'acct_123',
 			'account'
@@ -357,9 +368,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->method( 'verify' )
 			->with(
 				'test-session',
-				$this->callback( function ( $payload ) use ( $resolved ) {
-					return $payload['payment'] === $resolved->to_array();
-				} )
+				$this->callback(
+					function ( $payload ) use ( $resolved ) {
+						return $payload['payment'] === $resolved->to_array();
+					}
+				)
 			)
 			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
@@ -390,9 +403,11 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->method( 'verify' )
 			->with(
 				'test-session',
-				$this->callback( function ( $payload ) {
-					return null === $payload['payment'];
-				} )
+				$this->callback(
+					function ( $payload ) {
+						return null === $payload['payment'];
+					}
+				)
 			)
 			->willReturn( VerifyResult::create( FraudDecision::Allow, '' ) );
 
@@ -782,6 +797,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		// The new order must not inherit the stale ID.
 		$order = \WC_Helper_Order::create_order();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_order_created', $order );
 
 		$saved_order = wc_get_order( $order->get_id() );
@@ -828,6 +844,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		// Order is created; the deferred hook copies the ID to order meta for reporting.
 		$order = \WC_Helper_Order::create_order();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_order_created', $order );
 
 		$saved_order = wc_get_order( $order->get_id() );
@@ -1098,13 +1115,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function malformed_filter_returns(): array {
 		return array(
-			'true (the pre-0.1.6 skip shape)' => array( true ),
-			'false'                           => array( false ),
-			'null'                            => array( null ),
-			'the decision as a string'        => array( 'allow' ),
-			'a non-actionable decision'       => array( FraudDecision::Challenge ),
+			'true (the pre-0.1.6 skip shape)'  => array( true ),
+			'false'                            => array( false ),
+			'null'                             => array( null ),
+			'the decision as a string'         => array( 'allow' ),
+			'a non-actionable decision'        => array( FraudDecision::Challenge ),
 			'a non-actionable supplied result' => array( new SuppliedDecision( FraudDecision::Challenge ) ),
-			'an unrelated object'             => array( new \stdClass() ),
+			'an unrelated object'              => array( new \stdClass() ),
 		);
 	}
 
@@ -1227,5 +1244,4 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'another-id', 'blocks_checkout' ) );
 		$this->assertSame( '', $this->sut->last_verified_session_id() );
 	}
-
 }

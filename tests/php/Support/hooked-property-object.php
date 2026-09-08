@@ -19,6 +19,8 @@ declare( strict_types=1 );
 
 use Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\HookProbe;
 
+// PHPCS does not parse PHP 8.4 property hooks.
+// phpcs:disable PSR2.Classes.PropertyDeclaration, Squiz.Commenting.VariableComment
 return new class() {
 	/**
 	 * A hooked public property: reading it runs the hook.
@@ -27,8 +29,9 @@ return new class() {
 	 */
 	public float $amount {
 		get {
-			HookProbe::$reads++;
+			++HookProbe::$reads;
 			return HookProbe::$reads >= 3 ? INF : 1.5;
 		}
 	}
 };
+// phpcs:enable

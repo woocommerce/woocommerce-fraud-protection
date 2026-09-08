@@ -54,7 +54,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->visitor_ip_resolver = $this->createMock( VisitorIpResolver::class );
+		$this->visitor_ip_resolver   = $this->createMock( VisitorIpResolver::class );
 		$this->session_id_normalizer = new SessionIdNormalizer();
 		$this->sut                   = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request', 'get_raw_request_headers' ) )
@@ -125,11 +125,11 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() calls Blackbox API /verify endpoint with the correct payload
 	 */
 	public function test_verify_calls_verify_endpoint(): void {
-		$spy            = $this->spy_on_controller_logging();
-		$captured_url   = null;
-		$captured_body  = null;
-		$request_log    = null;
-		$response_data  = array(
+		$spy           = $this->spy_on_controller_logging();
+		$captured_url  = null;
+		$captured_body = null;
+		$request_log   = null;
+		$response_data = array(
 			'data' => array(
 				'decision'   => 'allow',
 				'diagnostic' => 'verify-response-marker',
@@ -240,18 +240,18 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$sut->verify(
 			'',
 			array(
-				'keep_string'  => 'hello',
-				'keep_false'   => false,
-				'keep_zero'    => 0,
-				'keep_float'   => 0.0,
-				'keep_array'   => array(),
-				'drop_null'    => null,
-				'drop_empty'   => '',
+				'keep_string'              => 'hello',
+				'keep_false'               => false,
+				'keep_zero'                => 0,
+				'keep_float'               => 0.0,
+				'keep_array'               => array(),
+				'drop_null'                => null,
+				'drop_empty'               => '',
 				'merchant_identifier'      => null,
 				'merchant_identifier_type' => 'account',
-				'nested'       => array(
-					'keep'  => 'yes',
-					'drop'  => null,
+				'nested'                   => array(
+					'keep' => 'yes',
+					'drop' => null,
 				),
 			)
 		);
@@ -372,7 +372,13 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $sut->verify( 'limited-identity', array( 'source' => 'blocks_checkout', 'secret' => 'request-value' ) );
+		$result = $sut->verify(
+			'limited-identity',
+			array(
+				'source' => 'blocks_checkout',
+				'secret' => 'request-value',
+			)
+		);
 
 		$this->assertSame( FraudDecision::Block, $result->decision );
 		$this->assertSame( '', $result->session_id );
@@ -523,8 +529,8 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 		$forwarding_headers = array(
 			'X-Real-IP'        => '198.51.100.1',
 			'X-Forwarded-For'  => '198.51.100.2',
-			'Client-IP'         => '198.51.100.3',
-			'Forwarded'         => 'for=198.51.100.4',
+			'Client-IP'        => '198.51.100.3',
+			'Forwarded'        => 'for=198.51.100.4',
 			'CF-Connecting-IP' => '198.51.100.5',
 		);
 		$this->visitor_ip_resolver
@@ -763,9 +769,9 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() keeps a marker in the request and preserves a different response ID
 	 */
 	public function test_verify_sends_marker_and_preserves_different_response_id(): void {
-		$captured_url        = null;
-		$captured_body       = null;
-		$response_session_id = ' <b>opaque-response-id</b> ';
+		$captured_url                = null;
+		$captured_body               = null;
+		$response_session_id         = ' <b>opaque-response-id</b> ';
 		$this->session_id_normalizer = $this->createMock( SessionIdNormalizer::class );
 		$this->session_id_normalizer
 			->expects( $this->once() )
@@ -802,7 +808,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	 * @testdox verify() keeps a valid decision but rejects a response ID identified as a reserved marker
 	 */
 	public function test_verify_rejects_reserved_response_id(): void {
-		$response_session_id = 'reserved-response-id';
+		$response_session_id         = 'reserved-response-id';
 		$this->session_id_normalizer = $this->createMock( SessionIdNormalizer::class );
 		$this->session_id_normalizer
 			->expects( $this->once() )
@@ -1038,7 +1044,13 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $sut->report( 'test-session-id', array( 'event_type' => 'payment_success', 'secret' => 'request-value' ) );
+		$result = $sut->report(
+			'test-session-id',
+			array(
+				'event_type' => 'payment_success',
+				'secret'     => 'request-value',
+			)
+		);
 
 		$this->assertFalse( $result );
 		$this->assertCount( 2, $spy->entries );
@@ -1255,6 +1267,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 }
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
 /**
  * An object exposing a non-finite float, as a third-party attribute object could.
  *
@@ -1262,7 +1275,6 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
  * object nodes as well as arrays.
  */
 class NonFiniteBearer {
-
 	/**
 	 * A value the JSON encoder cannot represent.
 	 *
@@ -1270,3 +1282,4 @@ class NonFiniteBearer {
 	 */
 	public $ratio = INF;
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch

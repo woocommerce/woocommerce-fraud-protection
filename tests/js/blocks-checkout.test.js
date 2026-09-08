@@ -1,6 +1,4 @@
-/**
- * @jest-environment jsdom
- */
+/** @jest-environment jsdom */ // eslint-disable-line jsdoc/check-tag-names
 
 /**
  * Tests for blocks checkout fraud protection integration.
@@ -12,8 +10,6 @@
  *
  * acquireSessionId and reset are tested in blackbox-init.test.js.
  * Consumer tests mock wcFraudProtection directly.
- *
- * @package WooCommerce\FraudProtection
  */
 
 let mockSetExtensionData;
@@ -31,7 +27,9 @@ beforeEach( () => {
 	jest.useFakeTimers();
 
 	mockSetExtensionData = jest.fn();
-	mockAcquireSessionId = jest.fn( () => Promise.resolve( 'test-session-id' ) );
+	mockAcquireSessionId = jest.fn( () =>
+		Promise.resolve( 'test-session-id' )
+	);
 	mockReset = jest.fn();
 	mockOnCheckoutValidation = jest.fn();
 	mockOnCheckoutSuccess = jest.fn();
@@ -79,7 +77,8 @@ describe( 'blocks-checkout', () => {
 			setupFraudProtection();
 			loadScript();
 
-			const validationCallback = mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
 			const result = await validationCallback();
 
 			expect( result ).toBe( true );
@@ -94,9 +93,11 @@ describe( 'blocks-checkout', () => {
 		it( 'uses the shared session after a Cart express request', async () => {
 			setupFraudProtection();
 			loadScript();
-			const expressSessionId = await window.wcFraudProtection.acquireSessionId();
+			const expressSessionId =
+				await window.wcFraudProtection.acquireSessionId();
 
-			const validationCallback = mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
 			await validationCallback();
 
 			expect( expressSessionId ).toBe( 'test-session-id' );
@@ -113,7 +114,8 @@ describe( 'blocks-checkout', () => {
 			setupFraudProtection();
 			loadScript();
 
-			const validationCallback = mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
 			const result = await validationCallback();
 
 			expect( result ).toBe( true );
@@ -127,7 +129,8 @@ describe( 'blocks-checkout', () => {
 		it( 'returns true when wcFraudProtection is missing (fail-open)', async () => {
 			loadScript();
 
-			const validationCallback = mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
 			const result = await validationCallback();
 
 			expect( result ).toBe( true );
@@ -140,7 +143,8 @@ describe( 'blocks-checkout', () => {
 			setupFraudProtection();
 			loadScript();
 
-			const validationCallback = mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
 
 			await expect( validationCallback() ).resolves.toBe( true );
 			expect( mockSetExtensionData ).toHaveBeenCalledTimes( 1 );

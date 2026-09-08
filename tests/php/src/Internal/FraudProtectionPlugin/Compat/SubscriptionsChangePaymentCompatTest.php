@@ -57,7 +57,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->session_verifier       = $this->createMock( SessionVerifier::class );
+		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
@@ -94,6 +94,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		add_filter( // @phpstan-ignore return.missing
 			'wp_redirect',
 			function ( string $location ): string {
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The test inspects this redirect value through the exception.
 				throw new RedirectInterceptedException( $location );
 			}
 		);
@@ -143,6 +144,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		);
 		$this->sut->register();
 
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
@@ -156,6 +158,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
 		$this->sut->register();
 
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 
 		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
@@ -278,7 +281,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 			$this->sut->verify_and_block( $subscription );
 			$this->fail( 'Expected RedirectInterceptedException' );
 		} catch ( RedirectInterceptedException $e ) {
-			// Expected.
+			unset( $e );
 		}
 
 		// Should still be just 1 notice, not 2.
@@ -301,9 +304,10 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	}
 }
 
-// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
 /**
  * Exception thrown when wp_redirect is intercepted in tests.
  */
 class RedirectInterceptedException extends \Exception {
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch

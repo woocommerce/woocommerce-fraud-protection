@@ -25,6 +25,9 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 	 */
 	private $sut;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->sut = new MerchantFacingFeaturesGate();
@@ -66,6 +69,9 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $this->sut->is_enabled() );
 
 		$enabled_default = new class() extends MerchantFacingFeaturesGate {
+			/**
+			 * Provide the get_default() test stub.
+			 */
 			public function get_default(): SettingStatus {
 				return SettingStatus::Enabled;
 			}

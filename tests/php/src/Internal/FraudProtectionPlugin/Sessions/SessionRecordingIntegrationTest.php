@@ -53,9 +53,9 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 		global $wpdb;
 
 		$schema_manager = wc_get_container()->get( SchemaManager::class );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $schema_manager->get_sessions_table_name() );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $schema_manager->get_rules_table_name() );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
 		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
@@ -82,7 +82,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$table = wc_get_container()->get( SchemaManager::class )->get_sessions_table_name();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE session_id = %s ORDER BY id DESC LIMIT 1", $session_id ), ARRAY_A );
 
 		return is_array( $row ) ? $row : null;
@@ -98,7 +98,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$table = wc_get_container()->get( SchemaManager::class )->get_sessions_table_name();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$row = $wpdb->get_row( "SELECT * FROM {$table} WHERE session_id IS NULL ORDER BY id DESC LIMIT 1", ARRAY_A );
 
 		return is_array( $row ) ? $row : null;
@@ -112,7 +112,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	private function count_rows(): int {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . wc_get_container()->get( SchemaManager::class )->get_sessions_table_name() );
 	}
 
@@ -137,7 +137,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * A SessionVerifier whose ApiClient transport returns the given raw result.
 	 *
 	 * @param array|\WP_Error $transport_result The value the stubbed transport returns.
-	 * @param ?callable        $capture          Optional callback for the request arguments and body.
+	 * @param ?callable       $capture          Optional callback for the request arguments and body.
 	 * @return SessionVerifier
 	 */
 	private function a_session_verifier_with_transport( $transport_result, ?callable $capture = null ): SessionVerifier {
@@ -155,10 +155,10 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$container = wc_get_container();
+		$container             = wc_get_container();
 		$session_id_normalizer = $container->get( SessionIdNormalizer::class );
 		$api_client->init( $container->get( VisitorIpResolver::class ), $session_id_normalizer );
-		$verifier  = new SessionVerifier();
+		$verifier = new SessionVerifier();
 		$verifier->init(
 			$container->get( SessionDataCollector::class ),
 			$api_client,

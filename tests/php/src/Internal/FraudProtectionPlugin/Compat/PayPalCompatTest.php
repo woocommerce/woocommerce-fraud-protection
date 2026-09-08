@@ -82,8 +82,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		PayPalJsonResponseCapture::reset();
 		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
-		$this->session_id_normalizer    = new SessionIdNormalizer();
-		$this->decision_reuse           = new PayPalDecisionReuse();
+		$this->session_id_normalizer   = new SessionIdNormalizer();
+		$this->decision_reuse          = new PayPalDecisionReuse();
 		$this->decision_reuse->init( $this->session_id_normalizer );
 		$this->blocked_session_message
 			->method( 'get_plaintext' )
@@ -219,6 +219,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
 		$this->sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_paypal_payments_woocommerce_order_created_from_cart', $order );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
@@ -254,7 +255,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider submitted_session_value_provider
 	 *
-	 * @param mixed $value Submitted value.
+	 * @param mixed         $value Submitted value.
+	 * @param FraudDecision $decision Test value.
 	 */
 	public function test_verify_passes_submitted_value_to_session_verifier( $value, FraudDecision $decision ): void {
 		$data = array(
@@ -339,7 +341,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'blocked-session' );
 
-		$session          = $this->createMock( \WC_Session::class );
+		$session = $this->createMock( \WC_Session::class );
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willThrowException( new \RuntimeException( 'session unavailable' ) );
 		WC()->session = $session;
 
@@ -403,7 +405,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			}
 		);
 		$session->method( 'get' )->willReturnCallback(
-			static fn( string $key, $default = null ) => '_fraud_protection_paypal_verification' === $key ? $stored_record : $default
+			static function ( string $key, $default_value = null ) use ( &$stored_record ) {
+				return '_fraud_protection_paypal_verification' === $key ? $stored_record : $default_value;
+			}
 		);
 		WC()->session = $session;
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
@@ -485,6 +489,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Only the exact protected action, method, and PayPal path verify.
 	 *
 	 * @dataProvider protected_request_gate_provider
+	 * @param string $action Test value.
+	 * @param string $method Test value.
+	 * @param string $path Test value.
+	 * @param bool   $expected Test value.
 	 */
 	public function test_protected_request_gates( string $action, string $method, string $path, bool $expected ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
@@ -494,9 +502,22 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
 
-		$result = $this->run_protected_request( $action, array( 'method' => $method, 'body' => '{}' ), $path );
+		$result = $this->run_protected_request(
+			$action,
+			array(
+				'method' => $method,
+				'body'   => '{}',
+			),
+			$path
+		);
 
-		$this->assertSame( array( 'method' => $method, 'body' => '{}' ), $result );
+		$this->assertSame(
+			array(
+				'method' => $method,
+				'body'   => '{}',
+			),
+			$result
+		);
 	}
 
 	/** @return array<string, array{string, string, string, bool}> */
@@ -514,6 +535,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Successful protected requests use validated data and store the reusable record.
 	 *
 	 * @dataProvider protected_request_provider
+	 * @param string $action Test value.
+	 * @param string $path Test value.
+	 * @param string $source Test value.
+	 * @param string $nonce Test value.
 	 */
 	public function test_protected_request_uses_validated_data( string $action, string $path, string $source, string $nonce ): void {
 		if ( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $source ) {
@@ -560,6 +585,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox An unusable submitted session ID verifies but creates no reusable record.
 	 *
 	 * @dataProvider unusable_session_id_provider
+	 * @param array $data Test value.
+	 * @param mixed $session_id Test value.
 	 */
 	public function test_unusable_validated_session_id_is_not_recorded( array $data, $session_id ): void {
 		$validated = $data + array( 'validated_nonce' => 'ppc-create-setup-token' );
@@ -589,6 +616,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Protected routes return the correct plaintext message on Block.
 	 *
 	 * @dataProvider protected_request_block_provider
+	 * @param string         $action Test value.
+	 * @param string         $path Test value.
+	 * @param MessageContext $context Test value.
 	 */
 	public function test_protected_request_blocks_before_transport( string $action, string $path, MessageContext $context ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
@@ -624,6 +654,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox PayPal RequestData failures verify without a submitted session ID and store no reusable record.
 	 *
 	 * @dataProvider request_data_failure_provider
+	 * @param string $failure Test value.
+	 * @param string $action Test value.
+	 * @param string $path Test value.
+	 * @param string $source Test value.
+	 * @param string $exception_message Test value.
 	 */
 	public function test_request_data_failure_verifies_without_session_id( string $failure, string $action, string $path, string $source, string $exception_message ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ), $failure );
@@ -682,7 +717,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'invalid', $this->sut->verify_protected_paypal_request( 'invalid', array() ) );
 	}
 
-	/** Configure PayPal request-data compatibility stubs. */
+	/**
+	 * Configure PayPal request-data compatibility stubs.
+	 *
+	 * @param array  $data Test value.
+	 * @param string $failure Test value.
+	 */
 	private function configure_paypal_request_data( array $data, string $failure = '' ): void {
 		if ( ! class_exists( 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' ) ) {
 			class_alias( PayPalRequestDataStub::class, 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' );
@@ -716,15 +756,23 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
 	}
 
-	/** Run a protected request while its WooCommerce AJAX action is active. */
+	/**
+	 * Run a protected request while its WooCommerce AJAX action is active.
+	 *
+	 * @param string $action Test value.
+	 * @param array  $args Test value.
+	 * @param string $path Test value.
+	 */
 	private function run_protected_request( string $action, array $args, string $path ) {
 		$this->sut->register();
 		$result   = null;
 		$callback = function () use ( &$result, $args, $path ): void {
+			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 			$result = apply_filters( 'ppcp_request_args', $args, 'https://api-m.paypal.com' . $path );
 		};
 		add_action( $action, $callback );
 		try {
+			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 			do_action( $action );
 		} finally {
 			remove_action( $action, $callback );
@@ -732,6 +780,4 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		return $result;
 	}
-
-
 }

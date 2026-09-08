@@ -20,11 +20,14 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChang
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
+// phpcs:disable Squiz.Classes.ClassFileName.NoMatch
 /**
  * Exception used to model WP-CLI error exits.
  */
 class WPCLIErrorException extends \RuntimeException {}
+// phpcs:enable Squiz.Classes.ClassFileName.NoMatch
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound
 /**
  * Tests for FraudProtectionCommands.
  */
@@ -96,18 +99,19 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 							$message = $message::class . ': ' . $message->getMessage();
 						}
 
+						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The test captures WP-CLI errors through this exception.
 						throw new WPCLIErrorException( (string) $message );
 					},
 				),
 			)
 		);
 
-		$this->schema_manager               = $this->createMock( SchemaManager::class );
-		$this->session_event_pruner         = $this->createMock( SessionEventPruner::class );
+		$this->schema_manager                = $this->createMock( SchemaManager::class );
+		$this->session_event_pruner          = $this->createMock( SessionEventPruner::class );
 		$this->merchant_facing_features_gate = $this->createMock( MerchantFacingFeaturesGate::class );
-		$this->automatic_protection         = $this->createMock( AutomaticProtectionSetting::class );
-		$this->automatic_protection_updater = $this->createMock( AutomaticProtectionSettingUpdater::class );
-		$this->sut                          = new FraudProtectionCommands();
+		$this->automatic_protection          = $this->createMock( AutomaticProtectionSetting::class );
+		$this->automatic_protection_updater  = $this->createMock( AutomaticProtectionSettingUpdater::class );
+		$this->sut                           = new FraudProtectionCommands();
 		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater );
 	}
 
@@ -123,9 +127,9 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 				'required_version'  => SchemaManager::SCHEMA_VERSION,
 				'installed_version' => SchemaManager::SCHEMA_VERSION,
 				'install_state'     => array(
-					'attempts'       => 0,
-					'last_attempt'   => 0,
-					'last_error'     => '',
+					'attempts'     => 0,
+					'last_attempt' => 0,
+					'last_error'   => '',
 				),
 				'complete'          => true,
 				'tables'            => array(
@@ -266,9 +270,9 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			self::schema_status(
 				array(
 					'install_state' => array(
-						'attempts'       => 3,
-						'last_attempt'   => 1724112000,
-						'last_error'     => 'Database error',
+						'attempts'     => 3,
+						'last_attempt' => 1724112000,
+						'last_error'   => 'Database error',
 					),
 				)
 			)
@@ -632,3 +636,4 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->sut->sessions_prune();
 	}
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound

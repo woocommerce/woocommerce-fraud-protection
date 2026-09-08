@@ -7,6 +7,9 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
+// These tests create and remove local asset metadata fixtures.
+// phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir, WordPress.PHP.DevelopmentFunctions.error_log_var_export
+
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
@@ -35,21 +38,29 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Generated asset metadata path.
+	 *
+	 * @var string
 	 */
 	private string $asset_file;
 
 	/**
 	 * Whether asset metadata existed before the test.
+	 *
+	 * @var bool
 	 */
 	private bool $asset_file_existed;
 
 	/**
 	 * Original asset metadata contents.
+	 *
+	 * @var string
 	 */
 	private string $asset_file_contents = '';
 
 	/**
 	 * Whether the test created the build directory.
+	 *
+	 * @var bool
 	 */
 	private bool $build_directory_created = false;
 
@@ -60,6 +71,9 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	 */
 	private array $original_globals;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->original_globals = array();
@@ -81,6 +95,9 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection->reset();
 	}
 
+	/**
+	 * Tear down test fixtures.
+	 */
 	public function tearDown(): void {
 		foreach ( $this->original_globals as $global_name => $original ) {
 			if ( $original['exists'] ) {
@@ -168,8 +185,8 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$version      = 'settings-test-version';
 		$this->write_asset_fixture( $dependencies, $version );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
-		$rest_requests = array();
-		$rest_mock     = function ( $result, $server, $request ) use ( &$rest_requests ) {
+		$rest_requests          = array();
+		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
 			if ( '/wc-fraud-protection/v1/settings' !== $request->get_route() ) {
 				return $result;
 			}

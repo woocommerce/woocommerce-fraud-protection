@@ -428,6 +428,7 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 			'page loaded' => array(
 				'template_redirect',
 				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					unset( $product, $cart_item_key );
 					add_filter( 'woocommerce_is_cart', '__return_true' );
 					$sut->track_cart_page_loaded();
 				},
@@ -435,6 +436,7 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 			'added'       => array(
 				'internal_woocommerce_cart_item_added_from_user_request',
 				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					unset( $cart_item_key );
 					$sut->track_cart_item_added( $product->get_id(), 1 );
 				},
 			),
@@ -728,12 +730,12 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox track_cart_item_added() omits a cart_item_count WooCommerce cannot state.
+	 * @testdox track_cart_item_added() reports null for a cart_item_count WooCommerce cannot state.
 	 *
 	 * WooCommerce sums the count over the raw cart quantities and passes it through the
 	 * `woocommerce_cart_contents_count` filter, so neither its type nor its finiteness is
 	 * guaranteed. The count is the plugin's own number rather than a relayed one, so when it
-	 * has no finite numeric form the field is omitted rather than filled in.
+	 * has no finite numeric form the field is set to null rather than an incorrect count.
 	 *
 	 * @dataProvider provide_cart_item_counts
 	 *
@@ -771,20 +773,20 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function provide_cart_item_counts(): array {
 		return array(
-			'whole count'               => array( 3, 3 ),
+			'whole count'                  => array( 3, 3 ),
 			// An int is taken as given. Without that fast path this would come back as a float,
 			// because (float) PHP_INT_MAX fails the deliberately strict upper bound below.
-			'integer maximum'           => array( PHP_INT_MAX, PHP_INT_MAX ),
-			'decimal count'             => array( 2.5, 2.5 ),
-			'positive INF'              => array( INF, null ),
-			'negative INF'              => array( -INF, null ),
-			'NAN'                       => array( NAN, null ),
+			'integer maximum'              => array( PHP_INT_MAX, PHP_INT_MAX ),
+			'decimal count'                => array( 2.5, 2.5 ),
+			'positive INF'                 => array( INF, null ),
+			'negative INF'                 => array( -INF, null ),
+			'NAN'                          => array( NAN, null ),
 			// Read by numeric value rather than PHP type, matching how a money total is read,
 			// and reported as a whole number when that is what it is.
-			'numeric string'            => array( '3', 3 ),
-			'fractional numeric string' => array( '2.5', 2.5 ),
-			'sentinel string'           => array( 'INF', null ),
-			'array'                     => array( array( 1 ), null ),
+			'numeric string'               => array( '3', 3 ),
+			'fractional numeric string'    => array( '2.5', 2.5 ),
+			'sentinel string'              => array( 'INF', null ),
+			'array'                        => array( array( 1 ), null ),
 
 			// The integer boundary. Comparing in float rounds PHP_INT_MAX up to 2^63, so an
 			// inclusive upper bound would admit this and cast it to a large negative — a count

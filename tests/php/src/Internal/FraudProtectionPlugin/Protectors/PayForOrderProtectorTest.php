@@ -64,7 +64,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->session_verifier       = $this->createMock( SessionVerifier::class );
+		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
@@ -196,22 +196,22 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider pay_form_early_return_provider
 	 *
-	 * @param string $case Early-return case.
+	 * @param string $test_case Early-return case.
 	 */
-	public function test_pay_page_early_returns_do_not_enqueue_scripts( string $case ): void {
+	public function test_pay_page_early_returns_do_not_enqueue_scripts( string $test_case ): void {
 		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
 		$this->sut->register();
 
-		if ( 'invalid_order' === $case ) {
+		if ( 'invalid_order' === $test_case ) {
 			$this->render_order_pay_id( 999999, true, 'bad-key' );
 		} else {
-			$customer_id = 'login' === $case ? $this->factory()->user->create( array( 'role' => 'customer' ) ) : 1;
+			$customer_id = 'login' === $test_case ? $this->factory()->user->create( array( 'role' => 'customer' ) ) : 1;
 			$this->order = \WC_Helper_Order::create_order( $customer_id );
-			wp_set_current_user( 'login' === $case ? 0 : 1 );
-			$key           = 'invalid_key' === $case ? 'bad-key' : $this->order->get_order_key();
-			$pay_for_order = 'receipt' !== $case;
+			wp_set_current_user( 'login' === $test_case ? 0 : 1 );
+			$key           = 'invalid_key' === $test_case ? 'bad-key' : $this->order->get_order_key();
+			$pay_for_order = 'receipt' !== $test_case;
 
-			if ( 'email_verification' === $case ) {
+			if ( 'email_verification' === $test_case ) {
 				$customer_id = $this->factory()->user->create(
 					array(
 						'role'       => 'customer',
@@ -227,7 +227,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 				add_filter( 'woocommerce_order_email_verification_required', '__return_true' );
 			}
 
-			if ( 'no_payment' === $case ) {
+			if ( 'no_payment' === $test_case ) {
 				$this->order->set_status( 'completed' );
 				$this->order->save();
 			}
@@ -275,7 +275,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	private function render_order_pay_id( int $order_id, bool $validated_pay, string $key ): void {
 		$GLOBALS['wp']->query_vars['order-pay'] = (string) $order_id;
-		$_GET['key']                             = $key;
+		$_GET['key']                            = $key;
 
 		if ( $validated_pay ) {
 			$_GET['pay_for_order'] = 'true';

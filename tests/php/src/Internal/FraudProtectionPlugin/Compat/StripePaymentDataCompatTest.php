@@ -14,8 +14,11 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub WC_Stripe_API if the real class isn't loaded.
+// The following classes keep the names of the external API that they model.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
 if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** Stripe API test stub. */
 	class WC_Stripe_API_Stub {
 
 		/**
@@ -52,6 +55,7 @@ if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 		 * @return mixed
 		 */
 		public static function get_payment_method( string $payment_method_id ) {
+			unset( $payment_method_id );
 			return self::$mock_response;
 		}
 	}
@@ -62,6 +66,7 @@ if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 // Stub WC_Stripe_Mode if the real class isn't loaded.
 if ( ! class_exists( '\WC_Stripe_Mode', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** Stripe mode test stub. */
 	class WC_Stripe_Mode_Stub {
 
 		/**
@@ -97,6 +102,7 @@ if ( ! class_exists( '\WC_Stripe_Mode', false ) ) {
 // Stub WC_Stripe and its account service if the real class isn't loaded.
 if ( ! class_exists( '\WC_Stripe', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** Stripe account test stub. */
 	class WC_Stripe_Account_Stub {
 
 		/**
@@ -113,19 +119,35 @@ if ( ! class_exists( '\WC_Stripe', false ) ) {
 		 */
 		private static bool $throws = false;
 
+		/**
+		 * Provide the set_account_data() test stub.
+		 *
+		 * @param mixed $account_data Test value.
+		 */
 		public static function set_account_data( $account_data ): void {
 			self::$account_data = $account_data;
 		}
 
+		/**
+		 * Provide the set_throws() test stub.
+		 *
+		 * @param bool $throws Test value.
+		 */
 		public static function set_throws( bool $throws ): void {
 			self::$throws = $throws;
 		}
 
+		/**
+		 * Provide the reset() test stub.
+		 */
 		public static function reset(): void {
 			self::$account_data = null;
 			self::$throws       = false;
 		}
 
+		/**
+		 * Provide the get_cached_account_data() test stub.
+		 */
 		public function get_cached_account_data() {
 			if ( self::$throws ) {
 				throw new \RuntimeException( 'Account lookup failed' );
@@ -136,13 +158,21 @@ if ( ! class_exists( '\WC_Stripe', false ) ) {
 	}
 
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** Stripe plugin test stub. */
 	class WC_Stripe_Stub {
+		/** @var WC_Stripe_Account_Stub Stripe account service. */
 		public WC_Stripe_Account_Stub $account;
 
+		/**
+		 * Provide the __construct() test stub.
+		 */
 		public function __construct() {
 			$this->account = new WC_Stripe_Account_Stub();
 		}
 
+		/**
+		 * Provide the get_instance() test stub.
+		 */
 		public static function get_instance(): self {
 			static $instance;
 
@@ -157,6 +187,8 @@ if ( ! class_exists( '\WC_Stripe', false ) ) {
 	class_alias( __NAMESPACE__ . '\WC_Stripe_Account_Stub', 'WC_Stripe_Account' );
 	class_alias( __NAMESPACE__ . '\WC_Stripe_Stub', 'WC_Stripe' );
 }
+
+// phpcs:enable Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
 
 /**
  * Tests for the StripePaymentDataCompat class.
@@ -345,28 +377,28 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'gateway'                 => 'stripe',
-				'payment_type'            => 'card',
-				'is_saved_payment_method' => false,
-				'instrument'              => array(
-					'brand'            => 'visa',
-					'funding'          => 'credit',
-					'last4'            => '4242',
-					'fingerprint'      => 'fp_stripe123',
-					'country'          => 'US',
-					'exp_month'        => 12,
-					'exp_year'         => 2025,
-					'billing_postcode' => '10001',
-					'wallet'           => null,
-					'payer_email'      => null,
-					'bank_code'        => null,
+				'gateway'                  => 'stripe',
+				'payment_type'             => 'card',
+				'is_saved_payment_method'  => false,
+				'instrument'               => array(
+					'brand'              => 'visa',
+					'funding'            => 'credit',
+					'last4'              => '4242',
+					'fingerprint'        => 'fp_stripe123',
+					'country'            => 'US',
+					'exp_month'          => 12,
+					'exp_year'           => 2025,
+					'billing_postcode'   => '10001',
+					'wallet'             => null,
+					'payer_email'        => null,
+					'bank_code'          => null,
 					'bin'                => null,
 					'cvc_check'          => null,
 					'avs_address_check'  => null,
 					'avs_postcode_check' => null,
 				),
-				'transaction_mode'        => PaymentMode::Live->value,
-				'merchant_identifier'     => 'acct_123',
+				'transaction_mode'         => PaymentMode::Live->value,
+				'merchant_identifier'      => 'acct_123',
 				'merchant_identifier_type' => 'account',
 			),
 			$result->to_array()

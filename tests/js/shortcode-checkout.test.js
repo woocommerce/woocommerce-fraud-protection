@@ -1,6 +1,4 @@
-/**
- * @jest-environment jsdom
- */
+/** @jest-environment jsdom */ // eslint-disable-line jsdoc/check-tag-names
 
 /**
  * Tests for shortcode checkout fraud protection integration.
@@ -13,11 +11,10 @@
  *
  * acquireSessionId and reset are tested in blackbox-init.test.js.
  * Consumer tests mock wcFraudProtection directly.
- *
- * @package WooCommerce\FraudProtection
  */
 
-const flushPromises = () => new Promise( jest.requireActual( 'timers' ).setImmediate );
+const flushPromises = () =>
+	new Promise( jest.requireActual( 'timers' ).setImmediate );
 
 const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 
@@ -77,7 +74,9 @@ describe( 'shortcode-checkout', () => {
 		const result = $form.triggerHandler( 'checkout_place_order' );
 		expect( result ).toBe( false );
 		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
-		expect( document.querySelector( 'form.checkout' ).submit ).not.toHaveBeenCalled();
+		expect(
+			document.querySelector( 'form.checkout' ).submit
+		).not.toHaveBeenCalled();
 
 		// Wait for the acquireSessionId promise to resolve.
 		await flushPromises();
@@ -88,7 +87,9 @@ describe( 'shortcode-checkout', () => {
 		expect( $field.val() ).toBe( 'sess-shortcode' );
 
 		// Form re-submitted.
-		expect( document.querySelector( 'form.checkout' ).submit ).toHaveBeenCalled();
+		expect(
+			document.querySelector( 'form.checkout' ).submit
+		).toHaveBeenCalled();
 	} );
 
 	it( 'allows through on second pass when hidden field exists', () => {
@@ -140,14 +141,16 @@ describe( 'shortcode-checkout', () => {
 		let resolveSecond;
 		mockAcquireSessionId
 			.mockImplementationOnce(
-				() => new Promise( ( resolve ) => {
-					resolveFirst = resolve;
-				} )
+				() =>
+					new Promise( ( resolve ) => {
+						resolveFirst = resolve;
+					} )
 			)
 			.mockImplementationOnce(
-				() => new Promise( ( resolve ) => {
-					resolveSecond = resolve;
-				} )
+				() =>
+					new Promise( ( resolve ) => {
+						resolveSecond = resolve;
+					} )
 			);
 		setupFraudProtection();
 		loadScript();
@@ -157,9 +160,7 @@ describe( 'shortcode-checkout', () => {
 
 		resolveSecond( 'sess-second' );
 		await flushPromises();
-		let $fields = $form.find(
-			'input[name="' + SESSION_ID_FIELD + '"]'
-		);
+		let $fields = $form.find( 'input[name="' + SESSION_ID_FIELD + '"]' );
 		expect( $fields.length ).toBe( 1 );
 		expect( $fields.val() ).toBe( 'sess-second' );
 		const field = $fields[ 0 ];
@@ -167,9 +168,7 @@ describe( 'shortcode-checkout', () => {
 		resolveFirst( 'sess-first' );
 		await flushPromises();
 
-		$fields = $form.find(
-			'input[name="' + SESSION_ID_FIELD + '"]'
-		);
+		$fields = $form.find( 'input[name="' + SESSION_ID_FIELD + '"]' );
 		expect( $fields.length ).toBe( 1 );
 		expect( $fields.val() ).toBe( 'sess-first' );
 		expect( $fields[ 0 ] ).toBe( field );

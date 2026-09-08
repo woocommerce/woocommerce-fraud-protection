@@ -7,6 +7,9 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\FraudProtection;
 
+// These tests use a temporary stream as controlled input.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_fopen, WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -52,15 +55,15 @@ class SessionIdNormalizerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function scalar_value_provider(): array {
 		return array(
-			'empty string'       => array( '', '' ),
-			'string zero'        => array( '0', '0' ),
-			'valid 22-byte ID'   => array( '82vHd2iPY4JvJZQE-A6jHg', '82vHd2iPY4JvJZQE-A6jHg' ),
-			'letters'            => array( 'sessionid', 'sessionid' ),
-			'hyphen'             => array( 'session-id', 'session-id' ),
-			'underscore'         => array( 'session_id', 'session_id' ),
-			'integer zero'       => array( 0, '0' ),
-			'integer'            => array( 42, '42' ),
-			'float zero'         => array( 0.0, '0' ),
+			'empty string'     => array( '', '' ),
+			'string zero'      => array( '0', '0' ),
+			'valid 22-byte ID' => array( '82vHd2iPY4JvJZQE-A6jHg', '82vHd2iPY4JvJZQE-A6jHg' ),
+			'letters'          => array( 'sessionid', 'sessionid' ),
+			'hyphen'           => array( 'session-id', 'session-id' ),
+			'underscore'       => array( 'session_id', 'session_id' ),
+			'integer zero'     => array( 0, '0' ),
+			'integer'          => array( 42, '42' ),
+			'float zero'       => array( 0.0, '0' ),
 		);
 	}
 
@@ -84,8 +87,8 @@ class SessionIdNormalizerTest extends FraudProtectionUnitTestCase {
 		$values = array(
 			'positive float'     => array( 1.5 ),
 			'negative float'     => array( -1.5 ),
-			'single dot'        => array( '.' ),
-			'double dot'        => array( '..' ),
+			'single dot'         => array( '.' ),
+			'double dot'         => array( '..' ),
 			'three dots'         => array( '...' ),
 			'leading dot'        => array( '.session' ),
 			'trailing dot'       => array( 'session.' ),

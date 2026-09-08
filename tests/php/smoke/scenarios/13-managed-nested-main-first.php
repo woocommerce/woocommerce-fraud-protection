@@ -7,6 +7,9 @@
 
 declare( strict_types = 1 );
 
+// This smoke test creates and removes a temporary managed-plugin fixture before WordPress loads.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_mkdir, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 require_once dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection.php';

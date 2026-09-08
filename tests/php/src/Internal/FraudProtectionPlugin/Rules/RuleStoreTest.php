@@ -59,7 +59,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_rules_table_name() );
 		wp_set_current_user( 0 );
 		parent::tearDown();
@@ -90,7 +90,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 
 		$table = $this->schema_manager->get_rules_table_name();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A );
 
 		return is_array( $row ) ? $row : null;
@@ -314,7 +314,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		// A direct table write, bypassing the store, must not be visible: the
 		// ruleset is served from the cache populated above.
 		$table = $this->schema_manager->get_rules_table_name();
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET status = %s WHERE id = %d", 'disabled', $rule->id ) );
 		$this->assertCount( 1, $this->sut->get_active_rules(), 'The cached ruleset must still be served' );
 
@@ -333,7 +333,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		$this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'someone@example.com' ) );
 
 		$table = $this->schema_manager->get_rules_table_name();
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( $wpdb->prepare( "INSERT INTO {$table} (action, status, position, conditions, condition_hash, created_at) VALUES (%s, %s, %d, %s, %s, %s)", 'weird', 'active', 0, 'not json', 'hash-1', gmdate( 'Y-m-d H:i:s' ) ) );
 		wp_cache_flush();
 

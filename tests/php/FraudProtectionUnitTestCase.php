@@ -68,11 +68,11 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->forwarded_platform_logs = array();
-		$this->original_server_variables = array();
-		$this->jetpack_blog_id_filters = array();
+		$this->forwarded_platform_logs      = array();
+		$this->original_server_variables    = array();
+		$this->jetpack_blog_id_filters      = array();
 		$this->original_woocommerce_session = WC()->session;
-		$this->original_woocommerce_cart = WC()->cart;
+		$this->original_woocommerce_cart    = WC()->cart;
 
 		$this->register_legacy_proxy_function_mocks(
 			array(
@@ -116,8 +116,8 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 
 		$this->reset_woocommerce_checkout_page_cache();
 		$this->reset_legacy_proxy_mocks();
-		WC()->session = $this->original_woocommerce_session;
-		WC()->cart = $this->original_woocommerce_cart;
+		WC()->session                  = $this->original_woocommerce_session;
+		WC()->cart                     = $this->original_woocommerce_cart;
 		$this->forwarded_platform_logs = array();
 
 		parent::tearDown();
@@ -168,6 +168,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 
 		$this->original_server_variables[ $key ] = array(
 			'exists' => array_key_exists( $key, $_SERVER ),
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- The test helper must restore the original raw server value.
 			'value'  => $_SERVER[ $key ] ?? null,
 		);
 	}
@@ -333,10 +334,10 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	/**
 	 * Assert that the installed logger captured a matching log entry.
 	 *
-	 * @param string                    $level            Expected log level (e.g. 'info', 'warning', 'error').
-	 * @param string                    $substring        Substring expected in the log message.
-	 * @param ?array<string, mixed>     $expected_context Optional context subset that must be present in the entry's context.
-	 * @param ?bool                     $forwarded        Optional expected platform-log forwarding flag.
+	 * @param string                $level            Expected log level (e.g. 'info', 'warning', 'error').
+	 * @param string                $substring        Substring expected in the log message.
+	 * @param ?array<string, mixed> $expected_context Optional context subset that must be present in the entry's context.
+	 * @param ?bool                 $forwarded        Optional expected platform-log forwarding flag.
 	 * @return void
 	 */
 	protected function assertLogged( string $level, string $substring, ?array $expected_context = null, ?bool $forwarded = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.

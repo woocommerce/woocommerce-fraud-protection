@@ -140,7 +140,7 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 			'valid long value'      => array( $exact . 'tail', $exact ),
 			'empty value'           => array( '', '' ),
 			'unsupported character' => array( 'identity with spaces', '' ),
-			'trailing newline'       => array( "identity\n", '' ),
+			'trailing newline'      => array( "identity\n", '' ),
 			'unsupported type'      => array( array( 'identity' ), '' ),
 		);
 	}
@@ -187,6 +187,7 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_get_identity_id_normalizes_tracks_cookie( string $tracks_identity, bool $expects_fallback ): void {
 		$had_cookie = array_key_exists( 'tk_ai', $_COOKIE );
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- The test must restore the original raw cookie value.
 		$old_cookie = $_COOKIE['tk_ai'] ?? null;
 		try {
 			$_COOKIE['tk_ai'] = $tracks_identity;

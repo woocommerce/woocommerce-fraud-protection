@@ -118,5 +118,4 @@ class AddressTest extends FraudProtectionUnitTestCase {
 		$address = Address::from_wc_customer_billing( WC()->customer );
 		$this->assertEquals( 'CA', $address->get_country() );
 	}
-
 }

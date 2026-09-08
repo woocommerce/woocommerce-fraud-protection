@@ -74,6 +74,7 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 		$order->set_total( '10.00' );
 		$order->save();
 		$filter = static function ( $total ) {
+			unset( $total );
 			return '0.00';
 		};
 		add_filter( 'woocommerce_order_get_total', $filter );
@@ -91,7 +92,7 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox from_order() keeps usable items when another item fails.
 	 */
 	public function test_from_order_drops_failing_item_and_keeps_usable_item(): void {
-		$product = \WC_Helper_Product::create_simple_product();
+		$product     = \WC_Helper_Product::create_simple_product();
 		$usable_item = new \WC_Order_Item_Product();
 		$usable_item->set_product_id( $product->get_id() );
 		$usable_item->set_name( 'Deleted usable item' );
@@ -314,15 +315,15 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 	 */
 	public function provide_unrepresentable_totals(): array {
 		return array(
-			'items_total INF'           => array( 'get_subtotal', INF, 'items_total' ),
-			'items_total "INF" string'  => array( 'get_subtotal', 'INF', 'items_total' ),
-			'shipping_total INF'        => array( 'get_shipping_total', INF, 'shipping_total' ),
-			'tax_total INF'             => array( 'get_cart_contents_tax', INF, 'tax_total' ),
-			'tax_total NAN'             => array( 'get_cart_contents_tax', NAN, 'tax_total' ),
-			'discount_total INF'        => array( 'get_discount_total', INF, 'discount_total' ),
-			'total INF'                 => array( 'get_total', INF, 'total' ),
-			'total "inf" string'        => array( 'get_total', 'inf', 'total' ),
-			'total overflowing string'  => array( 'get_total', '1e400', 'total' ),
+			'items_total INF'          => array( 'get_subtotal', INF, 'items_total' ),
+			'items_total "INF" string' => array( 'get_subtotal', 'INF', 'items_total' ),
+			'shipping_total INF'       => array( 'get_shipping_total', INF, 'shipping_total' ),
+			'tax_total INF'            => array( 'get_cart_contents_tax', INF, 'tax_total' ),
+			'tax_total NAN'            => array( 'get_cart_contents_tax', NAN, 'tax_total' ),
+			'discount_total INF'       => array( 'get_discount_total', INF, 'discount_total' ),
+			'total INF'                => array( 'get_total', INF, 'total' ),
+			'total "inf" string'       => array( 'get_total', 'inf', 'total' ),
+			'total overflowing string' => array( 'get_total', '1e400', 'total' ),
 		);
 	}
 
@@ -346,13 +347,28 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 	 */
 	public function provide_unusable_shipping_operands(): array {
 		return array(
-			'non-finite shipping total' => array( array( 'get_shipping_total' => INF, 'get_shipping_tax' => 2.0 ) ),
+			'non-finite shipping total' => array(
+				array(
+					'get_shipping_total' => INF,
+					'get_shipping_tax'   => 2.0,
+				),
+			),
 			// The string sentinel rather than float INF, because only the operand guard can
 			// catch it: were it removed, 'INF' > 0 is true and 'INF' / 10.0 is a TypeError, so
 			// the quotient guard never runs. Float INF would be caught by the quotient guard
 			// either way and so would pin nothing here.
-			'shipping tax "INF" string' => array( array( 'get_shipping_total' => 10.0, 'get_shipping_tax' => 'INF' ) ),
-			'quotient overflows'        => array( array( 'get_shipping_total' => 1e-320, 'get_shipping_tax' => 1e300 ) ),
+			'shipping tax "INF" string' => array(
+				array(
+					'get_shipping_total' => 10.0,
+					'get_shipping_tax'   => 'INF',
+				),
+			),
+			'quotient overflows'        => array(
+				array(
+					'get_shipping_total' => 1e-320,
+					'get_shipping_tax'   => 1e300,
+				),
+			),
 		);
 	}
 
@@ -407,5 +423,4 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 
 		return OrderData::from_cart( 0, $cart, $customer )->to_array();
 	}
-
 }

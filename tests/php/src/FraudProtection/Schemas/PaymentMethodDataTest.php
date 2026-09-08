@@ -23,7 +23,13 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox Constructor sets all properties; to_array() returns correct values.
 	 */
 	public function test_constructor_and_to_array(): void {
-		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) );
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand'   => 'visa',
+				'funding' => 'credit',
+				'last4'   => '4242',
+			)
+		);
 		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$result = $data->to_array();
@@ -60,33 +66,43 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox to_array() includes full instrument data when instrument is present.
 	 */
 	public function test_to_array_with_full_instrument(): void {
-		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'mastercard', 'funding' => 'debit', 'last4' => '5678', 'fingerprint' => 'fp_abc', 'country' => 'GB', 'exp_month' => 11, 'exp_year' => 2026 ) );
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand'       => 'mastercard',
+				'funding'     => 'debit',
+				'last4'       => '5678',
+				'fingerprint' => 'fp_abc',
+				'country'     => 'GB',
+				'exp_month'   => 11,
+				'exp_year'    => 2026,
+			)
+		);
 		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$this->assertSame(
 			array(
-				'gateway'                 => 'stripe',
-				'payment_type'            => 'card',
-				'is_saved_payment_method' => true,
-				'instrument'              => array(
-					'brand'            => 'mastercard',
-					'funding'          => 'debit',
-					'last4'            => '5678',
-					'fingerprint'      => 'fp_abc',
-					'country'          => 'GB',
-					'exp_month'        => 11,
-					'exp_year'         => 2026,
-					'billing_postcode' => null,
-					'wallet'           => null,
-					'payer_email'      => null,
-					'bank_code'        => null,
+				'gateway'                  => 'stripe',
+				'payment_type'             => 'card',
+				'is_saved_payment_method'  => true,
+				'instrument'               => array(
+					'brand'              => 'mastercard',
+					'funding'            => 'debit',
+					'last4'              => '5678',
+					'fingerprint'        => 'fp_abc',
+					'country'            => 'GB',
+					'exp_month'          => 11,
+					'exp_year'           => 2026,
+					'billing_postcode'   => null,
+					'wallet'             => null,
+					'payer_email'        => null,
+					'bank_code'          => null,
 					'bin'                => null,
 					'cvc_check'          => null,
 					'avs_address_check'  => null,
 					'avs_postcode_check' => null,
 				),
-				'transaction_mode'        => PaymentMode::Unknown->value,
-				'merchant_identifier'     => null,
+				'transaction_mode'         => PaymentMode::Unknown->value,
+				'merchant_identifier'      => null,
 				'merchant_identifier_type' => null,
 			),
 			$data->to_array()
@@ -131,7 +147,12 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox with_merchant_identifier() and with_transaction_mode() preserve the identifier pair.
 	 */
 	public function test_copy_methods_preserve_merchant_identifier_pair(): void {
-		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242' ) );
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand' => 'visa',
+				'last4' => '4242',
+			)
+		);
 		$data       = new PaymentMethodData( 'stripe', 'card', true, $instrument, PaymentMode::Live );
 
 		$with_identifier = $data->with_merchant_identifier( 'acct_123', 'custom_gateway' )->to_array();
@@ -155,7 +176,18 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox with_transaction_mode() preserves all other fields.
 	 */
 	public function test_with_transaction_mode_preserves_fields(): void {
-		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242', 'fingerprint' => 'fp_abc', 'country' => 'US', 'exp_month' => 12, 'exp_year' => 2028, 'billing_postcode' => '10001' ) );
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand'            => 'visa',
+				'funding'          => 'credit',
+				'last4'            => '4242',
+				'fingerprint'      => 'fp_abc',
+				'country'          => 'US',
+				'exp_month'        => 12,
+				'exp_year'         => 2028,
+				'billing_postcode' => '10001',
+			)
+		);
 		$original   = new PaymentMethodData( 'stripe', 'card', true, $instrument );
 
 		$result = $original->with_transaction_mode( PaymentMode::Test );

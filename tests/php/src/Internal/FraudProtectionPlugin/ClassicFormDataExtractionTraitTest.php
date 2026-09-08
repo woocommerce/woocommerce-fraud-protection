@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
+// phpcs:disable Squiz.Classes.ClassFileName.NoMatch
 /**
  * Test double that exposes the trait's private methods for testing.
  */
@@ -44,7 +45,9 @@ class ClassicFormDataExtractionTraitTestDouble {
 		return $this->extract_payment_data();
 	}
 }
+// phpcs:enable Squiz.Classes.ClassFileName.NoMatch
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound
 /**
  * Tests for the ClassicFormDataExtractionTrait.
  *
@@ -239,7 +242,7 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 			'shipping_first_name'                  => 'John',
 			'order_comments'                       => 'Leave at door',
 			'account_username'                     => 'john',
-			'woocommerce_checkout_nonce'            => 'abc123',
+			'woocommerce_checkout_nonce'           => 'abc123',
 			'woocommerce_add_payment_method'       => '1',
 			'woocommerce-add-payment-method-nonce' => 'def456',
 			'_wpnonce'                             => 'xyz789',
@@ -283,6 +286,7 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 	 * @testdox extract_payment_data() skips an integer key and keeps valid gateway data.
 	 */
 	public function test_extract_payment_data_skips_integer_key_and_keeps_gateway_data(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Test supplies the form data parsed by the trait.
 		parse_str( '0=bad&gateway_token=valid', $_POST );
 
 		$payment_data = $this->sut->test_extract_payment_data();
@@ -290,3 +294,4 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'gateway_token' => 'valid' ), $payment_data );
 	}
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound

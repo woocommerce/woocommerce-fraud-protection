@@ -53,12 +53,12 @@ class VisitorIpResolverTest extends FraudProtectionUnitTestCase {
 	 */
 	public function valid_ip_provider(): array {
 		return array(
-			'public IPv4'       => array( '8.8.8.8' ),
-			'private IPv4'      => array( '10.0.0.1' ),
-			'loopback IPv4'     => array( '127.0.0.1' ),
-			'reserved IPv4'     => array( '203.0.113.7' ),
-			'IPv6'              => array( '2001:db8::1' ),
-			'loopback IPv6'     => array( '::1' ),
+			'public IPv4'      => array( '8.8.8.8' ),
+			'private IPv4'     => array( '10.0.0.1' ),
+			'loopback IPv4'    => array( '127.0.0.1' ),
+			'reserved IPv4'    => array( '203.0.113.7' ),
+			'IPv6'             => array( '2001:db8::1' ),
+			'loopback IPv6'    => array( '::1' ),
 			'IPv4-mapped IPv6' => array( '::ffff:192.0.2.128' ),
 		);
 	}

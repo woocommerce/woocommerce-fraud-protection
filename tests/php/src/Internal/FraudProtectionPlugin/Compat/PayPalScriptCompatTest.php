@@ -22,10 +22,13 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/** @var PayPalScriptCompat */
 	private PayPalScriptCompat $sut;
 
+	/** @var bool Whether the smart-button handle changed. */
 	private bool $touched_smart_button_handle = false;
 
+	/** @var bool Whether the block handle was registered. */
 	private bool $registered_block_handle = false;
 
+	/** @var bool Whether the add-payment-method handle changed. */
 	private bool $touched_add_payment_method_handle = false;
 
 	/**
@@ -75,6 +78,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this->sut, 'enqueue_paypal_script_if_add_payment_method_enqueued' ) ) );
 	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| enqueue_paypal_script() Tests
@@ -92,6 +96,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->mock_jetpack_blog_id( 12345 );
 		$this->sut->register();
 
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( $hook );
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
@@ -176,7 +181,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			$gateways[ $gateway->id ] = $gateway;
 			return $gateways;
 		};
-		$sut = $this->make_sut_expecting_no_script_request();
+		$sut         = $this->make_sut_expecting_no_script_request();
 		add_filter( 'woocommerce_available_payment_gateways', $add_gateway );
 
 		try {
@@ -240,7 +245,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function test_paypal_block_follower_skips_checkout_endpoint( string $endpoint ): void {
 		global $wp;
 
-		$sut = $this->make_sut_expecting_no_script_request();
+		$sut                         = $this->make_sut_expecting_no_script_request();
 		$wp->query_vars[ $endpoint ] = '123';
 
 		$sut->enqueue_paypal_block_script_if_registered();
@@ -292,7 +297,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @param mixed $value Malformed filter value.
 	 */
 	public function test_malformed_cart_widget_visibility_passes_through_without_scripts( $value ): void {
-		$sut = $this->make_sut_expecting_no_script_request();
+		$sut    = $this->make_sut_expecting_no_script_request();
 		$result = $sut->enqueue_paypal_script_for_visible_mini_cart_widget( $value );
 
 		$this->assertSame( $value, $result );
@@ -307,8 +312,8 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function malformed_cart_widget_visibility_provider(): array {
 		return array(
 			'integer' => array( 0 ),
-			'array'  => array( array() ),
-			'object' => array( new \stdClass() ),
+			'array'   => array( array() ),
+			'object'  => array( new \stdClass() ),
 		);
 	}
 
@@ -324,6 +329,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		ob_start();
 		woocommerce_mini_cart();
 		ob_end_clean();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_paypal_payments_minicart_button_render' );
 
 		$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-blackbox'] );
@@ -356,7 +362,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function unavailable_mini_cart_provider(): array {
 		return array(
-			'location disabled'    => array( false, true, true ),
+			'location disabled'     => array( false, true, true ),
 			'script not registered' => array( true, false, true ),
 			'script not enqueued'   => array( true, true, false ),
 		);
@@ -366,6 +372,10 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox PayPal version and setting precedence controls the mini-cart follower.
 	 *
 	 * @dataProvider mini_cart_setting_precedence_provider
+	 * @param string $version Test value.
+	 * @param ?bool  $current_enabled Test value.
+	 * @param bool   $legacy_enabled Test value.
+	 * @param bool   $expected Test value.
 	 */
 	public function test_mini_cart_setting_precedence( string $version, ?bool $current_enabled, bool $legacy_enabled, bool $expected ): void {
 		update_option( 'woocommerce-ppcp-version', $version );
@@ -438,6 +448,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Build a PayPal compatibility layer with a controlled script handler.
 	 *
+	 * @param BlackboxScriptHandler $handler Test value.
 	 * @return PayPalScriptCompat
 	 */
 	private function make_compat_with_script_handler( BlackboxScriptHandler $handler ): PayPalScriptCompat {
@@ -447,7 +458,11 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		return $sut;
 	}
 
-	/** Build a compatibility layer that must request the shared scripts. */
+	/**
+	 * Build a compatibility layer that must request the shared scripts.
+	 *
+	 * @param bool $result Test value.
+	 */
 	private function make_sut_expecting_script_request( bool $result ): PayPalScriptCompat {
 		$handler = $this->createMock( BlackboxScriptHandler::class );
 		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( $result );
@@ -545,12 +560,15 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function test_subscriptions_render_requires_active_paypal_script(): void {
 		$sut = $this->make_sut_expecting_script_request( true );
 		$sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_enqueue_script( 'ppcp-add-payment-method' );
 		$this->touched_add_payment_method_handle = true;
 
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
@@ -562,8 +580,8 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 
 		$handler = $this->createMock( BlackboxScriptHandler::class );
 		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
-		$page_id = self::factory()->post->create( array( 'post_type' => 'page' ) );
+		$sut                    = $this->make_compat_with_script_handler( $handler );
+		$page_id                = self::factory()->post->create( array( 'post_type' => 'page' ) );
 		$previous_page_id       = get_option( 'woocommerce_myaccount_page_id', null );
 		$had_endpoint_query_var = array_key_exists( 'add-payment-method', $wp->query_vars );
 		$previous_query_var     = $wp->query_vars['add-payment-method'] ?? null;
@@ -597,6 +615,4 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			}
 		}
 	}
-
-
 }

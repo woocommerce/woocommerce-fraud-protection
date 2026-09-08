@@ -11,6 +11,12 @@
 
 declare( strict_types = 1 );
 
+// This smoke test uses diagnostic output before WordPress loads.
+// phpcs:disable WordPress.PHP.DevelopmentFunctions.error_log_var_export
+
+// This scenario provides the WooCommerce class and function that it exercises.
+// phpcs:disable Universal.Files.SeparateFunctionsFromOO.Mixed
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
@@ -19,7 +25,11 @@ update_option( 'admin_email', 'admin@example.test' );
 
 // Stub the WooCommerce singleton class so $wc instanceof \WooCommerce passes.
 if ( ! class_exists( 'WooCommerce' ) ) {
-	class WooCommerce { // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** WooCommerce singleton test stub. */
+	class WooCommerce {
+		/**
+		 * Provide the mailer() test stub.
+		 */
 		public function mailer() {
 			return null;
 		}
@@ -27,9 +37,15 @@ if ( ! class_exists( 'WooCommerce' ) ) {
 }
 
 if ( ! function_exists( 'WC' ) ) {
+	// This stub keeps the WooCommerce function name.
+	// phpcs:disable WordPress.NamingConventions.ValidFunctionName.FunctionNameInvalid
+	/**
+	 * Provide the WC() test stub.
+	 */
 	function WC() {
 		return new \WooCommerce();
 	}
+	// phpcs:enable WordPress.NamingConventions.ValidFunctionName.FunctionNameInvalid
 }
 
 $message = new \Automattic\WooCommerce\FraudProtection\BlockedSessionMessage();

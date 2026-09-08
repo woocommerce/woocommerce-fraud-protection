@@ -17,6 +17,9 @@
 
 declare( strict_types = 1 );
 
+// This smoke test must use PHP filesystem and diagnostic functions before WordPress loads.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_mkdir, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.PHP.DevelopmentFunctions.error_log_var_export
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 // Model the realistic broken deploy: WooCommerce is loaded at a supported
@@ -41,7 +44,7 @@ wfp_smoke_assert(
 	'Plugin should still register woocommerce_loaded even with a broken autoload path.'
 );
 
-// Fire the bootstrap. Without our guard, this would fatal on the require_once.
+/** Fire the bootstrap without a fatal error from require_once. */
 do_action( 'woocommerce_loaded' );
 
 wfp_smoke_assert(

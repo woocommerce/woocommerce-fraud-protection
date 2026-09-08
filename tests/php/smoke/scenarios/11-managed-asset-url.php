@@ -7,6 +7,9 @@
 
 declare( strict_types = 1 );
 
+// This smoke test creates and removes a temporary managed-plugin fixture before WordPress loads.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_mkdir, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 $managed_root = sys_get_temp_dir() . '/wfp-smoke-managed-' . uniqid();
@@ -20,13 +23,15 @@ require_once dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection-loader.php';
 
 $invalid_asset_url = array( 'unexpected' );
 wfp_smoke_assert(
-	$invalid_asset_url === apply_filters( 'plugins_url', $invalid_asset_url ),
+	// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+	apply_filters( 'plugins_url', $invalid_asset_url ) === $invalid_asset_url,
 	'Managed filter must preserve a non-string URL value.'
 );
 
 $unrelated_asset_url = 'https://example.test/store/wp-content/plugins/other-plugin/1.0.0/assets/js/other.js';
 wfp_smoke_assert(
-	$unrelated_asset_url === apply_filters( 'plugins_url', $unrelated_asset_url, 'assets/js/other.js', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/other.php' ),
+	// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+	apply_filters( 'plugins_url', $unrelated_asset_url, 'assets/js/other.js', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/other.php' ) === $unrelated_asset_url,
 	'Managed filter must not change unrelated plugin URLs.'
 );
 

@@ -71,7 +71,7 @@ class PerAttemptBlockingIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection->set_enabled( true );
 		wc_load_cart();
 
-		$this->api_client = $this->getMockBuilder( ApiClient::class )
+		$this->api_client      = $this->getMockBuilder( ApiClient::class )
 			->onlyMethods( array( 'jetpack_remote_request' ) )
 			->getMock();
 		$session_id_normalizer = new SessionIdNormalizer();

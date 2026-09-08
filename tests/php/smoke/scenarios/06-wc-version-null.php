@@ -16,6 +16,9 @@
 
 declare( strict_types = 1 );
 
+// This smoke test uses diagnostic output before WordPress loads.
+// phpcs:disable WordPress.PHP.DevelopmentFunctions.error_log_var_export
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
@@ -24,9 +27,15 @@ require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
 $GLOBALS['wfp_smoke_wc_value'] = null;
 
 if ( ! function_exists( 'WC' ) ) {
+	// This stub keeps the WooCommerce function name.
+	// phpcs:disable WordPress.NamingConventions.ValidFunctionName.FunctionNameInvalid
+	/**
+	 * Provide the WC() test stub.
+	 */
 	function WC() {
 		return $GLOBALS['wfp_smoke_wc_value'];
 	}
+	// phpcs:enable WordPress.NamingConventions.ValidFunctionName.FunctionNameInvalid
 }
 
 $session_manager = new \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager();

@@ -42,13 +42,16 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	/** @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject */
 	private $logger;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->merchant_facing_features_gate = $this->createMock( MerchantFacingFeaturesGate::class );
-		$this->automatic_protection = $this->createMock( AutomaticProtectionSetting::class );
-		$this->mc_stats             = $this->createMock( McStats::class );
-		$this->logger               = $this->createMock( FraudProtectionLogger::class );
-		$this->sut                  = new SettingsTelemetry();
+		$this->automatic_protection          = $this->createMock( AutomaticProtectionSetting::class );
+		$this->mc_stats                      = $this->createMock( McStats::class );
+		$this->logger                        = $this->createMock( FraudProtectionLogger::class );
+		$this->sut                           = new SettingsTelemetry();
 		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $this->mc_stats, $this->logger );
 	}
 
@@ -64,7 +67,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 			array(
 				'root'       => 'preserved',
 				'extensions' => array(
-					'existing'                       => array( 'value' => 1 ),
+					'existing'                     => array( 'value' => 1 ),
 					'woocommerce_fraud_protection' => array( 'existing_field' => 'preserved' ),
 				),
 			)
@@ -134,29 +137,35 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	public function malformed_tracker_data_provider(): array {
 		$plugin = array(
 			'merchant_facing_features_status' => 'default_disabled',
-			'automatic_protection_status' => 'default_disabled',
-			'automatic_protection_source' => 'none',
+			'automatic_protection_status'     => 'default_disabled',
+			'automatic_protection_source'     => 'none',
 		);
 
 		return array(
-			'non-array data' => array(
+			'non-array data'        => array(
 				null,
 				array( 'extensions' => array( 'woocommerce_fraud_protection' => $plugin ) ),
 			),
-			'non-array extensions' => array(
-				array( 'root' => 'preserved', 'extensions' => 'invalid' ),
-				array( 'root' => 'preserved', 'extensions' => array( 'woocommerce_fraud_protection' => $plugin ) ),
+			'non-array extensions'  => array(
+				array(
+					'root'       => 'preserved',
+					'extensions' => 'invalid',
+				),
+				array(
+					'root'       => 'preserved',
+					'extensions' => array( 'woocommerce_fraud_protection' => $plugin ),
+				),
 			),
 			'non-array plugin data' => array(
 				array(
 					'extensions' => array(
-						'existing'                       => array( 'value' => 1 ),
+						'existing'                     => array( 'value' => 1 ),
 						'woocommerce_fraud_protection' => 'invalid',
 					),
 				),
 				array(
 					'extensions' => array(
-						'existing'                       => array( 'value' => 1 ),
+						'existing'                     => array( 'value' => 1 ),
 						'woocommerce_fraud_protection' => $plugin,
 					),
 				),
@@ -204,7 +213,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @dataProvider supported_action_provider
 	 *
 	 * @param AutomaticProtectionChange $change  Expected action outcome.
-	 * @param SettingsChangeChannel      $channel Expected action channel.
+	 * @param SettingsChangeChannel     $channel Expected action channel.
 	 */
 	public function test_supported_actions_use_exact_stat_names( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): void {
 		$this->mc_stats->expects( $this->exactly( 2 ) )
