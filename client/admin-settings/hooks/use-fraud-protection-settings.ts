@@ -16,6 +16,7 @@ export function useFraudProtectionSettings() {
 				store.isResolving( 'getSettings' ) ||
 				! store.hasFinishedResolution( 'getSettings' ),
 			isSaving: store.isSaving(),
+			performance: store.getPerformance(),
 			settings,
 		};
 	}, [] );

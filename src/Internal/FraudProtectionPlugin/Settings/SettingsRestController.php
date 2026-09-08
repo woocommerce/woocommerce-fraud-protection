@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -31,18 +33,27 @@ class SettingsRestController extends \WP_REST_Controller {
 	private AutomaticProtectionSettingUpdater $updater;
 
 	/**
+	 * Session event store.
+	 *
+	 * @var SessionEventStore
+	 */
+	private SessionEventStore $event_store;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param AutomaticProtectionSetting        $automatic_protection Automatic-protection setting.
 	 * @param AutomaticProtectionSettingUpdater $updater              Automatic-protection setting updater.
+	 * @param SessionEventStore                 $event_store          Session event store.
 	 */
-	final public function init( AutomaticProtectionSetting $automatic_protection, AutomaticProtectionSettingUpdater $updater ): void {
+	final public function init( AutomaticProtectionSetting $automatic_protection, AutomaticProtectionSettingUpdater $updater, SessionEventStore $event_store ): void {
 		$this->namespace            = self::REST_NAMESPACE;
 		$this->rest_base            = 'settings';
 		$this->automatic_protection = $automatic_protection;
 		$this->updater              = $updater;
+		$this->event_store          = $event_store;
 	}
 
 	/**
@@ -99,10 +110,21 @@ class SettingsRestController extends \WP_REST_Controller {
 	 *
 	 * @internal
 	 *
-	 * @return \WP_REST_Response
+	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function get_settings(): \WP_REST_Response {
-		return rest_ensure_response( array( 'automatic_protection' => $this->automatic_protection->is_enabled() ) );
+	public function get_settings(): \WP_REST_Response|\WP_Error {
+		try {
+			$performance = $this->event_store->get_performance_counts();
+		} catch ( \RuntimeException ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_settings_not_loaded', __( 'The fraud prevention settings could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'automatic_protection' => $this->automatic_protection->is_enabled(),
+				'performance'          => $performance,
+			)
+		);
 	}
 
 	/**
@@ -120,7 +142,7 @@ class SettingsRestController extends \WP_REST_Controller {
 			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
-		return $this->get_settings();
+		return rest_ensure_response( array( 'automatic_protection' => $this->automatic_protection->is_enabled() ) );
 	}
 
 	/**
@@ -138,6 +160,18 @@ class SettingsRestController extends \WP_REST_Controller {
 					'description' => __( 'Whether automatic protection is enabled.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view', 'edit' ),
+				),
+				'performance'          => array(
+					'description' => __( 'Fraud prevention performance for the previous 30 days.', 'woocommerce-fraud-protection' ),
+					'type'        => 'object',
+					'context'     => array( 'view' ),
+					'readonly'    => true,
+					'properties'  => array(
+						'recommended_for_blocking' => array( 'type' => 'integer' ),
+						'blocked_automatically'    => array( 'type' => 'integer' ),
+						'allowed_by_rules'         => array( 'type' => 'integer' ),
+						'blocked_by_rules'         => array( 'type' => 'integer' ),
+					),
 				),
 			),
 		);

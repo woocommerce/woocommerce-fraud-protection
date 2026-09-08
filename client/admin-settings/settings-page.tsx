@@ -2,6 +2,7 @@ import { Button, Notice, Stack } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
 
 import { AutomaticProtectionCard } from './components/automatic-protection-card';
+import { PerformanceCard } from './components/performance-card';
 import { useFraudProtectionSettings } from './hooks/use-fraud-protection-settings';
 import { useUnsavedChangesWarning } from './hooks/use-unsaved-changes-warning';
 
@@ -11,6 +12,7 @@ export function FraudProtectionSettingsPage() {
 		isDirty,
 		isLoading,
 		isSaving,
+		performance,
 		save,
 		settings,
 		setAutomaticProtection,
@@ -53,6 +55,10 @@ export function FraudProtectionSettingsPage() {
 				disabled={ ! settings || isSaving }
 				isLoading={ isLoading }
 				onChange={ setAutomaticProtection }
+			/>
+			<PerformanceCard
+				isLoading={ isLoading }
+				performance={ performance }
 			/>
 			<Stack direction="row">
 				<Button
