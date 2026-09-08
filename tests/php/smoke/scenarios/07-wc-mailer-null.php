@@ -25,7 +25,6 @@ update_option( 'admin_email', 'admin@example.test' );
 
 // Stub the WooCommerce singleton class so $wc instanceof \WooCommerce passes.
 if ( ! class_exists( 'WooCommerce' ) ) {
-	// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
 	/** WooCommerce singleton test stub. */
 	class WooCommerce {
 		/**
@@ -35,7 +34,6 @@ if ( ! class_exists( 'WooCommerce' ) ) {
 			return null;
 		}
 	}
-	// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
 }
 
 if ( ! function_exists( 'WC' ) ) {
