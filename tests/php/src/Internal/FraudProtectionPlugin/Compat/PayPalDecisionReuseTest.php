@@ -1358,8 +1358,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		if ( 'create' === $record_type ) {
 			$this->record_order( 'browser-session', resolved_session_id: 'response-session' );
 		} elseif ( 'setup' === $record_type ) {
-				$this->set_setup_cart( 'cart-hash' );
-				$this->record_verification( 'browser-session', FraudDecision::Allow, 'response-session', PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE );
+			$this->set_setup_cart( 'cart-hash' );
+			$this->record_verification( 'browser-session', FraudDecision::Allow, 'response-session', PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE );
 		} else {
 			$this->record_order( 'browser-session', 'PP-123', 'response-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE );
 		}

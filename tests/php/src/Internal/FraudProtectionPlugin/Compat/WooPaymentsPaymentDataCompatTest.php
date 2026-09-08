@@ -196,12 +196,14 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 				 * @param bool $live Test value.
 				 */
 				public function __construct( bool $live ) {
-					$this->live = $live; }
+					$this->live = $live;
+				}
 				/**
 				 * Provide the is_live() test stub.
 				 */
 				public function is_live(): bool {
-					return $this->live; }
+					return $this->live;
+				}
 			};
 		}
 
