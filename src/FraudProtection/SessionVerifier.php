@@ -145,13 +145,30 @@ class SessionVerifier {
 			return;
 		}
 
+		$this->persist_verified_session_id_to_order( $session_id, $order );
+	}
+
+	/**
+	 * Persist an explicitly trusted response-backed session ID on an order.
+	 *
+	 * @internal
+	 *
+	 * @param string    $session_id Response-backed session ID.
+	 * @param \WC_Order $order      The order to update.
+	 * @return void
+	 */
+	public function persist_verified_session_id_to_order( string $session_id, \WC_Order $order ): void {
+		if ( '' === $session_id ) {
+			return;
+		}
+
 		$order->update_meta_data( self::ORDER_BLACKBOX_SESSION_ID_KEY, $session_id );
 		$order->save_meta_data();
 
 		FraudProtectionController::log(
 			'info',
 			sprintf(
-				'Persisted session ID to order meta (deferred): order=%d',
+				'Persisted session ID to order meta: order=%d',
 				$order->get_id()
 			)
 		);

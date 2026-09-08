@@ -93,6 +93,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 					'exp_year'         => 2028,
 					'billing_postcode' => '90210',
 					'wallet'           => null,
+					'payer_email'      => null,
 					'bank_code'        => null,
 					'bin'                => null,
 					'cvc_check'          => null,

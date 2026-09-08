@@ -61,6 +61,51 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/** @testdox A direct order getter returns the matching response ID without consuming its record. */
+	public function test_get_order_creation_session_id_returns_matching_response_id_without_consuming(): void {
+		$response_id = 'response-session';
+		$this->record_order( 'browser-session', 'PP-123', $response_id );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertSame( $response_id, $this->decision_reuse->get_order_creation_session_id() );
+		$this->assertSame( $response_id, $this->decision_reuse->get_order_creation_session_id() );
+
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertFalse( $record['used'] );
+	}
+
+	/**
+	 * @testdox An unsafe direct-order record is retired instead of returning a session ID.
+	 *
+	 * @dataProvider unsafe_order_creation_record_provider
+	 *
+	 * @param string      $origin          Verification origin.
+	 * @param bool        $used            Whether the record was already consumed.
+	 * @param string      $order_id        Bound PayPal order ID.
+	 * @param ?string     $active_order_id Active PayPal order ID, or null when absent.
+	 */
+	public function test_get_order_creation_session_id_retires_unsafe_records( string $origin, bool $used, string $order_id, ?string $active_order_id ): void {
+		$this->set_verification_record( origin: $origin, used: $used, order_id: $order_id );
+		if ( null !== $active_order_id ) {
+			WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( $active_order_id ) ) );
+		}
+
+		$this->assertSame( '', $this->decision_reuse->get_order_creation_session_id() );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, bool, string, ?string}> */
+	public function unsafe_order_creation_record_provider(): array {
+		return array(
+			'wrong origin'            => array( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE, false, 'PP-123', 'PP-123' ),
+			'used record'             => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, true, 'PP-123', 'PP-123' ),
+			'missing bound order'     => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, '', 'PP-123' ),
+			'mismatched active order' => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, 'response-session', 'PP-OTHER' ),
+			'missing active order'    => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, false, 'PP-123', null ),
+		);
+	}
+
 	/**
 	 * @testdox Protected PayPal request sources preserve an incoming supplied decision.
 	 *
@@ -482,10 +527,14 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->record_order( 'presented-session', resolved_session_id: 'resolved-session' );
-		$this->assertFalse(
-			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'presented-session' ),
-			'The ID the request presented is not the one that was scored; it is verified for real.'
+		$supplied_decision = $this->decision_reuse->supply_decision_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-credit-card-gateway' ),
+			'presented-session'
 		);
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
+		$this->assertSame( 'resolved-session', $supplied_decision->session_id_for_order );
 	}
 
 	/**
@@ -524,7 +573,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Block, $this->ask( 'blocks_checkout', 'ppcp-gateway', $normalized ) );
 		$stored_record = WC()->session->get( '_fraud_protection_paypal_verification' );
-		$this->assertSame( $stored, $stored_record['session_id'] );
+		$this->assertSame( $normalized, $stored_record['session_id'] );
 		$this->assertTrue( $stored_record['used'] );
 	}
 
@@ -562,6 +611,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 			'single dot'           => array( '.', 'wcfp-invalid-characters' ),
 			'double dot'           => array( '..', 'wcfp-invalid-characters' ),
 			'empty submitted value' => array( '.', '' ),
+			'reserved marker'       => array( 'wcfp-invalid-array', '' ),
 		);
 	}
 
@@ -641,23 +691,18 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A block recorded for one session does not answer for another.
+	 * @testdox A block recorded for one session answers for its matching active PayPal order.
 	 *
-	 * Guards the read side independently of the write side. The record is keyed
-	 * on the session ID that was scored; a block must not become a property of
-	 * the shopper, which is the sticky-block behaviour deliberately removed in
-	 * #73. The expectation changed with 0.1.6's order association — deliberately,
-	 * not as a regression: this setup used to be answered with an allow by the
-	 * approved-order route; without an associated order, it now defers to a real verify, which
-	 * still proves the block did not stick.
+	 * The active PayPal order provides the association when the browser session changes.
 	 */
-	public function test_supply_does_not_apply_a_block_recorded_for_another_session(): void {
+	public function test_supply_applies_a_block_recorded_for_matching_active_order(): void {
 		$this->set_verification_record( session_id: 'a-different-blocked-session', decision: FraudDecision::Block, order_id: 'PP-FOREIGN' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-FOREIGN' ) ) );
 
-		$this->assertFalse(
+		$this->assertSame(
+			FraudDecision::Block,
 			$this->ask( 'blocks_checkout', 'ppcp-credit-card-gateway', 'this-session' ),
-			'Another session being blocked says nothing about this one; it verifies for real.'
+			'The bound PayPal order preserves the recorded decision when the browser session changes.'
 		);
 	}
 
@@ -733,13 +778,123 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An associated approved order does not replay with an empty session ID.
+	 * @testdox A bound PayPal order can supply its decision when the browser session differs or is empty.
+	 *
+	 * @dataProvider changed_or_empty_session_provider
+	 *
+	 * @param string $session_id Submitted session ID.
+	 * @param string $origin     Verification origin.
+	 * @param string $source     Final request source.
+	 * @param bool   $expected   Whether the record should be reused.
 	 */
-	public function test_supply_does_not_answer_associated_order_with_empty_session_id(): void {
+	public function test_supply_falls_back_to_matching_active_order( string $session_id, string $origin, string $source, bool $expected ): void {
+		$this->record_order( 'scored-session', 'PP-123', null, $origin );
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$supplied_decision = $this->decision_reuse->supply_decision_for_paypal_express(
+			false,
+			$source,
+			array( 'payment_method' => 'ppcp-gateway' ),
+			$session_id
+		);
+
+		if ( $expected ) {
+			$this->assertInstanceOf( SuppliedDecision::class, $supplied_decision );
+			$this->assertSame( FraudDecision::Allow, $supplied_decision->decision );
+			$this->assertSame( 'scored-session', $supplied_decision->session_id_for_order );
+		} else {
+			$this->assertFalse( $supplied_decision );
+			$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+		}
+	}
+
+	/** @return array<string, array{string, string, string, bool}> */
+	public function changed_or_empty_session_provider(): array {
+		return array(
+			'create shortcode changed' => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
+			'create shortcode empty'   => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
+			'create blocks changed'    => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
+			'create blocks empty'      => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
+			'create pay-for-order changed' => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'pay_for_order', true ),
+			'create pay-for-order empty'   => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'pay_for_order', true ),
+			'vault shortcode changed'  => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
+			'vault shortcode empty'    => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
+			'vault blocks changed'     => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
+			'vault blocks empty'       => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
+			'vault pay-for-order changed' => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
+			'vault pay-for-order empty'   => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
+			'vault subscription changed'  => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
+			'vault subscription empty'    => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
+		);
+	}
+
+	/** @testdox A request-only PayPal order ID cannot supply a decision without the active PayPal order. */
+	public function test_supply_rejects_request_only_order_id_for_changed_session(): void {
+		$this->record_order( 'scored-session' );
+
+		$this->assertFalse(
+			$this->decision_reuse->supply_decision_for_paypal_express(
+				false,
+				'blocks_checkout',
+				array(
+					'payment_method' => 'ppcp-gateway',
+					'payment_data'   => array( 'paypal_order_id' => 'PP-123' ),
+				),
+				'new-session'
+			)
+		);
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/**
+	 * @testdox A changed-session fallback requires the matching active PayPal order.
+	 *
+	 * @dataProvider non_matching_active_order_provider
+	 */
+	public function test_supply_rejects_changed_session_without_matching_active_order( ?string $active_order_id ): void {
+		$this->record_order( 'scored-session' );
+		if ( null !== $active_order_id ) {
+			WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( $active_order_id ) ) );
+		}
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'new-session' ) );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{?string}> */
+	public function non_matching_active_order_provider(): array {
+		return array(
+			'missing active order'    => array( null ),
+			'different active order'  => array( 'PP-999' ),
+		);
+	}
+
+	/** @testdox A setup-token record remains exact-session-only when the active PayPal order matches. */
+	public function test_setup_record_rejects_changed_session_even_with_matching_active_order(): void {
+		$this->set_setup_cart( 'cart-hash' );
+		$this->record_setup_verification();
+		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
+
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'new-session' ) );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @testdox A changed-session order fallback can be used once. */
+	public function test_changed_session_order_fallback_is_used_once(): void {
 		$this->record_order( 'scored-session' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
-		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', '' ) );
+		$this->assertInstanceOf(
+			SuppliedDecision::class,
+			$this->decision_reuse->supply_decision_for_paypal_express(
+				false,
+				'blocks_checkout',
+				array( 'payment_method' => 'ppcp-gateway' ),
+				'new-session'
+			)
+		);
+		$this->assertFalse( $this->ask( 'blocks_checkout', 'ppcp-gateway', 'another-session' ) );
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
 	/**
@@ -757,14 +912,36 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/** @testdox An explicit final order ID takes precedence over the WC PayPal session order. */
-	public function test_explicit_final_order_mismatch_defers_and_retires(): void {
-		$request = $this->create_protected_paypal_request_record( 'create' );
+	/**
+	 * @testdox An explicit final order ID takes precedence over the WC PayPal session order.
+	 *
+	 * @dataProvider explicit_final_order_mismatch_provider
+	 *
+	 * @param string $origin     Verification origin.
+	 * @param string $session_id Submitted session ID.
+	 */
+	public function test_explicit_final_order_mismatch_defers_and_retires( string $origin, string $session_id ): void {
+		$this->record_order( 'browser-session', 'PP-123', 'response-session', $origin );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
-		$request['payment_data']['paypal_order_id'] = 'PP-OTHER';
+		$request = array(
+			'payment_method' => 'ppcp-gateway',
+			'payment_data'   => array( 'paypal_order_id' => 'PP-OTHER' ),
+		);
 
-		$this->assert_incoming_decision_is_preserved( 'blocks_checkout', $request, 'response-session' );
+		$this->assert_incoming_decision_is_preserved( 'blocks_checkout', $request, $session_id );
 		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
+	}
+
+	/** @return array<string, array{string, string}> */
+	public function explicit_final_order_mismatch_provider(): array {
+		return array(
+			'create exact session'   => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'response-session' ),
+			'create changed session' => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'new-session' ),
+			'create empty session'   => array( PayPalDecisionReuse::ORDER_CREATION_SOURCE, '' ),
+			'vault exact session'    => array( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'response-session' ),
+			'vault changed session'  => array( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'new-session' ),
+			'vault empty session'    => array( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, '' ),
+		);
 	}
 
 	/**
@@ -817,6 +994,21 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 		$this->assertIsArray( $record );
 		$this->assertSame( '', $record['order_id'], 'A request that verified nothing must associate no order.' );
+	}
+
+	/** @testdox Association retires a malformed verification record. */
+	public function test_association_retires_a_malformed_record(): void {
+		WC()->session->set(
+			'_fraud_protection_paypal_verification',
+			array(
+				'session_id' => 'scored-session',
+				'decision'   => FraudDecision::Allow,
+			)
+		);
+
+		$this->associate_order();
+
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ) );
 	}
 
 	/**
