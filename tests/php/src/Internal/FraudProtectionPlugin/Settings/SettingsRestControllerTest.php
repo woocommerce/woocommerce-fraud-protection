@@ -40,6 +40,9 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 */
 	private $sut;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->setting = new AutomaticProtectionSetting();

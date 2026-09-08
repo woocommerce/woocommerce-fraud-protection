@@ -22,10 +22,13 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/** @var PayPalScriptCompat */
 	private PayPalScriptCompat $sut;
 
+	/** @var bool Whether the smart-button handle changed. */
 	private bool $touched_smart_button_handle = false;
 
+	/** @var bool Whether the block handle was registered. */
 	private bool $registered_block_handle = false;
 
+	/** @var bool Whether the add-payment-method handle changed. */
 	private bool $touched_add_payment_method_handle = false;
 
 	/**
@@ -366,6 +369,10 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox PayPal version and setting precedence controls the mini-cart follower.
 	 *
 	 * @dataProvider mini_cart_setting_precedence_provider
+	 * @param string $version Test value.
+	 * @param ?bool  $current_enabled Test value.
+	 * @param bool   $legacy_enabled Test value.
+	 * @param bool   $expected Test value.
 	 */
 	public function test_mini_cart_setting_precedence( string $version, ?bool $current_enabled, bool $legacy_enabled, bool $expected ): void {
 		update_option( 'woocommerce-ppcp-version', $version );
@@ -438,6 +445,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Build a PayPal compatibility layer with a controlled script handler.
 	 *
+	 * @param BlackboxScriptHandler $handler Test value.
 	 * @return PayPalScriptCompat
 	 */
 	private function make_compat_with_script_handler( BlackboxScriptHandler $handler ): PayPalScriptCompat {
@@ -447,7 +455,11 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		return $sut;
 	}
 
-	/** Build a compatibility layer that must request the shared scripts. */
+	/**
+	 * Build a compatibility layer that must request the shared scripts.
+	 *
+	 * @param bool $result Test value.
+	 */
 	private function make_sut_expecting_script_request( bool $result ): PayPalScriptCompat {
 		$handler = $this->createMock( BlackboxScriptHandler::class );
 		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( $result );

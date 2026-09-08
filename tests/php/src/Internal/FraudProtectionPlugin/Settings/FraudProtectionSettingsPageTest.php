@@ -35,21 +35,29 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * Generated asset metadata path.
+	 *
+	 * @var string
 	 */
 	private string $asset_file;
 
 	/**
 	 * Whether asset metadata existed before the test.
+	 *
+	 * @var bool
 	 */
 	private bool $asset_file_existed;
 
 	/**
 	 * Original asset metadata contents.
+	 *
+	 * @var string
 	 */
 	private string $asset_file_contents = '';
 
 	/**
 	 * Whether the test created the build directory.
+	 *
+	 * @var bool
 	 */
 	private bool $build_directory_created = false;
 
@@ -60,6 +68,9 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	 */
 	private array $original_globals;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->original_globals = array();
@@ -81,6 +92,9 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection->reset();
 	}
 
+	/**
+	 * Tear down test fixtures.
+	 */
 	public function tearDown(): void {
 		foreach ( $this->original_globals as $global_name => $original ) {
 			if ( $original['exists'] ) {

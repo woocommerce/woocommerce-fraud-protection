@@ -36,6 +36,9 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 	/** @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject */
 	private $logger;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->setting = new AutomaticProtectionSetting();

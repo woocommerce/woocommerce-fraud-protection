@@ -26,12 +26,18 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	 */
 	private $sut;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->sut = new AutomaticProtectionSetting();
 		$this->sut->reset();
 	}
 
+	/**
+	 * Tear down test fixtures.
+	 */
 	public function tearDown(): void {
 		$this->sut->reset();
 		parent::tearDown();
@@ -75,6 +81,9 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $this->sut->is_enabled() );
 
 		$enabled_default = new class() extends AutomaticProtectionSetting {
+			/**
+			 * Provide the get_default() test stub.
+			 */
 			public function get_default(): SettingStatus {
 				return SettingStatus::Enabled;
 			}

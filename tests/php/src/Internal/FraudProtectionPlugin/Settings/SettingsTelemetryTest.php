@@ -42,6 +42,9 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	/** @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject */
 	private $logger;
 
+	/**
+	 * Set up test fixtures.
+	 */
 	public function setUp(): void {
 		parent::setUp();
 		$this->merchant_facing_features_gate = $this->createMock( MerchantFacingFeaturesGate::class );

@@ -107,6 +107,7 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	 * Assert the tracker logged a contained callback failure.
 	 *
 	 * @param string $hook Registered hook name.
+	 * @param string $exception_class Test value.
 	 */
 	private function assert_tracker_failure_logged( string $hook, string $exception_class = \RuntimeException::class ): void {
 		$this->assertCount( 1, $this->logger->entries );
@@ -732,6 +733,8 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox clear_events_on_successful_payment() clears events on successful checkout transitions.
 	 * @dataProvider successful_checkout_transitions
+	 * @param string $old_status Test value.
+	 * @param string $new_status Test value.
 	 */
 	public function test_clear_events_on_successful_payment_clears( string $old_status, string $new_status ): void {
 		$this->mock_collector
@@ -744,6 +747,8 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox clear_events_on_successful_payment() does NOT clear events for non checkout or unsuccessful transitions.
 	 * @dataProvider non_clearing_transitions
+	 * @param string $old_status Test value.
+	 * @param string $new_status Test value.
 	 */
 	public function test_clear_events_on_successful_payment_skips( string $old_status, string $new_status ): void {
 		$this->mock_collector

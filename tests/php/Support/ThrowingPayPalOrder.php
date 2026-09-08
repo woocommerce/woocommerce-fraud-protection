@@ -20,7 +20,6 @@ class ThrowingPayPalOrder {
 	/**
 	 * Throw when the order ID is read.
 	 *
-	 * @return string
 	 * @throws \RuntimeException Always.
 	 */
 	public function id(): string {

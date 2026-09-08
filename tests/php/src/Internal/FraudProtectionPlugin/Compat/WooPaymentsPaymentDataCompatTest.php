@@ -17,6 +17,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 // Stub WooPayments classes if not loaded. Tests inject API mocks via \WC_Payments::set_api_client().
 if ( ! class_exists( '\WC_Payments', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** WooPayments account service test stub. */
 	class WC_Payments_Account_Service_Stub {
 		/**
 		 * Account identifier returned by the account service.
@@ -31,7 +32,9 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		 * @var mixed
 		 */
 		private static $account_data;
-		private static int $stripe_account_id_calls    = 0;
+		/** @var int Account identifier call count. */
+		private static int $stripe_account_id_calls = 0;
+		/** @var int Account refresh call count. */
 		private static int $refresh_account_data_calls = 0;
 
 		/**
@@ -39,25 +42,49 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		 *
 		 * @var bool
 		 */
-		private static bool $throws         = false;
+		private static bool $throws = false;
+		/** @var bool Whether account refreshes should throw. */
 		private static bool $refresh_throws = false;
 
+		/**
+		 * Provide the set_stripe_account_id() test stub.
+		 *
+		 * @param mixed $account_id Test value.
+		 */
 		public static function set_stripe_account_id( $account_id ): void {
 			self::$stripe_account_id = $account_id;
 		}
 
+		/**
+		 * Provide the set_account_data() test stub.
+		 *
+		 * @param mixed $account_data Test value.
+		 */
 		public static function set_account_data( $account_data ): void {
 			self::$account_data = $account_data;
 		}
 
+		/**
+		 * Provide the set_throws() test stub.
+		 *
+		 * @param bool $throws Test value.
+		 */
 		public static function set_throws( bool $throws ): void {
 			self::$throws = $throws;
 		}
 
+		/**
+		 * Provide the set_refresh_throws() test stub.
+		 *
+		 * @param bool $throws Test value.
+		 */
 		public static function set_refresh_throws( bool $throws ): void {
 			self::$refresh_throws = $throws;
 		}
 
+		/**
+		 * Provide the reset() test stub.
+		 */
 		public static function reset(): void {
 			self::$stripe_account_id          = null;
 			self::$account_data               = null;
@@ -67,14 +94,23 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 			self::$refresh_account_data_calls = 0;
 		}
 
+		/**
+		 * Provide the get_stripe_account_id_calls() test stub.
+		 */
 		public static function get_stripe_account_id_calls(): int {
 			return self::$stripe_account_id_calls;
 		}
 
+		/**
+		 * Provide the get_refresh_account_data_calls() test stub.
+		 */
 		public static function get_refresh_account_data_calls(): int {
 			return self::$refresh_account_data_calls;
 		}
 
+		/**
+		 * Provide the get_stripe_account_id() test stub.
+		 */
 		public function get_stripe_account_id() {
 			++self::$stripe_account_id_calls;
 			if ( self::$throws ) {
@@ -84,6 +120,9 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 			return self::$stripe_account_id;
 		}
 
+		/**
+		 * Provide the refresh_account_data() test stub.
+		 */
 		public function refresh_account_data() {
 			++self::$refresh_account_data_calls;
 			if ( self::$throws || self::$refresh_throws ) {
@@ -95,54 +134,101 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 	}
 
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** WooPayments API client test stub. */
 	class WC_Payments_API_Client_Stub {
+		/**
+		 * Provide the get_payment_method() test stub.
+		 *
+		 * @param string $payment_method_id Test value.
+		 */
 		public function get_payment_method( string $payment_method_id ): array {
 			return array();
 		}
 	}
 
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** WooPayments plugin test stub. */
 	class WC_Payments_Stub {
-		private static bool $live                           = true;
-		private static bool $mode_available                 = true;
+		/** @var bool Whether live mode is active. */
+		private static bool $live = true;
+		/** @var bool Whether mode data is available. */
+		private static bool $mode_available = true;
+		/** @var \WC_Payments_API_Client|null API client. */
 		private static ?\WC_Payments_API_Client $api_client = null;
-		private static bool $api_client_set                 = false;
+		/** @var bool Whether the API client was set. */
+		private static bool $api_client_set = false;
 
+		/**
+		 * Provide the set_live() test stub.
+		 *
+		 * @param bool $live Test value.
+		 */
 		public static function set_live( bool $live ): void {
 			self::$live = $live;
 		}
 
+		/**
+		 * Provide the set_mode_available() test stub.
+		 *
+		 * @param bool $available Test value.
+		 */
 		public static function set_mode_available( bool $available ): void {
 			self::$mode_available = $available;
 		}
 
+		/**
+		 * Provide the mode() test stub.
+		 */
 		public static function mode(): ?object {
 			if ( ! self::$mode_available ) {
 				return null;
 			}
 			$live = self::$live;
 			return new class( $live ) {
+				/** @var bool Whether live mode is active. */
 				private bool $live;
+				/**
+				 * Provide the __construct() test stub.
+				 *
+				 * @param bool $live Test value.
+				 */
 				public function __construct( bool $live ) {
 					$this->live = $live; }
+				/**
+				 * Provide the is_live() test stub.
+				 */
 				public function is_live(): bool {
 					return $this->live; }
 			};
 		}
 
+		/**
+		 * Provide the set_api_client() test stub.
+		 *
+		 * @param ?\WC_Payments_API_Client $client Test value.
+		 */
 		public static function set_api_client( ?\WC_Payments_API_Client $client ): void {
 			self::$api_client     = $client;
 			self::$api_client_set = true;
 		}
 
+		/**
+		 * Provide the get_account_service() test stub.
+		 */
 		public static function get_account_service(): object {
 			return new WC_Payments_Account_Service_Stub();
 		}
 
+		/**
+		 * Provide the get_payments_api_client() test stub.
+		 */
 		public static function get_payments_api_client(): ?\WC_Payments_API_Client {
 			return self::$api_client_set ? self::$api_client : new \WC_Payments_API_Client();
 		}
 
+		/**
+		 * Provide the reset() test stub.
+		 */
 		public static function reset(): void {
 			self::$live           = true;
 			self::$mode_available = true;
@@ -152,17 +238,30 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 	}
 
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	/** WooPayments feature test stub. */
 	class WC_Payments_Features_Stub {
+		/** @var bool Whether WooPay is enabled. */
 		private static bool $woopay_enabled = false;
 
+		/**
+		 * Provide the set_woopay_enabled() test stub.
+		 *
+		 * @param bool $enabled Test value.
+		 */
 		public static function set_woopay_enabled( bool $enabled ): void {
 			self::$woopay_enabled = $enabled;
 		}
 
+		/**
+		 * Provide the is_woopay_enabled() test stub.
+		 */
 		public static function is_woopay_enabled(): bool {
 			return self::$woopay_enabled;
 		}
 
+		/**
+		 * Provide the reset() test stub.
+		 */
 		public static function reset(): void {
 			self::$woopay_enabled = false;
 		}
@@ -996,20 +1095,31 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'INGBNL2A', $result->to_array()['instrument']['bank_code'] );
 	}
 
-	// --- Helpers ---
-
+	/**
+	 * Set the mocked API response.
+	 *
+	 * @param array $response API response.
+	 */
 	private function mock_api_response( array $response ): void {
 		$mock = $this->createMock( \WC_Payments_API_Client::class );
 		$mock->method( 'get_payment_method' )->willReturn( $response );
 		\WC_Payments::set_api_client( $mock );
 	}
 
+	/**
+	 * Provide the mock_api_throws() test stub.
+	 *
+	 * @param \Throwable $exception Test value.
+	 */
 	private function mock_api_throws( \Throwable $exception ): void {
 		$mock = $this->createMock( \WC_Payments_API_Client::class );
 		$mock->method( 'get_payment_method' )->willThrowException( $exception );
 		\WC_Payments::set_api_client( $mock );
 	}
 
+	/**
+	 * Provide the create_card_response() test stub.
+	 */
 	private function create_card_response(): array {
 		return array(
 			'type'            => 'card',

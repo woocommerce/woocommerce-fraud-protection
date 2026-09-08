@@ -19,8 +19,12 @@ update_option( 'admin_email', 'admin@example.test' );
 
 // Stub the WooCommerce singleton class so $wc instanceof \WooCommerce passes.
 if ( ! class_exists( 'WooCommerce' ) ) {
+	/** WooCommerce singleton test stub. */
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
 	class WooCommerce {
- // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+		/**
+		 * Provide the mailer() test stub.
+		 */
 		public function mailer() {
 			return null;
 		}
@@ -28,6 +32,9 @@ if ( ! class_exists( 'WooCommerce' ) ) {
 }
 
 if ( ! function_exists( 'WC' ) ) {
+	/**
+	 * Provide the WC() test stub.
+	 */
 	function WC() {
 		return new \WooCommerce();
 	}

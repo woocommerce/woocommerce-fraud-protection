@@ -23,6 +23,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
  */
 class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
+	/** @var PayPalDecisionReuse Component under test. */
 	private PayPalDecisionReuse $decision_reuse;
 
 	/**
@@ -110,6 +111,9 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox Protected PayPal request sources preserve an incoming supplied decision.
 	 *
 	 * @dataProvider protected_paypal_request_source_provider
+	 * @param string $record_type Test value.
+	 * @param string $source Test value.
+	 * @param string $final_source Test value.
 	 */
 	public function test_protected_paypal_request_sources_preserve_supplied_decision( string $record_type, string $source, string $final_source ): void {
 		$request  = $this->create_protected_paypal_request_record( $record_type );
@@ -182,6 +186,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @param string        $session_id          The session ID the request presents.
 	 * @param FraudDecision $decision            What the verifier returns.
 	 * @param ?string       $resolved_session_id The session ID the verifier resolves, when it differs.
+	 * @param string        $origin Test value.
+	 * @param bool          $can_store_result Test value.
 	 */
 	private function record_verification( string $session_id, FraudDecision $decision, ?string $resolved_session_id = null, string $origin = PayPalDecisionReuse::ORDER_CREATION_SOURCE, bool $can_store_result = true ): void {
 		$this->decision_reuse->record_verification(
@@ -192,13 +198,26 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
-	/** Store a verification result and associate its PayPal order. */
+	/**
+	 * Store a verification result and associate its PayPal order.
+	 *
+	 * @param string      $session_id Test value.
+	 * @param string      $order_id Test value.
+	 * @param string|null $resolved_session_id Test value.
+	 * @param string      $origin Test value.
+	 */
 	private function record_order( string $session_id, string $order_id = 'PP-123', ?string $resolved_session_id = null, string $origin = PayPalDecisionReuse::ORDER_CREATION_SOURCE ): void {
 		$this->record_verification( $session_id, FraudDecision::Allow, $resolved_session_id, $origin );
 		$this->associate_order( $resolved_session_id ?? $session_id, $order_id, $origin );
 	}
 
-	/** Associate an order with the current verification record. */
+	/**
+	 * Associate an order with the current verification record.
+	 *
+	 * @param string $session_id Test value.
+	 * @param string $order_id Test value.
+	 * @param string $origin Test value.
+	 */
 	private function associate_order( string $session_id = 'scored-session', string $order_id = 'PP-123', string $origin = PayPalDecisionReuse::ORDER_CREATION_SOURCE ): void {
 		$this->decision_reuse->associate_created_order( new FakePayPalOrder( $order_id ), $session_id, $origin );
 	}
@@ -581,6 +600,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox Invalid stored session IDs do not match a submitted session ID.
 	 *
 	 * @dataProvider invalid_stored_session_id_provider
+	 * @param string $stored_session_id Test value.
+	 * @param string $submitted_session_id Test value.
 	 */
 	public function test_invalid_stored_session_id_does_not_match_submitted_session( string $stored_session_id, string $submitted_session_id ): void {
 		$this->record_order( 'scored-session' );
@@ -850,6 +871,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox A changed-session fallback requires the matching active PayPal order.
 	 *
 	 * @dataProvider non_matching_active_order_provider
+	 * @param ?string $active_order_id Test value.
 	 */
 	public function test_supply_rejects_changed_session_without_matching_active_order( ?string $active_order_id ): void {
 		$this->record_order( 'scored-session' );
@@ -1159,6 +1181,9 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox Each record has one shared use across its allowed final sources.
 	 *
 	 * @dataProvider final_order_source_provider
+	 * @param string $origin Test value.
+	 * @param string $source Test value.
+	 * @param string $second_source Test value.
 	 */
 	public function test_records_supply_once_across_allowed_sources( string $origin, string $source, string $second_source ): void {
 		$request = $this->create_protected_paypal_request_record( $origin );
@@ -1188,6 +1213,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox $origin records do not supply to unsupported $source requests.
 	 *
 	 * @dataProvider unsupported_final_source_provider
+	 * @param string $origin Test value.
+	 * @param string $source Test value.
 	 */
 	public function test_records_reject_unsupported_final_sources( string $origin, string $source ): void {
 		$request = $this->create_protected_paypal_request_record( $origin );
@@ -1210,6 +1237,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @testdox Setup records reject non-checkout sources.
 	 *
 	 * @dataProvider disallowed_setup_source_provider
+	 * @param string $disallowed_source Test value.
 	 */
 	public function test_setup_record_requires_current_eligible_cart( string $disallowed_source ): void {
 		$this->set_setup_cart( 'cart-hash' );
@@ -1232,7 +1260,12 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider setup_eligibility_provider
 	 *
-	 * @param mixed $plan_metadata PayPal plan metadata.
+	 * @param string $total Test value.
+	 * @param bool   $empty Test value.
+	 * @param bool   $needs_payment Test value.
+	 * @param mixed  $plan_metadata PayPal plan metadata.
+	 * @param string $cart_hash Test value.
+	 * @param bool   $can_store Test value.
 	 */
 	public function test_setup_record_rechecks_material_eligibility( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
 		unset( $can_store );
@@ -1266,7 +1299,12 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider setup_eligibility_provider
 	 *
-	 * @param mixed $plan_metadata PayPal plan metadata.
+	 * @param string $total Test value.
+	 * @param bool   $empty Test value.
+	 * @param bool   $needs_payment Test value.
+	 * @param mixed  $plan_metadata PayPal plan metadata.
+	 * @param string $cart_hash Test value.
+	 * @param bool   $can_store Test value.
 	 */
 	public function test_setup_cart_eligibility_controls_record_storage( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
 		$this->set_setup_cart( $cart_hash, $this->setup_cart_items( $plan_metadata ), $needs_payment, $total, $empty );
@@ -1311,7 +1349,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'cart-hash', $record['cart_hash'] );
 	}
 
-	/** Create a reusable record for a final-request test. */
+	/**
+	 * Create a reusable record for a final-request test.
+	 *
+	 * @param string $record_type Test value.
+	 */
 	private function create_protected_paypal_request_record( string $record_type ): array {
 		if ( 'create' === $record_type ) {
 			$this->record_order( 'browser-session', resolved_session_id: 'response-session' );

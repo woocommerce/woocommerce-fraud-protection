@@ -21,6 +21,11 @@ require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
 // detect the missing class and bail before referencing CheckoutSchema::IDENTIFIER.
 $register_calls = 0;
 if ( ! function_exists( 'woocommerce_store_api_register_endpoint_data' ) ) {
+	/**
+	 * Provide the woocommerce_store_api_register_endpoint_data() test stub.
+	 *
+	 * @param mixed ...$args Test values.
+	 */
 	function woocommerce_store_api_register_endpoint_data( ...$args ) {
 		global $register_calls;
 		++$register_calls;

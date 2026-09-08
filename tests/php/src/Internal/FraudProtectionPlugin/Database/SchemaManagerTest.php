@@ -110,19 +110,39 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 
 		// phpcs:ignore Squiz.Commenting -- test double.
 		$this->fake_wpdb = new class() {
-			public $prefix          = 'wp_';
+			/** @var string Database table prefix. */
+			public $prefix = 'wp_';
+			/** @var array<string> Existing table names. */
 			public $existing_tables = array();
-			public $table_columns   = array();
-			public $table_indexes   = array();
+			/** @var array<string, array<string>> Table columns. */
+			public $table_columns = array();
+			/** @var array<string, array<string>> Table indexes. */
+			public $table_indexes = array();
 
+			/**
+			 * Provide the prepare() test stub.
+			 *
+			 * @param mixed $query Test value.
+			 * @param mixed ...$args Test values.
+			 */
 			public function prepare( $query, ...$args ) {
 				return vsprintf( str_replace( array( '%s', '%d' ), array( "'%s'", '%d' ), $query ), $args );
 			}
 
+			/**
+			 * Provide the esc_like() test stub.
+			 *
+			 * @param mixed $text Test value.
+			 */
 			public function esc_like( $text ) {
 				return $text;
 			}
 
+			/**
+			 * Provide the get_var() test stub.
+			 *
+			 * @param mixed $query Test value.
+			 */
 			public function get_var( $query ) {
 				foreach ( $this->existing_tables as $table ) {
 					if ( false !== strpos( $query, $table ) ) {
@@ -132,6 +152,11 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 				return null;
 			}
 
+			/**
+			 * Provide the get_col() test stub.
+			 *
+			 * @param mixed $query Test value.
+			 */
 			public function get_col( $query ) {
 				foreach ( $this->table_columns as $table => $columns ) {
 					if ( false !== strpos( $query, $table ) ) {
@@ -141,6 +166,12 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 				return array();
 			}
 
+			/**
+			 * Provide the get_results() test stub.
+			 *
+			 * @param mixed $query Test value.
+			 * @param mixed $output Test value.
+			 */
 			public function get_results( $query, $output = null ) {
 				foreach ( $this->table_indexes as $table => $indexes ) {
 					if ( false !== strpos( $query, $table ) ) {
@@ -155,6 +186,9 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 				return array();
 			}
 
+			/**
+			 * Provide the get_charset_collate() test stub.
+			 */
 			public function get_charset_collate() {
 				return '';
 			}

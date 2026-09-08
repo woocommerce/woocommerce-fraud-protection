@@ -24,6 +24,9 @@ require_once dirname( __DIR__, 4 ) . '/vendor/autoload.php';
 $GLOBALS['wfp_smoke_wc_value'] = null;
 
 if ( ! function_exists( 'WC' ) ) {
+	/**
+	 * Provide the WC() test stub.
+	 */
 	function WC() {
 		return $GLOBALS['wfp_smoke_wc_value'];
 	}

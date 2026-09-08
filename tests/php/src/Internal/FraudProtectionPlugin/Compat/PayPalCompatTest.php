@@ -254,7 +254,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider submitted_session_value_provider
 	 *
-	 * @param mixed $value Submitted value.
+	 * @param mixed         $value Submitted value.
+	 * @param FraudDecision $decision Test value.
 	 */
 	public function test_verify_passes_submitted_value_to_session_verifier( $value, FraudDecision $decision ): void {
 		$data = array(
@@ -485,6 +486,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Only the exact protected action, method, and PayPal path verify.
 	 *
 	 * @dataProvider protected_request_gate_provider
+	 * @param string $action Test value.
+	 * @param string $method Test value.
+	 * @param string $path Test value.
+	 * @param bool   $expected Test value.
 	 */
 	public function test_protected_request_gates( string $action, string $method, string $path, bool $expected ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
@@ -527,6 +532,10 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Successful protected requests use validated data and store the reusable record.
 	 *
 	 * @dataProvider protected_request_provider
+	 * @param string $action Test value.
+	 * @param string $path Test value.
+	 * @param string $source Test value.
+	 * @param string $nonce Test value.
 	 */
 	public function test_protected_request_uses_validated_data( string $action, string $path, string $source, string $nonce ): void {
 		if ( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $source ) {
@@ -573,6 +582,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox An unusable submitted session ID verifies but creates no reusable record.
 	 *
 	 * @dataProvider unusable_session_id_provider
+	 * @param array $data Test value.
+	 * @param mixed $session_id Test value.
 	 */
 	public function test_unusable_validated_session_id_is_not_recorded( array $data, $session_id ): void {
 		$validated = $data + array( 'validated_nonce' => 'ppc-create-setup-token' );
@@ -602,6 +613,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Protected routes return the correct plaintext message on Block.
 	 *
 	 * @dataProvider protected_request_block_provider
+	 * @param string         $action Test value.
+	 * @param string         $path Test value.
+	 * @param MessageContext $context Test value.
 	 */
 	public function test_protected_request_blocks_before_transport( string $action, string $path, MessageContext $context ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
@@ -637,6 +651,11 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox PayPal RequestData failures verify without a submitted session ID and store no reusable record.
 	 *
 	 * @dataProvider request_data_failure_provider
+	 * @param string $failure Test value.
+	 * @param string $action Test value.
+	 * @param string $path Test value.
+	 * @param string $source Test value.
+	 * @param string $exception_message Test value.
 	 */
 	public function test_request_data_failure_verifies_without_session_id( string $failure, string $action, string $path, string $source, string $exception_message ): void {
 		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ), $failure );
@@ -695,7 +714,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'invalid', $this->sut->verify_protected_paypal_request( 'invalid', array() ) );
 	}
 
-	/** Configure PayPal request-data compatibility stubs. */
+	/**
+	 * Configure PayPal request-data compatibility stubs.
+	 *
+	 * @param array  $data Test value.
+	 * @param string $failure Test value.
+	 */
 	private function configure_paypal_request_data( array $data, string $failure = '' ): void {
 		if ( ! class_exists( 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' ) ) {
 			class_alias( PayPalRequestDataStub::class, 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' );
@@ -729,20 +753,26 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->run_protected_request( 'wc_ajax_ppc-create-setup-token', array( 'method' => 'POST' ), '/v3/vault/setup-tokens' );
 	}
 
-	/** Run a protected request while its WooCommerce AJAX action is active. */
+	/**
+	 * Run a protected request while its WooCommerce AJAX action is active.
+	 *
+	 * @param string $action Test value.
+	 * @param array  $args Test value.
+	 * @param string $path Test value.
+	 */
 	private function run_protected_request( string $action, array $args, string $path ) {
 		$this->sut->register();
 		$result   = null;
 		$callback = function () use ( &$result, $args, $path ): void {
 			$result = apply_filters( 'ppcp_request_args', $args, 'https://api-m.paypal.com' . $path );
 		};
-		add_action( $action, $callback );
+			add_action( $action, $callback );
 		try {
 			do_action( $action );
 		} finally {
 			remove_action( $action, $callback );
 		}
 
-		return $result;
+			return $result;
 	}
 }

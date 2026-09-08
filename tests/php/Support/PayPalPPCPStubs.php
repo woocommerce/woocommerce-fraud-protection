@@ -19,7 +19,11 @@ class PayPalPaymentTokenStub extends \WC_Payment_Token {
 	/** @var bool */
 	private static bool $email_throws = false;
 
-	/** Set whether reading the email should throw. */
+	/**
+	 * Set whether reading the email should throw.
+	 *
+	 * @param bool $throws Test value.
+	 */
 	public static function set_email_throws( bool $throws ): void {
 		self::$email_throws = $throws;
 	}
@@ -33,7 +37,11 @@ class PayPalPaymentTokenStub extends \WC_Payment_Token {
 		return $this->get_meta( 'email' );
 	}
 
-	/** Set the saved payer email. */
+	/**
+	 * Set the saved payer email.
+	 *
+	 * @param mixed $email Test value.
+	 */
 	public function set_email( $email ): void {
 		$this->add_meta_data( 'email', $email, true );
 	}
@@ -62,7 +70,11 @@ class PayPalConnectionStateStub {
 	/** @var ?bool */
 	private static ?bool $sandbox = null;
 
-	/** Set the sandbox state. */
+	/**
+	 * Set the sandbox state.
+	 *
+	 * @param bool|null $sandbox Test value.
+	 */
 	public static function set_sandbox( ?bool $sandbox ): void {
 		self::$sandbox = $sandbox;
 	}
@@ -90,17 +102,30 @@ class PayPalContainerStub {
 	/** @var array<string, mixed> */
 	private static array $services = array();
 
-	/** Set the merchant identifier. */
+	/**
+	 * Set the merchant identifier.
+	 *
+	 * @param mixed $merchant_id Test value.
+	 */
 	public static function set_merchant_id( $merchant_id ): void {
 		self::$merchant_id = $merchant_id;
 	}
 
-	/** Control merchant identifier failures. */
+	/**
+	 * Control merchant identifier failures.
+	 *
+	 * @param bool $throws Test value.
+	 */
 	public static function set_merchant_id_throws( bool $throws ): void {
 		self::$merchant_id_throws = $throws;
 	}
 
-	/** Set a container service. */
+	/**
+	 * Set a container service.
+	 *
+	 * @param string $id Test value.
+	 * @param mixed  $service Test value.
+	 */
 	public static function set_service( string $id, $service ): void {
 		self::$services[ $id ] = $service;
 	}
@@ -112,7 +137,11 @@ class PayPalContainerStub {
 		self::$services           = array();
 	}
 
-	/** Get a service. */
+	/**
+	 * Get a service.
+	 *
+	 * @param string $id Test value.
+	 */
 	public function get( string $id ) {
 		if ( array_key_exists( $id, self::$services ) ) {
 			$service = self::$services[ $id ];
@@ -141,7 +170,11 @@ class PayPalPPCPStub {
 	/** @var ?\Throwable */
 	private static ?\Throwable $error = null;
 
-	/** Control container failures. */
+	/**
+	 * Control container failures.
+	 *
+	 * @param \Throwable|null $error Test value.
+	 */
 	public static function set_error( ?\Throwable $error ): void {
 		self::$error = $error;
 	}
@@ -165,7 +198,11 @@ class PayPalRequestDataStub {
 	/** @var ?\Throwable */
 	public static ?\Throwable $error = null;
 
-	/** Read controlled request data. */
+	/**
+	 * Read controlled request data.
+	 *
+	 * @param string $nonce Test value.
+	 */
 	public function read_request( string $nonce ): array {
 		if ( null !== self::$error ) {
 			throw self::$error;
