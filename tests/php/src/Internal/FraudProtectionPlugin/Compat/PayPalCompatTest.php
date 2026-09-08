@@ -770,7 +770,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 			$result = apply_filters( 'ppcp_request_args', $args, 'https://api-m.paypal.com' . $path );
 		};
-			add_action( $action, $callback );
+		add_action( $action, $callback );
 		try {
 			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 			do_action( $action );
@@ -778,6 +778,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			remove_action( $action, $callback );
 		}
 
-			return $result;
+		return $result;
 	}
 }
