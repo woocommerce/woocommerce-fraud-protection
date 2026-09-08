@@ -136,9 +136,12 @@ class SessionEventStore {
 			return $cached_counts;
 		}
 
+		$table  = $this->schema_manager->get_sessions_table_name();
 		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Results are cached in a transient.
+		// Results are cached in a transient.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager.
 		$counts = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT
@@ -146,7 +149,7 @@ class SessionEventStore {
 					SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS blocked_automatically,
 					SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS allowed_by_rules,
 					SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS blocked_by_rules
-					FROM {$wpdb->prefix}wc_fraud_protection_sessions
+					FROM {$table}
 					WHERE recorded_at >= %s",
 				SessionTrigger::Blackbox->value,
 				SessionTrigger::RequestRejected->value,
@@ -162,6 +165,7 @@ class SessionEventStore {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ( ! is_array( $counts ) ) {
 			throw new \RuntimeException( 'Session event performance query failed.' );
