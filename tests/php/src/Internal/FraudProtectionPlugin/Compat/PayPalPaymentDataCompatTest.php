@@ -150,10 +150,10 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider saved_wallet_token_provider
 	 *
-	 * @param string      $token_type    PayPal Payments token type.
-	 * @param string      $payment_type  Expected payment type.
-	 * @param ?string     $email         Saved payer email.
-	 * @param ?string     $wallet        Expected wallet type.
+	 * @param string  $token_type    PayPal Payments token type.
+	 * @param string  $payment_type  Expected payment type.
+	 * @param ?string $email         Saved payer email.
+	 * @param ?string $wallet        Expected wallet type.
 	 */
 	public function test_resolves_valid_saved_paypal_payments_wallet_token( string $token_type, string $payment_type, ?string $email, ?string $wallet ): void {
 		PayPalConnectionStateStub::set_sandbox( true );
@@ -165,13 +165,13 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			'ppcp-gateway',
 			array( 'wc-ppcp-gateway-payment-token' => (string) $token->get_id() )
 		);
-		$array = $result->to_array();
+		$array  = $result->to_array();
 
 		$this->assertTrue( $array['is_saved_payment_method'] );
 		$this->assertSame( $payment_type, $array['payment_type'] );
-		$expected_instrument = PaymentInstrumentData::empty()->to_array();
+		$expected_instrument                = PaymentInstrumentData::empty()->to_array();
 		$expected_instrument['payer_email'] = $email;
-		$expected_instrument['wallet'] = $wallet;
+		$expected_instrument['wallet']      = $wallet;
 		$this->assertSame( $expected_instrument, $array['instrument'] );
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'merchant_123', $array['merchant_identifier'] );
@@ -356,9 +356,9 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Create a saved PayPal Payments token.
 	 *
-	 * @param string $token_type Token type.
-	 * @param string $gateway_id Gateway ID.
-	 * @param ?int   $user_id    Token owner.
+	 * @param string  $token_type Token type.
+	 * @param string  $gateway_id Gateway ID.
+	 * @param ?int    $user_id    Token owner.
 	 * @param ?string $email     Saved payer email.
 	 * @return \WC_Payment_Token
 	 */

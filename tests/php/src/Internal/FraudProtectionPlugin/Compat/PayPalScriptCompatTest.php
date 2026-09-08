@@ -176,7 +176,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			$gateways[ $gateway->id ] = $gateway;
 			return $gateways;
 		};
-		$sut = $this->make_sut_expecting_no_script_request();
+		$sut         = $this->make_sut_expecting_no_script_request();
 		add_filter( 'woocommerce_available_payment_gateways', $add_gateway );
 
 		try {
@@ -240,7 +240,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function test_paypal_block_follower_skips_checkout_endpoint( string $endpoint ): void {
 		global $wp;
 
-		$sut = $this->make_sut_expecting_no_script_request();
+		$sut                         = $this->make_sut_expecting_no_script_request();
 		$wp->query_vars[ $endpoint ] = '123';
 
 		$sut->enqueue_paypal_block_script_if_registered();
@@ -292,7 +292,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @param mixed $value Malformed filter value.
 	 */
 	public function test_malformed_cart_widget_visibility_passes_through_without_scripts( $value ): void {
-		$sut = $this->make_sut_expecting_no_script_request();
+		$sut    = $this->make_sut_expecting_no_script_request();
 		$result = $sut->enqueue_paypal_script_for_visible_mini_cart_widget( $value );
 
 		$this->assertSame( $value, $result );
@@ -307,8 +307,8 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function malformed_cart_widget_visibility_provider(): array {
 		return array(
 			'integer' => array( 0 ),
-			'array'  => array( array() ),
-			'object' => array( new \stdClass() ),
+			'array'   => array( array() ),
+			'object'  => array( new \stdClass() ),
 		);
 	}
 
@@ -356,7 +356,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function unavailable_mini_cart_provider(): array {
 		return array(
-			'location disabled'    => array( false, true, true ),
+			'location disabled'     => array( false, true, true ),
 			'script not registered' => array( true, false, true ),
 			'script not enqueued'   => array( true, true, false ),
 		);
@@ -562,8 +562,8 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 
 		$handler = $this->createMock( BlackboxScriptHandler::class );
 		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
-		$sut = $this->make_compat_with_script_handler( $handler );
-		$page_id = self::factory()->post->create( array( 'post_type' => 'page' ) );
+		$sut                    = $this->make_compat_with_script_handler( $handler );
+		$page_id                = self::factory()->post->create( array( 'post_type' => 'page' ) );
 		$previous_page_id       = get_option( 'woocommerce_myaccount_page_id', null );
 		$had_endpoint_query_var = array_key_exists( 'add-payment-method', $wp->query_vars );
 		$previous_query_var     = $wp->query_vars['add-payment-method'] ?? null;
@@ -597,6 +597,4 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			}
 		}
 	}
-
-
 }

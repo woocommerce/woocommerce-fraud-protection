@@ -38,7 +38,7 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 
 	public function setUp(): void {
 		parent::setUp();
-		$this->setting   = new AutomaticProtectionSetting();
+		$this->setting = new AutomaticProtectionSetting();
 		$this->setting->reset();
 		$this->telemetry = $this->createMock( SettingsTelemetry::class );
 		$this->logger    = $this->createMock( FraudProtectionLogger::class );

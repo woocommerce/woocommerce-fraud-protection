@@ -315,10 +315,28 @@ class CartItemTest extends FraudProtectionUnitTestCase {
 	public function provide_unreadable_line_amounts(): array {
 		return array(
 			// Reaches per_unit_amount() directly, where a cast would produce 0.0.
-			'tax sentinel'      => array( array( 'line_tax' => 'INF', 'line_subtotal' => 'INF', 'line_total' => 'INF' ) ),
+			'tax sentinel'      => array(
+				array(
+					'line_tax'      => 'INF',
+					'line_subtotal' => 'INF',
+					'line_total'    => 'INF',
+				),
+			),
 			// Reaches the subtraction first, where a cast is not even attempted.
-			'subtotal sentinel' => array( array( 'line_tax' => 'INF', 'line_subtotal' => 'INF', 'line_total' => 20.0 ) ),
-			'total sentinel'    => array( array( 'line_tax' => 'INF', 'line_subtotal' => 25.0, 'line_total' => 'INF' ) ),
+			'subtotal sentinel' => array(
+				array(
+					'line_tax'      => 'INF',
+					'line_subtotal' => 'INF',
+					'line_total'    => 20.0,
+				),
+			),
+			'total sentinel'    => array(
+				array(
+					'line_tax'      => 'INF',
+					'line_subtotal' => 25.0,
+					'line_total'    => 'INF',
+				),
+			),
 		);
 	}
 

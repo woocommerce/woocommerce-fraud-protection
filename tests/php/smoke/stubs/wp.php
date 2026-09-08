@@ -79,7 +79,7 @@ if ( ! function_exists( 'plugin_dir_url' ) ) {
 
 if ( ! function_exists( 'plugins_url' ) ) {
 	function plugins_url( $path = '', $plugin = '', $scheme = null ) {
-		$url = 'https://example.test/store/wp-content/plugins/wordpress/plugins/woocommerce-fraud-protection/0.2.0/';
+		$url  = 'https://example.test/store/wp-content/plugins/wordpress/plugins/woocommerce-fraud-protection/0.2.0/';
 		$url .= ltrim( $path, '/' );
 
 		return apply_filters( 'plugins_url', $url, $path, $plugin );

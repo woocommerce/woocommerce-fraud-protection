@@ -522,7 +522,10 @@ class ReportContextDataTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'eur', $lowercase['amount_currency'] );
 
 		// A negative or fractional minor_units is dropped to null; the currency stays.
-		foreach ( array( 'negative' => -500, 'fractional' => 99.99 ) as $case => $bad_minor ) {
+		foreach ( array(
+			'negative'   => -500,
+			'fractional' => 99.99,
+		) as $case => $bad_minor ) {
 			$rejected = $this->to_wire(
 				array(
 					'type'               => 'payment',

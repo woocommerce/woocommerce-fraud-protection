@@ -37,17 +37,17 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'brand'            => 'visa',
-				'funding'          => 'credit',
-				'last4'            => '4242',
-				'fingerprint'      => 'fp_abc123',
-				'country'          => 'US',
-				'exp_month'        => 12,
-				'exp_year'         => 2025,
-				'billing_postcode' => null,
-				'wallet'           => null,
-				'payer_email'      => 'payer@example.com',
-				'bank_code'        => null,
+				'brand'              => 'visa',
+				'funding'            => 'credit',
+				'last4'              => '4242',
+				'fingerprint'        => 'fp_abc123',
+				'country'            => 'US',
+				'exp_month'          => 12,
+				'exp_year'           => 2025,
+				'billing_postcode'   => null,
+				'wallet'             => null,
+				'payer_email'        => 'payer@example.com',
+				'bank_code'          => null,
 				'bin'                => null,
 				'cvc_check'          => null,
 				'avs_address_check'  => null,
@@ -65,17 +65,17 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'brand'            => null,
-				'funding'          => null,
-				'last4'            => null,
-				'fingerprint'      => null,
-				'country'          => null,
-				'exp_month'        => null,
-				'exp_year'         => null,
-				'billing_postcode' => null,
-				'wallet'           => null,
-				'payer_email'      => null,
-				'bank_code'        => null,
+				'brand'              => null,
+				'funding'            => null,
+				'last4'              => null,
+				'fingerprint'        => null,
+				'country'            => null,
+				'exp_month'          => null,
+				'exp_year'           => null,
+				'billing_postcode'   => null,
+				'wallet'             => null,
+				'payer_email'        => null,
+				'bank_code'          => null,
 				'bin'                => null,
 				'cvc_check'          => null,
 				'avs_address_check'  => null,
@@ -290,8 +290,8 @@ class PaymentInstrumentDataTest extends FraudProtectionUnitTestCase {
 			// these land exactly on PHP_INT_MIN and are kept. The form feed is the one that
 			// catches a trim()-based rewrite, since trim() does not strip it but a numeric
 			// string may carry it.
-			'below the minimum, in whitespace'      => array( ' -9223372036854775809 ', null ),
-			'below the minimum, after a form feed'  => array( "\f-9223372036854775809", null ),
+			'below the minimum, in whitespace'       => array( ' -9223372036854775809 ', null ),
+			'below the minimum, after a form feed'   => array( "\f-9223372036854775809", null ),
 
 			// Everything else is read by numeric value.
 			'whole number written as a decimal'      => array( '5.0', 5 ),

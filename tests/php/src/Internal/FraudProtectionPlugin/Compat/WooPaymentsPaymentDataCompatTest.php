@@ -31,7 +31,7 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		 * @var mixed
 		 */
 		private static $account_data;
-		private static int $stripe_account_id_calls = 0;
+		private static int $stripe_account_id_calls    = 0;
 		private static int $refresh_account_data_calls = 0;
 
 		/**
@@ -39,7 +39,7 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		 *
 		 * @var bool
 		 */
-		private static bool $throws = false;
+		private static bool $throws         = false;
 		private static bool $refresh_throws = false;
 
 		public static function set_stripe_account_id( $account_id ): void {
@@ -59,11 +59,11 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		}
 
 		public static function reset(): void {
-			self::$stripe_account_id = null;
-			self::$account_data      = null;
-			self::$throws            = false;
-			self::$refresh_throws    = false;
-			self::$stripe_account_id_calls   = 0;
+			self::$stripe_account_id          = null;
+			self::$account_data               = null;
+			self::$throws                     = false;
+			self::$refresh_throws             = false;
+			self::$stripe_account_id_calls    = 0;
 			self::$refresh_account_data_calls = 0;
 		}
 
@@ -103,10 +103,10 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 	class WC_Payments_Stub {
-		private static bool $live                          = true;
-		private static bool $mode_available                = true;
+		private static bool $live                           = true;
+		private static bool $mode_available                 = true;
 		private static ?\WC_Payments_API_Client $api_client = null;
-		private static bool $api_client_set                = false;
+		private static bool $api_client_set                 = false;
 
 		public static function set_live( bool $live ): void {
 			self::$live = $live;
@@ -123,8 +123,10 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 			$live = self::$live;
 			return new class( $live ) {
 				private bool $live;
-				public function __construct( bool $live ) { $this->live = $live; }
-				public function is_live(): bool { return $this->live; }
+				public function __construct( bool $live ) {
+					$this->live = $live; }
+				public function is_live(): bool {
+					return $this->live; }
 			};
 		}
 
@@ -409,28 +411,28 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'gateway'                 => 'woocommerce_payments',
-				'payment_type'            => 'card',
-				'is_saved_payment_method' => false,
-				'instrument'              => array(
-					'brand'            => 'visa',
-					'funding'          => 'credit',
-					'last4'            => '4242',
-					'fingerprint'      => 'fp_wcpay123',
-					'country'          => 'US',
-					'exp_month'        => 12,
-					'exp_year'         => 2025,
-					'billing_postcode' => '10001',
-					'wallet'           => null,
-					'payer_email'      => null,
-					'bank_code'        => null,
+				'gateway'                  => 'woocommerce_payments',
+				'payment_type'             => 'card',
+				'is_saved_payment_method'  => false,
+				'instrument'               => array(
+					'brand'              => 'visa',
+					'funding'            => 'credit',
+					'last4'              => '4242',
+					'fingerprint'        => 'fp_wcpay123',
+					'country'            => 'US',
+					'exp_month'          => 12,
+					'exp_year'           => 2025,
+					'billing_postcode'   => '10001',
+					'wallet'             => null,
+					'payer_email'        => null,
+					'bank_code'          => null,
 					'bin'                => '424242',
 					'cvc_check'          => CheckResult::Pass->value,
 					'avs_address_check'  => CheckResult::Fail->value,
 					'avs_postcode_check' => CheckResult::Unchecked->value,
 				),
-				'transaction_mode'        => PaymentMode::Test->value,
-				'merchant_identifier'     => 'acct_123',
+				'transaction_mode'         => PaymentMode::Test->value,
+				'merchant_identifier'      => 'acct_123',
 				'merchant_identifier_type' => 'account',
 			),
 			$result->to_array()
@@ -470,7 +472,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Resolves wallet type for express payment method (Apple Pay).
 	 */
 	public function test_resolves_wallet_type_for_express_method(): void {
-		$response = $this->create_card_response();
+		$response                   = $this->create_card_response();
 		$response['card']['wallet'] = array( 'type' => 'apple_pay' );
 
 		$this->mock_api_response( $response );
@@ -522,8 +524,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_resolves_becs_debit(): void {
 		$this->mock_api_response(
 			array(
-				'type'           => 'au_becs_debit',
-				'au_becs_debit'  => array(
+				'type'          => 'au_becs_debit',
+				'au_becs_debit' => array(
 					'bsb_number'  => '000-000',
 					'fingerprint' => 'fp_becs_789',
 					'last4'       => '7890',
@@ -596,8 +598,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
-				'wcpay-payment-method'                    => 'pm_saved_123',
-				'wc-woocommerce_payments-payment-token'   => 'token_abc',
+				'wcpay-payment-method'                  => 'pm_saved_123',
+				'wc-woocommerce_payments-payment-token' => 'token_abc',
 			)
 		);
 
@@ -613,8 +615,8 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
-				'wcpay-payment-method'                    => 'pm_new_123',
-				'wc-woocommerce_payments-payment-token'   => 'new',
+				'wcpay-payment-method'                  => 'pm_new_123',
+				'wc-woocommerce_payments-payment-token' => 'new',
 			)
 		);
 
@@ -852,7 +854,12 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->mock_api_throws( new \RuntimeException( 'API error' ) );
 
-		$instrument = PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'last4' => '4242' ) );
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand' => 'visa',
+				'last4' => '4242',
+			)
+		);
 		$resolved   = new PaymentMethodData( 'woocommerce_payments', 'card', true, $instrument );
 
 		$result = $this->sut->resolve(
@@ -902,11 +909,11 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Maps Stripe check values to normalized constants via CHECK_MAP.
 	 */
 	public function test_maps_check_values_via_check_map(): void {
-		$response         = $this->create_card_response();
+		$response                   = $this->create_card_response();
 		$response['card']['checks'] = array(
-			'cvc_check'                  => 'pass',
-			'address_line1_check'        => 'fail',
-			'address_postal_code_check'  => 'unavailable',
+			'cvc_check'                 => 'pass',
+			'address_line1_check'       => 'fail',
+			'address_postal_code_check' => 'unavailable',
 		);
 
 		$this->mock_api_response( $response );
@@ -926,7 +933,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Treats null checks hash as empty (no PHP warning, all checks null).
 	 */
 	public function test_handles_null_checks_hash(): void {
-		$response         = $this->create_card_response();
+		$response                   = $this->create_card_response();
 		$response['card']['checks'] = null;
 
 		$this->mock_api_response( $response );
@@ -1016,9 +1023,9 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 				'exp_year'    => 2025,
 				'iin'         => '424242',
 				'checks'      => array(
-					'cvc_check'                  => 'pass',
-					'address_line1_check'        => 'fail',
-					'address_postal_code_check'  => 'unchecked',
+					'cvc_check'                 => 'pass',
+					'address_line1_check'       => 'fail',
+					'address_postal_code_check' => 'unchecked',
 				),
 			),
 			'billing_details' => array(

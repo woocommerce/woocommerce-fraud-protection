@@ -168,8 +168,8 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$version      = 'settings-test-version';
 		$this->write_asset_fixture( $dependencies, $version );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
-		$rest_requests = array();
-		$rest_mock     = function ( $result, $server, $request ) use ( &$rest_requests ) {
+		$rest_requests          = array();
+		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
 			if ( '/wc-fraud-protection/v1/settings' !== $request->get_route() ) {
 				return $result;
 			}

@@ -53,7 +53,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		}
 
 		$this->session_identity_manager = new SessionIdentityManager();
-		$this->sut                       = new SessionDataCollector();
+		$this->sut                      = new SessionDataCollector();
 		$this->sut->init( $this->session_identity_manager );
 
 		// Disable taxes before adding products to cart.
@@ -440,14 +440,27 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$order->set_cart_tax( 2 );
 		$order->set_discount_total( 5 );
 		$order->set_total( 35 );
-		$billing = array(
-			'first_name' => '<b>Selected</b>', 'last_name' => '<i>Customer</i>', 'email' => 'selected-order@example.com',
-			'address_1' => '<strong>Selected billing address</strong>', 'address_2' => '<em>Selected unit</em>', 'city' => '<span>Selected City</span>',
-			'state' => 'SC', 'postcode' => '12345', 'country' => 'US', 'phone' => '555-0100',
+		$billing  = array(
+			'first_name' => '<b>Selected</b>',
+			'last_name'  => '<i>Customer</i>',
+			'email'      => 'selected-order@example.com',
+			'address_1'  => '<strong>Selected billing address</strong>',
+			'address_2'  => '<em>Selected unit</em>',
+			'city'       => '<span>Selected City</span>',
+			'state'      => 'SC',
+			'postcode'   => '12345',
+			'country'    => 'US',
+			'phone'      => '555-0100',
 		);
 		$shipping = array(
-			'first_name' => '<b>Shipping</b>', 'last_name' => '<i>Customer</i>', 'address_1' => '<strong>Selected shipping address</strong>',
-			'address_2' => '<em>Shipping unit</em>', 'city' => '<span>Shipping City</span>', 'state' => 'CA', 'postcode' => '54321', 'country' => 'US',
+			'first_name' => '<b>Shipping</b>',
+			'last_name'  => '<i>Customer</i>',
+			'address_1'  => '<strong>Selected shipping address</strong>',
+			'address_2'  => '<em>Shipping unit</em>',
+			'city'       => '<span>Shipping City</span>',
+			'state'      => 'CA',
+			'postcode'   => '54321',
+			'country'    => 'US',
 		);
 		foreach ( $billing as $field => $value ) {
 			$order->{'set_billing_' . $field}( $value );
@@ -476,8 +489,34 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( $selected_product->get_id(), 'Stored line', 2, 15.0, 0.0, 3.0, 'SELECTED-SKU' ), array( $item_data['product_id'], $item_data['name'], $item_data['quantity'], $item_data['unit_price'], $item_data['unit_tax_amount'], $item_data['unit_discount_amount'], $item_data['sku'] ) );
 		$this->assertSame( 'selected-order@example.com', $result['customer']['billing_email'] );
 		$this->assertSame( 2, $result['customer']['lifetime_order_count'] );
-		$this->assertSame( array( 'first_name' => 'Selected', 'last_name' => 'Customer', 'address_1' => 'Selected billing address', 'address_2' => 'Selected unit', 'city' => 'Selected City', 'state' => 'SC', 'postcode' => '12345', 'country' => 'US', 'phone' => '555-0100' ), $result['customer']['billing_address'] );
-		$this->assertSame( array( 'first_name' => 'Shipping', 'last_name' => 'Customer', 'address_1' => 'Selected shipping address', 'address_2' => 'Shipping unit', 'city' => 'Shipping City', 'state' => 'CA', 'postcode' => '54321', 'country' => 'US', 'phone' => null ), $result['customer']['shipping_address'] );
+		$this->assertSame(
+			array(
+				'first_name' => 'Selected',
+				'last_name'  => 'Customer',
+				'address_1'  => 'Selected billing address',
+				'address_2'  => 'Selected unit',
+				'city'       => 'Selected City',
+				'state'      => 'SC',
+				'postcode'   => '12345',
+				'country'    => 'US',
+				'phone'      => '555-0100',
+			),
+			$result['customer']['billing_address']
+		);
+		$this->assertSame(
+			array(
+				'first_name' => 'Shipping',
+				'last_name'  => 'Customer',
+				'address_1'  => 'Selected shipping address',
+				'address_2'  => 'Shipping unit',
+				'city'       => 'Shipping City',
+				'state'      => 'CA',
+				'postcode'   => '54321',
+				'country'    => 'US',
+				'phone'      => null,
+			),
+			$result['customer']['shipping_address']
+		);
 		$this->assertSame( 'Uncategorized', $item_data['category'] );
 		$this->assertSame( 'simple', $item_data['product_type'] );
 		$this->assertFalse( $item_data['is_virtual'] );
@@ -560,7 +599,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$user_id = $this->factory->user->create( array( 'user_email' => 'ambient@example.com' ) );
 		wp_set_current_user( $user_id );
 		WC()->customer = new \WC_Customer( $user_id, true );
-		$product = \WC_Helper_Product::create_simple_product();
+		$product       = \WC_Helper_Product::create_simple_product();
 		$product->set_regular_price( '12.50' );
 		$product->save();
 		WC()->cart->add_to_cart( $product->get_id(), 1 );
@@ -1060,7 +1099,16 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertNull( $event['event_type'] );
-		$this->assertSame( array( 'null' => null, 'bool' => false, 'int' => 4, 'float' => 1.5, 'text' => 'value' ), $event['event_data'] );
+		$this->assertSame(
+			array(
+				'null'  => null,
+				'bool'  => false,
+				'int'   => 4,
+				'float' => 1.5,
+				'text'  => 'value',
+			),
+			$event['event_data']
+		);
 		$this->assertArrayNotHasKey( 'event_data_truncated', $event );
 	}
 

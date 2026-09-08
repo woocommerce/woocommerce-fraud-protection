@@ -67,7 +67,13 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 			'test_gateway',
 			'card',
 			false,
-			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242' ) )
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'   => 'visa',
+					'funding' => 'credit',
+					'last4'   => '4242',
+				)
+			)
 		);
 
 		add_filter(
@@ -389,7 +395,17 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 			'stripe',
 			'card',
 			true,
-			PaymentInstrumentData::from_array( array( 'brand' => 'visa', 'funding' => 'credit', 'last4' => '4242', 'fingerprint' => 'fp_abc', 'country' => 'US', 'exp_month' => 12, 'exp_year' => 2028 ) )
+			PaymentInstrumentData::from_array(
+				array(
+					'brand'       => 'visa',
+					'funding'     => 'credit',
+					'last4'       => '4242',
+					'fingerprint' => 'fp_abc',
+					'country'     => 'US',
+					'exp_month'   => 12,
+					'exp_year'    => 2028,
+				)
+			)
 		);
 
 		add_filter(

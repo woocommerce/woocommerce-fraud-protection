@@ -82,8 +82,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		PayPalJsonResponseCapture::reset();
 		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
-		$this->session_id_normalizer    = new SessionIdNormalizer();
-		$this->decision_reuse           = new PayPalDecisionReuse();
+		$this->session_id_normalizer   = new SessionIdNormalizer();
+		$this->decision_reuse          = new PayPalDecisionReuse();
 		$this->decision_reuse->init( $this->session_id_normalizer );
 		$this->blocked_session_message
 			->method( 'get_plaintext' )
@@ -339,7 +339,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'blocked-session' );
 
-		$session          = $this->createMock( \WC_Session::class );
+		$session = $this->createMock( \WC_Session::class );
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willThrowException( new \RuntimeException( 'session unavailable' ) );
 		WC()->session = $session;
 
@@ -494,9 +494,22 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session' );
 
-		$result = $this->run_protected_request( $action, array( 'method' => $method, 'body' => '{}' ), $path );
+		$result = $this->run_protected_request(
+			$action,
+			array(
+				'method' => $method,
+				'body'   => '{}',
+			),
+			$path
+		);
 
-		$this->assertSame( array( 'method' => $method, 'body' => '{}' ), $result );
+		$this->assertSame(
+			array(
+				'method' => $method,
+				'body'   => '{}',
+			),
+			$result
+		);
 	}
 
 	/** @return array<string, array{string, string, string, bool}> */
@@ -732,6 +745,4 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 
 		return $result;
 	}
-
-
 }

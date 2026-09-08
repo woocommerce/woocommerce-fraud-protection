@@ -46,11 +46,11 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->setting->reset();
 		$this->performance_counts = array(
 			'recommended_for_blocking' => 0,
-			'blocked_automatically'     => 0,
-			'allowed_by_rules'          => 0,
-			'blocked_by_rules'          => 0,
+			'blocked_automatically'    => 0,
+			'allowed_by_rules'         => 0,
+			'blocked_by_rules'         => 0,
 		);
-		$this->event_store = $this->createMock( SessionEventStore::class );
+		$this->event_store        = $this->createMock( SessionEventStore::class );
 		$this->event_store->method( 'get_performance_counts' )->willReturnCallback( fn() => $this->performance_counts );
 		$this->updater = new AutomaticProtectionSettingUpdater();
 		$this->updater->init( $this->setting, $this->createMock( SettingsTelemetry::class ), $this->createMock( FraudProtectionLogger::class ) );
@@ -83,9 +83,9 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	public function test_get_returns_performance_counts(): void {
 		$this->performance_counts = array(
 			'recommended_for_blocking' => 12,
-			'blocked_automatically'     => 3,
-			'allowed_by_rules'          => 4,
-			'blocked_by_rules'          => 5,
+			'blocked_automatically'    => 3,
+			'allowed_by_rules'         => 4,
+			'blocked_by_rules'         => 5,
 		);
 
 		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );

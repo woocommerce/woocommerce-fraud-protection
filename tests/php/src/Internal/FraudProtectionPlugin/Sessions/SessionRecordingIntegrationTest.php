@@ -137,7 +137,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * A SessionVerifier whose ApiClient transport returns the given raw result.
 	 *
 	 * @param array|\WP_Error $transport_result The value the stubbed transport returns.
-	 * @param ?callable        $capture          Optional callback for the request arguments and body.
+	 * @param ?callable       $capture          Optional callback for the request arguments and body.
 	 * @return SessionVerifier
 	 */
 	private function a_session_verifier_with_transport( $transport_result, ?callable $capture = null ): SessionVerifier {
@@ -155,10 +155,10 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$container = wc_get_container();
+		$container             = wc_get_container();
 		$session_id_normalizer = $container->get( SessionIdNormalizer::class );
 		$api_client->init( $container->get( VisitorIpResolver::class ), $session_id_normalizer );
-		$verifier  = new SessionVerifier();
+		$verifier = new SessionVerifier();
 		$verifier->init(
 			$container->get( SessionDataCollector::class ),
 			$api_client,

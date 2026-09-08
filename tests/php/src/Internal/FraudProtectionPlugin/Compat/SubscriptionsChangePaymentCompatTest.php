@@ -57,7 +57,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->session_verifier       = $this->createMock( SessionVerifier::class );
+		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 

@@ -239,7 +239,7 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 			'shipping_first_name'                  => 'John',
 			'order_comments'                       => 'Leave at door',
 			'account_username'                     => 'john',
-			'woocommerce_checkout_nonce'            => 'abc123',
+			'woocommerce_checkout_nonce'           => 'abc123',
 			'woocommerce_add_payment_method'       => '1',
 			'woocommerce-add-payment-method-nonce' => 'def456',
 			'_wpnonce'                             => 'xyz789',

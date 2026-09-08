@@ -49,7 +49,7 @@ class SessionEventPrunerTest extends FraudProtectionUnitTestCase {
 		$this->event_store = $this->createMock( SessionEventStore::class );
 		$this->logger      = $this->createMock( FraudProtectionLogger::class );
 		$this->logger->method( 'log' )->willReturnCallback( array( FraudProtectionController::class, 'log' ) );
-		$this->sut         = new SessionEventPruner();
+		$this->sut = new SessionEventPruner();
 		$this->sut->init( $this->event_store, new MerchantListsFeature(), $this->logger );
 	}
 

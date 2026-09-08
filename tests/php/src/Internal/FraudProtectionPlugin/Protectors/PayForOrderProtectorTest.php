@@ -64,7 +64,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->session_verifier       = $this->createMock( SessionVerifier::class );
+		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
@@ -275,7 +275,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	private function render_order_pay_id( int $order_id, bool $validated_pay, string $key ): void {
 		$GLOBALS['wp']->query_vars['order-pay'] = (string) $order_id;
-		$_GET['key']                             = $key;
+		$_GET['key']                            = $key;
 
 		if ( $validated_pay ) {
 			$_GET['pay_for_order'] = 'true';

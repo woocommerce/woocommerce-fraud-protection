@@ -190,8 +190,15 @@ class EncodablePayloadTest extends FraudProtectionUnitTestCase {
 		$rejected = array();
 
 		$payload = array(
-			'session' => array( 'id' => 'abc', 'count' => 3 ),
-			'order'   => array( 'total' => 10.5, 'currency' => 'GBP', 'note' => null ),
+			'session' => array(
+				'id'    => 'abc',
+				'count' => 3,
+			),
+			'order'   => array(
+				'total'    => 10.5,
+				'currency' => 'GBP',
+				'note'     => null,
+			),
 		);
 
 		$this->assertSame( $payload, EncodablePayload::for_wire( $payload, $rejected ) );
@@ -213,7 +220,13 @@ class EncodablePayloadTest extends FraudProtectionUnitTestCase {
 	public function test_object_that_throws_while_serializing_is_rejected( object $value ): void {
 		$rejected = array();
 
-		$result = EncodablePayload::for_wire( array( 'ok' => 1, 'bad' => $value ), $rejected );
+		$result = EncodablePayload::for_wire(
+			array(
+				'ok'  => 1,
+				'bad' => $value,
+			),
+			$rejected
+		);
 
 		$this->assertSame( array( 'ok' => 1 ), $result, 'the throwing value must cost only its own key' );
 		$this->assertSame( array( 'bad' ), $rejected );
@@ -300,7 +313,10 @@ class EncodablePayloadTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( array( 'iter' ), $rejected );
 		$this->assertSame(
-			array( 'a' => 1, 'b' => 2 ),
+			array(
+				'a' => 1,
+				'b' => 2,
+			),
 			$is_intact( $value ),
 			'the traversable must not have been consumed by the check'
 		);
@@ -318,17 +334,33 @@ class EncodablePayloadTest extends FraudProtectionUnitTestCase {
 		};
 
 		return array(
-			'generator'          => array(
+			'generator'           => array(
 				( function () {
 					yield 'a' => 1;
 					yield 'b' => 2;
 				} )(),
 				$walk,
 			),
-			'iterator aggregate' => array( new IterableHolder( array( 'a' => 1, 'b' => 2 ) ), $walk ),
+			'iterator aggregate'  => array(
+				new IterableHolder(
+					array(
+						'a' => 1,
+						'b' => 2,
+					)
+				),
+				$walk,
+			),
 			// The case that makes the type alone useless as a signal: a perfectly ordinary
 			// IteratorAggregate whose getIterator() memoizes, so the second walk throws.
-			'memoizing aggregate' => array( new MemoizingIterable( array( 'a' => 1, 'b' => 2 ) ), $walk ),
+			'memoizing aggregate' => array(
+				new MemoizingIterable(
+					array(
+						'a' => 1,
+						'b' => 2,
+					)
+				),
+				$walk,
+			),
 		);
 	}
 
@@ -454,8 +486,8 @@ class EncodablePayloadTest extends FraudProtectionUnitTestCase {
 	 * no error to catch — the request never returns.
 	 */
 	public function test_object_cycle_is_rejected(): void {
-		$a = new CycleNode();
-		$b = new CycleNode();
+		$a       = new CycleNode();
+		$b       = new CycleNode();
 		$a->next = $b;
 		$b->next = $a;
 

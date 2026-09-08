@@ -64,11 +64,11 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->original_session = WC()->session;
 
-		$this->event_recorder = $this->createMock( SessionEventRecorder::class );
-		$this->rule_evaluator = $this->createMock( RuleEvaluator::class );
+		$this->event_recorder       = $this->createMock( SessionEventRecorder::class );
+		$this->rule_evaluator       = $this->createMock( RuleEvaluator::class );
 		$this->automatic_protection = new AutomaticProtectionSetting();
 		$this->automatic_protection->reset();
-		$this->sut            = new DecisionHandler();
+		$this->sut = new DecisionHandler();
 		$this->sut->init( $this->event_recorder, $this->rule_evaluator, $this->automatic_protection );
 	}
 

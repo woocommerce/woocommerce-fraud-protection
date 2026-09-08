@@ -72,7 +72,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->remember_checkout_option( 'woocommerce_enable_guest_checkout' );
 		$this->remember_checkout_option( 'woocommerce_enable_signup_and_login_from_checkout' );
 
-		$this->session_verifier       = $this->createMock( SessionVerifier::class );
+		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
@@ -344,7 +344,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_verify_allows_on_allow_decision( mixed $posted_data, array $expected_request_data ): void {
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-123';
-		$_POST['gateway_token']                    = 'test-token';
+		$_POST['gateway_token']                  = 'test-token';
 
 		$this->session_verifier
 			->expects( $this->once() )
@@ -621,5 +621,4 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->assertEmpty( $errors->get_error_codes() );
 	}
-
 }

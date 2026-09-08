@@ -9,10 +9,11 @@
  * blackbox-init.js is an IIFE. We test it by setting up global mocks,
  * requiring the file (which executes the IIFE), and asserting on mocks.
  *
- * @package WooCommerce\FraudProtection
+ * @package
  */
 
-const flushPromises = () => new Promise( jest.requireActual( 'timers' ).setImmediate );
+const flushPromises = () =>
+	new Promise( jest.requireActual( 'timers' ).setImmediate );
 
 let mockConfigure;
 let mockInit;
@@ -36,7 +37,14 @@ afterEach( () => {
 } );
 
 function setupAndLoad() {
-	window.wcFraudProtection = { config: { apiKey: 'test-key', identityKey: 'test-identity', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
+	window.wcFraudProtection = {
+		config: {
+			apiKey: 'test-key',
+			identityKey: 'test-identity',
+			timeout: 3000,
+			sessionIdField: 'wc_fraud_protection_session_id',
+		},
+	};
 	window.Blackbox = {
 		configure: mockConfigure,
 		init: mockInit,
@@ -66,7 +74,8 @@ describe( 'blackbox-init', () => {
 			expect( mockInit ).toHaveBeenCalledTimes( 1 );
 			expect( mockInit ).toHaveBeenCalledWith();
 			expect(
-				mockConfigure.mock.invocationCallOrder[ 0 ] < mockInit.mock.invocationCallOrder[ 0 ]
+				mockConfigure.mock.invocationCallOrder[ 0 ] <
+					mockInit.mock.invocationCallOrder[ 0 ]
 			).toBe( true );
 		} );
 
@@ -83,7 +92,14 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'does not error when Blackbox is missing', () => {
-			window.wcFraudProtection = { config: { apiKey: 'test-key', identityKey: 'test-identity', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					identityKey: 'test-identity',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
 
 			expect( () => {
 				jest.isolateModules( () => {
@@ -93,7 +109,14 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'does not call configure or init when Blackbox.init is missing', () => {
-			window.wcFraudProtection = { config: { apiKey: 'test-key', identityKey: 'test-identity', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					identityKey: 'test-identity',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
 			window.Blackbox = { configure: mockConfigure };
 
 			jest.isolateModules( () => {
@@ -110,7 +133,9 @@ describe( 'blackbox-init', () => {
 			setupAndLoad();
 
 			expect( window.wcFraudProtection ).toBeDefined();
-			expect( window.wcFraudProtection.acquireSessionId ).toBeInstanceOf( Function );
+			expect( window.wcFraudProtection.acquireSessionId ).toBeInstanceOf(
+				Function
+			);
 			expect( window.wcFraudProtection.reset ).toBeInstanceOf( Function );
 		} );
 
@@ -125,7 +150,13 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'is NOT set when SDK is missing', () => {
-			window.wcFraudProtection = { config: { apiKey: 'test-key', timeout: 3000, sessionIdField: 'wc_fraud_protection_session_id' } };
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
 
 			jest.isolateModules( () => {
 				require( '../../assets/js/blackbox-init' );
@@ -151,13 +182,17 @@ describe( 'blackbox-init', () => {
 
 			const resultPromise = window.wcFraudProtection.acquireSessionId();
 
-			const result = await jest.advanceTimersByTimeAsync( 3000 ).then( () => resultPromise );
+			const result = await jest
+				.advanceTimersByTimeAsync( 3000 )
+				.then( () => resultPromise );
 
 			expect( result ).toBe( '' );
 		} );
 
 		it( 'resolves with empty string when getSessionId rejects', async () => {
-			mockGetSessionId.mockReturnValue( Promise.reject( new Error( 'SDK error' ) ) );
+			mockGetSessionId.mockReturnValue(
+				Promise.reject( new Error( 'SDK error' ) )
+			);
 			setupAndLoad();
 
 			const sessionId = await window.wcFraudProtection.acquireSessionId();
@@ -166,7 +201,9 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'resolves with empty string when getSessionId resolves with non-string', async () => {
-			mockGetSessionId.mockReturnValue( Promise.resolve( { message: 'Failed to fetch' } ) );
+			mockGetSessionId.mockReturnValue(
+				Promise.resolve( { message: 'Failed to fetch' } )
+			);
 			setupAndLoad();
 
 			const sessionId = await window.wcFraudProtection.acquireSessionId();
@@ -194,7 +231,9 @@ describe( 'blackbox-init', () => {
 		} );
 
 		it( 'swallows reset() rejection', async () => {
-			mockReset.mockReturnValue( Promise.reject( new Error( 'reset error' ) ) );
+			mockReset.mockReturnValue(
+				Promise.reject( new Error( 'reset error' ) )
+			);
 			setupAndLoad();
 
 			expect( async () => {

@@ -227,9 +227,9 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	public function test_performance_counts_return_zeroes_without_events(): void {
 		$expected = array(
 			'recommended_for_blocking' => 0,
-			'blocked_automatically'     => 0,
-			'allowed_by_rules'          => 0,
-			'blocked_by_rules'          => 0,
+			'blocked_automatically'    => 0,
+			'allowed_by_rules'         => 0,
+			'blocked_by_rules'         => 0,
 		);
 
 		$this->assertSame(
@@ -247,9 +247,9 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 
 		$cached_counts = array(
 			'recommended_for_blocking' => 12,
-			'blocked_automatically'     => 3,
-			'allowed_by_rules'          => 4,
-			'blocked_by_rules'          => 5,
+			'blocked_automatically'    => 3,
+			'allowed_by_rules'         => 4,
+			'blocked_by_rules'         => 5,
 		);
 		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, $cached_counts, 5 * MINUTE_IN_SECONDS );
 
@@ -279,9 +279,9 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 
 		$expected = array(
 			'recommended_for_blocking' => 0,
-			'blocked_automatically'     => 0,
-			'allowed_by_rules'          => 0,
-			'blocked_by_rules'          => 0,
+			'blocked_automatically'    => 0,
+			'allowed_by_rules'         => 0,
+			'blocked_by_rules'         => 0,
 		);
 
 		$this->assertSame( $expected, $this->sut->get_performance_counts() );
@@ -293,16 +293,61 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_performance_counts_map_all_supported_outcomes(): void {
 		$events = array(
-			array( 'session_id' => 'recommended-blackbox', 'source' => 'blocks_checkout', 'payment_method' => 'woocommerce_payments' ),
-			array( 'session_id' => 'recommended-rejected', 'source' => 'paypal_setup_token', 'payment_method' => 'ppcp-gateway', 'trigger_type' => 'request_rejected' ),
-			array( 'session_id' => 'blocked-blackbox', 'source' => 'shortcode_checkout', 'payment_method' => 'stripe', 'final_status' => 'blocked' ),
-			array( 'session_id' => 'blocked-rejected', 'source' => 'change_payment_method', 'payment_method' => 'ppcp-gateway', 'trigger_type' => 'request_rejected', 'final_status' => 'blocked' ),
-			array( 'session_id' => 'allowed-rule', 'source' => 'add_payment_method', 'payment_method' => 'bacs', 'decision' => 'allow', 'trigger_type' => 'allow_rule' ),
-			array( 'session_id' => 'blocked-rule', 'source' => 'pay_for_order', 'payment_method' => 'cod', 'final_status' => 'blocked', 'trigger_type' => 'block_rule' ),
-			array( 'session_id' => 'normal-allow', 'decision' => 'allow' ),
-			array( 'session_id' => 'verify-error', 'decision' => 'allow', 'trigger_type' => 'verify_error' ),
-			array( 'session_id' => 'challenge', 'decision' => 'challenge' ),
-			array( 'session_id' => 'unmatched-status', 'final_status' => 'challenge' ),
+			array(
+				'session_id'     => 'recommended-blackbox',
+				'source'         => 'blocks_checkout',
+				'payment_method' => 'woocommerce_payments',
+			),
+			array(
+				'session_id'     => 'recommended-rejected',
+				'source'         => 'paypal_setup_token',
+				'payment_method' => 'ppcp-gateway',
+				'trigger_type'   => 'request_rejected',
+			),
+			array(
+				'session_id'     => 'blocked-blackbox',
+				'source'         => 'shortcode_checkout',
+				'payment_method' => 'stripe',
+				'final_status'   => 'blocked',
+			),
+			array(
+				'session_id'     => 'blocked-rejected',
+				'source'         => 'change_payment_method',
+				'payment_method' => 'ppcp-gateway',
+				'trigger_type'   => 'request_rejected',
+				'final_status'   => 'blocked',
+			),
+			array(
+				'session_id'     => 'allowed-rule',
+				'source'         => 'add_payment_method',
+				'payment_method' => 'bacs',
+				'decision'       => 'allow',
+				'trigger_type'   => 'allow_rule',
+			),
+			array(
+				'session_id'     => 'blocked-rule',
+				'source'         => 'pay_for_order',
+				'payment_method' => 'cod',
+				'final_status'   => 'blocked',
+				'trigger_type'   => 'block_rule',
+			),
+			array(
+				'session_id' => 'normal-allow',
+				'decision'   => 'allow',
+			),
+			array(
+				'session_id'   => 'verify-error',
+				'decision'     => 'allow',
+				'trigger_type' => 'verify_error',
+			),
+			array(
+				'session_id' => 'challenge',
+				'decision'   => 'challenge',
+			),
+			array(
+				'session_id'   => 'unmatched-status',
+				'final_status' => 'challenge',
+			),
 			array( 'session_id' => 'too-old' ),
 		);
 
@@ -314,9 +359,9 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertSame(
 			array(
 				'recommended_for_blocking' => 2,
-				'blocked_automatically'     => 2,
-				'allowed_by_rules'          => 1,
-				'blocked_by_rules'          => 1,
+				'blocked_automatically'    => 2,
+				'allowed_by_rules'         => 1,
+				'blocked_by_rules'         => 1,
 			),
 			$this->sut->get_performance_counts()
 		);

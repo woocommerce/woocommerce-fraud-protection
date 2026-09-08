@@ -49,7 +49,7 @@ class OrderEventsTrackerTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->api_client           = $this->createMock( ApiClient::class );
+		$this->api_client            = $this->createMock( ApiClient::class );
 		$this->session_id_normalizer = new SessionIdNormalizer();
 
 		$this->sut = new OrderEventsTracker();

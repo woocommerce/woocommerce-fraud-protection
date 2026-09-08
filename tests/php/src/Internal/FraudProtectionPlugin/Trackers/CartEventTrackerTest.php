@@ -771,20 +771,20 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function provide_cart_item_counts(): array {
 		return array(
-			'whole count'               => array( 3, 3 ),
+			'whole count'                  => array( 3, 3 ),
 			// An int is taken as given. Without that fast path this would come back as a float,
 			// because (float) PHP_INT_MAX fails the deliberately strict upper bound below.
-			'integer maximum'           => array( PHP_INT_MAX, PHP_INT_MAX ),
-			'decimal count'             => array( 2.5, 2.5 ),
-			'positive INF'              => array( INF, null ),
-			'negative INF'              => array( -INF, null ),
-			'NAN'                       => array( NAN, null ),
+			'integer maximum'              => array( PHP_INT_MAX, PHP_INT_MAX ),
+			'decimal count'                => array( 2.5, 2.5 ),
+			'positive INF'                 => array( INF, null ),
+			'negative INF'                 => array( -INF, null ),
+			'NAN'                          => array( NAN, null ),
 			// Read by numeric value rather than PHP type, matching how a money total is read,
 			// and reported as a whole number when that is what it is.
-			'numeric string'            => array( '3', 3 ),
-			'fractional numeric string' => array( '2.5', 2.5 ),
-			'sentinel string'           => array( 'INF', null ),
-			'array'                     => array( array( 1 ), null ),
+			'numeric string'               => array( '3', 3 ),
+			'fractional numeric string'    => array( '2.5', 2.5 ),
+			'sentinel string'              => array( 'INF', null ),
+			'array'                        => array( array( 1 ), null ),
 
 			// The integer boundary. Comparing in float rounds PHP_INT_MAX up to 2^63, so an
 			// inclusive upper bound would admit this and cast it to a large negative — a count

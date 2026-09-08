@@ -415,7 +415,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		// errors are captured per dbDelta call instead of read at the end.
 		$this->mark_tables_as_existing();
 		$this->fake_wpdb->table_columns['wp_wc_fraud_protection_sessions'] = array_values( array_diff( self::SESSIONS_COLUMNS, array( 'matched_rule_id' ) ) );
-		$this->db_delta_errors_by_call = array( 0 => array( 'Lock wait timeout exceeded', "Key column 'matched_rule_id' doesn't exist in table" ) );
+		$this->db_delta_errors_by_call                                     = array( 0 => array( 'Lock wait timeout exceeded', "Key column 'matched_rule_id' doesn't exist in table" ) );
 
 		$this->sut->register();
 
@@ -560,7 +560,7 @@ class SchemaManagerTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( $status['tables'][0]['exists'] );
 
 		$this->fake_wpdb->existing_tables = array( 'wp_wc_fraud_protection_sessions' );
-		$status = $this->sut->get_schema_status();
+		$status                           = $this->sut->get_schema_status();
 
 		$this->assertFalse( $status['complete'] );
 		$this->assertSame( 'wp_wc_fraud_protection_rules', $status['tables'][1]['name'] );

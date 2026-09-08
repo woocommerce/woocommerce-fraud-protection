@@ -19,7 +19,8 @@ update_option( 'admin_email', 'admin@example.test' );
 
 // Stub the WooCommerce singleton class so $wc instanceof \WooCommerce passes.
 if ( ! class_exists( 'WooCommerce' ) ) {
-	class WooCommerce { // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WooCommerce {
+ // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 		public function mailer() {
 			return null;
 		}

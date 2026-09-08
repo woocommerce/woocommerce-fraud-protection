@@ -58,7 +58,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
-		$this->session_verifier       = $this->createMock( SessionVerifier::class );
+		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->blackbox_script_handler = $this->createMock( BlackboxScriptHandler::class );
 
@@ -143,7 +143,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 * @testdox Real Site Editor bootstrap does not request or enqueue the Blocks protector.
 	 */
 	public function test_site_editor_lifecycle_does_not_enqueue_or_resolve_blocks_protector(): void {
-		$checkout = $this->get_checkout_block_type();
+		$checkout               = $this->get_checkout_block_type();
 		$previous_enqueue_state = $this->set_checkout_enqueue_state( $checkout, false );
 		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
 		$this->sut->register();
@@ -171,7 +171,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 * @testdox Real frontend Checkout lifecycle registers every dependency before queuing the Blocks protector.
 	 */
 	public function test_frontend_checkout_lifecycle_registers_dependencies_before_protector(): void {
-		$checkout = $this->get_checkout_block_type();
+		$checkout               = $this->get_checkout_block_type();
 		$previous_enqueue_state = $this->set_checkout_enqueue_state( $checkout, false );
 		$this->mock_jetpack_blog_id( 12345 );
 		$this->sut->init(
@@ -182,7 +182,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->sut->register();
 
 		$dependencies_ready = false;
-		$probe_dependencies  = function () use ( &$dependencies_ready ): void {
+		$probe_dependencies = function () use ( &$dependencies_ready ): void {
 			$dependencies_ready = wp_script_is( 'wp-data', 'registered' )
 				&& wp_script_is( 'wc-blocks-checkout-events', 'registered' );
 		};
@@ -213,7 +213,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	public function test_order_received_checkout_block_lifecycle_does_not_enqueue_blocks_protector(): void {
 		global $wp;
 
-		$checkout = $this->get_checkout_block_type();
+		$checkout               = $this->get_checkout_block_type();
 		$previous_enqueue_state = $this->set_checkout_enqueue_state( $checkout, false );
 		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
 		$this->sut->register();
@@ -420,7 +420,12 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 				'billing_address'   => array( 'first_name' => 'John' ),
 				'shipping_address'  => array( 'first_name' => 'John' ),
 				'payment_method'    => 'woocommerce_payments',
-				'payment_data'      => array( array( 'key' => 'wcpay-fingerprint', 'value' => 'abc123' ) ),
+				'payment_data'      => array(
+					array(
+						'key'   => 'wcpay-fingerprint',
+						'value' => 'abc123',
+					),
+				),
 				'create_account'    => true,
 				'additional_fields' => array( 'custom_field' => 'value' ),
 				'extensions'        => array(
@@ -432,7 +437,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 				),
 			)
 		);
-		$order = $this->create_mock_order( 500 );
+		$order   = $this->create_mock_order( 500 );
 
 		$this->sut->extract_request_data( $order, $request );
 
@@ -475,10 +480,13 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	public function payment_data_normalization_provider(): array {
 		return array(
-			'sanitizes key and cleans value' => array(
+			'sanitizes key and cleans value'  => array(
 				array(
 					'payment_data' => array(
-						array( 'key' => 'WC-STRIPE-PAYMENT-TOKEN', 'value' => ' <b>235</b> ' ),
+						array(
+							'key'   => 'WC-STRIPE-PAYMENT-TOKEN',
+							'value' => ' <b>235</b> ',
+						),
 					),
 				),
 				array( 'wc-stripe-payment-token' => '235' ),
@@ -486,7 +494,10 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			'converts true to string'         => array(
 				array(
 					'payment_data' => array(
-						array( 'key' => 'BOOL-TRUE', 'value' => true ),
+						array(
+							'key'   => 'BOOL-TRUE',
+							'value' => true,
+						),
 					),
 				),
 				array( 'bool-true' => '1' ),
@@ -494,7 +505,10 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			'converts false to empty string'  => array(
 				array(
 					'payment_data' => array(
-						array( 'key' => 'BOOL-FALSE', 'value' => false ),
+						array(
+							'key'   => 'BOOL-FALSE',
+							'value' => false,
+						),
 					),
 				),
 				array( 'bool-false' => '' ),
@@ -502,7 +516,10 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			'keeps empty normalized key'      => array(
 				array(
 					'payment_data' => array(
-						array( 'key' => '!', 'value' => 'empty-key' ),
+						array(
+							'key'   => '!',
+							'value' => 'empty-key',
+						),
 					),
 				),
 				array( '' => 'empty-key' ),
@@ -510,8 +527,14 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			'keeps last mixed-case duplicate' => array(
 				array(
 					'payment_data' => array(
-						array( 'key' => 'token', 'value' => '234' ),
-						array( 'key' => 'Token', 'value' => '235' ),
+						array(
+							'key'   => 'token',
+							'value' => '234',
+						),
+						array(
+							'key'   => 'Token',
+							'value' => '235',
+						),
 					),
 				),
 				array( 'token' => '235' ),
@@ -519,14 +542,20 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			'keeps last lowercase duplicate'  => array(
 				array(
 					'payment_data' => array(
-						array( 'key' => 'Token', 'value' => '235' ),
-						array( 'key' => 'token', 'value' => '234' ),
+						array(
+							'key'   => 'Token',
+							'value' => '235',
+						),
+						array(
+							'key'   => 'token',
+							'value' => '234',
+						),
 					),
 				),
 				array( 'token' => '234' ),
 			),
-			'missing payment data'             => array( array(), array() ),
-			'empty payment data'               => array( array( 'payment_data' => array() ), array() ),
+			'missing payment data'            => array( array(), array() ),
+			'empty payment data'              => array( array( 'payment_data' => array() ), array() ),
 		);
 	}
 
@@ -537,12 +566,12 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$request = $this->create_mock_request(
 			'test-session-501',
 			array(
-				'billing_address'    => array( 'first_name' => 'Jane' ),
-				'customer_password'  => 'super_secret_password_123',
-				'create_account'     => true,
+				'billing_address'   => array( 'first_name' => 'Jane' ),
+				'customer_password' => 'super_secret_password_123',
+				'create_account'    => true,
 			)
 		);
-		$order = $this->create_mock_order( 501 );
+		$order   = $this->create_mock_order( 501 );
 
 		$this->sut->extract_request_data( $order, $request );
 
@@ -612,7 +641,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$request = new \WP_REST_Request();
 
 		if ( null !== $session_id ) {
-			$extensions = $params['extensions'] ?? array();
+			$extensions                                 = $params['extensions'] ?? array();
 			$extensions['woocommerce/fraud-protection'] = array(
 				'blackbox_session_id' => $session_id,
 			);

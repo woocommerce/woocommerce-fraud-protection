@@ -80,10 +80,10 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @dataProvider unsafe_order_creation_record_provider
 	 *
-	 * @param string      $origin          Verification origin.
-	 * @param bool        $used            Whether the record was already consumed.
-	 * @param string      $order_id        Bound PayPal order ID.
-	 * @param ?string     $active_order_id Active PayPal order ID, or null when absent.
+	 * @param string  $origin          Verification origin.
+	 * @param bool    $used            Whether the record was already consumed.
+	 * @param string  $order_id        Bound PayPal order ID.
+	 * @param ?string $active_order_id Active PayPal order ID, or null when absent.
 	 */
 	public function test_get_order_creation_session_id_retires_unsafe_records( string $origin, bool $used, string $order_id, ?string $active_order_id ): void {
 		$this->set_verification_record( origin: $origin, used: $used, order_id: $order_id );
@@ -421,7 +421,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$session->method( 'get' )->willThrowException( new \RuntimeException( 'session read unavailable' ) );
 		$session->expects( $this->once() )->method( 'set' )->with( '_fraud_protection_paypal_verification', null );
 		WC()->session = $session;
-		$incoming = new SuppliedDecision( FraudDecision::Block );
+		$incoming     = new SuppliedDecision( FraudDecision::Block );
 
 		$returned = $this->decision_reuse->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
 
@@ -439,11 +439,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 	/** @testdox A final used-state write failure preserves the incoming decision and retires stored state. */
 	public function test_supply_write_failure_preserves_incoming_decision_and_retires(): void {
-		$request         = array(
+		$request                 = array(
 			'payment_method' => 'ppcp-gateway',
 			'payment_data'   => array( 'paypal_order_id' => 'PP-123' ),
 		);
-		$record          = array(
+		$record                  = array(
 			'origin'     => PayPalDecisionReuse::ORDER_CREATION_SOURCE,
 			'session_id' => 'response-session',
 			'decision'   => FraudDecision::Allow,
@@ -451,10 +451,10 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 			'order_id'   => 'PP-123',
 			'cart_hash'  => '',
 		);
-		$expected_record = $record;
+		$expected_record         = $record;
 		$expected_record['used'] = true;
-		$session         = $this->createMock( \WC_Session::class );
-		$write_count     = 0;
+		$session                 = $this->createMock( \WC_Session::class );
+		$write_count             = 0;
 		$session->method( 'get' )->willReturn( $record );
 		$session->expects( $this->exactly( 2 ) )->method( 'set' )->willReturnCallback(
 			function ( string $key, $value ) use ( $expected_record, &$write_count ): void {
@@ -469,7 +469,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 			}
 		);
 		WC()->session = $session;
-		$incoming = new SuppliedDecision( FraudDecision::Block );
+		$incoming     = new SuppliedDecision( FraudDecision::Block );
 
 		$returned = $this->decision_reuse->supply_decision_for_paypal_express( $incoming, 'blocks_checkout', $request, 'response-session' );
 
@@ -608,8 +608,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string, string}> */
 	public function invalid_stored_session_id_provider(): array {
 		return array(
-			'single dot'           => array( '.', 'wcfp-invalid-characters' ),
-			'double dot'           => array( '..', 'wcfp-invalid-characters' ),
+			'single dot'            => array( '.', 'wcfp-invalid-characters' ),
+			'double dot'            => array( '..', 'wcfp-invalid-characters' ),
 			'empty submitted value' => array( '.', '' ),
 			'reserved marker'       => array( 'wcfp-invalid-array', '' ),
 		);
@@ -811,20 +811,20 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string, string, string, bool}> */
 	public function changed_or_empty_session_provider(): array {
 		return array(
-			'create shortcode changed' => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
-			'create shortcode empty'   => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
-			'create blocks changed'    => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
-			'create blocks empty'      => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
+			'create shortcode changed'     => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
+			'create shortcode empty'       => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'shortcode_checkout', true ),
+			'create blocks changed'        => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
+			'create blocks empty'          => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'blocks_checkout', true ),
 			'create pay-for-order changed' => array( 'new-session', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'pay_for_order', true ),
 			'create pay-for-order empty'   => array( '', PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'pay_for_order', true ),
-			'vault shortcode changed'  => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
-			'vault shortcode empty'    => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
-			'vault blocks changed'     => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
-			'vault blocks empty'       => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
-			'vault pay-for-order changed' => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
-			'vault pay-for-order empty'   => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
-			'vault subscription changed'  => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
-			'vault subscription empty'    => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
+			'vault shortcode changed'      => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
+			'vault shortcode empty'        => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'shortcode_checkout', false ),
+			'vault blocks changed'         => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
+			'vault blocks empty'           => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'blocks_checkout', false ),
+			'vault pay-for-order changed'  => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
+			'vault pay-for-order empty'    => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'pay_for_order', false ),
+			'vault subscription changed'   => array( 'new-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
+			'vault subscription empty'     => array( '', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE, 'subscriptions_change_payment', false ),
 		);
 	}
 
@@ -864,8 +864,8 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{?string}> */
 	public function non_matching_active_order_provider(): array {
 		return array(
-			'missing active order'    => array( null ),
-			'different active order'  => array( 'PP-999' ),
+			'missing active order'   => array( null ),
+			'different active order' => array( 'PP-999' ),
 		);
 	}
 
@@ -946,7 +946,6 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox A record without an associated order does not answer for an approved order.
-	 *
 	 */
 	public function test_supply_defers_for_a_record_without_an_associated_order(): void {
 		$this->set_verification_record();
@@ -1066,7 +1065,6 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox An associated record's decision is what the associated route replays, whatever it is.
-	 *
 	 */
 	public function test_supply_answers_an_associated_block_with_its_block(): void {
 		$this->set_verification_record( order_id: 'PP-BOUND', decision: FraudDecision::Block );
@@ -1164,7 +1162,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_records_supply_once_across_allowed_sources( string $origin, string $source, string $second_source ): void {
 		$request = $this->create_protected_paypal_request_record( $origin );
-		$first = $this->decision_reuse->supply_decision_for_paypal_express( false, $source, $request, 'response-session' );
+		$first   = $this->decision_reuse->supply_decision_for_paypal_express( false, $source, $request, 'response-session' );
 
 		$this->assertInstanceOf( SuppliedDecision::class, $first );
 		$this->assertSame( 'response-session', $first->session_id_for_order );
@@ -1201,10 +1199,10 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string, string}> */
 	public function unsupported_final_source_provider(): array {
 		return array(
-			'setup pay for order'       => array( 'setup', 'pay_for_order' ),
-			'setup change payment'      => array( 'setup', 'subscriptions_change_payment' ),
-			'create change payment'     => array( 'create', 'subscriptions_change_payment' ),
-			'vault add payment method'  => array( 'vault', 'add_payment_method' ),
+			'setup pay for order'      => array( 'setup', 'pay_for_order' ),
+			'setup change payment'     => array( 'setup', 'subscriptions_change_payment' ),
+			'create change payment'    => array( 'create', 'subscriptions_change_payment' ),
+			'vault add payment method' => array( 'vault', 'add_payment_method' ),
 		);
 	}
 
@@ -1224,7 +1222,7 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string}> */
 	public function disallowed_setup_source_provider(): array {
 		return array(
-			'add payment method'            => array( 'add_payment_method' ),
+			'add payment method'           => array( 'add_payment_method' ),
 			'subscriptions change payment' => array( 'subscriptions_change_payment' ),
 		);
 	}
@@ -1253,13 +1251,13 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string, bool, bool, mixed, string, bool}> */
 	public function setup_eligibility_provider(): array {
 		return array(
-			'positive total'              => array( '1', false, true, null, 'cart-hash', false ),
-			'empty cart'                  => array( '0', true, true, null, 'cart-hash', false ),
-			'payment not needed'          => array( '0', false, false, null, 'cart-hash', false ),
+			'positive total'             => array( '1', false, true, null, 'cart-hash', false ),
+			'empty cart'                 => array( '0', true, true, null, 'cart-hash', false ),
+			'payment not needed'         => array( '0', false, false, null, 'cart-hash', false ),
 			'scalar PayPal-managed plan' => array( '0', false, true, 'plan-id', 'cart-hash', false ),
 			'array PayPal-managed plan'  => array( '0', false, true, array( 'plan-id' ), 'cart-hash', false ),
-			'empty cart hash'             => array( '0', false, true, null, '', false ),
-			'changed cart hash'           => array( '0', false, true, null, 'changed-hash', true ),
+			'empty cart hash'            => array( '0', false, true, null, '', false ),
+			'changed cart hash'          => array( '0', false, true, null, 'changed-hash', true ),
 		);
 	}
 
@@ -1317,13 +1315,11 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	private function create_protected_paypal_request_record( string $record_type ): array {
 		if ( 'create' === $record_type ) {
 			$this->record_order( 'browser-session', resolved_session_id: 'response-session' );
-		} else {
-			if ( 'setup' === $record_type ) {
+		} elseif ( 'setup' === $record_type ) {
 				$this->set_setup_cart( 'cart-hash' );
 				$this->record_verification( 'browser-session', FraudDecision::Allow, 'response-session', PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE );
-			} else {
-				$this->record_order( 'browser-session', 'PP-123', 'response-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE );
-			}
+		} else {
+			$this->record_order( 'browser-session', 'PP-123', 'response-session', PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE );
 		}
 
 		$request = array( 'payment_method' => 'ppcp-gateway' );
@@ -1408,5 +1404,4 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		$cart->method( 'get_cart_hash' )->willReturn( $hash );
 		WC()->cart = $cart;
 	}
-
 }

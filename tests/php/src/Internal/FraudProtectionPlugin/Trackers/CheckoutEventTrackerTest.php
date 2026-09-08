@@ -409,15 +409,15 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 		);
 
 		return array(
-			'array billing email' => array(
+			'array billing email'     => array(
 				'billing_email[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
 				$event_with_payment,
 			),
-			'array fallback email' => array(
+			'array fallback email'    => array(
 				'email[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
 				$event_with_payment,
 			),
-			'array payment method' => array(
+			'array payment method'    => array(
 				'billing_email=test%40example.com&billing_country=US&billing_city=Paris&payment_method[]=cod',
 				array(
 					'action'          => 'field_update',
@@ -704,14 +704,14 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	public function successful_checkout_transitions(): array {
 		return array(
 			'checkout-draft → processing (pay-for-order link)' => array( 'checkout-draft', 'processing' ),
-			'checkout-draft → completed (pay-for-order link)'  => array( 'checkout-draft', 'completed' ),
-			'checkout-draft → on-hold (pay-for-order link)'    => array( 'checkout-draft', 'on-hold' ),
-			'pending → processing (online gateway)'            => array( 'pending', 'processing' ),
-			'pending → completed (virtual product)'            => array( 'pending', 'completed' ),
-			'pending → on-hold (offline gateway)'              => array( 'pending', 'on-hold' ),
-			'failed → processing (pay-for-order)'              => array( 'failed', 'processing' ),
-			'failed → completed (pay-for-order)'               => array( 'failed', 'completed' ),
-			'failed → on-hold (pay-for-order offline)'         => array( 'failed', 'on-hold' ),
+			'checkout-draft → completed (pay-for-order link)' => array( 'checkout-draft', 'completed' ),
+			'checkout-draft → on-hold (pay-for-order link)' => array( 'checkout-draft', 'on-hold' ),
+			'pending → processing (online gateway)'    => array( 'pending', 'processing' ),
+			'pending → completed (virtual product)'    => array( 'pending', 'completed' ),
+			'pending → on-hold (offline gateway)'      => array( 'pending', 'on-hold' ),
+			'failed → processing (pay-for-order)'      => array( 'failed', 'processing' ),
+			'failed → completed (pay-for-order)'       => array( 'failed', 'completed' ),
+			'failed → on-hold (pay-for-order offline)' => array( 'failed', 'on-hold' ),
 		);
 	}
 
