@@ -1,7 +1,16 @@
-import { Card, Skeleton, Stack, Text, VisuallyHidden } from '@wordpress/ui';
+import {
+	Card,
+	LinkButton,
+	Skeleton,
+	Stack,
+	Text,
+	VisuallyHidden,
+} from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
+import { Link } from 'react-router-dom';
 
 import type { Performance } from '../data/store';
+import { getFraudProtectionRoute } from '../navigation';
 
 type PerformanceCardProps = {
 	isLoading: boolean;
@@ -29,6 +38,8 @@ const metrics: Array< {
 		label: __( 'Blocked by rules', 'woocommerce-fraud-protection' ),
 	},
 ];
+
+const checkoutAttemptsHref = getFraudProtectionRoute( '/checkout-attempts' );
 
 export function PerformanceCard( {
 	isLoading,
@@ -100,6 +111,17 @@ export function PerformanceCard( {
 								) }
 							</VisuallyHidden>
 						) }
+					</Stack>
+					<Stack direction="row">
+						<LinkButton
+							variant="minimal"
+							render={ <Link to={ checkoutAttemptsHref } /> }
+						>
+							{ __(
+								'View checkout attempts',
+								'woocommerce-fraud-protection'
+							) }
+						</LinkButton>
 					</Stack>
 				</Stack>
 			</Card.Content>

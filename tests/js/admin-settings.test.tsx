@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
 import {
@@ -16,6 +17,7 @@ import {
 } from '../../client/admin-settings/data/store';
 
 const mockCreateSuccessNotice = jest.fn();
+const mockUseConfirmUnsavedChanges = jest.fn();
 const noticesStore = createReduxStore( 'core/notices', {
 	reducer: ( state = null ) => state,
 	actions: {
@@ -36,6 +38,19 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 
 jest.mock( '@wordpress/notices', () => ( {
 	store: { name: 'core/notices' },
+} ) );
+
+jest.mock( '@woocommerce/navigation', () => ( {
+	getNewPath: ( query: { page: string; tab: string }, path: string ) => {
+		const route = new URLSearchParams( query );
+		if ( path !== '/' ) {
+			route.set( 'path', path );
+		}
+
+		return `/wp-admin/admin.php?${ route.toString() }`;
+	},
+	useConfirmUnsavedChanges: ( isDirty: boolean ) =>
+		mockUseConfirmUnsavedChanges( isDirty ),
 } ) );
 
 // Base UI dispatches checkbox activation through PointerEvent, which jsdom does not provide.
@@ -87,9 +102,11 @@ const renderSettings = () => {
 	registry.register( noticesStore );
 
 	return render(
-		<RegistryProvider value={ registry }>
-			<FraudProtectionSettingsPage />
-		</RegistryProvider>
+		<MemoryRouter>
+			<RegistryProvider value={ registry }>
+				<FraudProtectionSettingsPage />
+			</RegistryProvider>
+		</MemoryRouter>
 	);
 };
 
@@ -219,6 +236,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.getAllByRole( 'definition' )
 				.map( ( element ) => element.textContent )
 		).toEqual( [ '12', '3', '4', '5' ] );
+		expect(
+			performance.getByRole( 'link', {
+				name: 'View checkout attempts',
+			} )
+		).toHaveAttribute(
+			'href',
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
+		);
 	} );
 
 	it( 'shows an error and keeps controls disabled when loading fails', async () => {
