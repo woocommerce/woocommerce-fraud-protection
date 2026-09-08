@@ -54,29 +54,49 @@
 		</properties>
 	</rule>
 
-	<rule ref="PHPCompatibility" />
+	<rule ref="PHPCompatibility">
+		<exclude-pattern>tests/</exclude-pattern>
+	</rule>
+
+	<rule ref="WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents">
+		<exclude-pattern>tests/php/src/</exclude-pattern>
+	</rule>
 
 	<rule ref="WordPress.Files.FileName.InvalidClassFileName">
 		<exclude-pattern>src/</exclude-pattern>
+		<exclude-pattern>tests/</exclude-pattern>
 	</rule>
 
 	<rule ref="Squiz.Classes.ClassFileName">
 		<include-pattern>src/</include-pattern>
+		<include-pattern>tests/php/src/</include-pattern>
 	</rule>
 
 	<rule ref="Squiz.Classes.ValidClassName">
 		<include-pattern>src/</include-pattern>
+		<include-pattern>tests/php/src/</include-pattern>
+	</rule>
+
+	<rule ref="Generic.Commenting">
+		<exclude-pattern>tests/</exclude-pattern>
 	</rule>
 
 	<rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
 		<exclude-pattern>src/</exclude-pattern>
+		<exclude-pattern>tests/php/</exclude-pattern>
 	</rule>
 
 	<rule ref="Squiz.Commenting.FileComment.MissingPackageTag">
 		<exclude-pattern>src/</exclude-pattern>
+		<exclude-pattern>tests/php/</exclude-pattern>
 	</rule>
 
 	<rule ref="Squiz.Commenting.FileComment.Missing">
 		<exclude-pattern>src/</exclude-pattern>
+		<exclude-pattern>tests/php/</exclude-pattern>
+	</rule>
+
+	<rule ref="Squiz.Commenting.FunctionCommentThrowTag.Missing">
+		<exclude-pattern>tests/php/</exclude-pattern>
 	</rule>
 </ruleset>
