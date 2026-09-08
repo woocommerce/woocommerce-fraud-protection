@@ -132,12 +132,8 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	 * Preload settings data on the settings route.
 	 */
 	private function maybe_preload_settings_data(): void {
-		$route_path = null;
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- The route only controls which read-only data is preloaded.
-		if ( isset( $_GET['path'] ) ) {
-			$route_path = sanitize_text_field( wp_unslash( $_GET['path'] ) );
-		}
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The route only controls which read-only data is preloaded.
+		$route_path = isset( $_GET['path'] ) ? sanitize_text_field( wp_unslash( $_GET['path'] ) ) : null;
 		if ( null !== $route_path && '/' !== $route_path ) {
 			return;
 		}
