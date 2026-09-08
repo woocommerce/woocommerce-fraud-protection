@@ -6,8 +6,6 @@
  *
  * blackbox-init.js is an IIFE. We test it by setting up global mocks,
  * requiring the file (which executes the IIFE), and asserting on mocks.
- *
- * @package
  */
 
 const flushPromises = () =>

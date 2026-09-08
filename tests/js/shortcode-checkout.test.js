@@ -11,8 +11,6 @@
  *
  * acquireSessionId and reset are tested in blackbox-init.test.js.
  * Consumer tests mock wcFraudProtection directly.
- *
- * @package
  */
 
 const flushPromises = () =>
