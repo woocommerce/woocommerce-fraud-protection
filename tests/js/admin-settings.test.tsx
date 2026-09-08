@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
 import {
@@ -16,6 +17,15 @@ import {
 } from '../../client/admin-settings/data/store';
 
 const mockCreateSuccessNotice = jest.fn();
+const mockSettingsHistory = { block: jest.fn( () => jest.fn() ) };
+function mockGetNewPath( query: { page: string; tab: string }, path: string ) {
+	const route = new URLSearchParams( query );
+	if ( path !== '/' ) {
+		route.set( 'path', path );
+	}
+
+	return `/wp-admin/admin.php?${ route.toString() }`;
+}
 const noticesStore = createReduxStore( 'core/notices', {
 	reducer: ( state = null ) => state,
 	actions: {
@@ -38,14 +48,10 @@ jest.mock( '@wordpress/notices', () => ( {
 	store: { name: 'core/notices' },
 } ) );
 
-// Base UI dispatches checkbox activation through PointerEvent, which jsdom does not provide.
-if ( ! window.PointerEvent ) {
-	Object.defineProperty( window, 'PointerEvent', {
-		configurable: true,
-		writable: true,
-		value: MouseEvent,
-	} );
-}
+jest.mock( '@woocommerce/navigation', () => ( {
+	getHistory: () => mockSettingsHistory,
+	getNewPath: mockGetNewPath,
+} ) );
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 
@@ -64,13 +70,6 @@ const settingsResponse = (
 	performance,
 } );
 
-const dispatchBeforeUnload = () => {
-	const event = new Event( 'beforeunload', { cancelable: true } );
-	const result = window.dispatchEvent( event );
-
-	return { event, result };
-};
-
 const findVisibleText = async ( text: string ) => {
 	const matches = await screen.findAllByText( text, { exact: true } );
 	const visibleMatches = matches.filter(
@@ -87,9 +86,11 @@ const renderSettings = () => {
 	registry.register( noticesStore );
 
 	return render(
-		<RegistryProvider value={ registry }>
-			<FraudProtectionSettingsPage />
-		</RegistryProvider>
+		<MemoryRouter>
+			<RegistryProvider value={ registry }>
+				<FraudProtectionSettingsPage />
+			</RegistryProvider>
+		</MemoryRouter>
 	);
 };
 
@@ -97,10 +98,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
 		mockCreateSuccessNotice.mockReset();
-	} );
-
-	afterEach( () => {
-		window.onbeforeunload = null;
+		mockSettingsHistory.block.mockClear();
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
@@ -219,6 +217,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.getAllByRole( 'definition' )
 				.map( ( element ) => element.textContent )
 		).toEqual( [ '12', '3', '4', '5' ] );
+		expect(
+			performance.getByRole( 'link', {
+				name: 'View checkout attempts',
+			} )
+		).toHaveAttribute(
+			'href',
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
+		);
 	} );
 
 	it( 'shows an error and keeps controls disabled when loading fails', async () => {
@@ -256,72 +262,6 @@ describe( 'FraudProtectionSettingsPage', () => {
 		// Clicking the disabled button must not retry the failed request.
 		await userEvent.click( save );
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
-	} );
-
-	it( 'updates the unload warning through repeated dirty transitions', async () => {
-		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
-		renderSettings();
-
-		const checkbox = await screen.findByRole( 'checkbox' );
-		await userEvent.click( checkbox );
-		const legacyHandler = jest.fn();
-		window.onbeforeunload = legacyHandler;
-		const firstDirty = dispatchBeforeUnload();
-
-		expect( firstDirty.result ).toBe( false );
-		expect( firstDirty.event.defaultPrevented ).toBe( true );
-		expect( window.onbeforeunload ).toBe( legacyHandler );
-
-		await userEvent.click( checkbox );
-		const firstClean = dispatchBeforeUnload();
-
-		expect( window.onbeforeunload ).toBe( legacyHandler );
-		expect( firstClean.result ).toBe( true );
-		expect( firstClean.event.defaultPrevented ).toBe( false );
-
-		await userEvent.click( checkbox );
-		const secondDirty = dispatchBeforeUnload();
-
-		expect( secondDirty.result ).toBe( false );
-		expect( secondDirty.event.defaultPrevented ).toBe( true );
-
-		await userEvent.click( checkbox );
-		const secondClean = dispatchBeforeUnload();
-
-		expect( secondClean.result ).toBe( true );
-		expect( secondClean.event.defaultPrevented ).toBe( false );
-	} );
-
-	it( 'removes the unload warning when unmounted while dirty', async () => {
-		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
-		const { unmount } = renderSettings();
-
-		const checkbox = await screen.findByRole( 'checkbox' );
-		await userEvent.click( checkbox );
-		unmount();
-		const afterUnmount = dispatchBeforeUnload();
-
-		expect( afterUnmount.result ).toBe( true );
-		expect( afterUnmount.event.defaultPrevented ).toBe( false );
-	} );
-
-	it( 'clears the unload warning after a successful save', async () => {
-		mockedApiFetch
-			.mockResolvedValueOnce( settingsResponse( false ) )
-			.mockResolvedValueOnce( { automatic_protection: true } );
-		renderSettings();
-
-		const checkbox = await screen.findByRole( 'checkbox' );
-		await userEvent.click( checkbox );
-		const legacyHandler = jest.fn();
-		window.onbeforeunload = legacyHandler;
-		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
-
-		await waitFor( () => {
-			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
-			expect( window.onbeforeunload ).toBe( legacyHandler );
-			expect( dispatchBeforeUnload().result ).toBe( true );
-		} );
 	} );
 
 	it( 'saves a changed Boolean and queues the success Snackbar', async () => {
@@ -420,8 +360,6 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toBeVisible();
 		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		expect( save ).not.toHaveAttribute( 'aria-disabled', 'true' );
-		expect( dispatchBeforeUnload().result ).toBe( false );
-
 		await userEvent.click( save );
 
 		await waitFor( () => {

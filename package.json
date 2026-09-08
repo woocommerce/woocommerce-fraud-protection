@@ -28,7 +28,7 @@
 		"postenv:start": "bash ./bin/wp-env-setup.sh",
 		"postenv:update": "bash ./bin/wp-env-setup.sh",
 		"lint": "npm run lint:js && npm run lint:css && npm run lint:types && npm run lint:php",
-		"lint:js": "wp-scripts lint-js assets/js client tests/js/admin-settings.test.tsx",
+		"lint:js": "wp-scripts lint-js assets/js client tests/js/*.tsx",
 		"lint:css": "wp-scripts lint-style assets/css client/admin-settings/style.scss --allow-empty-input",
 		"lint:types": "tsc --noEmit",
 		"lint:php": "vendor/bin/phpcs",
@@ -62,8 +62,12 @@
 		"@wordpress/scripts": "^34.2.0",
 		"@wordpress/theme": "^2.0.0",
 		"@wordpress/ui": "^0.21.0",
+		"@woocommerce/dependency-extraction-webpack-plugin": "5.1.0",
+		"@woocommerce/navigation": "9.0.0",
 		"cssnano": "^6.1.2",
+		"history": "^5.3.0",
 		"jquery": "^3.7.1",
+		"react-router-dom": "~6.3.0",
 		"typescript": "^5.9.3"
 	},
 	"engines": {

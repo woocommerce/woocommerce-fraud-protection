@@ -4,10 +4,11 @@ import { __ } from '@wordpress/i18n';
 import { AutomaticProtectionCard } from './components/automatic-protection-card';
 import { PerformanceCard } from './components/performance-card';
 import { useFraudProtectionSettings } from './hooks/use-fraud-protection-settings';
-import { useUnsavedChangesWarning } from './hooks/use-unsaved-changes-warning';
+import { useUnsavedChangesGuard } from './hooks/use-unsaved-changes-guard';
 
 export function FraudProtectionSettingsPage() {
 	const {
+		discardChanges,
 		error,
 		isDirty,
 		isLoading,
@@ -18,7 +19,7 @@ export function FraudProtectionSettingsPage() {
 		setAutomaticProtection,
 	} = useFraudProtectionSettings();
 
-	useUnsavedChangesWarning( isDirty );
+	useUnsavedChangesGuard( isDirty, discardChanges );
 
 	let errorMessage = null;
 	if ( error?.operation === 'load' ) {
