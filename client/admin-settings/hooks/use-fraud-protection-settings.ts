@@ -20,7 +20,7 @@ export function useFraudProtectionSettings() {
 			settings,
 		};
 	}, [] );
-	const { saveSettings, setAutomaticProtection } =
+	const { discardChanges, saveSettings, setAutomaticProtection } =
 		useDispatch( settingsStore );
 	const { createSuccessNotice } = useDispatch( noticesStore );
 
@@ -39,6 +39,7 @@ export function useFraudProtectionSettings() {
 
 	return {
 		...state,
+		discardChanges,
 		save,
 		setAutomaticProtection,
 	};

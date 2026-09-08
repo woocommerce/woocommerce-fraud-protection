@@ -5,6 +5,15 @@ global.Request = class Request {
 	}
 };
 
+// Base UI dispatches checkbox activation through PointerEvent, which jsdom does not provide.
+if ( ! window.PointerEvent ) {
+	Object.defineProperty( window, 'PointerEvent', {
+		configurable: true,
+		writable: true,
+		value: MouseEvent,
+	} );
+}
+
 // Stub HTMLFormElement.prototype.submit to prevent jsdom "Not implemented" errors.
 // Individual tests can override form.submit with their own spy when they need to assert on it.
 if ( typeof HTMLFormElement !== 'undefined' ) {

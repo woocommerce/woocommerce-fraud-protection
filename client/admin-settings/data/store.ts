@@ -30,6 +30,7 @@ type State = {
 };
 
 type Action =
+	| { type: 'DISCARD_CHANGES' }
 	| { type: 'RECEIVE_SETTINGS'; settings: Settings }
 	| { type: 'RECEIVE_SETTINGS_RESPONSE'; response: SettingsResponse }
 	| { type: 'SET_AUTOMATIC_PROTECTION'; value: boolean }
@@ -60,6 +61,12 @@ const getApiErrorMessage = ( error: unknown ): string | null => {
 
 const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 	switch ( action.type ) {
+		case 'DISCARD_CHANGES':
+			return {
+				...state,
+				current: state.saved,
+				error: null,
+			};
 		case 'RECEIVE_SETTINGS':
 			return {
 				...state,
@@ -101,6 +108,9 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 };
 
 const actions = {
+	discardChanges(): Action {
+		return { type: 'DISCARD_CHANGES' };
+	},
 	receiveSettings( settings: Settings ): Action {
 		return { type: 'RECEIVE_SETTINGS', settings };
 	},
@@ -180,6 +190,7 @@ type StoreSelectors = {
 };
 
 type StoreActions = {
+	discardChanges: () => void;
 	receiveSettings: ( settings: Settings ) => void;
 	receiveSettingsResponse: ( response: SettingsResponse ) => void;
 	setAutomaticProtection: ( value: boolean ) => void;
