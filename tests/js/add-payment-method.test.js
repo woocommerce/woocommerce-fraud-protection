@@ -1,6 +1,4 @@
-/**
- * @jest-environment jsdom
- */
+/** @jest-environment jsdom */ // eslint-disable-line jsdoc/check-tag-names
 
 /**
  * Tests for add-payment-method fraud protection integration.

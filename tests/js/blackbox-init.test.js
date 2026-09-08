@@ -1,6 +1,4 @@
-/**
- * @jest-environment jsdom
- */
+/** @jest-environment jsdom */ // eslint-disable-line jsdoc/check-tag-names
 
 /**
  * Tests for blackbox-init.js — Blackbox SDK configuration and
