@@ -1267,15 +1267,14 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
 	}
 }
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
 /**
  * An object exposing a non-finite float, as a third-party attribute object could.
  *
  * The payload already carries objects (order.items[].attributes), so the allowlist has to cover
  * object nodes as well as arrays.
  */
-// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch, Squiz.Commenting.ClassComment.Missing
 class NonFiniteBearer {
-
 	/**
 	 * A value the JSON encoder cannot represent.
 	 *
@@ -1283,3 +1282,4 @@ class NonFiniteBearer {
 	 */
 	public $ratio = INF;
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch

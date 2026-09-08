@@ -304,9 +304,10 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	}
 }
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
 /**
  * Exception thrown when wp_redirect is intercepted in tests.
  */
-// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch, Squiz.Commenting.ClassComment.Missing
 class RedirectInterceptedException extends \Exception {
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch

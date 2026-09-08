@@ -10,10 +10,10 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
+// phpcs:disable Squiz.Classes.ClassFileName.NoMatch
 /**
  * Test double that exposes the trait's private methods for testing.
  */
-// phpcs:ignore Squiz.Classes.ClassFileName.NoMatch, Squiz.Commenting.ClassComment.Missing
 class ClassicFormDataExtractionTraitTestDouble {
 	use ClassicFormDataExtractionTrait;
 
@@ -45,13 +45,14 @@ class ClassicFormDataExtractionTraitTestDouble {
 		return $this->extract_payment_data();
 	}
 }
+// phpcs:enable Squiz.Classes.ClassFileName.NoMatch
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound
 /**
  * Tests for the ClassicFormDataExtractionTrait.
  *
  * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait
  */
-// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Commenting.ClassComment.Missing
 class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 
 	/**
@@ -293,3 +294,4 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'gateway_token' => 'valid' ), $payment_data );
 	}
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound

@@ -20,16 +20,17 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChang
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
+// phpcs:disable Squiz.Classes.ClassFileName.NoMatch
 /**
  * Exception used to model WP-CLI error exits.
  */
-// phpcs:ignore Squiz.Classes.ClassFileName.NoMatch, Squiz.Commenting.ClassComment.Missing
 class WPCLIErrorException extends \RuntimeException {}
+// phpcs:enable Squiz.Classes.ClassFileName.NoMatch
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound
 /**
  * Tests for FraudProtectionCommands.
  */
-// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Commenting.ClassComment.Missing
 class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 	/**
@@ -635,3 +636,4 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->sut->sessions_prune();
 	}
 }
+// phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound
