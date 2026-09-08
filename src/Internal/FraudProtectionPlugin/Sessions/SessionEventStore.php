@@ -139,8 +139,7 @@ class SessionEventStore {
 		$table  = $this->schema_manager->get_sessions_table_name();
 		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
 
-		// Results are cached in a transient.
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Results are cached in a transient.
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager.
 		$counts = $wpdb->get_row(
 			$wpdb->prepare(
@@ -165,7 +164,7 @@ class SessionEventStore {
 			),
 			ARRAY_A
 		);
-		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ( ! is_array( $counts ) ) {
 			throw new \RuntimeException( 'Session event performance query failed.' );
