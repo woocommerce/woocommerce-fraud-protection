@@ -28,7 +28,7 @@
 		"postenv:start": "bash ./bin/wp-env-setup.sh",
 		"postenv:update": "bash ./bin/wp-env-setup.sh",
 		"lint": "npm run lint:js && npm run lint:css && npm run lint:types && npm run lint:php",
-		"lint:js": "wp-scripts lint-js assets/js client tests/js/admin-settings.test.tsx tests/js/admin-settings-navigation.test.tsx",
+		"lint:js": "wp-scripts lint-js assets/js client tests/js/*.tsx",
 		"lint:css": "wp-scripts lint-style assets/css client/admin-settings/style.scss --allow-empty-input",
 		"lint:types": "tsc --noEmit",
 		"lint:php": "vendor/bin/phpcs",
