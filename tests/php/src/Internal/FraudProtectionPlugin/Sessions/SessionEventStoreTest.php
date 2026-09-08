@@ -20,6 +20,11 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 
 	/**
+	 * Transient holding performance outcome counts.
+	 */
+	private const PERFORMANCE_COUNTS_TRANSIENT = 'wc_fraud_protection_performance_counts';
+
+	/**
 	 * The System Under Test.
 	 *
 	 * @var SessionEventStore
@@ -220,15 +225,67 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should return zeroes when no performance outcomes were recorded.
 	 */
 	public function test_performance_counts_return_zeroes_without_events(): void {
+		$expected = array(
+			'recommended_for_blocking' => 0,
+			'blocked_automatically'     => 0,
+			'allowed_by_rules'          => 0,
+			'blocked_by_rules'          => 0,
+		);
+
 		$this->assertSame(
-			array(
-				'recommended_for_blocking' => 0,
-				'blocked_automatically'     => 0,
-				'allowed_by_rules'          => 0,
-				'blocked_by_rules'          => 0,
-			),
+			$expected,
 			$this->sut->get_performance_counts()
 		);
+		$this->assertSame( $expected, get_transient( self::PERFORMANCE_COUNTS_TRANSIENT ) );
+	}
+
+	/**
+	 * @testdox Should return cached performance counts without querying the database.
+	 */
+	public function test_performance_counts_return_cached_values(): void {
+		global $wpdb;
+
+		$cached_counts = array(
+			'recommended_for_blocking' => 12,
+			'blocked_automatically'     => 3,
+			'allowed_by_rules'          => 4,
+			'blocked_by_rules'          => 5,
+		);
+		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, $cached_counts, 5 * MINUTE_IN_SECONDS );
+
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Verify that a cache hit skips the database.
+		$wpdb->expects( $this->never() )->method( 'prepare' );
+		$wpdb->expects( $this->never() )->method( 'get_row' );
+
+		try {
+			$this->assertSame( $cached_counts, $this->sut->get_performance_counts() );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
+	 * @testdox Should replace invalid cached performance counts.
+	 */
+	public function test_performance_counts_replace_invalid_cached_values(): void {
+		set_transient(
+			self::PERFORMANCE_COUNTS_TRANSIENT,
+			array(
+				'recommended_for_blocking' => '12',
+			),
+			5 * MINUTE_IN_SECONDS
+		);
+
+		$expected = array(
+			'recommended_for_blocking' => 0,
+			'blocked_automatically'     => 0,
+			'allowed_by_rules'          => 0,
+			'blocked_by_rules'          => 0,
+		);
+
+		$this->assertSame( $expected, $this->sut->get_performance_counts() );
+		$this->assertSame( $expected, get_transient( self::PERFORMANCE_COUNTS_TRANSIENT ) );
 	}
 
 	/**
@@ -271,6 +328,8 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	public function test_performance_counts_throw_on_database_failure(): void {
 		global $wpdb;
 
+		$this->assertFalse( get_transient( self::PERFORMANCE_COUNTS_TRANSIENT ) );
+
 		$original_wpdb = $wpdb;
 		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
 		$wpdb->method( 'prepare' )->willReturn( 'SELECT failed' );
@@ -283,6 +342,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			$this->sut->get_performance_counts();
 		} finally {
 			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+			$this->assertFalse( get_transient( self::PERFORMANCE_COUNTS_TRANSIENT ) );
 		}
 	}
 

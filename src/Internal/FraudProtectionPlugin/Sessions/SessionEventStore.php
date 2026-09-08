@@ -25,6 +25,16 @@ defined( 'ABSPATH' ) || exit;
 class SessionEventStore {
 
 	/**
+	 * Transient holding performance outcome counts.
+	 */
+	private const PERFORMANCE_COUNTS_TRANSIENT = 'wc_fraud_protection_performance_counts';
+
+	/**
+	 * Lifetime of cached performance outcome counts.
+	 */
+	private const PERFORMANCE_COUNTS_CACHE_TTL = 5 * MINUTE_IN_SECONDS;
+
+	/**
 	 * Schema manager instance.
 	 *
 	 * @var SchemaManager
@@ -115,9 +125,20 @@ class SessionEventStore {
 	public function get_performance_counts(): array {
 		global $wpdb;
 
+		$cached_counts = get_transient( self::PERFORMANCE_COUNTS_TRANSIENT );
+		if (
+			is_array( $cached_counts )
+			&& is_int( $cached_counts['recommended_for_blocking'] ?? null )
+			&& is_int( $cached_counts['blocked_automatically'] ?? null )
+			&& is_int( $cached_counts['allowed_by_rules'] ?? null )
+			&& is_int( $cached_counts['blocked_by_rules'] ?? null )
+		) {
+			return $cached_counts;
+		}
+
 		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Results are cached in a transient.
 		$counts = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT
@@ -146,12 +167,16 @@ class SessionEventStore {
 			throw new \RuntimeException( 'Session event performance query failed.' );
 		}
 
-		return array(
+		$performance_counts = array(
 			'recommended_for_blocking' => (int) $counts['recommended_for_blocking'],
 			'blocked_automatically'    => (int) $counts['blocked_automatically'],
 			'allowed_by_rules'         => (int) $counts['allowed_by_rules'],
 			'blocked_by_rules'         => (int) $counts['blocked_by_rules'],
 		);
+
+		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, $performance_counts, self::PERFORMANCE_COUNTS_CACHE_TTL );
+
+		return $performance_counts;
 	}
 
 	/**
