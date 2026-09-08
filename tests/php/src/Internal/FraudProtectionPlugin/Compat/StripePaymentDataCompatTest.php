@@ -14,6 +14,8 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub WC_Stripe_API if the real class isn't loaded.
+// The following classes keep the names of the external API that they model.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
 if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 	/** Stripe API test stub. */
@@ -53,6 +55,7 @@ if ( ! class_exists( '\WC_Stripe_API', false ) ) {
 		 * @return mixed
 		 */
 		public static function get_payment_method( string $payment_method_id ) {
+			unset( $payment_method_id );
 			return self::$mock_response;
 		}
 	}
@@ -184,6 +187,8 @@ if ( ! class_exists( '\WC_Stripe', false ) ) {
 	class_alias( __NAMESPACE__ . '\WC_Stripe_Account_Stub', 'WC_Stripe_Account' );
 	class_alias( __NAMESPACE__ . '\WC_Stripe_Stub', 'WC_Stripe' );
 }
+
+// phpcs:enable Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
 
 /**
  * Tests for the StripePaymentDataCompat class.

@@ -78,6 +78,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this->sut, 'enqueue_paypal_script_if_add_payment_method_enqueued' ) ) );
 	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| enqueue_paypal_script() Tests
@@ -95,6 +96,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->mock_jetpack_blog_id( 12345 );
 		$this->sut->register();
 
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( $hook );
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
@@ -327,6 +329,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		ob_start();
 		woocommerce_mini_cart();
 		ob_end_clean();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_paypal_payments_minicart_button_render' );
 
 		$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-blackbox'] );
@@ -557,12 +560,15 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function test_subscriptions_render_requires_active_paypal_script(): void {
 		$sut = $this->make_sut_expecting_script_request( true );
 		$sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_enqueue_script( 'ppcp-add-payment-method' );
 		$this->touched_add_payment_method_handle = true;
 
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );

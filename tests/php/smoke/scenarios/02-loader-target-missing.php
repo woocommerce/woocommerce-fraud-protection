@@ -11,6 +11,9 @@
 
 declare( strict_types = 1 );
 
+// This smoke test must use PHP filesystem and diagnostic functions before WordPress loads.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_mkdir, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.PHP.DevelopmentFunctions.error_log_var_export
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 // Point WPMU_PLUGIN_DIR at a directory that does not contain the plugin.

@@ -561,6 +561,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
 			function ( $decision ) use ( &$filter_called ) {
+				unset( $decision );
 				$filter_called = true;
 				return FraudDecision::Block;
 			}

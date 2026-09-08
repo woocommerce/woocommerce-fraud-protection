@@ -60,7 +60,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_sessions_table_name() );
 		parent::tearDown();
 	}
@@ -79,7 +79,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 
 		$table = $this->schema_manager->get_sessions_table_name();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE session_id = %s ORDER BY id DESC LIMIT 1", $session_id ), ARRAY_A );
 
 		return is_array( $row ) ? $row : null;
@@ -93,7 +93,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	private function count_rows(): int {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $this->schema_manager->get_sessions_table_name() );
 	}
 
@@ -106,7 +106,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	private function set_recorded_at( string $session_id, string $recorded_at ): void {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( $wpdb->prepare( 'UPDATE ' . $this->schema_manager->get_sessions_table_name() . ' SET recorded_at = %s WHERE session_id = %s', $recorded_at, $session_id ) );
 	}
 
@@ -217,7 +217,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->sut->record_event( $this->an_event( array( 'session_id' => '' ) ) );
 
 		$this->assertSame( 2, $this->count_rows() );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$this->assertSame( 2, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $this->schema_manager->get_sessions_table_name() . ' WHERE session_id IS NULL' ) );
 	}
 
@@ -401,7 +401,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->sut->record_event( $this->an_event( array( 'session_id' => 'fresh-session' ) ) );
 
 		$old_date = gmdate( 'Y-m-d H:i:s', time() - ( 40 * DAY_IN_SECONDS ) );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( $wpdb->prepare( 'UPDATE ' . $this->schema_manager->get_sessions_table_name() . ' SET recorded_at = %s WHERE session_id = %s', $old_date, 'old-session' ) );
 
 		$deleted = $this->sut->prune_older_than( 30 );

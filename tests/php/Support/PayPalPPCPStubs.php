@@ -7,6 +7,9 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\FraudProtection\Tests\Support;
 
+// This file provides the related stubs that model one external plugin.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Universal.Files.SeparateFunctionsFromOO.Mixed, Universal.Namespaces.OneDeclarationPerFile.MultipleFound
+
 /** PayPal payment token test stub. */
 class PayPalPaymentTokenStub extends \WC_Payment_Token {
 

@@ -15,6 +15,8 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 // Stub WooPayments classes if not loaded. Tests inject API mocks via \WC_Payments::set_api_client().
+// The following classes keep the names of the external API that they model.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
 if ( ! class_exists( '\WC_Payments', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 	/** WooPayments account service test stub. */
@@ -142,6 +144,7 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 		 * @param string $payment_method_id Test value.
 		 */
 		public function get_payment_method( string $payment_method_id ): array {
+			unset( $payment_method_id );
 			return array();
 		}
 	}
@@ -271,6 +274,8 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 	class_alias( __NAMESPACE__ . '\WC_Payments_Stub', 'WC_Payments' );
 	class_alias( __NAMESPACE__ . '\WC_Payments_Features_Stub', 'WC_Payments_Features' );
 }
+
+// phpcs:enable Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
 
 /**
  * Tests for the WooPaymentsPaymentDataCompat class.
@@ -770,7 +775,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$token->set_last4( '1234' );
 		$token->set_expiry_month( '01' );
 		$token->set_expiry_year( '2030' );
-		$token->set_user_id( 99999 ); // different user
+		$token->set_user_id( 99999 ); // Different user.
 		$token->save();
 
 		$result = $this->sut->resolve(

@@ -491,6 +491,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 				wc_add_notice( 'Mobile number is required.', 'error' );
 			}
 		);
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_process' );
 
 		// Valid data, so the only blocking signal is the notice above.
@@ -524,6 +525,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_process' );
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
@@ -549,6 +551,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		add_filter( 'woocommerce_add_error', '__return_empty_string' );
 
 		$this->sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_process' );
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'XX' ) );
@@ -577,6 +580,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 
 		$this->sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_process' );
 
 		$this->assertSame(
@@ -597,6 +601,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 * @testdox Checkout processing skips an integer form key and verifies with valid request data.
 	 */
 	public function test_checkout_process_skips_integer_key_and_verifies_with_valid_data(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Test supplies the checkout request parsed by the component.
 		parse_str( '0=bad&wc_fraud_protection_session_id=checkout-session&gateway_token=valid', $_POST );
 
 		$this->session_verifier
@@ -615,6 +620,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 
 		$this->sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_process' );
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );

@@ -387,7 +387,7 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$previewing->setAccessible( true );
 		$previewing->setValue( $manager, true );
 
-		$GLOBALS['wp_customize'] = $manager;
+		$GLOBALS['wp_customize'] = $manager; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Test enters the WordPress customizer state.
 	}
 
 	/**

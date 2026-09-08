@@ -82,7 +82,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_rules_table_name() );
 		delete_option( SchemaManager::DB_VERSION_OPTION );
 
@@ -267,7 +267,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 
 		$table = $this->schema_manager->get_rules_table_name();
 		// A future compound rule this engine version does not implement, positioned first.
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( $wpdb->prepare( "INSERT INTO {$table} (action, status, position, conditions, condition_hash, created_at) VALUES (%s, %s, %d, %s, %s, %s)", 'block', 'active', 0, '{"operator":"and","checks":[]}', 'hash-compound', gmdate( 'Y-m-d H:i:s' ) ) );
 
 		$rule = $this->rule_store->create_rule( FraudDecision::Block, $this->email_condition( 'customer@example.com' ) );
@@ -285,7 +285,7 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 		global $wpdb;
 
 		$table = $this->schema_manager->get_rules_table_name();
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( $wpdb->prepare( "INSERT INTO {$table} (action, status, position, conditions, condition_hash, created_at) VALUES (%s, %s, %d, %s, %s, %s)", 'block', 'active', 1, '{"field":"email","operator":"wildcard","value":"*@example.com"}', 'hash-wildcard', gmdate( 'Y-m-d H:i:s' ) ) );
 
 		$this->assertNull( $this->sut->evaluate_for_session( $this->a_session_data_payload() ) );

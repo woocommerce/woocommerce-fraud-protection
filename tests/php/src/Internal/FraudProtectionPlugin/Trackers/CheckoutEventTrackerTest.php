@@ -203,6 +203,7 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 			->method( 'collect' )
 			->willReturnCallback(
 				function ( $event_type, $event_data ) use ( &$collected_events ) {
+					unset( $event_data );
 					$collected_events[] = $event_type;
 					return array();
 				}

@@ -13,6 +13,9 @@
 
 declare( strict_types = 1 );
 
+// This smoke test must read captured output before WordPress loads.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.PHP.DevelopmentFunctions.error_log_var_export
+
 require_once __DIR__ . '/../stubs/wp.php';
 
 // WooCommerce is loaded, but at a version below the plugin's minimum.
@@ -28,10 +31,9 @@ wfp_smoke_assert(
 	'Plugin should register woocommerce_loaded regardless of the WooCommerce version.'
 );
 
-// Fire the bootstrap twice. The minimum-version guard must short-circuit it
-// both times, but the notice is throttled so it must be logged only once - this
-// is what prevents the per-request log flood on an affected site.
+/** Fire the bootstrap twice to check the minimum-version guard and notice throttle. */
 do_action( 'woocommerce_loaded' );
+/** Fire the bootstrap a second time. */
 do_action( 'woocommerce_loaded' );
 
 wfp_smoke_assert(

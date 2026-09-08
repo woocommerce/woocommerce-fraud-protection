@@ -12,6 +12,9 @@
 
 declare( strict_types = 1 );
 
+// These stubs keep the WordPress function signatures.
+// phpcs:disable Generic.CodeAnalysis.UnusedFunctionParameter, Universal.NamingConventions.NoReservedKeywordParameterNames.listFound
+
 // Scenario-controlled stubs; stubs/wp.php only defines functions that do not exist yet.
 $GLOBALS['wfp_smoke_is_admin']  = true;
 $GLOBALS['wfp_smoke_script_is'] = false;
@@ -35,6 +38,7 @@ function is_admin() {
 function wp_script_is( $handle, $list = 'enqueued' ) {
 	return $GLOBALS['wfp_smoke_script_is'];
 }
+// phpcs:enable Generic.CodeAnalysis.UnusedFunctionParameter, Universal.NamingConventions.NoReservedKeywordParameterNames.listFound
 
 require_once __DIR__ . '/../stubs/wp.php';
 

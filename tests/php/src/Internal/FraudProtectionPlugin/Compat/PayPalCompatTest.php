@@ -219,6 +219,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
 		$this->sut->register();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_paypal_payments_woocommerce_order_created_from_cart', $order );
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
@@ -404,7 +405,9 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			}
 		);
 		$session->method( 'get' )->willReturnCallback(
-			static fn( string $key, $default = null ) => '_fraud_protection_paypal_verification' === $key ? $stored_record : $default
+			static function ( string $key, $default_value = null ) use ( &$stored_record ) {
+				return '_fraud_protection_paypal_verification' === $key ? $stored_record : $default_value;
+			}
 		);
 		WC()->session = $session;
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
@@ -764,10 +767,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut->register();
 		$result   = null;
 		$callback = function () use ( &$result, $args, $path ): void {
+			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 			$result = apply_filters( 'ppcp_request_args', $args, 'https://api-m.paypal.com' . $path );
 		};
 			add_action( $action, $callback );
 		try {
+			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 			do_action( $action );
 		} finally {
 			remove_action( $action, $callback );

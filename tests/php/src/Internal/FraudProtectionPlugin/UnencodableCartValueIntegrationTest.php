@@ -7,6 +7,9 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
+// These tests install PHP error handlers and submit controlled request data.
+// phpcs:disable WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler, WordPress.PHP.DevelopmentFunctions.error_log_trigger_error, WordPress.PHP.DevelopmentFunctions.error_log_var_export, WordPress.Security.NonceVerification.Recommended
+
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;

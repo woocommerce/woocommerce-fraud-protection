@@ -13,6 +13,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 /**
  * Test double that exposes the trait's private methods for testing.
  */
+// phpcs:ignore Squiz.Classes.ClassFileName.NoMatch, Squiz.Commenting.ClassComment.Missing
 class ClassicFormDataExtractionTraitTestDouble {
 	use ClassicFormDataExtractionTrait;
 
@@ -50,6 +51,7 @@ class ClassicFormDataExtractionTraitTestDouble {
  *
  * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait
  */
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Commenting.ClassComment.Missing
 class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 
 	/**
@@ -283,6 +285,7 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 	 * @testdox extract_payment_data() skips an integer key and keeps valid gateway data.
 	 */
 	public function test_extract_payment_data_skips_integer_key_and_keeps_gateway_data(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Test supplies the form data parsed by the trait.
 		parse_str( '0=bad&gateway_token=valid', $_POST );
 
 		$payment_data = $this->sut->test_extract_payment_data();

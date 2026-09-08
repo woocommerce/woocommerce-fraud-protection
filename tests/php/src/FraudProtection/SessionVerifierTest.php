@@ -797,6 +797,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		// The new order must not inherit the stale ID.
 		$order = \WC_Helper_Order::create_order();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_order_created', $order );
 
 		$saved_order = wc_get_order( $order->get_id() );
@@ -843,6 +844,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		// Order is created; the deferred hook copies the ID to order meta for reporting.
 		$order = \WC_Helper_Order::create_order();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_order_created', $order );
 
 		$saved_order = wc_get_order( $order->get_id() );

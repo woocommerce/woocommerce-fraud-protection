@@ -10,6 +10,9 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\EncodablePayload;
 
+// This test case defines its local fixtures below the test class.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch
+
 /**
  * Unit coverage for the payload allowlist.
  *

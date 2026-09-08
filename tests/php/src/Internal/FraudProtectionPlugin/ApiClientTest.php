@@ -1273,6 +1273,7 @@ class ApiClientTest extends FraudProtectionUnitTestCase {
  * The payload already carries objects (order.items[].attributes), so the allowlist has to cover
  * object nodes as well as arrays.
  */
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch, Squiz.Commenting.ClassComment.Missing
 class NonFiniteBearer {
 
 	/**

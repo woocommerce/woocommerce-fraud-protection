@@ -168,6 +168,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 
 		$this->original_server_variables[ $key ] = array(
 			'exists' => array_key_exists( $key, $_SERVER ),
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- The test helper must restore the original raw server value.
 			'value'  => $_SERVER[ $key ] ?? null,
 		);
 	}

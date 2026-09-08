@@ -8,6 +8,9 @@
 
 declare( strict_types=1 );
 
+// This fixture provides the classes and function from the Square plugin API.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Universal.Files.SeparateFunctionsFromOO.Mixed
+
 if ( function_exists( 'wc_square' ) ) {
 	return;
 }

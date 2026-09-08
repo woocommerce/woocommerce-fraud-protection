@@ -428,6 +428,7 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 			'page loaded' => array(
 				'template_redirect',
 				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					unset( $product, $cart_item_key );
 					add_filter( 'woocommerce_is_cart', '__return_true' );
 					$sut->track_cart_page_loaded();
 				},
@@ -435,6 +436,7 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 			'added'       => array(
 				'internal_woocommerce_cart_item_added_from_user_request',
 				function ( CartEventTracker $sut, \WC_Product $product, string $cart_item_key ): void {
+					unset( $cart_item_key );
 					$sut->track_cart_item_added( $product->get_id(), 1 );
 				},
 			),

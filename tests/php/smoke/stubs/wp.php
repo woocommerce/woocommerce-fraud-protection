@@ -15,6 +15,9 @@
 
 declare( strict_types = 1 );
 
+// These stubs keep WordPress function signatures and provide direct error-log capture.
+// phpcs:disable Generic.CodeAnalysis.UnusedFunctionParameter, Universal.NamingConventions.NoReservedKeywordParameterNames, WordPress.WP.AlternativeFunctions.file_system_operations_fwrite, WordPress.PHP.IniSet.log_errors_Disallowed, WordPress.PHP.IniSet.Risky
+
 if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', sys_get_temp_dir() . '/wfp-smoke-abspath/' );
 }
@@ -136,6 +139,7 @@ if ( ! function_exists( 'plugins_url' ) ) {
 		$url  = 'https://example.test/store/wp-content/plugins/wordpress/plugins/woocommerce-fraud-protection/0.2.0/';
 		$url .= ltrim( $path, '/' );
 
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		return apply_filters( 'plugins_url', $url, $path, $plugin );
 	}
 }

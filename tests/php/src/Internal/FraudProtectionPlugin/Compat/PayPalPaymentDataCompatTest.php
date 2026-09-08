@@ -398,15 +398,15 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Map the PayPal token type to the test token class.
 	 *
-	 * @param string $class Token class name.
+	 * @param string $class_name Token class name.
 	 * @param string $type Token type.
 	 * @return string
 	 */
-	public function map_paypal_token_class( string $class, string $type ): string {
+	public function map_paypal_token_class( string $class_name, string $type ): string {
 		return array(
 			'PayPal'   => PayPalPaymentTokenStub::class,
 			'Venmo'    => VenmoPaymentTokenStub::class,
 			'ApplePay' => ApplePayPaymentTokenStub::class,
-		)[ $type ] ?? $class;
+		)[ $type ] ?? $class_name;
 	}
 }

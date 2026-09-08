@@ -1261,18 +1261,18 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @dataProvider setup_eligibility_provider
 	 *
 	 * @param string $total Test value.
-	 * @param bool   $empty Test value.
+	 * @param bool   $is_empty Test value.
 	 * @param bool   $needs_payment Test value.
 	 * @param mixed  $plan_metadata PayPal plan metadata.
 	 * @param string $cart_hash Test value.
 	 * @param bool   $can_store Test value.
 	 */
-	public function test_setup_record_rechecks_material_eligibility( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
+	public function test_setup_record_rechecks_material_eligibility( string $total, bool $is_empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
 		unset( $can_store );
 		$this->set_setup_cart( 'cart-hash' );
 		$this->record_setup_verification();
 
-		$this->set_setup_cart( $cart_hash, $this->setup_cart_items( $plan_metadata ), $needs_payment, $total, $empty );
+		$this->set_setup_cart( $cart_hash, $this->setup_cart_items( $plan_metadata ), $needs_payment, $total, $is_empty );
 
 		$this->assert_incoming_decision_is_preserved(
 			'blocks_checkout',
@@ -1300,14 +1300,14 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @dataProvider setup_eligibility_provider
 	 *
 	 * @param string $total Test value.
-	 * @param bool   $empty Test value.
+	 * @param bool   $is_empty Test value.
 	 * @param bool   $needs_payment Test value.
 	 * @param mixed  $plan_metadata PayPal plan metadata.
 	 * @param string $cart_hash Test value.
 	 * @param bool   $can_store Test value.
 	 */
-	public function test_setup_cart_eligibility_controls_record_storage( string $total, bool $empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
-		$this->set_setup_cart( $cart_hash, $this->setup_cart_items( $plan_metadata ), $needs_payment, $total, $empty );
+	public function test_setup_cart_eligibility_controls_record_storage( string $total, bool $is_empty, bool $needs_payment, $plan_metadata, string $cart_hash, bool $can_store ): void {
+		$this->set_setup_cart( $cart_hash, $this->setup_cart_items( $plan_metadata ), $needs_payment, $total, $is_empty );
 		$this->record_setup_verification();
 
 		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
@@ -1432,14 +1432,14 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	 * @param array  $items         Cart items.
 	 * @param bool   $needs_payment Whether the cart needs a payment method.
 	 * @param mixed  $total         Cart total.
-	 * @param bool   $empty         Whether the cart is empty.
+	 * @param bool   $is_empty      Whether the cart is empty.
 	 */
-	private function set_setup_cart( string $hash, array $items = array(), bool $needs_payment = true, $total = '0', bool $empty = false ): void {
+	private function set_setup_cart( string $hash, array $items = array(), bool $needs_payment = true, $total = '0', bool $is_empty = false ): void {
 		$cart = $this->getMockBuilder( \WC_Cart::class )
 			->disableOriginalConstructor()
 			->onlyMethods( array( 'is_empty', 'get_total', 'needs_payment', 'get_cart', 'get_cart_hash', 'calculate_totals' ) )
 			->getMock();
-		$cart->method( 'is_empty' )->willReturn( $empty );
+		$cart->method( 'is_empty' )->willReturn( $is_empty );
 		$cart->method( 'get_total' )->willReturn( $total );
 		$cart->method( 'needs_payment' )->willReturn( $needs_payment );
 		$cart->method( 'get_cart' )->willReturn( $items );

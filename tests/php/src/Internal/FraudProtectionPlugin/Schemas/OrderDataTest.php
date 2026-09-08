@@ -74,6 +74,7 @@ class OrderDataTest extends FraudProtectionUnitTestCase {
 		$order->set_total( '10.00' );
 		$order->save();
 		$filter = static function ( $total ) {
+			unset( $total );
 			return '0.00';
 		};
 		add_filter( 'woocommerce_order_get_total', $filter );

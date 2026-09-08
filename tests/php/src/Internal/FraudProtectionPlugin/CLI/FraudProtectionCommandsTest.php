@@ -23,11 +23,13 @@ use WP_CLI;
 /**
  * Exception used to model WP-CLI error exits.
  */
+// phpcs:ignore Squiz.Classes.ClassFileName.NoMatch, Squiz.Commenting.ClassComment.Missing
 class WPCLIErrorException extends \RuntimeException {}
 
 /**
  * Tests for FraudProtectionCommands.
  */
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Commenting.ClassComment.Missing
 class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 	/**
@@ -96,6 +98,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 							$message = $message::class . ': ' . $message->getMessage();
 						}
 
+						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The test captures WP-CLI errors through this exception.
 						throw new WPCLIErrorException( (string) $message );
 					},
 				),
