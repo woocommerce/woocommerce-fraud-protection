@@ -730,12 +730,12 @@ class CartEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox track_cart_item_added() omits a cart_item_count WooCommerce cannot state.
+	 * @testdox track_cart_item_added() reports null for a cart_item_count WooCommerce cannot state.
 	 *
 	 * WooCommerce sums the count over the raw cart quantities and passes it through the
 	 * `woocommerce_cart_contents_count` filter, so neither its type nor its finiteness is
 	 * guaranteed. The count is the plugin's own number rather than a relayed one, so when it
-	 * has no finite numeric form the field is omitted rather than filled in.
+	 * has no finite numeric form the field is set to null rather than an incorrect count.
 	 *
 	 * @dataProvider provide_cart_item_counts
 	 *
