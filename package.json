@@ -62,8 +62,11 @@
 		"@wordpress/scripts": "^34.2.0",
 		"@wordpress/theme": "^2.0.0",
 		"@wordpress/ui": "^0.21.0",
+		"@woocommerce/dependency-extraction-webpack-plugin": "5.1.0",
+		"@woocommerce/navigation": "9.0.0",
 		"cssnano": "^6.1.2",
 		"jquery": "^3.7.1",
+		"react-router-dom": "~6.3.0",
 		"typescript": "^5.9.3"
 	},
 	"engines": {
