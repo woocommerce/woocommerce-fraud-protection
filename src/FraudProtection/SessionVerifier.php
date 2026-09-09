@@ -302,10 +302,10 @@ class SessionVerifier {
 			$payload['source']  = $source;
 			$payload['payment'] = $payment_data?->to_array();
 
-			$verification    = $this->decision_handler->prepare_verification( $payload );
-			$request_payload = array_merge( $payload, $verification['context'] );
+			$verification = $this->decision_handler->prepare_verification( $payload );
+			$payload      = array_merge( $payload, $verification['context'] );
 
-			$result = $this->api_client->verify( $normalized_session_id, $request_payload );
+			$result = $this->api_client->verify( $normalized_session_id, $payload );
 
 			// Only a session ID returned by Blackbox becomes association state.
 			// Persist it before decision handling so an empty result clears current

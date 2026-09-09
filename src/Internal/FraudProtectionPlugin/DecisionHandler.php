@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
@@ -85,14 +84,9 @@ class DecisionHandler {
 	 * @return array{context: array{automatic_protection_status: string, automatic_protection_source: string, matched_rule_action: string, matched_rule_type: string}, matched_rule: ?Rule}
 	 */
 	public function prepare_verification( array $session_data ): array {
-		$matched_rule      = $this->rule_evaluator->evaluate_for_session( $session_data );
-		$matched_rule_type = $matched_rule->conditions['field'] ?? null;
-		$status            = SettingStatus::DefaultDisabled;
-		$source            = AutomaticProtectionSource::None;
-
-		if ( ! in_array( $matched_rule_type, array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) ) {
-			$matched_rule_type = 'none';
-		}
+		$matched_rule = $this->rule_evaluator->evaluate_for_session( $session_data );
+		$status       = SettingStatus::DefaultDisabled;
+		$source       = AutomaticProtectionSource::None;
 
 		try {
 			$status = $this->automatic_protection->get_status();
@@ -117,7 +111,7 @@ class DecisionHandler {
 				'automatic_protection_status' => $status->value,
 				'automatic_protection_source' => $source->value,
 				'matched_rule_action'         => $matched_rule?->action->value ?? 'none',
-				'matched_rule_type'           => $matched_rule_type,
+				'matched_rule_type'           => (string) ( $matched_rule?->conditions['field'] ?? 'none' ),
 			),
 			'matched_rule' => $matched_rule,
 		);

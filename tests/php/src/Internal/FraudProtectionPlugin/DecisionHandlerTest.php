@@ -453,8 +453,12 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_decision_filter_receives_intentional_verify_result(): void {
 		$session_data = array(
-			'session' => array( 'wc_identity_id' => 'identity-1' ),
-			'payment' => array( 'gateway' => 'woocommerce_payments' ),
+			'session'                     => array( 'wc_identity_id' => 'identity-1' ),
+			'payment'                     => array( 'gateway' => 'woocommerce_payments' ),
+			'automatic_protection_status' => 'enabled',
+			'automatic_protection_source' => 'manual',
+			'matched_rule_action'         => 'none',
+			'matched_rule_type'           => 'none',
 		);
 
 		$received_by_filter = null;
@@ -480,6 +484,10 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			'The verify_result subset should carry exactly the risk score and payment method, no session ID'
 		);
 		$this->assertSame( array( 'wc_identity_id' => 'identity-1' ), $received_by_filter['session'], 'The rest of the session data should pass through unchanged' );
+		$this->assertSame( 'enabled', $received_by_filter['automatic_protection_status'] );
+		$this->assertSame( 'manual', $received_by_filter['automatic_protection_source'] );
+		$this->assertSame( 'none', $received_by_filter['matched_rule_action'] );
+		$this->assertSame( 'none', $received_by_filter['matched_rule_type'] );
 	}
 
 	/**
@@ -771,11 +779,18 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			4
 		);
 
-		$this->apply_prepared_decision( VerifyResult::create( FraudDecision::Allow, 'test-session', 0.42 ), array( 'session_id' => 'test' ) );
+		$session_data = array( 'session_id' => 'test' );
+		$prepared     = $this->sut->prepare_verification( $session_data );
+		$session_data = array_merge( $session_data, $prepared['context'] );
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session', 0.42 ), $session_data, $prepared['matched_rule'] );
 
 		$expected_session_data = array(
-			'session_id'    => 'test',
-			'verify_result' => array(
+			'session_id'                  => 'test',
+			'automatic_protection_status' => 'default_disabled',
+			'automatic_protection_source' => 'none',
+			'matched_rule_action'         => 'block',
+			'matched_rule_type'           => 'email',
+			'verify_result'               => array(
 				'risk_score'     => 0.42,
 				'payment_method' => '',
 			),

@@ -181,15 +181,15 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->with( 'woocommerce_payments', array() )
 			->willReturn( $resolved_payment );
 
-		$decision_payload = array_merge(
+		$base_payload = array_merge(
 			$collected_data,
 			array(
 				'source'  => 'blocks_checkout',
 				'payment' => $resolved_payment->to_array(),
 			)
 		);
-		$request_payload  = array_merge(
-			$decision_payload,
+		$payload      = array_merge(
+			$base_payload,
 			array(
 				'automatic_protection_status' => 'default_disabled',
 				'automatic_protection_source' => 'none',
@@ -202,7 +202,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'prepare_verification' )
-			->with( $decision_payload )
+			->with( $base_payload )
 			->willReturn( $prepared_verification );
 		$this->sut->init(
 			$this->data_collector,
@@ -217,14 +217,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->with( $session_id, $request_payload )
+			->with( $session_id, $payload )
 			->willReturn( $verify_result );
 
-		// Request-only context must not extend the existing hook payload.
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( $verify_result, $decision_payload, $matched_rule )
+			->with( $verify_result, $payload, $matched_rule )
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( $session_id, 'blocks_checkout', $order_id, $request_data );
