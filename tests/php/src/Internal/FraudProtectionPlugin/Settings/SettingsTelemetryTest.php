@@ -10,7 +10,6 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionChange;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
@@ -47,29 +46,11 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	/** @var FraudProtectionLogger&\PHPUnit\Framework\MockObject\MockObject */
 	private $logger;
 
-	/** @var bool */
-	private $had_request_source;
-
-	/** @var mixed */
-	private $original_request_source;
-
-	/** @var mixed */
-	private $original_allow_tracking;
-
-	/** @var int */
-	private $original_user_id;
-
 	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Preserve the request state that existed before each test.
-		$this->had_request_source = array_key_exists( 'source', $_GET );
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Preserve the exact request value before each test.
-		$this->original_request_source       = $_GET['source'] ?? null;
-		$this->original_allow_tracking       = get_option( 'woocommerce_allow_tracking', null );
-		$this->original_user_id              = get_current_user_id();
 		$this->merchant_facing_features_gate = $this->createMock( MerchantFacingFeaturesGate::class );
 		$this->automatic_protection          = $this->createMock( AutomaticProtectionSetting::class );
 		$this->session_event_store           = $this->createMock( SessionEventStore::class );
@@ -99,7 +80,12 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 				'automatic_blocks_applied_30d' => 0,
 			)
 		);
-		$this->rule_store->method( 'get_active_rules' )->willReturn( array() );
+		$this->rule_store->method( 'get_active_counts' )->willReturn(
+			array(
+				'allow_rules_total' => 0,
+				'block_rules_total' => 0,
+			)
+		);
 		$this->rule_store->method( 'get_creation_counts' )->willReturn(
 			array(
 				'allow_rules_created_1d'  => 0,
@@ -111,24 +97,6 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 			)
 		);
 		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $this->session_event_store, $this->rule_store, $this->logger );
-	}
-
-	/**
-	 * Tear down test fixtures.
-	 */
-	public function tearDown(): void {
-		if ( $this->had_request_source ) {
-			$_GET['source'] = $this->original_request_source;
-		} else {
-			unset( $_GET['source'] );
-		}
-		if ( is_null( $this->original_allow_tracking ) ) {
-			delete_option( 'woocommerce_allow_tracking' );
-		} else {
-			update_option( 'woocommerce_allow_tracking', $this->original_allow_tracking );
-		}
-		wp_set_current_user( $this->original_user_id );
-		parent::tearDown();
 	}
 
 	/**
@@ -319,11 +287,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 				'requests_rejected_30d'        => 24,
 			)
 		);
-		$rule_store->method( 'get_active_rules' )->willReturn(
+		$rule_store->method( 'get_active_counts' )->willReturn(
 			array(
-				$this->rule( 'allow', 1 ),
-				$this->rule( 'allow', 2 ),
-				$this->rule( 'block', 3 ),
+				'allow_rules_total' => 2,
+				'block_rules_total' => 1,
 			)
 		);
 		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $session_event_store, $rule_store, $this->logger );
@@ -358,7 +325,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
 		$performance = $session_event_store->method( 'get_performance_counts' );
 		$tracker     = $session_event_store->method( 'get_tracker_counts' );
-		$rules       = $rule_store->method( 'get_active_rules' );
+		$rules       = $rule_store->method( 'get_active_counts' );
 		if ( 'performance' === $failed_group ) {
 			$performance->willThrowException( new \RuntimeException( 'performance failed' ) );
 		} else {
@@ -386,7 +353,12 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		if ( 'rules' === $failed_group ) {
 			$rules->willThrowException( new \RuntimeException( 'rules failed' ) );
 		} else {
-			$rules->willReturn( array( $this->rule( 'allow', 1 ), $this->rule( 'block', 2 ) ) );
+			$rules->willReturn(
+				array(
+					'allow_rules_total' => 1,
+					'block_rules_total' => 1,
+				)
+			);
 		}
 		$this->logger->expects( $this->once() )->method( 'log' );
 		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $session_event_store, $rule_store, $this->logger );
@@ -434,7 +406,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 			'section' => 'current-section',
 		);
 
-		$result = $this->sut->handle_tracks_event_properties( $properties, 'wcadmin_settings_view' );
+		$result = $this->sut->add_settings_view_source( $properties, 'wcadmin_settings_view' );
 
 		$this->assertSame( $expected, $result['source'] );
 		$this->assertSame( 'current-section', $result['section'] );
@@ -460,14 +432,14 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox Other Tracks events and malformed properties remain unchanged.
 	 */
 	public function test_settings_view_source_preserves_unrelated_values(): void {
-		$this->assertSame( 'invalid', $this->sut->handle_tracks_event_properties( 'invalid', 'wcadmin_settings_view' ) );
+		$this->assertSame( 'invalid', $this->sut->add_settings_view_source( 'invalid', 'wcadmin_settings_view' ) );
 		$this->assertSame(
 			array( 'tab' => 'general' ),
-			$this->sut->handle_tracks_event_properties( array( 'tab' => 'general' ), 'wcadmin_settings_view' )
+			$this->sut->add_settings_view_source( array( 'tab' => 'general' ), 'wcadmin_settings_view' )
 		);
 		$this->assertSame(
 			array( 'tab' => 'woocommerce_fraud_protection' ),
-			$this->sut->handle_tracks_event_properties( array( 'tab' => 'woocommerce_fraud_protection' ), 'wcadmin_other_event' )
+			$this->sut->add_settings_view_source( array( 'tab' => 'woocommerce_fraud_protection' ), 'wcadmin_other_event' )
 		);
 	}
 
@@ -501,14 +473,14 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	public function test_change_event_sends_non_zero_aggregate_values(): void {
 		$session_event_store = $this->createMock( SessionEventStore::class );
 		$rule_store          = $this->createMock( RuleStore::class );
-		$session_event_store->method( 'get_automatic_block_counts' )->willReturn(
+		$session_event_store->expects( $this->once() )->method( 'get_automatic_block_counts' )->willReturn(
 			array(
 				'automatic_blocks_applied_1d'  => 1,
 				'automatic_blocks_applied_7d'  => 7,
 				'automatic_blocks_applied_30d' => 30,
 			)
 		);
-		$rule_store->method( 'get_creation_counts' )->willReturn(
+		$rule_store->expects( $this->once() )->method( 'get_creation_counts' )->willReturn(
 			array(
 				'allow_rules_created_1d'  => 2,
 				'allow_rules_created_7d'  => 8,
@@ -556,11 +528,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		update_option( 'woocommerce_allow_tracking', 'no' );
 		add_filter( 'pre_http_request', $request );
 
-		try {
-			$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
-		} finally {
-			remove_filter( 'pre_http_request', $request );
-		}
+		$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
 
 		$this->assertSame( 0, $requests );
 	}
@@ -588,11 +556,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		update_option( 'woocommerce_allow_tracking', 'yes' );
 		add_filter( 'woocommerce_tracks_event_properties', $failure, 20, 2 );
 
-		try {
-			$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
-		} finally {
-			remove_filter( 'woocommerce_tracks_event_properties', $failure, 20 );
-		}
+		$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
 	}
 
 	/**
@@ -700,36 +664,8 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		add_filter( 'woocommerce_tracks_event_properties', $filter, 20, 2 );
 		add_filter( 'pre_http_request', $request );
 
-		try {
-			$this->sut->record_automatic_protection_change( $change, $channel );
-		} finally {
-			remove_filter( 'woocommerce_tracks_event_properties', $filter, 20 );
-			remove_filter( 'pre_http_request', $request );
-		}
+		$this->sut->record_automatic_protection_change( $change, $channel );
 
 		return $captured;
-	}
-
-	/**
-	 * Create an active rule with the requested action.
-	 *
-	 * @param string $action Rule action.
-	 * @param int    $id     Rule ID.
-	 * @return Rule
-	 */
-	private function rule( string $action, int $id ): Rule {
-		$rule = Rule::from_row(
-			array(
-				'id'         => $id,
-				'action'     => $action,
-				'status'     => 'active',
-				'position'   => $id,
-				'conditions' => '{}',
-				'created_at' => '2026-09-09 00:00:00',
-			)
-		);
-		$this->assertInstanceOf( Rule::class, $rule );
-
-		return $rule;
 	}
 }

@@ -7,7 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
-use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
@@ -84,7 +83,7 @@ class SettingsTelemetry {
 	 */
 	public function register(): void {
 		add_filter( 'woocommerce_tracker_data', array( $this, 'add_tracker_data' ) );
-		add_filter( 'woocommerce_tracks_event_properties', array( $this, 'handle_tracks_event_properties' ), 10, 2 );
+		add_filter( 'woocommerce_tracks_event_properties', array( $this, 'add_settings_view_source' ), 10, 2 );
 	}
 
 	/**
@@ -96,7 +95,7 @@ class SettingsTelemetry {
 	 * @param mixed $event_name Prefixed Tracks event name.
 	 * @return mixed
 	 */
-	public function handle_tracks_event_properties( $properties, $event_name ) {
+	public function add_settings_view_source( $properties, $event_name ) {
 		if (
 			'wcadmin_settings_view' !== $event_name
 			|| ! is_array( $properties )
@@ -146,17 +145,7 @@ class SettingsTelemetry {
 		}
 
 		try {
-			$allow_rules_total = 0;
-			$block_rules_total = 0;
-			foreach ( $this->rule_store->get_active_rules() as $rule ) {
-				if ( FraudDecision::Allow === $rule->action ) {
-					++$allow_rules_total;
-				} elseif ( FraudDecision::Block === $rule->action ) {
-					++$block_rules_total;
-				}
-			}
-			$plugin['allow_rules_total'] = $allow_rules_total;
-			$plugin['block_rules_total'] = $block_rules_total;
+			$plugin = array_merge( $plugin, $this->rule_store->get_active_counts() );
 		} catch ( \Throwable $error ) {
 			$this->log_aggregate_failure( 'rule_totals', $error );
 		}

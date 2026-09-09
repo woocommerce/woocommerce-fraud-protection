@@ -65,10 +65,10 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_sessions_table_name() );
 		delete_transient( self::PERFORMANCE_COUNTS_TRANSIENT );
 		delete_transient( self::TRACKER_COUNTS_TRANSIENT );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_sessions_table_name() );
 		parent::tearDown();
 	}
 
@@ -404,6 +404,8 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should count applied automatic blocks in cumulative recent windows.
 	 */
 	public function test_automatic_block_counts_use_cumulative_windows(): void {
+		global $wpdb;
+
 		$events = array(
 			array( 'session_id' => 'block-1d' ),
 			array(
@@ -433,11 +435,29 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->set_recorded_at( 'block-30d', gmdate( 'Y-m-d H:i:s', time() - ( 20 * DAY_IN_SECONDS ) ) );
 		$this->set_recorded_at( 'block-too-old', gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) );
 
+		$queries_before = $wpdb->num_queries;
+		$result         = $this->sut->get_automatic_block_counts();
+
+		$this->assertSame( 1, $wpdb->num_queries - $queries_before, 'Automatic block counts must use one query' );
 		$this->assertSame(
 			array(
 				'automatic_blocks_applied_1d'  => 1,
 				'automatic_blocks_applied_7d'  => 2,
 				'automatic_blocks_applied_30d' => 3,
+			),
+			$result
+		);
+	}
+
+	/**
+	 * @testdox Should return zero automatic-block counts when no sessions exist.
+	 */
+	public function test_automatic_block_counts_return_zeroes_without_sessions(): void {
+		$this->assertSame(
+			array(
+				'automatic_blocks_applied_1d'  => 0,
+				'automatic_blocks_applied_7d'  => 0,
+				'automatic_blocks_applied_30d' => 0,
 			),
 			$this->sut->get_automatic_block_counts()
 		);

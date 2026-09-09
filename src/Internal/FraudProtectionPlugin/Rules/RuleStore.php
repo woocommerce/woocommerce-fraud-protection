@@ -282,7 +282,6 @@ class RuleStore {
 	 * rest of the ruleset.
 	 *
 	 * @return Rule[] The active rules, evaluation order.
-	 * @throws \RuntimeException When the active-rules query fails.
 	 */
 	public function get_active_rules(): array {
 		global $wpdb;
@@ -294,9 +293,7 @@ class RuleStore {
 
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE status = %s ORDER BY position, id", RuleStatus::Active->value ), ARRAY_A );
-			if ( '' !== $wpdb->last_error || ! is_array( $rows ) ) {
-				throw new \RuntimeException( 'Active rules query failed.' );
-			}
+			$rows = is_array( $rows ) ? $rows : array();
 
 			wp_cache_set( self::ACTIVE_RULES_CACHE_KEY, $rows, self::CACHE_GROUP, self::ACTIVE_RULES_CACHE_TTL );
 		}
@@ -319,6 +316,43 @@ class RuleStore {
 		}
 
 		return $rules;
+	}
+
+	/**
+	 * Count active allow and block rules.
+	 *
+	 * @return array{allow_rules_total: int, block_rules_total: int}
+	 * @throws \RuntimeException When the aggregate query fails.
+	 */
+	public function get_active_counts(): array {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_rules_table_name();
+		$sql   = "SELECT
+			SUM( CASE WHEN action = %s THEN 1 ELSE 0 END ) AS allow_rules_total,
+			SUM( CASE WHEN action = %s THEN 1 ELSE 0 END ) AS block_rules_total
+			FROM {$table}
+			WHERE status = %s AND action IN ( %s, %s )";
+
+		$values = array(
+			FraudDecision::Allow->value,
+			FraudDecision::Block->value,
+			RuleStatus::Active->value,
+			FraudDecision::Allow->value,
+			FraudDecision::Block->value,
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- The table name comes from SchemaManager and this is one bounded aggregate query.
+		$counts = $wpdb->get_row( $wpdb->prepare( $sql, $values ), ARRAY_A );
+
+		if ( ! is_array( $counts ) ) {
+			throw new \RuntimeException( 'Active rule count query failed.' );
+		}
+
+		return array(
+			'allow_rules_total' => (int) $counts['allow_rules_total'],
+			'block_rules_total' => (int) $counts['block_rules_total'],
+		);
 	}
 
 	/**

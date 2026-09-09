@@ -61,7 +61,6 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_rules_table_name() );
-		wp_set_current_user( 0 );
 		parent::tearDown();
 	}
 
@@ -343,6 +342,8 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should count rule creations in cumulative windows regardless of current status.
 	 */
 	public function test_creation_counts_use_cumulative_windows(): void {
+		global $wpdb;
+
 		$rules = array(
 			'allow-1d'  => $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-1d@example.com' ) ),
 			'allow-7d'  => $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-7d@example.com' ) ),
@@ -363,6 +364,10 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertNotNull( $this->sut->update_rule( $rules['allow-7d']->id, status: RuleStatus::Disabled ) );
 		$this->assertTrue( $this->sut->delete_rule( $rules['allow-30d']->id ) );
 
+		$queries_before = $wpdb->num_queries;
+		$result         = $this->sut->get_creation_counts();
+
+		$this->assertSame( 1, $wpdb->num_queries - $queries_before, 'Rule creation counts must use one query' );
 		$this->assertSame(
 			array(
 				'allow_rules_created_1d'  => 1,
@@ -372,7 +377,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 				'block_rules_created_7d'  => 2,
 				'block_rules_created_30d' => 3,
 			),
-			$this->sut->get_creation_counts()
+			$result
 		);
 	}
 
@@ -415,24 +420,55 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should throw and not cache an empty ruleset when the active-rules query fails.
+	 * @testdox Should count only active allow and block rules.
 	 */
-	public function test_active_rules_throw_without_caching_database_failure(): void {
+	public function test_active_counts_include_only_active_rules(): void {
+		$this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'active-allow@example.com' ) );
+		$disabled_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'disabled-allow@example.com' ) );
+		$this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'active-block@example.com' ) );
+		$deleted_block = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'deleted-block@example.com' ) );
+
+		$this->assertNotNull( $this->sut->update_rule( $disabled_allow->id, status: RuleStatus::Disabled ) );
+		$this->assertTrue( $this->sut->delete_rule( $deleted_block->id ) );
+
+		$this->assertSame(
+			array(
+				'allow_rules_total' => 1,
+				'block_rules_total' => 1,
+			),
+			$this->sut->get_active_counts()
+		);
+	}
+
+	/**
+	 * @testdox Should return zero active rule counts when no rules exist.
+	 */
+	public function test_active_counts_return_zeroes_without_rules(): void {
+		$this->assertSame(
+			array(
+				'allow_rules_total' => 0,
+				'block_rules_total' => 0,
+			),
+			$this->sut->get_active_counts()
+		);
+	}
+
+	/**
+	 * @testdox Should throw when the active-rule count query fails.
+	 */
+	public function test_active_counts_throw_on_database_failure(): void {
 		global $wpdb;
 
-		wp_cache_flush();
-		$original_wpdb    = $wpdb;
-		$wpdb             = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
-		$wpdb->last_error = 'missing table';
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
 		$wpdb->method( 'prepare' )->willReturn( 'SELECT failed' );
-		$wpdb->expects( $this->once() )->method( 'get_results' )->willReturn( array() );
+		$wpdb->expects( $this->once() )->method( 'get_row' )->willReturn( null );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'Active rule count query failed.' );
 
 		try {
-			$this->sut->get_active_rules();
-			$this->fail( 'An active-rules query failure must throw.' );
-		} catch ( \RuntimeException $error ) {
-			$this->assertSame( 'Active rules query failed.', $error->getMessage() );
-			$this->assertFalse( wp_cache_get( 'active_rules', 'wc_fraud_protection' ) );
+			$this->sut->get_active_counts();
 		} finally {
 			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
 		}

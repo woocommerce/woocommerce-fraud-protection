@@ -209,7 +209,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->sut->handle_init();
 
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( $container->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
-		$this->assertNotFalse( has_filter( 'woocommerce_tracks_event_properties', array( $container->get( SettingsTelemetry::class ), 'handle_tracks_event_properties' ) ) );
+		$this->assertNotFalse( has_filter( 'woocommerce_tracks_event_properties', array( $container->get( SettingsTelemetry::class ), 'add_settings_view_source' ) ) );
 		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
