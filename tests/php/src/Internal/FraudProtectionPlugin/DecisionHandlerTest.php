@@ -13,7 +13,9 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -84,12 +86,139 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Prepares every automatic-protection status and source value for verification.
+	 * @dataProvider automatic_protection_context_provider
+	 *
+	 * @param SettingStatus             $status The setting status.
+	 * @param AutomaticProtectionSource $source The setting source.
+	 */
+	public function test_prepares_automatic_protection_context( SettingStatus $status, AutomaticProtectionSource $source ): void {
+		$automatic_protection = $this->createMock( AutomaticProtectionSetting::class );
+		$automatic_protection->expects( $this->once() )->method( 'get_status' )->willReturn( $status );
+		$automatic_protection->expects( $this->once() )->method( 'get_source' )->willReturn( $source );
+		$this->sut->init( $this->event_recorder, $this->rule_evaluator, $automatic_protection );
+
+		$prepared = $this->sut->prepare_verification( array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame( $status->value, $prepared['context']['automatic_protection_status'] );
+		$this->assertSame( $source->value, $prepared['context']['automatic_protection_source'] );
+	}
+
+	/**
+	 * Automatic-protection context cases.
+	 *
+	 * @return array<string, array{SettingStatus, AutomaticProtectionSource}>
+	 */
+	public function automatic_protection_context_provider(): array {
+		return array(
+			'default enabled'       => array( SettingStatus::DefaultEnabled, AutomaticProtectionSource::None ),
+			'default disabled'      => array( SettingStatus::DefaultDisabled, AutomaticProtectionSource::None ),
+			'enabled manually'      => array( SettingStatus::Enabled, AutomaticProtectionSource::Manual ),
+			'disabled manually'     => array( SettingStatus::Disabled, AutomaticProtectionSource::Manual ),
+			'enabled by enrollment' => array( SettingStatus::Enabled, AutomaticProtectionSource::AutoEnroll ),
+		);
+	}
+
+	/**
+	 * @testdox Prepares the winning rule action and type, or explicit none values.
+	 * @dataProvider matched_rule_context_provider
+	 *
+	 * @param ?FraudDecision $action         The matched rule action.
+	 * @param ?string        $field           The matched rule field.
+	 * @param string         $expected_action The expected context action.
+	 * @param string         $expected_type   The expected context type.
+	 */
+	public function test_prepares_matched_rule_context( ?FraudDecision $action, ?string $field, string $expected_action, string $expected_type ): void {
+		$matched_rule = is_null( $action ) ? null : $this->a_matching_rule( $action, (string) $field );
+		$session_data = array( 'source' => 'blocks_checkout' );
+
+		$this->rule_evaluator
+			->expects( $this->once() )
+			->method( 'evaluate_for_session' )
+			->with( $session_data )
+			->willReturn( $matched_rule );
+
+		$prepared = $this->sut->prepare_verification( $session_data );
+
+		$this->assertSame(
+			array(
+				'automatic_protection_status' => 'default_disabled',
+				'automatic_protection_source' => 'none',
+				'matched_rule_action'         => $expected_action,
+				'matched_rule_type'           => $expected_type,
+			),
+			$prepared['context']
+		);
+		$this->assertSame( $matched_rule, $prepared['matched_rule'] );
+	}
+
+	/**
+	 * @testdox Keeps the matched rule and safe request values when automatic-protection context fails.
+	 * @dataProvider automatic_protection_failure_provider
+	 *
+	 * @param bool $status_fails Whether the status read fails before the source read.
+	 */
+	public function test_preparation_failure_keeps_matched_rule_and_safe_context( bool $status_fails ): void {
+		$matched_rule = $this->a_matching_rule( FraudDecision::Block );
+		$this->rule_evaluator->expects( $this->once() )->method( 'evaluate_for_session' )->willReturn( $matched_rule );
+
+		$automatic_protection = $this->createMock( AutomaticProtectionSetting::class );
+		if ( $status_fails ) {
+			$automatic_protection->expects( $this->once() )->method( 'get_status' )->willThrowException( new \RuntimeException( 'Broken option filter' ) );
+			$automatic_protection->expects( $this->never() )->method( 'get_source' );
+		} else {
+			$automatic_protection->expects( $this->once() )->method( 'get_status' )->willReturn( SettingStatus::Enabled );
+			$automatic_protection->expects( $this->once() )->method( 'get_source' )->willThrowException( new \RuntimeException( 'Broken option filter' ) );
+		}
+		$this->sut->init( $this->event_recorder, $this->rule_evaluator, $automatic_protection );
+
+		$prepared = $this->sut->prepare_verification( array( 'source' => 'blocks_checkout' ) );
+
+		$this->assertSame(
+			array(
+				'automatic_protection_status' => 'default_disabled',
+				'automatic_protection_source' => 'none',
+				'matched_rule_action'         => 'block',
+				'matched_rule_type'           => 'email',
+			),
+			$prepared['context']
+		);
+		$this->assertSame( $matched_rule, $prepared['matched_rule'] );
+		$this->assertLogged( 'warning', 'Automatic-protection request context could not be resolved; using defaults.' );
+	}
+
+	/**
+	 * Automatic-protection context failure cases.
+	 *
+	 * @return array<string, array{bool}>
+	 */
+	public function automatic_protection_failure_provider(): array {
+		return array(
+			'status read fails' => array( true ),
+			'source read fails' => array( false ),
+		);
+	}
+
+	/**
+	 * Matched-rule context cases.
+	 *
+	 * @return array<string, array{?FraudDecision, ?string, string, string}>
+	 */
+	public function matched_rule_context_provider(): array {
+		return array(
+			'allow email rule' => array( FraudDecision::Allow, 'email', 'allow', 'email' ),
+			'block IP rule'    => array( FraudDecision::Block, 'ip', 'block', 'ip' ),
+			'no matching rule' => array( null, null, 'none', 'none' ),
+		);
+	}
+
+	/**
 	 * Test apply allow decision.
 	 *
 	 * @testdox Should return the allow decision unchanged.
 	 */
 	public function test_apply_allow_decision(): void {
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}
@@ -102,7 +231,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function test_apply_block_decision(): void {
 		$this->automatic_protection->set_enabled( true );
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Block, $result );
 	}
@@ -120,8 +249,8 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function test_block_decision_is_not_sticky_across_attempts(): void {
 		$this->automatic_protection->set_enabled( true );
 
-		$first_result  = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
-		$second_result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$first_result  = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
+		$second_result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Block, $first_result );
 		$this->assertSame( FraudDecision::Allow, $second_result );
@@ -146,7 +275,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$cart_count = WC()->cart->get_cart_contents_count();
 		$this->assertGreaterThan( 0, $cart_count );
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertSame( $cart_count, WC()->cart->get_cart_contents_count(), 'Cart should not be emptied on block' );
@@ -162,7 +291,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Should coerce a non-actionable decision (challenge) to allow.
 	 */
 	public function test_non_actionable_decision_defaults_to_allow(): void {
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Challenge, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Challenge, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'warning', 'Non-actionable decision "challenge" received' );
@@ -181,7 +310,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_automated_decision`' );
@@ -202,7 +331,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertLogged( 'info', 'Decision overridden by filter `woocommerce_fraud_protection_automated_decision`' );
@@ -223,7 +352,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Block, $result );
 		$this->assertLogged( 'warning', 'Filter `woocommerce_fraud_protection_automated_decision` returned invalid decision "totally_invalid"' );
@@ -265,7 +394,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, $entry_decision, $this->anything() );
 
-		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( $entry_decision, $result );
 		$this->assertLogged(
@@ -314,7 +443,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Allow, $this->anything() );
 
-		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}
@@ -324,8 +453,12 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_decision_filter_receives_intentional_verify_result(): void {
 		$session_data = array(
-			'session' => array( 'wc_identity_id' => 'identity-1' ),
-			'payment' => array( 'gateway' => 'woocommerce_payments' ),
+			'session'                     => array( 'wc_identity_id' => 'identity-1' ),
+			'payment'                     => array( 'gateway' => 'woocommerce_payments' ),
+			'automatic_protection_status' => 'enabled',
+			'automatic_protection_source' => 'manual',
+			'matched_rule_action'         => 'none',
+			'matched_rule_type'           => 'none',
 		);
 
 		$received_by_filter = null;
@@ -339,7 +472,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			2
 		);
 
-		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'session-abc', 0.42 ), $session_data );
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'session-abc', 0.42 ), $session_data, null );
 
 		$this->assertIsArray( $received_by_filter );
 		$this->assertSame(
@@ -351,6 +484,10 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			'The verify_result subset should carry exactly the risk score and payment method, no session ID'
 		);
 		$this->assertSame( array( 'wc_identity_id' => 'identity-1' ), $received_by_filter['session'], 'The rest of the session data should pass through unchanged' );
+		$this->assertSame( 'enabled', $received_by_filter['automatic_protection_status'] );
+		$this->assertSame( 'manual', $received_by_filter['automatic_protection_source'] );
+		$this->assertSame( 'none', $received_by_filter['matched_rule_action'] );
+		$this->assertSame( 'none', $received_by_filter['matched_rule_type'] );
 	}
 
 	/**
@@ -368,7 +505,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			2
 		);
 
-		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame(
 			array(
@@ -393,7 +530,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $result, FraudDecision::Allow, $session_data );
 
-		$this->sut->apply_decision( $result, $session_data );
+		$this->sut->apply_decision( $result, $session_data, null );
 	}
 
 	/*
@@ -406,7 +543,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Disabled automatic protection suppresses a block decision from the service.
 	 */
 	public function test_disabled_automatic_protection_suppresses_block(): void {
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Automatic protection is disabled: suppressing the "block" decision' );
@@ -423,7 +560,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 		$this->assertLogged( 'info', 'Automatic protection is disabled: suppressing the "block" decision' );
@@ -440,7 +577,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $result, FraudDecision::Allow, $this->anything() );
 
-		$this->sut->apply_decision( $result, array( 'session_id' => 'test' ) );
+		$this->sut->apply_decision( $result, array( 'session_id' => 'test' ), null );
 	}
 
 	/**
@@ -456,7 +593,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Block, $this->anything() );
 
-		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Block, $result );
 	}
@@ -472,7 +609,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Allow, $this->anything() );
 
-		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$result = $this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}
@@ -488,7 +625,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Allow, $this->anything() );
 
-		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ), null );
 	}
 
 	/**
@@ -502,7 +639,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Allow, $this->anything() );
 
-		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ), null );
 	}
 
 	/*
@@ -515,28 +652,48 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * A rule with the given action, as the evaluator would return it.
 	 *
 	 * @param FraudDecision $action The rule action.
+	 * @param string        $field  The rule condition field.
 	 * @return Rule
 	 */
-	private function a_matching_rule( FraudDecision $action ): Rule {
+	private function a_matching_rule( FraudDecision $action, string $field = 'email' ): Rule {
 		return Rule::from_row(
 			array(
 				'id'         => 7,
 				'action'     => $action->value,
 				'status'     => 'active',
 				'position'   => 1,
-				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'conditions' => wp_json_encode(
+					array(
+						'field'    => $field,
+						'operator' => 'equals',
+						'value'    => 'someone@example.com',
+					)
+				),
 				'created_at' => '2026-07-27 00:00:00',
 			)
 		);
 	}
 
 	/**
+	 * Prepare verification context and apply the decision with the same rule result.
+	 *
+	 * @param VerifyResult         $result       The verification result.
+	 * @param array<string, mixed> $session_data The verification context.
+	 * @return FraudDecision
+	 */
+	private function apply_prepared_decision( VerifyResult $result, array $session_data ): FraudDecision {
+		$prepared = $this->sut->prepare_verification( $session_data );
+
+		return $this->sut->apply_decision( $result, $session_data, $prepared['matched_rule'] );
+	}
+
+	/**
 	 * @testdox A matching merchant block rule enforces when automatic protection is disabled.
 	 */
 	public function test_matching_block_rule_enforces_when_automatic_protection_is_disabled(): void {
-		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Block ) );
+		$this->rule_evaluator->expects( $this->once() )->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Block ) );
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->apply_prepared_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result, 'The merchant block rule must enforce while automatic protection is disabled' );
 		$this->assertLogged( 'info', 'Merchant rule 7 decided the session: "block"' );
@@ -548,7 +705,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	public function test_matching_allow_rule_overrides_block_verdict(): void {
 		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Allow ) );
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->apply_prepared_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result );
 	}
@@ -569,7 +726,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( $this->a_matching_rule( FraudDecision::Allow ) );
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->apply_prepared_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Allow, $result, 'The rule action must be final' );
 		$this->assertFalse( $filter_called, 'The decision filter must not run when a merchant rule decided the session' );
@@ -589,7 +746,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Block, $this->anything(), $rule );
 
-		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$this->apply_prepared_decision( $verify_result, array( 'session_id' => 'test' ) );
 	}
 
 	/**
@@ -603,7 +760,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			->method( 'record_decision' )
 			->with( $verify_result, FraudDecision::Allow, $this->anything(), null );
 
-		$this->sut->apply_decision( $verify_result, array( 'session_id' => 'test' ) );
+		$this->apply_prepared_decision( $verify_result, array( 'session_id' => 'test' ) );
 	}
 
 	/**
@@ -622,11 +779,18 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			4
 		);
 
-		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session', 0.42 ), array( 'session_id' => 'test' ) );
+		$session_data = array( 'session_id' => 'test' );
+		$prepared     = $this->sut->prepare_verification( $session_data );
+		$session_data = array_merge( $session_data, $prepared['context'] );
+		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session', 0.42 ), $session_data, $prepared['matched_rule'] );
 
 		$expected_session_data = array(
-			'session_id'    => 'test',
-			'verify_result' => array(
+			'session_id'                  => 'test',
+			'automatic_protection_status' => 'default_disabled',
+			'automatic_protection_source' => 'none',
+			'matched_rule_action'         => 'block',
+			'matched_rule_type'           => 'email',
+			'verify_result'               => array(
 				'risk_score'     => 0.42,
 				'payment_method' => '',
 			),
@@ -646,7 +810,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$this->apply_prepared_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertFalse( $action_fired, 'The action must only fire for rule-decided sessions' );
 	}
@@ -664,7 +828,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
+		$result = $this->apply_prepared_decision( VerifyResult::create( FraudDecision::Allow, 'test-session' ), array( 'session_id' => 'test' ) );
 
 		$this->assertSame( FraudDecision::Block, $result, 'The rule decision must survive a throwing listener' );
 		$this->assertLogged( 'warning', 'A callback hooked to `woocommerce_fraud_protection_rule_applied` threw an exception.' );

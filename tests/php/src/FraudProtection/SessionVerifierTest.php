@@ -18,7 +18,11 @@ use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -71,6 +75,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	private $session_id_normalizer;
 
 	/**
+	 * Prepared context returned by the decision handler mock.
+	 *
+	 * @var array{context: array<string, string>, matched_rule: ?Rule}
+	 */
+	private array $prepared_verification;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -81,6 +92,14 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->decision_handler      = $this->createMock( DecisionHandler::class );
 		$this->payment_data_resolver = $this->createMock( PaymentDataResolver::class );
 		$this->session_id_normalizer = new SessionIdNormalizer();
+		$this->prepared_verification = array(
+			'context'      => array(),
+			'matched_rule' => null,
+		);
+
+		$this->decision_handler
+			->method( 'prepare_verification' )
+			->willReturnCallback( fn() => $this->prepared_verification );
 
 		$this->sut = new SessionVerifier();
 		$this->sut->init(
@@ -135,6 +154,26 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->willReturn( $collected_data );
 
 		$resolved_payment = new PaymentMethodData( 'woocommerce_payments' );
+		$matched_rule     = Rule::from_row(
+			array(
+				'id'         => 7,
+				'action'     => FraudDecision::Allow->value,
+				'status'     => 'active',
+				'position'   => 1,
+				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'created_at' => '2026-09-09 00:00:00',
+			)
+		);
+
+		$prepared_verification = array(
+			'context'      => array(
+				'automatic_protection_status' => 'default_disabled',
+				'automatic_protection_source' => 'none',
+				'matched_rule_action'         => 'allow',
+				'matched_rule_type'           => 'email',
+			),
+			'matched_rule' => $matched_rule,
+		);
 
 		$this->payment_data_resolver
 			->expects( $this->once() )
@@ -142,12 +181,35 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->with( 'woocommerce_payments', array() )
 			->willReturn( $resolved_payment );
 
-		$expected_payload = array_merge(
+		$base_payload = array_merge(
 			$collected_data,
 			array(
 				'source'  => 'blocks_checkout',
 				'payment' => $resolved_payment->to_array(),
 			)
+		);
+		$payload      = array_merge(
+			$base_payload,
+			array(
+				'automatic_protection_status' => 'default_disabled',
+				'automatic_protection_source' => 'none',
+				'matched_rule_action'         => 'allow',
+				'matched_rule_type'           => 'email',
+			)
+		);
+
+		$this->decision_handler = $this->createMock( DecisionHandler::class );
+		$this->decision_handler
+			->expects( $this->once() )
+			->method( 'prepare_verification' )
+			->with( $base_payload )
+			->willReturn( $prepared_verification );
+		$this->sut->init(
+			$this->data_collector,
+			$this->api_client,
+			$this->decision_handler,
+			$this->payment_data_resolver,
+			$this->session_id_normalizer
 		);
 
 		$verify_result = VerifyResult::create( FraudDecision::Allow, $session_id );
@@ -155,20 +217,68 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$this->api_client
 			->expects( $this->once() )
 			->method( 'verify' )
-			->with( $session_id, $expected_payload )
+			->with( $session_id, $payload )
 			->willReturn( $verify_result );
 
-		// The decision handler receives the verify result and the same payload
-		// that was sent to the API, unchanged.
 		$this->decision_handler
 			->expects( $this->once() )
 			->method( 'apply_decision' )
-			->with( $verify_result, $expected_payload )
+			->with( $verify_result, $payload, $matched_rule )
 			->willReturn( FraudDecision::Allow );
 
 		$result = $this->sut->verify_session( $session_id, 'blocks_checkout', $order_id, $request_data );
 
 		$this->assertSame( FraudDecision::Allow, $result );
+	}
+
+	/**
+	 * @testdox verify_session() continues the request and applies a matched rule when setting context fails.
+	 */
+	public function test_verify_session_continues_when_setting_context_fails(): void {
+		$matched_rule   = Rule::from_row(
+			array(
+				'id'         => 7,
+				'action'     => FraudDecision::Block->value,
+				'status'     => 'active',
+				'position'   => 1,
+				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'created_at' => '2026-09-09 00:00:00',
+			)
+		);
+		$rule_evaluator = $this->createMock( RuleEvaluator::class );
+		$rule_evaluator->expects( $this->once() )->method( 'evaluate_for_session' )->willReturn( $matched_rule );
+
+		$automatic_protection = $this->createMock( AutomaticProtectionSetting::class );
+		$automatic_protection->expects( $this->once() )->method( 'get_status' )->willThrowException( new \RuntimeException( 'Broken option filter' ) );
+
+		$decision_handler = new DecisionHandler();
+		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $rule_evaluator, $automatic_protection );
+		$this->sut->init(
+			$this->data_collector,
+			$this->api_client,
+			$decision_handler,
+			$this->payment_data_resolver,
+			$this->session_id_normalizer
+		);
+
+		$this->data_collector->method( 'get_collected_data' )->willReturn( array() );
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->with(
+				'test-session',
+				array(
+					'source'                      => 'blocks_checkout',
+					'payment'                     => array(),
+					'automatic_protection_status' => 'default_disabled',
+					'automatic_protection_source' => 'none',
+					'matched_rule_action'         => 'block',
+					'matched_rule_type'           => 'email',
+				)
+			)
+			->willReturn( VerifyResult::create( FraudDecision::Allow, 'test-session' ) );
+
+		$this->assertSame( FraudDecision::Block, $this->sut->verify_session( 'test-session', 'blocks_checkout' ) );
 	}
 
 	/**

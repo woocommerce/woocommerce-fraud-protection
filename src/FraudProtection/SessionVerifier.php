@@ -302,6 +302,9 @@ class SessionVerifier {
 			$payload['source']  = $source;
 			$payload['payment'] = $payment_data?->to_array();
 
+			$verification = $this->decision_handler->prepare_verification( $payload );
+			$payload      = array_merge( $payload, $verification['context'] );
+
 			$result = $this->api_client->verify( $normalized_session_id, $payload );
 
 			// Only a session ID returned by Blackbox becomes association state.
@@ -309,7 +312,7 @@ class SessionVerifier {
 			// state even if a later handler fails open.
 			$this->update_session_id_association( $result->session_id, $order_id );
 
-			$decision = $this->decision_handler->apply_decision( $result, $payload );
+			$decision = $this->decision_handler->apply_decision( $result, $payload, $verification['matched_rule'] );
 
 			$this->last_verified_session_id = $result->session_id;
 		} catch ( \Throwable $e ) {

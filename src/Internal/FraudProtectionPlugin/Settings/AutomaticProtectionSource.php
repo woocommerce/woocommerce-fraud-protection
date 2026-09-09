@@ -17,4 +17,6 @@ enum AutomaticProtectionSource: string {
 	case None = 'none';
 
 	case Manual = 'manual';
+
+	case AutoEnroll = 'auto_enroll';
 }
