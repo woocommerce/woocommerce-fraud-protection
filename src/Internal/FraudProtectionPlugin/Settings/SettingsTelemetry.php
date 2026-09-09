@@ -7,7 +7,10 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -15,10 +18,6 @@ defined( 'ABSPATH' ) || exit;
  * Records settings actions and adds settings state to WooCommerce Tracker.
  */
 class SettingsTelemetry {
-
-	private const MC_NAMESPACE = 'wcfp';
-
-	private const MC_GROUP_AUTOMATIC_PROTECTION = 'automatic-protection';
 
 	/**
 	 * Merchant-facing features gate.
@@ -35,11 +34,18 @@ class SettingsTelemetry {
 	private AutomaticProtectionSetting $automatic_protection;
 
 	/**
-	 * Plugin MC Stats service.
+	 * Session event store.
 	 *
-	 * @var McStats
+	 * @var SessionEventStore
 	 */
-	private McStats $mc_stats;
+	private SessionEventStore $session_event_store;
+
+	/**
+	 * Rule store.
+	 *
+	 * @var RuleStore
+	 */
+	private RuleStore $rule_store;
 
 	/**
 	 * Logger instance.
@@ -54,26 +60,60 @@ class SettingsTelemetry {
 	 * @internal
 	 *
 	 * @param MerchantFacingFeaturesGate $merchant_facing_features_gate Merchant-facing features gate.
-	 * @param AutomaticProtectionSetting $automatic_protection Automatic-protection setting.
-	 * @param McStats                    $mc_stats             Plugin MC Stats service.
-	 * @param FraudProtectionLogger      $logger               Logger instance.
+	 * @param AutomaticProtectionSetting $automatic_protection          Automatic-protection setting.
+	 * @param SessionEventStore          $session_event_store           Session event store.
+	 * @param RuleStore                  $rule_store                    Rule store.
+	 * @param FraudProtectionLogger      $logger                        Logger instance.
 	 */
-	final public function init( MerchantFacingFeaturesGate $merchant_facing_features_gate, AutomaticProtectionSetting $automatic_protection, McStats $mc_stats, FraudProtectionLogger $logger ): void {
+	final public function init(
+		MerchantFacingFeaturesGate $merchant_facing_features_gate,
+		AutomaticProtectionSetting $automatic_protection,
+		SessionEventStore $session_event_store,
+		RuleStore $rule_store,
+		FraudProtectionLogger $logger
+	): void {
 		$this->merchant_facing_features_gate = $merchant_facing_features_gate;
 		$this->automatic_protection          = $automatic_protection;
-		$this->mc_stats                      = $mc_stats;
+		$this->session_event_store           = $session_event_store;
+		$this->rule_store                    = $rule_store;
 		$this->logger                        = $logger;
 	}
 
 	/**
-	 * Register Tracker integration.
+	 * Register Tracks and Tracker integration.
 	 */
 	public function register(): void {
 		add_filter( 'woocommerce_tracker_data', array( $this, 'add_tracker_data' ) );
+		add_filter( 'woocommerce_tracks_event_properties', array( $this, 'handle_tracks_event_properties' ), 10, 2 );
 	}
 
 	/**
-	 * Add this plugin's current settings state to WooCommerce Tracker.
+	 * Add the source to Fraud Protection settings-page views.
+	 *
+	 * @internal
+	 *
+	 * @param mixed $properties Existing event properties.
+	 * @param mixed $event_name Prefixed Tracks event name.
+	 * @return mixed
+	 */
+	public function handle_tracks_event_properties( $properties, $event_name ) {
+		if (
+			'wcadmin_settings_view' !== $event_name
+			|| ! is_array( $properties )
+			|| FraudProtectionSettingsPage::PAGE_ID !== ( $properties['tab'] ?? null )
+		) {
+			return $properties;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- The exact marker is compared before a fixed allowlisted value is used.
+		$request_source       = is_string( $_GET['source'] ?? null ) ? wp_unslash( $_GET['source'] ) : '';
+		$properties['source'] = 'inbox' === $request_source ? 'inbox' : 'settings';
+
+		return $properties;
+	}
+
+	/**
+	 * Add this plugin's current state and recent outcomes to WooCommerce Tracker.
 	 *
 	 * @internal
 	 *
@@ -89,6 +129,38 @@ class SettingsTelemetry {
 		$plugin['automatic_protection_status']     = $this->automatic_protection->get_status()->value;
 		$plugin['automatic_protection_source']     = $this->automatic_protection->get_source()->value;
 
+		try {
+			$performance                               = $this->session_event_store->get_performance_counts();
+			$plugin['automatic_blocks_suppressed_30d'] = $performance['recommended_for_blocking'];
+			$plugin['automatic_blocks_applied_30d']    = $performance['blocked_automatically'];
+			$plugin['allow_rule_matches_30d']          = $performance['allowed_by_rules'];
+			$plugin['block_rule_matches_30d']          = $performance['blocked_by_rules'];
+		} catch ( \Throwable $error ) {
+			$this->log_aggregate_failure( 'performance_counts', $error );
+		}
+
+		try {
+			$plugin = array_merge( $plugin, $this->session_event_store->get_tracker_counts() );
+		} catch ( \Throwable $error ) {
+			$this->log_aggregate_failure( 'tracker_counts', $error );
+		}
+
+		try {
+			$allow_rules_total = 0;
+			$block_rules_total = 0;
+			foreach ( $this->rule_store->get_active_rules() as $rule ) {
+				if ( FraudDecision::Allow === $rule->action ) {
+					++$allow_rules_total;
+				} elseif ( FraudDecision::Block === $rule->action ) {
+					++$block_rules_total;
+				}
+			}
+			$plugin['allow_rules_total'] = $allow_rules_total;
+			$plugin['block_rules_total'] = $block_rules_total;
+		} catch ( \Throwable $error ) {
+			$this->log_aggregate_failure( 'rule_totals', $error );
+		}
+
 		$extensions['woocommerce_fraud_protection'] = $plugin;
 		$data['extensions']                         = $extensions;
 
@@ -102,19 +174,52 @@ class SettingsTelemetry {
 	 * @param SettingsChangeChannel     $channel Change channel.
 	 */
 	public function record_automatic_protection_change( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): void {
+		$properties = array(
+			'state'   => $change->value,
+			'channel' => $channel->value,
+		);
+
 		try {
-			$this->mc_stats->add( self::MC_NAMESPACE . '-' . self::MC_GROUP_AUTOMATIC_PROTECTION, $change->value );
-			$this->mc_stats->add( self::MC_NAMESPACE . '-' . self::MC_GROUP_AUTOMATIC_PROTECTION, $change->value . '-' . $channel->value );
-			$this->mc_stats->do_server_side_stats();
+			$properties = array_merge( $properties, $this->session_event_store->get_automatic_block_counts() );
+		} catch ( \Throwable $error ) {
+			$this->log_aggregate_failure( 'automatic_block_counts', $error );
+		}
+
+		try {
+			$properties = array_merge( $properties, $this->rule_store->get_creation_counts() );
+		} catch ( \Throwable $error ) {
+			$this->log_aggregate_failure( 'rule_creation_counts', $error );
+		}
+
+		try {
+			\WC_Tracks::record_event( 'fraud_protection_automatic_protection_changed', $properties );
 		} catch ( \Throwable $error ) {
 			$this->logger->log(
 				'warning',
-				'Unable to record a Fraud Protection settings stat.',
+				'Unable to record a Fraud Protection Tracks event.',
 				array(
 					'exception_class'   => $error::class,
 					'exception_message' => $error->getMessage(),
 				)
 			);
 		}
+	}
+
+	/**
+	 * Log an isolated aggregate-query failure.
+	 *
+	 * @param string     $aggregate Aggregate identifier.
+	 * @param \Throwable $error     Query error.
+	 */
+	private function log_aggregate_failure( string $aggregate, \Throwable $error ): void {
+		$this->logger->log(
+			'warning',
+			'Unable to collect Fraud Protection telemetry counts.',
+			array(
+				'aggregate'         => $aggregate,
+				'exception_class'   => $error::class,
+				'exception_message' => $error->getMessage(),
+			)
+		);
 	}
 }

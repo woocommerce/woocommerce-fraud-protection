@@ -282,6 +282,7 @@ class RuleStore {
 	 * rest of the ruleset.
 	 *
 	 * @return Rule[] The active rules, evaluation order.
+	 * @throws \RuntimeException When the active-rules query fails.
 	 */
 	public function get_active_rules(): array {
 		global $wpdb;
@@ -293,7 +294,9 @@ class RuleStore {
 
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE status = %s ORDER BY position, id", RuleStatus::Active->value ), ARRAY_A );
-			$rows = is_array( $rows ) ? $rows : array();
+			if ( '' !== $wpdb->last_error || ! is_array( $rows ) ) {
+				throw new \RuntimeException( 'Active rules query failed.' );
+			}
 
 			wp_cache_set( self::ACTIVE_RULES_CACHE_KEY, $rows, self::CACHE_GROUP, self::ACTIVE_RULES_CACHE_TTL );
 		}
@@ -316,6 +319,64 @@ class RuleStore {
 		}
 
 		return $rules;
+	}
+
+	/**
+	 * Count allow and block rules created during cumulative recent windows.
+	 *
+	 * @return array{allow_rules_created_1d: int, allow_rules_created_7d: int, allow_rules_created_30d: int, block_rules_created_1d: int, block_rules_created_7d: int, block_rules_created_30d: int}
+	 * @throws \RuntimeException When the aggregate query fails.
+	 */
+	public function get_creation_counts(): array {
+		global $wpdb;
+
+		$table      = $this->schema_manager->get_rules_table_name();
+		$timestamp  = time();
+		$cutoff_1d  = gmdate( 'Y-m-d H:i:s', $timestamp - DAY_IN_SECONDS );
+		$cutoff_7d  = gmdate( 'Y-m-d H:i:s', $timestamp - ( 7 * DAY_IN_SECONDS ) );
+		$cutoff_30d = gmdate( 'Y-m-d H:i:s', $timestamp - ( 30 * DAY_IN_SECONDS ) );
+
+		$sql = "SELECT
+			SUM( CASE WHEN action = %s AND created_at >= %s THEN 1 ELSE 0 END ) AS allow_rules_created_1d,
+			SUM( CASE WHEN action = %s AND created_at >= %s THEN 1 ELSE 0 END ) AS allow_rules_created_7d,
+			SUM( CASE WHEN action = %s THEN 1 ELSE 0 END ) AS allow_rules_created_30d,
+			SUM( CASE WHEN action = %s AND created_at >= %s THEN 1 ELSE 0 END ) AS block_rules_created_1d,
+			SUM( CASE WHEN action = %s AND created_at >= %s THEN 1 ELSE 0 END ) AS block_rules_created_7d,
+			SUM( CASE WHEN action = %s THEN 1 ELSE 0 END ) AS block_rules_created_30d
+			FROM {$table}
+			WHERE action IN ( %s, %s ) AND created_at >= %s";
+
+		$values = array(
+			FraudDecision::Allow->value,
+			$cutoff_1d,
+			FraudDecision::Allow->value,
+			$cutoff_7d,
+			FraudDecision::Allow->value,
+			FraudDecision::Block->value,
+			$cutoff_1d,
+			FraudDecision::Block->value,
+			$cutoff_7d,
+			FraudDecision::Block->value,
+			FraudDecision::Allow->value,
+			FraudDecision::Block->value,
+			$cutoff_30d,
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- The table name comes from SchemaManager and this is one bounded aggregate query.
+		$counts = $wpdb->get_row( $wpdb->prepare( $sql, $values ), ARRAY_A );
+
+		if ( ! is_array( $counts ) ) {
+			throw new \RuntimeException( 'Rule creation count query failed.' );
+		}
+
+		return array(
+			'allow_rules_created_1d'  => (int) $counts['allow_rules_created_1d'],
+			'allow_rules_created_7d'  => (int) $counts['allow_rules_created_7d'],
+			'allow_rules_created_30d' => (int) $counts['allow_rules_created_30d'],
+			'block_rules_created_1d'  => (int) $counts['block_rules_created_1d'],
+			'block_rules_created_7d'  => (int) $counts['block_rules_created_7d'],
+			'block_rules_created_30d' => (int) $counts['block_rules_created_30d'],
+		);
 	}
 
 	/**

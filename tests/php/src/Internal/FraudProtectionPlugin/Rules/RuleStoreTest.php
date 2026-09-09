@@ -97,6 +97,21 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Set the creation time for a stored rule.
+	 *
+	 * @param int    $id         Rule ID.
+	 * @param string $created_at UTC database timestamp.
+	 */
+	private function set_created_at( int $id, string $created_at ): void {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_rules_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET created_at = %s WHERE id = %d", $created_at, $id ) );
+	}
+
+	/**
 	 * @testdox Should create an active rule with normalized conditions, a condition hash and audit data.
 	 */
 	public function test_creates_rule_with_normalized_conditions(): void {
@@ -322,6 +337,105 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		$ordered = $this->sut->get_active_rules();
 		$this->assertCount( 1, $ordered, 'The write must invalidate the cache, revealing the direct status change' );
 		$this->assertSame( 'other@example.com', $ordered[0]->conditions['value'] );
+	}
+
+	/**
+	 * @testdox Should count rule creations in cumulative windows regardless of current status.
+	 */
+	public function test_creation_counts_use_cumulative_windows(): void {
+		$rules = array(
+			'allow-1d'  => $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-1d@example.com' ) ),
+			'allow-7d'  => $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-7d@example.com' ) ),
+			'allow-30d' => $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-30d@example.com' ) ),
+			'allow-old' => $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-old@example.com' ) ),
+			'block-1d'  => $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-1d@example.com' ) ),
+			'block-7d'  => $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-7d@example.com' ) ),
+			'block-30d' => $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-30d@example.com' ) ),
+			'block-old' => $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-old@example.com' ) ),
+		);
+
+		$this->set_created_at( $rules['allow-7d']->id, gmdate( 'Y-m-d H:i:s', time() - ( 3 * DAY_IN_SECONDS ) ) );
+		$this->set_created_at( $rules['allow-30d']->id, gmdate( 'Y-m-d H:i:s', time() - ( 20 * DAY_IN_SECONDS ) ) );
+		$this->set_created_at( $rules['allow-old']->id, gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) );
+		$this->set_created_at( $rules['block-7d']->id, gmdate( 'Y-m-d H:i:s', time() - ( 3 * DAY_IN_SECONDS ) ) );
+		$this->set_created_at( $rules['block-30d']->id, gmdate( 'Y-m-d H:i:s', time() - ( 20 * DAY_IN_SECONDS ) ) );
+		$this->set_created_at( $rules['block-old']->id, gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) );
+		$this->assertNotNull( $this->sut->update_rule( $rules['allow-7d']->id, status: RuleStatus::Disabled ) );
+		$this->assertTrue( $this->sut->delete_rule( $rules['allow-30d']->id ) );
+
+		$this->assertSame(
+			array(
+				'allow_rules_created_1d'  => 1,
+				'allow_rules_created_7d'  => 2,
+				'allow_rules_created_30d' => 3,
+				'block_rules_created_1d'  => 1,
+				'block_rules_created_7d'  => 2,
+				'block_rules_created_30d' => 3,
+			),
+			$this->sut->get_creation_counts()
+		);
+	}
+
+	/**
+	 * @testdox Should return zero rule-creation counts when no rules exist.
+	 */
+	public function test_creation_counts_return_zeroes_without_rules(): void {
+		$this->assertSame(
+			array(
+				'allow_rules_created_1d'  => 0,
+				'allow_rules_created_7d'  => 0,
+				'allow_rules_created_30d' => 0,
+				'block_rules_created_1d'  => 0,
+				'block_rules_created_7d'  => 0,
+				'block_rules_created_30d' => 0,
+			),
+			$this->sut->get_creation_counts()
+		);
+	}
+
+	/**
+	 * @testdox Should throw when the rule-creation aggregate query fails.
+	 */
+	public function test_creation_counts_throw_on_database_failure(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
+		$wpdb->method( 'prepare' )->willReturn( 'SELECT failed' );
+		$wpdb->expects( $this->once() )->method( 'get_row' )->willReturn( null );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'Rule creation count query failed.' );
+
+		try {
+			$this->sut->get_creation_counts();
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
+	 * @testdox Should throw and not cache an empty ruleset when the active-rules query fails.
+	 */
+	public function test_active_rules_throw_without_caching_database_failure(): void {
+		global $wpdb;
+
+		wp_cache_flush();
+		$original_wpdb    = $wpdb;
+		$wpdb             = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
+		$wpdb->last_error = 'missing table';
+		$wpdb->method( 'prepare' )->willReturn( 'SELECT failed' );
+		$wpdb->expects( $this->once() )->method( 'get_results' )->willReturn( array() );
+
+		try {
+			$this->sut->get_active_rules();
+			$this->fail( 'An active-rules query failure must throw.' );
+		} catch ( \RuntimeException $error ) {
+			$this->assertSame( 'Active rules query failed.', $error->getMessage() );
+			$this->assertFalse( wp_cache_get( 'active_rules', 'wc_fraud_protection' ) );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
 	}
 
 	/**

@@ -35,6 +35,16 @@ class SessionEventStore {
 	private const PERFORMANCE_COUNTS_CACHE_TTL = 5 * MINUTE_IN_SECONDS;
 
 	/**
+	 * Transient holding Tracker-only session counts.
+	 */
+	private const TRACKER_COUNTS_TRANSIENT = 'wc_fraud_protection_tracker_counts';
+
+	/**
+	 * Lifetime of cached Tracker-only session counts.
+	 */
+	private const TRACKER_COUNTS_CACHE_TTL = 5 * MINUTE_IN_SECONDS;
+
+	/**
 	 * Schema manager instance.
 	 *
 	 * @var SchemaManager
@@ -126,14 +136,13 @@ class SessionEventStore {
 		global $wpdb;
 
 		$cached_counts = get_transient( self::PERFORMANCE_COUNTS_TRANSIENT );
-		if (
-			is_array( $cached_counts )
-			&& is_int( $cached_counts['recommended_for_blocking'] ?? null )
-			&& is_int( $cached_counts['blocked_automatically'] ?? null )
-			&& is_int( $cached_counts['allowed_by_rules'] ?? null )
-			&& is_int( $cached_counts['blocked_by_rules'] ?? null )
-		) {
-			return $cached_counts;
+		if ( $this->has_valid_cached_counts( $cached_counts, array( 'recommended_for_blocking', 'blocked_automatically', 'allowed_by_rules', 'blocked_by_rules' ) ) ) {
+			return array(
+				'recommended_for_blocking' => $cached_counts['recommended_for_blocking'],
+				'blocked_automatically'    => $cached_counts['blocked_automatically'],
+				'allowed_by_rules'         => $cached_counts['allowed_by_rules'],
+				'blocked_by_rules'         => $cached_counts['blocked_by_rules'],
+			);
 		}
 
 		$table  = $this->schema_manager->get_sessions_table_name();
@@ -178,6 +187,136 @@ class SessionEventStore {
 		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, $performance_counts, self::PERFORMANCE_COUNTS_CACHE_TTL );
 
 		return $performance_counts;
+	}
+
+	/**
+	 * Count automatic blocks applied during cumulative recent windows.
+	 *
+	 * @return array{automatic_blocks_applied_1d: int, automatic_blocks_applied_7d: int, automatic_blocks_applied_30d: int}
+	 * @throws \RuntimeException When the aggregate query fails.
+	 */
+	public function get_automatic_block_counts(): array {
+		global $wpdb;
+
+		$table      = $this->schema_manager->get_sessions_table_name();
+		$timestamp  = time();
+		$cutoff_1d  = gmdate( 'Y-m-d H:i:s', $timestamp - DAY_IN_SECONDS );
+		$cutoff_7d  = gmdate( 'Y-m-d H:i:s', $timestamp - ( 7 * DAY_IN_SECONDS ) );
+		$cutoff_30d = gmdate( 'Y-m-d H:i:s', $timestamp - ( 30 * DAY_IN_SECONDS ) );
+
+		$sql = "SELECT
+			SUM( CASE WHEN recorded_at >= %s THEN 1 ELSE 0 END ) AS automatic_blocks_applied_1d,
+			SUM( CASE WHEN recorded_at >= %s THEN 1 ELSE 0 END ) AS automatic_blocks_applied_7d,
+			COUNT(*) AS automatic_blocks_applied_30d
+			FROM {$table}
+			WHERE trigger_type IN ( %s, %s )
+				AND decision = %s
+				AND final_status = %s
+				AND recorded_at >= %s";
+
+		$values = array(
+			$cutoff_1d,
+			$cutoff_7d,
+			SessionTrigger::Blackbox->value,
+			SessionTrigger::RequestRejected->value,
+			FraudDecision::Block->value,
+			SessionFinalStatus::Blocked->value,
+			$cutoff_30d,
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- The table name comes from SchemaManager and this is one bounded aggregate query.
+		$counts = $wpdb->get_row( $wpdb->prepare( $sql, $values ), ARRAY_A );
+
+		if ( ! is_array( $counts ) ) {
+			throw new \RuntimeException( 'Automatic block count query failed.' );
+		}
+
+		return array(
+			'automatic_blocks_applied_1d'  => (int) $counts['automatic_blocks_applied_1d'],
+			'automatic_blocks_applied_7d'  => (int) $counts['automatic_blocks_applied_7d'],
+			'automatic_blocks_applied_30d' => (int) $counts['automatic_blocks_applied_30d'],
+		);
+	}
+
+	/**
+	 * Count Tracker-only session outcomes recorded during the previous 30 days.
+	 *
+	 * @return array{sessions_total_30d: int, automatic_allows_applied_30d: int, verify_errors_30d: int, requests_rejected_30d: int}
+	 * @throws \RuntimeException When the aggregate query fails.
+	 */
+	public function get_tracker_counts(): array {
+		global $wpdb;
+
+		$cached_counts = get_transient( self::TRACKER_COUNTS_TRANSIENT );
+		if ( $this->has_valid_cached_counts( $cached_counts, array( 'sessions_total_30d', 'automatic_allows_applied_30d', 'verify_errors_30d', 'requests_rejected_30d' ) ) ) {
+			return array(
+				'sessions_total_30d'           => $cached_counts['sessions_total_30d'],
+				'automatic_allows_applied_30d' => $cached_counts['automatic_allows_applied_30d'],
+				'verify_errors_30d'            => $cached_counts['verify_errors_30d'],
+				'requests_rejected_30d'        => $cached_counts['requests_rejected_30d'],
+			);
+		}
+
+		$table  = $this->schema_manager->get_sessions_table_name();
+		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
+
+		$sql = "SELECT
+			COUNT(*) AS sessions_total_30d,
+			SUM( CASE WHEN trigger_type = %s AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS automatic_allows_applied_30d,
+			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS verify_errors_30d,
+			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS requests_rejected_30d
+			FROM {$table}
+			WHERE recorded_at >= %s";
+
+		$values = array(
+			SessionTrigger::Blackbox->value,
+			FraudDecision::Allow->value,
+			SessionFinalStatus::Allowed->value,
+			SessionTrigger::VerifyError->value,
+			SessionTrigger::RequestRejected->value,
+			$cutoff,
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- The table name comes from SchemaManager and results are cached in a transient.
+		$counts = $wpdb->get_row( $wpdb->prepare( $sql, $values ), ARRAY_A );
+
+		if ( ! is_array( $counts ) ) {
+			throw new \RuntimeException( 'Session event Tracker query failed.' );
+		}
+
+		$tracker_counts = array(
+			'sessions_total_30d'           => (int) $counts['sessions_total_30d'],
+			'automatic_allows_applied_30d' => (int) $counts['automatic_allows_applied_30d'],
+			'verify_errors_30d'            => (int) $counts['verify_errors_30d'],
+			'requests_rejected_30d'        => (int) $counts['requests_rejected_30d'],
+		);
+
+		set_transient( self::TRACKER_COUNTS_TRANSIENT, $tracker_counts, self::TRACKER_COUNTS_CACHE_TTL );
+
+		return $tracker_counts;
+	}
+
+	/**
+	 * Check that a cached aggregate contains approved non-negative integer values.
+	 *
+	 * @param mixed    $cached_counts Cached value.
+	 * @param string[] $keys          Approved count keys.
+	 * @return bool True when every approved key has a valid count.
+	 * @phpstan-assert-if-true array<string, int> $cached_counts
+	 */
+	private function has_valid_cached_counts( $cached_counts, array $keys ): bool {
+		if ( ! is_array( $cached_counts ) ) {
+			return false;
+		}
+
+		foreach ( $keys as $key ) {
+			$value = $cached_counts[ $key ] ?? null;
+			if ( ! is_int( $value ) || $value < 0 ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
