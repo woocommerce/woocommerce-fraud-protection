@@ -2,6 +2,7 @@
 
 2026-xx-xx - version 0.2.3
 * Added - Fraud prevention settings now show a 30-day summary of protected payment attempts.
+* Updated - Verification requests now include automatic-protection and matching merchant-rule context.
 
 2026-09-07 - version 0.2.2
 * Added - WP-CLI command to manage automatic checkout protection.
