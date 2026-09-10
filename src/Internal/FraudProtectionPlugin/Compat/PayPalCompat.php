@@ -13,7 +13,6 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use WooCommerce\PayPalCommerce\Button\Endpoint\RequestData;
 use WooCommerce\PayPalCommerce\PPCP;
 
 defined( 'ABSPATH' ) || exit;
@@ -173,7 +172,7 @@ class PayPalCompat {
 	 * @throws \UnexpectedValueException When the request-data service is incompatible.
 	 */
 	private function read_protected_request_data( string $origin ): array {
-		if ( ! class_exists( PPCP::class ) || ! class_exists( RequestData::class ) ) {
+		if ( ! class_exists( PPCP::class ) ) {
 			throw new \RuntimeException( 'PayPal request data is unavailable.' );
 		}
 
@@ -186,7 +185,7 @@ class PayPalCompat {
 		}
 
 		$request_data = PPCP::container()->get( 'button.request-data' );
-		if ( ! $request_data instanceof RequestData ) {
+		if ( ! is_object( $request_data ) || ! is_callable( array( $request_data, 'read_request' ) ) ) {
 			throw new \UnexpectedValueException( 'PayPal request data is incompatible.' );
 		}
 

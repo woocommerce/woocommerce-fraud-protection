@@ -532,7 +532,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Successful protected requests use validated data and store the reusable record.
+	 * @testdox Protected requests use data from a callable service without requiring a PayPal class.
 	 *
 	 * @dataProvider protected_request_provider
 	 * @param string $action Test value.
@@ -724,10 +724,6 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 * @param string $failure Test value.
 	 */
 	private function configure_paypal_request_data( array $data, string $failure = '' ): void {
-		if ( ! class_exists( 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' ) ) {
-			class_alias( PayPalRequestDataStub::class, 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' );
-		}
-
 		PayPalRequestDataStub::$data  = $data;
 		PayPalRequestDataStub::$error = 'read' === $failure ? new \RuntimeException( 'invalid request' ) : null;
 		PayPalPPCPStub::set_error( 'container' === $failure ? new \RuntimeException( 'container unavailable' ) : null );
