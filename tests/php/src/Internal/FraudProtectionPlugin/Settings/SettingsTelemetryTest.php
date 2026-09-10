@@ -57,45 +57,6 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->rule_store                    = $this->createMock( RuleStore::class );
 		$this->logger                        = $this->createMock( FraudProtectionLogger::class );
 		$this->sut                           = new SettingsTelemetry();
-		$this->session_event_store->method( 'get_performance_counts' )->willReturn(
-			array(
-				'recommended_for_blocking' => 0,
-				'blocked_automatically'    => 0,
-				'allowed_by_rules'         => 0,
-				'blocked_by_rules'         => 0,
-			)
-		);
-		$this->session_event_store->method( 'get_tracker_counts' )->willReturn(
-			array(
-				'sessions_total_30d'           => 0,
-				'automatic_allows_applied_30d' => 0,
-				'verify_errors_30d'            => 0,
-				'requests_rejected_30d'        => 0,
-			)
-		);
-		$this->session_event_store->method( 'get_automatic_block_counts' )->willReturn(
-			array(
-				'automatic_blocks_applied_1d'  => 0,
-				'automatic_blocks_applied_7d'  => 0,
-				'automatic_blocks_applied_30d' => 0,
-			)
-		);
-		$this->rule_store->method( 'get_active_counts' )->willReturn(
-			array(
-				'allow_rules_total' => 0,
-				'block_rules_total' => 0,
-			)
-		);
-		$this->rule_store->method( 'get_creation_counts' )->willReturn(
-			array(
-				'allow_rules_created_1d'  => 0,
-				'allow_rules_created_7d'  => 0,
-				'allow_rules_created_30d' => 0,
-				'block_rules_created_1d'  => 0,
-				'block_rules_created_7d'  => 0,
-				'block_rules_created_30d' => 0,
-			)
-		);
 		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $this->session_event_store, $this->rule_store, $this->logger );
 	}
 
@@ -103,6 +64,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox Tracker data preserves existing fields and reports default states.
 	 */
 	public function test_tracker_preserves_existing_data_and_reports_defaults(): void {
+		$this->stub_default_tracker_counts();
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
@@ -135,6 +97,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param array<string, mixed> $expected Expected Tracker data.
 	 */
 	public function test_tracker_normalizes_malformed_data( $input, array $expected ): void {
+		$this->stub_default_tracker_counts();
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
@@ -150,6 +113,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param SettingStatus $status Merchant-facing features status.
 	 */
 	public function test_tracker_reports_merchant_facing_features_status( SettingStatus $status ): void {
+		$this->stub_default_tracker_counts();
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( $status );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
@@ -238,6 +202,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param string                    $expected_source Expected Tracker source.
 	 */
 	public function test_tracker_reports_status_and_source( SettingStatus $status, AutomaticProtectionSource $source, string $expected_status, string $expected_source ): void {
+		$this->stub_default_tracker_counts();
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( $status );
 		$this->automatic_protection->method( 'get_source' )->willReturn( $source );
@@ -266,12 +231,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox Tracker data combines the approved aggregate mappings and active rule totals.
 	 */
 	public function test_tracker_reports_aggregate_counts(): void {
-		$session_event_store = $this->createMock( SessionEventStore::class );
-		$rule_store          = $this->createMock( RuleStore::class );
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::Disabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Enabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
-		$session_event_store->method( 'get_performance_counts' )->willReturn(
+		$this->session_event_store->method( 'get_performance_counts' )->willReturn(
 			array(
 				'recommended_for_blocking' => 11,
 				'blocked_automatically'    => 12,
@@ -279,7 +242,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 				'blocked_by_rules'         => 14,
 			)
 		);
-		$session_event_store->method( 'get_tracker_counts' )->willReturn(
+		$this->session_event_store->method( 'get_tracker_counts' )->willReturn(
 			array(
 				'sessions_total_30d'           => 21,
 				'automatic_allows_applied_30d' => 22,
@@ -287,14 +250,12 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 				'requests_rejected_30d'        => 24,
 			)
 		);
-		$rule_store->method( 'get_active_counts' )->willReturn(
+		$this->rule_store->method( 'get_active_counts' )->willReturn(
 			array(
 				'allow_rules_total' => 2,
 				'block_rules_total' => 1,
 			)
 		);
-		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $session_event_store, $rule_store, $this->logger );
-
 		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
 		$this->assertSame( 11, $plugin['automatic_blocks_suppressed_30d'] );
@@ -318,14 +279,12 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param string[] $missing_keys Keys that must be omitted.
 	 */
 	public function test_tracker_isolates_aggregate_failures( string $failed_group, array $missing_keys ): void {
-		$session_event_store = $this->createMock( SessionEventStore::class );
-		$rule_store          = $this->createMock( RuleStore::class );
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::Disabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Enabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
-		$performance = $session_event_store->method( 'get_performance_counts' );
-		$tracker     = $session_event_store->method( 'get_tracker_counts' );
-		$rules       = $rule_store->method( 'get_active_counts' );
+		$performance = $this->session_event_store->method( 'get_performance_counts' );
+		$tracker     = $this->session_event_store->method( 'get_tracker_counts' );
+		$rules       = $this->rule_store->method( 'get_active_counts' );
 		if ( 'performance' === $failed_group ) {
 			$performance->willThrowException( new \RuntimeException( 'performance failed' ) );
 		} else {
@@ -361,7 +320,6 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 			);
 		}
 		$this->logger->expects( $this->once() )->method( 'log' );
-		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $session_event_store, $rule_store, $this->logger );
 
 		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
 
@@ -452,6 +410,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @param SettingsChangeChannel     $channel Expected action channel.
 	 */
 	public function test_supported_actions_use_exact_tracks_properties( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): void {
+		$this->stub_default_change_counts();
 		$captured = $this->capture_tracks_change_event( $change, $channel );
 
 		$this->assertSame( $change->value, $captured['state'] );
@@ -471,16 +430,14 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox The change event sends exact non-zero aggregate values.
 	 */
 	public function test_change_event_sends_non_zero_aggregate_values(): void {
-		$session_event_store = $this->createMock( SessionEventStore::class );
-		$rule_store          = $this->createMock( RuleStore::class );
-		$session_event_store->expects( $this->once() )->method( 'get_automatic_block_counts' )->willReturn(
+		$this->session_event_store->expects( $this->once() )->method( 'get_automatic_block_counts' )->willReturn(
 			array(
 				'automatic_blocks_applied_1d'  => 1,
 				'automatic_blocks_applied_7d'  => 7,
 				'automatic_blocks_applied_30d' => 30,
 			)
 		);
-		$rule_store->expects( $this->once() )->method( 'get_creation_counts' )->willReturn(
+		$this->rule_store->expects( $this->once() )->method( 'get_creation_counts' )->willReturn(
 			array(
 				'allow_rules_created_1d'  => 2,
 				'allow_rules_created_7d'  => 8,
@@ -490,8 +447,6 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 				'block_rules_created_30d' => 32,
 			)
 		);
-		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $session_event_store, $rule_store, $this->logger );
-
 		$expected = array(
 			'state'                        => 'enabled',
 			'channel'                      => 'settings',
@@ -515,6 +470,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox The change event uses WooCommerce consent and does not send when tracking is disabled.
 	 */
 	public function test_change_event_respects_woocommerce_tracking_consent(): void {
+		$this->stub_default_change_counts();
 		$requests = 0;
 		$request  = function () use ( &$requests ) {
 			++$requests;
@@ -537,6 +493,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox A Tracks sender failure is logged and does not escape the setting update.
 	 */
 	public function test_change_event_isolates_tracks_sender_failure(): void {
+		$this->stub_default_change_counts();
 		$failure = function ( $properties, $event_name ) {
 			if ( 'wcadmin_fraud_protection_automatic_protection_changed' === $event_name ) {
 				throw new \RuntimeException( 'Tracks unavailable' );
@@ -579,9 +536,8 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox A failed activity query omits its complete group and still records the event.
 	 */
 	public function test_record_change_isolates_activity_query_failure(): void {
-		$session_event_store = $this->createMock( SessionEventStore::class );
-		$session_event_store->method( 'get_automatic_block_counts' )->willThrowException( new \RuntimeException( 'query unavailable' ) );
-		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $session_event_store, $this->rule_store, $this->logger );
+		$this->session_event_store->method( 'get_automatic_block_counts' )->willThrowException( new \RuntimeException( 'query unavailable' ) );
+		$this->stub_default_rule_creation_counts();
 		$this->logger->expects( $this->once() )
 			->method( 'log' )
 			->with(
@@ -607,9 +563,8 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @testdox A failed rule query omits all rule counts and still records the event.
 	 */
 	public function test_record_change_isolates_rule_query_failure(): void {
-		$rule_store = $this->createMock( RuleStore::class );
-		$rule_store->method( 'get_creation_counts' )->willThrowException( new \RuntimeException( 'query unavailable' ) );
-		$this->sut->init( $this->merchant_facing_features_gate, $this->automatic_protection, $this->session_event_store, $rule_store, $this->logger );
+		$this->stub_default_automatic_block_counts();
+		$this->rule_store->method( 'get_creation_counts' )->willThrowException( new \RuntimeException( 'query unavailable' ) );
 		$this->logger->expects( $this->once() )
 			->method( 'log' )
 			->with(
@@ -667,5 +622,70 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->sut->record_automatic_protection_change( $change, $channel );
 
 		return $captured;
+	}
+
+	/**
+	 * Stub the default Tracker counts.
+	 */
+	private function stub_default_tracker_counts(): void {
+		$this->session_event_store->method( 'get_performance_counts' )->willReturn(
+			array(
+				'recommended_for_blocking' => 0,
+				'blocked_automatically'    => 0,
+				'allowed_by_rules'         => 0,
+				'blocked_by_rules'         => 0,
+			)
+		);
+		$this->session_event_store->method( 'get_tracker_counts' )->willReturn(
+			array(
+				'sessions_total_30d'           => 0,
+				'automatic_allows_applied_30d' => 0,
+				'verify_errors_30d'            => 0,
+				'requests_rejected_30d'        => 0,
+			)
+		);
+		$this->rule_store->method( 'get_active_counts' )->willReturn(
+			array(
+				'allow_rules_total' => 0,
+				'block_rules_total' => 0,
+			)
+		);
+	}
+
+	/**
+	 * Stub the default change-event counts.
+	 */
+	private function stub_default_change_counts(): void {
+		$this->stub_default_automatic_block_counts();
+		$this->stub_default_rule_creation_counts();
+	}
+
+	/**
+	 * Stub the default automatic-block counts.
+	 */
+	private function stub_default_automatic_block_counts(): void {
+		$this->session_event_store->method( 'get_automatic_block_counts' )->willReturn(
+			array(
+				'automatic_blocks_applied_1d'  => 0,
+				'automatic_blocks_applied_7d'  => 0,
+				'automatic_blocks_applied_30d' => 0,
+			)
+		);
+	}
+
+	/**
+	 * Stub the default rule-creation counts.
+	 */
+	private function stub_default_rule_creation_counts(): void {
+		$this->rule_store->method( 'get_creation_counts' )->willReturn(
+			array(
+				'allow_rules_created_1d'  => 0,
+				'allow_rules_created_7d'  => 0,
+				'allow_rules_created_30d' => 0,
+				'block_rules_created_1d'  => 0,
+				'block_rules_created_7d'  => 0,
+				'block_rules_created_30d' => 0,
+			)
+		);
 	}
 }
