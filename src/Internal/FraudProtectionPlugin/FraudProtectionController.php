@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
@@ -234,6 +235,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->checkout_event_tracker->register();
 		$this->payment_method_event_tracker->register();
 		$this->settings_telemetry->register();
+
+		wc_get_container()->get( AutomaticProtectionEarlyAccessNote::class )->register();
 
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {
 			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
