@@ -532,22 +532,19 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Successful protected requests use validated data and store the reusable record.
+	 * @testdox Protected requests use data from a callable service without requiring a PayPal class.
 	 *
 	 * @dataProvider protected_request_provider
-	 * @runInSeparateProcess
-	 * @preserveGlobalState disabled
 	 * @param string $action Test value.
 	 * @param string $path Test value.
 	 * @param string $source Test value.
 	 * @param string $nonce Test value.
-	 * @param string $request_data_class PayPal request-data class.
 	 */
-	public function test_protected_request_uses_validated_data( string $action, string $path, string $source, string $nonce, string $request_data_class ): void {
+	public function test_protected_request_uses_validated_data( string $action, string $path, string $source, string $nonce ): void {
 		if ( PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $source ) {
 			$this->set_eligible_setup_cart();
 		}
-		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ), '', $request_data_class );
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
 		$this->session_verifier
 			->expects( $this->once() )
 			->method( 'verify_session' )
@@ -576,17 +573,12 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE === $source ? 'PP-123' : '', $record['order_id'] );
 	}
 
-	/** @return array<string, array{string, string, string, string, class-string}> */
+	/** @return array<string, array{string, string, string, string}> */
 	public function protected_request_provider(): array {
-		$cases = array();
-		foreach ( array(
-			'4.1.2' => 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData',
-			'4.1.3' => 'WooCommerce\\PayPalCommerce\\OrderEndpoints\\Endpoint\\RequestData',
-		) as $version => $request_data_class ) {
-			$cases[ "setup $version" ] = array( 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation', 'ppc-create-setup-token', $request_data_class );
-			$cases[ "vault $version" ] = array( 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation', 'ppc-vault-create-order', $request_data_class );
-		}
-		return $cases;
+		return array(
+			'setup' => array( 'wc_ajax_ppc-create-setup-token', '/v3/vault/setup-tokens', 'paypal_setup_token_creation', 'ppc-create-setup-token' ),
+			'vault' => array( 'wc_ajax_ppc-vault-create-order', '/v2/checkout/orders', 'paypal_vault_order_creation', 'ppc-vault-create-order' ),
+		);
 	}
 
 	/**
@@ -730,13 +722,8 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @param array  $data Test value.
 	 * @param string $failure Test value.
-	 * @param string $request_data_class PayPal request-data class.
 	 */
-	private function configure_paypal_request_data( array $data, string $failure = '', string $request_data_class = 'WooCommerce\\PayPalCommerce\\Button\\Endpoint\\RequestData' ): void {
-		if ( ! class_exists( $request_data_class ) ) {
-			class_alias( PayPalRequestDataStub::class, $request_data_class );
-		}
-
+	private function configure_paypal_request_data( array $data, string $failure = '' ): void {
 		PayPalRequestDataStub::$data  = $data;
 		PayPalRequestDataStub::$error = 'read' === $failure ? new \RuntimeException( 'invalid request' ) : null;
 		PayPalPPCPStub::set_error( 'container' === $failure ? new \RuntimeException( 'container unavailable' ) : null );
