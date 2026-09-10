@@ -25,6 +25,11 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	private const PERFORMANCE_COUNTS_TRANSIENT = 'wc_fraud_protection_performance_counts';
 
 	/**
+	 * Transient holding Tracker-only session counts.
+	 */
+	private const TRACKER_COUNTS_TRANSIENT = 'wc_fraud_protection_tracker_counts';
+
+	/**
 	 * The System Under Test.
 	 *
 	 * @var SessionEventStore
@@ -60,6 +65,8 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		global $wpdb;
 
+		delete_transient( self::PERFORMANCE_COUNTS_TRANSIENT );
+		delete_transient( self::TRACKER_COUNTS_TRANSIENT );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DROP TABLE IF EXISTS ' . $this->schema_manager->get_sessions_table_name() );
 		parent::tearDown();
@@ -250,7 +257,9 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			'blocked_automatically'    => 3,
 			'allowed_by_rules'         => 4,
 			'blocked_by_rules'         => 5,
+			'unapproved_value'         => 6,
 		);
+		$expected      = array_diff_key( $cached_counts, array( 'unapproved_value' => true ) );
 		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, $cached_counts, 5 * MINUTE_IN_SECONDS );
 
 		$original_wpdb = $wpdb;
@@ -259,7 +268,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$wpdb->expects( $this->never() )->method( 'get_row' );
 
 		try {
-			$this->assertSame( $cached_counts, $this->sut->get_performance_counts() );
+			$this->assertSame( $expected, $this->sut->get_performance_counts() );
 		} finally {
 			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
 		}
@@ -389,6 +398,223 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
 			$this->assertFalse( get_transient( self::PERFORMANCE_COUNTS_TRANSIENT ) );
 		}
+	}
+
+	/**
+	 * @testdox Should count applied automatic blocks in cumulative recent windows.
+	 */
+	public function test_automatic_block_counts_use_cumulative_windows(): void {
+		global $wpdb;
+
+		$events = array(
+			array( 'session_id' => 'block-1d' ),
+			array(
+				'session_id'   => 'rejected-block-7d',
+				'trigger_type' => 'request_rejected',
+			),
+			array( 'session_id' => 'block-30d' ),
+			array( 'session_id' => 'block-too-old' ),
+			array(
+				'session_id'   => 'suppressed-block',
+				'final_status' => 'allowed',
+			),
+			array(
+				'session_id' => 'automatic-allow',
+				'decision'   => 'allow',
+			),
+			array(
+				'session_id'   => 'rule-block',
+				'trigger_type' => 'block_rule',
+			),
+		);
+
+		foreach ( $events as $event ) {
+			$this->assertTrue( $this->sut->record_event( $this->an_event( array_merge( array( 'final_status' => 'blocked' ), $event ) ) ) );
+		}
+		$this->set_recorded_at( 'rejected-block-7d', gmdate( 'Y-m-d H:i:s', time() - ( 3 * DAY_IN_SECONDS ) ) );
+		$this->set_recorded_at( 'block-30d', gmdate( 'Y-m-d H:i:s', time() - ( 20 * DAY_IN_SECONDS ) ) );
+		$this->set_recorded_at( 'block-too-old', gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) );
+
+		$queries_before = $wpdb->num_queries;
+		$result         = $this->sut->get_automatic_block_counts();
+
+		$this->assertSame( 1, $wpdb->num_queries - $queries_before, 'Automatic block counts must use one query' );
+		$this->assertSame(
+			array(
+				'automatic_blocks_applied_1d'  => 1,
+				'automatic_blocks_applied_7d'  => 2,
+				'automatic_blocks_applied_30d' => 3,
+			),
+			$result
+		);
+	}
+
+	/**
+	 * @testdox Should return zero automatic-block counts when no sessions exist.
+	 */
+	public function test_automatic_block_counts_return_zeroes_without_sessions(): void {
+		$this->assertSame(
+			array(
+				'automatic_blocks_applied_1d'  => 0,
+				'automatic_blocks_applied_7d'  => 0,
+				'automatic_blocks_applied_30d' => 0,
+			),
+			$this->sut->get_automatic_block_counts()
+		);
+	}
+
+	/**
+	 * @testdox Should map the separate Tracker-only counts without changing performance counts.
+	 */
+	public function test_tracker_counts_map_supported_outcomes(): void {
+		$events = array(
+			array(
+				'session_id'   => 'automatic-allow',
+				'decision'     => 'allow',
+				'final_status' => 'allowed',
+			),
+			array(
+				'session_id'   => 'automatic-allow-blocked',
+				'decision'     => 'allow',
+				'final_status' => 'blocked',
+			),
+			array(
+				'session_id'   => 'rule-allow',
+				'decision'     => 'allow',
+				'final_status' => 'allowed',
+				'trigger_type' => 'allow_rule',
+			),
+			array(
+				'session_id'   => 'verify-error',
+				'decision'     => 'allow',
+				'final_status' => 'allowed',
+				'trigger_type' => 'verify_error',
+			),
+			array(
+				'session_id'   => 'request-rejected',
+				'final_status' => 'blocked',
+				'trigger_type' => 'request_rejected',
+			),
+			array(
+				'session_id'   => 'automatic-block',
+				'final_status' => 'blocked',
+			),
+			array(
+				'session_id'   => 'too-old',
+				'decision'     => 'allow',
+				'final_status' => 'allowed',
+			),
+		);
+
+		foreach ( $events as $event ) {
+			$this->assertTrue( $this->sut->record_event( $this->an_event( $event ) ) );
+		}
+		$this->set_recorded_at( 'too-old', gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) );
+
+		$expected = array(
+			'sessions_total_30d'           => 6,
+			'automatic_allows_applied_30d' => 1,
+			'verify_errors_30d'            => 1,
+			'requests_rejected_30d'        => 1,
+		);
+
+		$this->assertSame( $expected, $this->sut->get_tracker_counts() );
+		$this->assertSame( $expected, get_transient( self::TRACKER_COUNTS_TRANSIENT ) );
+	}
+
+	/**
+	 * @testdox Should return cached Tracker counts without querying the database.
+	 */
+	public function test_tracker_counts_return_cached_values(): void {
+		global $wpdb;
+
+		$cached_counts = array(
+			'sessions_total_30d'           => 31,
+			'automatic_allows_applied_30d' => 32,
+			'verify_errors_30d'            => 33,
+			'requests_rejected_30d'        => 34,
+			'unapproved_value'             => 35,
+		);
+		$expected      = array_diff_key( $cached_counts, array( 'unapproved_value' => true ) );
+		set_transient( self::TRACKER_COUNTS_TRANSIENT, $cached_counts, 5 * MINUTE_IN_SECONDS );
+
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Verify that a cache hit skips the database.
+		$wpdb->expects( $this->never() )->method( 'prepare' );
+		$wpdb->expects( $this->never() )->method( 'get_row' );
+
+		try {
+			$this->assertSame( $expected, $this->sut->get_tracker_counts() );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
+	 * @testdox Should replace invalid Tracker cache data and return only approved counters.
+	 */
+	public function test_tracker_counts_replace_invalid_cached_values(): void {
+		set_transient(
+			self::TRACKER_COUNTS_TRANSIENT,
+			array(
+				'sessions_total_30d'           => -1,
+				'automatic_allows_applied_30d' => 2,
+				'verify_errors_30d'            => 3,
+				'requests_rejected_30d'        => 4,
+				'unapproved_value'             => 'remove-me',
+			),
+			5 * MINUTE_IN_SECONDS
+		);
+
+		$expected = array(
+			'sessions_total_30d'           => 0,
+			'automatic_allows_applied_30d' => 0,
+			'verify_errors_30d'            => 0,
+			'requests_rejected_30d'        => 0,
+		);
+
+		$this->assertSame( $expected, $this->sut->get_tracker_counts() );
+		$this->assertSame( $expected, get_transient( self::TRACKER_COUNTS_TRANSIENT ) );
+	}
+
+	/**
+	 * @testdox Should throw when a new session aggregate query fails.
+	 *
+	 * @dataProvider failed_session_aggregate_provider
+	 *
+	 * @param string $method  Aggregate method.
+	 * @param string $message Expected exception message.
+	 */
+	public function test_new_aggregates_throw_on_database_failure( string $method, string $message ): void {
+		global $wpdb;
+
+		delete_transient( self::TRACKER_COUNTS_TRANSIENT );
+		$this->assertFalse( get_transient( self::TRACKER_COUNTS_TRANSIENT ) );
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
+		$wpdb->method( 'prepare' )->willReturn( 'SELECT failed' );
+		$wpdb->expects( $this->once() )->method( 'get_row' )->willReturn( null );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( $message );
+
+		try {
+			$this->sut->{$method}();
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
+	 * Provide failed session aggregate methods.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function failed_session_aggregate_provider(): array {
+		return array(
+			'automatic blocks' => array( 'get_automatic_block_counts', 'Automatic block count query failed.' ),
+			'Tracker counts'   => array( 'get_tracker_counts', 'Session event Tracker query failed.' ),
+		);
 	}
 
 	/**

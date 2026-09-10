@@ -17,4 +17,6 @@ enum SettingsChangeChannel: string {
 	case Settings = 'settings';
 
 	case Cli = 'cli';
+
+	case AutoEnroll = 'auto_enroll';
 }
