@@ -68,7 +68,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox The invitation uses the approved copy and standard named actions.
+	 * @testdox The invitation uses the approved copy, support link, and standard settings action.
 	 */
 	public function test_note_content_and_actions(): void {
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Exercise the WordPress admin hook.
@@ -79,15 +79,17 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$this->assertSame( 'woocommerce-fraud-protection', $note->get_source() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_INFORMATIONAL, $note->get_type() );
 		$this->assertSame( 'Start blocking risky checkout attempts', $note->get_title() );
-		$this->assertSame( "Fraud prevention scans checkout attempts on every supported payment gateway for signs of bot or automated behavior. Right now, flagged attempts are only recorded. You can turn on blocking today, or do nothing and it will turn on automatically on October 20. If you'd rather keep recording only, opt out before then.", $note->get_content() );
+		$this->assertSame( "Fraud prevention scans checkout attempts on every supported payment gateway for signs of bot or automated behavior. Flagged attempts are only recorded. You can turn on blocking today, or do nothing and it will turn on automatically on October 20. If you'd rather keep recording only, opt out before then. <a href=\"https://woocommerce.com/document/fraud-protection/\">Learn more</a>", $note->get_content() );
+		$this->assertLessThanOrEqual( 320, mb_strlen( wp_strip_all_tags( $note->get_content() ) ) );
 		$actions = $note->get_actions();
-		$this->assertCount( 2, $actions );
+		$this->assertCount( 1, $actions );
 		$this->assertSame( 'review-automatic-protection', $actions[0]->name );
 		$this->assertSame( 'Manage in settings', $actions[0]->label );
 		$this->assertSame( admin_url( 'admin.php?page=wc-settings&tab=woocommerce_fraud_protection&source=inbox' ), $actions[0]->query );
-		$this->assertSame( 'learn-more', $actions[1]->name );
-		$this->assertSame( 'Learn more', $actions[1]->label );
-		$this->assertSame( 'https://woocommerce.com/document/fraud-protection/', $actions[1]->query );
+		Notes::trigger_note_action( $note, $actions[0] );
+		$reloaded = Notes::get_note( $note->get_id() );
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, $reloaded->get_status() );
+		$this->assertFalse( $reloaded->get_is_deleted() );
 	}
 
 	/**

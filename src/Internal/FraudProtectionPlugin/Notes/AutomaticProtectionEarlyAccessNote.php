@@ -90,7 +90,8 @@ class AutomaticProtectionEarlyAccessNote {
 		$note->set_source( 'woocommerce-fraud-protection' );
 		$note->set_type( Note::E_WC_ADMIN_NOTE_INFORMATIONAL );
 		$note->set_title( __( 'Start blocking risky checkout attempts', 'woocommerce-fraud-protection' ) );
-		$note->set_content( __( "Fraud prevention scans checkout attempts on every supported payment gateway for signs of bot or automated behavior. Right now, flagged attempts are only recorded. You can turn on blocking today, or do nothing and it will turn on automatically on October 20. If you'd rather keep recording only, opt out before then.", 'woocommerce-fraud-protection' ) );
+		$content = __( "Fraud prevention scans checkout attempts on every supported payment gateway for signs of bot or automated behavior. Flagged attempts are only recorded. You can turn on blocking today, or do nothing and it will turn on automatically on October 20. If you'd rather keep recording only, opt out before then.", 'woocommerce-fraud-protection' );
+		$note->set_content( $content . ' <a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '">' . esc_html__( 'Learn more', 'woocommerce-fraud-protection' ) . '</a>' );
 		$note->add_action(
 			'review-automatic-protection',
 			__( 'Manage in settings', 'woocommerce-fraud-protection' ),
@@ -101,9 +102,9 @@ class AutomaticProtectionEarlyAccessNote {
 					'source' => 'inbox',
 				),
 				admin_url( 'admin.php' )
-			)
+			),
+			Note::E_WC_ADMIN_NOTE_UNACTIONED
 		);
-		$note->add_action( 'learn-more', __( 'Learn more', 'woocommerce-fraud-protection' ), 'https://woocommerce.com/document/fraud-protection/' );
 
 		return $note;
 	}
