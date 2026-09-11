@@ -17,6 +17,13 @@ defined( 'ABSPATH' ) || exit;
 class PayPalScriptCompat {
 
 	/**
+	 * Legacy PayPal Payments script handles.
+	 */
+	private const LEGACY_SMART_BUTTON_HANDLE       = 'ppcp-smart-button';
+	private const LEGACY_BLOCKS_HANDLE             = 'ppcp-checkout-block';
+	private const LEGACY_ADD_PAYMENT_METHOD_HANDLE = 'ppcp-add-payment-method';
+
+	/**
 	 * PayPal Payments SDK v6 script handles.
 	 */
 	private const SDK_V6_BOOT_HANDLE               = 'wc-ppcp-sdk-v6-boot';
@@ -101,7 +108,7 @@ class PayPalScriptCompat {
 		if (
 			$this->is_checkout_endpoint()
 			|| (
-				! wp_script_is( 'ppcp-checkout-block', 'registered' )
+				! wp_script_is( self::LEGACY_BLOCKS_HANDLE, 'registered' )
 				&& ! wp_script_is( self::SDK_V6_BLOCKS_HANDLE, 'registered' )
 			)
 		) {
@@ -122,7 +129,7 @@ class PayPalScriptCompat {
 		if (
 			$this->is_checkout_endpoint()
 			|| (
-				! wp_script_is( 'ppcp-checkout-block', 'registered' )
+				! wp_script_is( self::LEGACY_BLOCKS_HANDLE, 'registered' )
 				&& ! wp_script_is( self::SDK_V6_BLOCKS_HANDLE, 'registered' )
 			)
 		) {
@@ -155,7 +162,7 @@ class PayPalScriptCompat {
 		if (
 			! $this->is_paypal_mini_cart_enabled()
 			|| (
-				! $this->is_script_enqueued( 'ppcp-smart-button' )
+				! $this->is_script_enqueued( self::LEGACY_SMART_BUTTON_HANDLE )
 				&& ! $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE )
 			)
 		) {
@@ -189,7 +196,7 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_if_smart_button_enqueued(): void {
-		if ( ! wp_script_is( 'ppcp-smart-button', 'registered' ) || ! wp_script_is( 'ppcp-smart-button', 'enqueued' ) ) {
+		if ( ! $this->is_script_enqueued( self::LEGACY_SMART_BUTTON_HANDLE ) ) {
 			return;
 		}
 
@@ -220,7 +227,7 @@ class PayPalScriptCompat {
 	 */
 	public function enqueue_paypal_script_if_add_payment_method_enqueued(): void {
 		if (
-			! $this->is_script_enqueued( 'ppcp-add-payment-method' )
+			! $this->is_script_enqueued( self::LEGACY_ADD_PAYMENT_METHOD_HANDLE )
 			&& ! $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
 		) {
 			return;
