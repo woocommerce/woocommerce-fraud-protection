@@ -29,6 +29,33 @@ defined( 'ABSPATH' ) || exit;
 class PaymentDataResolver {
 
 	/**
+	 * Resolve the plugin version for a payment gateway.
+	 *
+	 * @param string $payment_method The gateway ID.
+	 * @return string The plugin version, or an empty string when unavailable.
+	 *
+	 * @since 0.2.4
+	 */
+	public function resolve_gateway_plugin_version( string $payment_method ): string {
+		if ( '' === $payment_method || ! function_exists( 'WC' ) ) {
+			return '';
+		}
+
+		try {
+			$gateways = WC()->payment_gateways()->payment_gateways();
+			$gateway  = $gateways[ $payment_method ] ?? null;
+			if ( null === $gateway ) {
+				return '';
+			}
+
+			$gateway_file = ( new \ReflectionClass( $gateway ) )->getFileName();
+			return is_string( $gateway_file ) ? $this->resolve_active_plugin_version( $gateway_file ) : '';
+		} catch ( \Throwable ) {
+			return '';
+		}
+	}
+
+	/**
 	 * Resolve payment data into structured PaymentMethodData.
 	 *
 	 * @param string $payment_method        The gateway ID (e.g. 'woocommerce_payments', 'stripe').
@@ -165,5 +192,82 @@ class PaymentDataResolver {
 				)
 			)
 		);
+	}
+
+	/**
+	 * Resolve the active plugin version for a file loaded from that plugin.
+	 *
+	 * @param string $loaded_file A file declared by the plugin.
+	 * @return string The plugin version, or an empty string when unavailable.
+	 */
+	private function resolve_active_plugin_version( string $loaded_file ): string {
+		$loaded_file_path = realpath( $loaded_file );
+		if ( false === $loaded_file_path ) {
+			return '';
+		}
+
+		$active_plugins      = get_option( 'active_plugins', array() );
+		$active_plugin_files = is_array( $active_plugins ) ? $active_plugins : array();
+
+		if ( is_multisite() ) {
+			$network_plugins = get_site_option( 'active_sitewide_plugins', array() );
+			if ( is_array( $network_plugins ) ) {
+				$active_plugin_files = array_merge( $active_plugin_files, array_keys( $network_plugins ) );
+			}
+		}
+
+		$loaded_file_path = wp_normalize_path( $loaded_file_path );
+		$checked_plugins  = array();
+		$matching_plugins = array();
+		foreach ( $active_plugin_files as $plugin_file ) {
+			if ( ! is_string( $plugin_file ) ) {
+				continue;
+			}
+
+			$plugin_file = wp_normalize_path( $plugin_file );
+			if (
+				isset( $checked_plugins[ $plugin_file ] )
+				|| '' === $plugin_file
+				|| str_contains( $plugin_file, "\0" )
+				|| str_starts_with( $plugin_file, '/' )
+				|| ! str_ends_with( $plugin_file, '.php' )
+				|| 0 !== validate_file( $plugin_file )
+			) {
+				continue;
+			}
+			$checked_plugins[ $plugin_file ] = true;
+
+			$plugin_main_file = WP_PLUGIN_DIR . '/' . $plugin_file;
+			if ( ! is_file( $plugin_main_file ) || ! is_readable( $plugin_main_file ) ) {
+				continue;
+			}
+
+			$plugin_main_path = realpath( $plugin_main_file );
+			if ( false === $plugin_main_path ) {
+				continue;
+			}
+
+			$plugin_directory = dirname( $plugin_file );
+			if ( '.' === $plugin_directory ) {
+				$is_match = wp_normalize_path( $plugin_main_path ) === $loaded_file_path;
+			} else {
+				$plugin_directory_path = realpath( dirname( $plugin_main_file ) );
+				$is_match              = false !== $plugin_directory_path
+					&& str_starts_with( $loaded_file_path, trailingslashit( wp_normalize_path( $plugin_directory_path ) ) );
+			}
+
+			if ( $is_match ) {
+				$matching_plugins[ wp_normalize_path( $plugin_main_path ) ] = $plugin_main_file;
+			}
+		}
+
+		if ( 1 !== count( $matching_plugins ) ) {
+			return '';
+		}
+
+		$plugin_data = get_file_data( reset( $matching_plugins ), array( 'Version' => 'Version' ) );
+		$version     = $plugin_data['Version'] ?? '';
+
+		return is_string( $version ) ? trim( $version ) : '';
 	}
 }

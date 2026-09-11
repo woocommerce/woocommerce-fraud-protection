@@ -270,7 +270,8 @@ class SessionVerifier {
 		}
 
 		// Resolve payment data (fail-open).
-		$payment_data = null;
+		$payment_data                   = null;
+		$payment_gateway_plugin_version = '';
 		try {
 			$payment_data = $this->payment_data_resolver->resolve(
 				$request_data['payment_method'] ?? '',
@@ -295,12 +296,22 @@ class SessionVerifier {
 			);
 		}
 
+		try {
+			$payment_method = $request_data['payment_method'] ?? '';
+			if ( is_string( $payment_method ) ) {
+				$payment_gateway_plugin_version = $this->payment_data_resolver->resolve_gateway_plugin_version( $payment_method );
+			}
+		} catch ( \Throwable ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+			// Graceful degradation.
+		}
+
 		// Collect data, call API, apply decision (fail-open).
 		try {
 			$payload = $this->data_collector->get_collected_data( $order_id );
 
-			$payload['source']  = $source;
-			$payload['payment'] = $payment_data?->to_array();
+			$payload['source']                         = $source;
+			$payload['payment']                        = $payment_data?->to_array();
+			$payload['payment_gateway_plugin_version'] = $payment_gateway_plugin_version;
 
 			$verification = $this->decision_handler->prepare_verification( $payload );
 			$payload      = array_merge( $payload, $verification['context'] );

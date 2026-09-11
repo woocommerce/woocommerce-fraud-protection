@@ -95,7 +95,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Helper method to collect data and retrieve full response via get_collected_data().
 	 *
-	 * Returns: wc_version, session, customer, order, collected_events.
+	 * Returns: wc_version, fraud_protection_version, session, customer, order, collected_events.
 	 *
 	 * @param string|null $event_type Optional event type.
 	 * @param array       $event_data Optional event data.
@@ -137,18 +137,19 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox get_collected_data() returns properly structured response with 5 top-level keys.
+	 * @testdox get_collected_data() returns properly structured response with 6 top-level keys.
 	 */
 	public function test_get_collected_data_returns_properly_structured_response(): void {
 		$result = $this->collect_and_get_data();
 
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'wc_version', $result );
+		$this->assertArrayHasKey( 'fraud_protection_version', $result );
 		$this->assertArrayHasKey( 'session', $result );
 		$this->assertArrayHasKey( 'customer', $result );
 		$this->assertArrayHasKey( 'order', $result );
 		$this->assertArrayHasKey( 'collected_events', $result );
-		$this->assertCount( 5, $result );
+		$this->assertCount( 6, $result );
 	}
 
 	/**
@@ -202,6 +203,15 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->get_collected_data();
 
 		$this->assertEquals( WC()->version, $result['wc_version'] );
+	}
+
+	/**
+	 * @testdox Fraud Protection version is included in collected data.
+	 */
+	public function test_fraud_protection_version_is_included(): void {
+		$result = $this->sut->get_collected_data();
+
+		$this->assertSame( WC_FRAUD_PROTECTION_VERSION, $result['fraud_protection_version'] );
 	}
 
 	/**
@@ -796,12 +806,14 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->get_collected_data( $order->get_id() );
 
 		$this->assertArrayHasKey( 'wc_version', $result );
+		$this->assertArrayHasKey( 'fraud_protection_version', $result );
 		$this->assertArrayHasKey( 'session', $result );
 		$this->assertArrayHasKey( 'customer', $result );
 		$this->assertArrayHasKey( 'order', $result );
 		$this->assertArrayHasKey( 'collected_events', $result );
 
 		$this->assertIsString( $result['wc_version'] );
+		$this->assertIsString( $result['fraud_protection_version'] );
 		$this->assertIsArray( $result['session'] );
 		$this->assertIsArray( $result['customer'] );
 		$this->assertIsArray( $result['order'] );
@@ -937,7 +949,7 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 		$result = $this->sut->get_collected_data( $order->get_id() );
 
 		$this->assertIsArray( $result );
-		$this->assertCount( 5, $result );
+		$this->assertCount( 6, $result );
 
 		$this->assertIsArray( $result['session'] );
 		$this->assertIsArray( $result['customer'] );

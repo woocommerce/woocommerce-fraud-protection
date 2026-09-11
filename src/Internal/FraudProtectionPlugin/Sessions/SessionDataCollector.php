@@ -133,11 +133,12 @@ class SessionDataCollector {
 		}
 
 		$data = array(
-			'wc_version'       => isset( $wc->version ) ? (string) $wc->version : '',
-			'session'          => $this->get_session_data()->to_array(),
-			'customer'         => $this->get_customer_data( $order )->to_array(),
-			'order'            => $this->get_order_data( $order )->to_array(),
-			'collected_events' => array(),
+			'wc_version'               => isset( $wc->version ) ? (string) $wc->version : '',
+			'fraud_protection_version' => defined( 'WC_FRAUD_PROTECTION_VERSION' ) ? (string) WC_FRAUD_PROTECTION_VERSION : '',
+			'session'                  => $this->get_session_data()->to_array(),
+			'customer'                 => $this->get_customer_data( $order )->to_array(),
+			'order'                    => $this->get_order_data( $order )->to_array(),
+			'collected_events'         => array(),
 		);
 
 		if ( $wc instanceof \WooCommerce && $wc->session instanceof \WC_Session ) {

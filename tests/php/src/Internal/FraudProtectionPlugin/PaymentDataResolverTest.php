@@ -60,6 +60,140 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Resolves the WooCommerce version for a core payment gateway.
+	 */
+	public function test_resolves_core_gateway_plugin_version(): void {
+		$active_plugins = get_option( 'active_plugins', array() );
+		update_option( 'active_plugins', array( plugin_basename( WC_PLUGIN_FILE ) ) );
+
+		try {
+			$this->assertSame( WC_VERSION, $this->sut->resolve_gateway_plugin_version( 'bacs' ) );
+		} finally {
+			update_option( 'active_plugins', $active_plugins );
+		}
+	}
+
+	/**
+	 * @testdox Resolves the active plugin that declares a payment gateway.
+	 */
+	public function test_resolves_declaring_plugin_version(): void {
+		$this->assert_test_gateway_version(
+			WC_FRAUD_PROTECTION_VERSION,
+			array( plugin_basename( WC_FRAUD_PROTECTION_PLUGIN_FILE ) )
+		);
+	}
+
+	/**
+	 * @testdox Does not resolve the declaring plugin when it is not active.
+	 */
+	public function test_does_not_resolve_inactive_declaring_plugin(): void {
+		$this->assert_test_gateway_version( '', array() );
+	}
+
+	/**
+	 * @testdox Skips invalid active plugin entries and resolves a later valid entry.
+	 */
+	public function test_skips_invalid_active_plugin_entries(): void {
+		$plugin_file      = plugin_basename( WC_FRAUD_PROTECTION_PLUGIN_FILE );
+		$plugin_directory = dirname( $plugin_file );
+
+		$this->assert_test_gateway_version(
+			WC_FRAUD_PROTECTION_VERSION,
+			array(
+				"{$plugin_directory}/invalid\0.php",
+				"{$plugin_directory}/changelog.txt",
+				$plugin_file,
+			)
+		);
+	}
+
+	/**
+	 * @testdox Returns an empty version when multiple active entries share the gateway directory.
+	 */
+	public function test_returns_empty_version_for_ambiguous_active_plugins(): void {
+		$plugin_file = plugin_basename( WC_FRAUD_PROTECTION_PLUGIN_FILE );
+
+		$this->assert_test_gateway_version(
+			'',
+			array(
+				$plugin_file,
+				dirname( $plugin_file ) . '/woocommerce-fraud-protection-loader.php',
+			)
+		);
+	}
+
+	/**
+	 * @testdox Resolves a gateway declared by a network-active plugin.
+	 */
+	public function test_resolves_network_active_declaring_plugin(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'This test requires WordPress Multisite.' );
+		}
+
+		$plugin_file = plugin_basename( WC_FRAUD_PROTECTION_PLUGIN_FILE );
+
+		$this->assert_test_gateway_version(
+			WC_FRAUD_PROTECTION_VERSION,
+			array(),
+			array( $plugin_file => time() )
+		);
+	}
+
+	/**
+	 * @testdox Returns an empty plugin version when the payment gateway is unavailable.
+	 */
+	public function test_returns_empty_plugin_version_for_unavailable_gateway(): void {
+		$this->assertSame( '', $this->sut->resolve_gateway_plugin_version( 'missing_gateway' ) );
+	}
+
+	/**
+	 * Create a payment gateway declared by this plugin.
+	 *
+	 * @return \WC_Payment_Gateway
+	 */
+	private function create_version_resolution_gateway(): \WC_Payment_Gateway {
+		return new class() extends \WC_Payment_Gateway {
+			/**
+			 * Set the gateway ID.
+			 */
+			public function __construct() {
+				$this->id = 'version_resolution_gateway';
+			}
+		};
+	}
+
+	/**
+	 * Assert the version resolved for the test gateway.
+	 *
+	 * @param string             $expected_version Expected version.
+	 * @param array<int, string> $active_plugins Active site plugins.
+	 * @param array<string, int> $network_plugins Active network plugins.
+	 */
+	private function assert_test_gateway_version( string $expected_version, array $active_plugins, array $network_plugins = array() ): void {
+		$gateway_manager          = WC()->payment_gateways();
+		$original_gateways        = $gateway_manager->payment_gateways;
+		$original_active_plugins  = get_option( 'active_plugins', array() );
+		$original_network_plugins = is_multisite() ? get_site_option( 'active_sitewide_plugins', array() ) : array();
+		$test_gateway             = $this->create_version_resolution_gateway();
+
+		update_option( 'active_plugins', $active_plugins );
+		if ( is_multisite() ) {
+			update_site_option( 'active_sitewide_plugins', $network_plugins );
+		}
+		$gateway_manager->payment_gateways[] = $test_gateway;
+
+		try {
+			$this->assertSame( $expected_version, $this->sut->resolve_gateway_plugin_version( $test_gateway->id ) );
+		} finally {
+			$gateway_manager->payment_gateways = $original_gateways;
+			update_option( 'active_plugins', $original_active_plugins );
+			if ( is_multisite() ) {
+				update_site_option( 'active_sitewide_plugins', $original_network_plugins );
+			}
+		}
+	}
+
+	/**
 	 * @testdox Returns PaymentMethodData when filter returns valid instance.
 	 */
 	public function test_returns_payment_method_data_from_filter(): void {

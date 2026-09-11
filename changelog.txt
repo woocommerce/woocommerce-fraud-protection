@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.2.4
+* Updated - Verification requests now include Fraud Protection and selected payment gateway plugin versions.
+
 2026-09-10 - version 0.2.3
 * Added - Fraud prevention settings now show a 30-day summary of protected payment attempts.
 * Updated - Usage tracking now reports automatic protection changes and recent store outcomes.
