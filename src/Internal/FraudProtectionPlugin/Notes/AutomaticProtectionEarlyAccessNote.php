@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes;
 
 use Automattic\WooCommerce\Admin\Notes\Note;
 use Automattic\WooCommerce\Admin\Notes\NoteTraits;
+use Automattic\WooCommerce\Admin\Notes\Notes;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
@@ -29,7 +30,9 @@ class AutomaticProtectionEarlyAccessNote {
 	 */
 	public function register(): void {
 		add_action( 'admin_init', array( $this, 'maybe_add_note' ) );
-		add_action( 'rest_api_init', array( $this, 'delete_inapplicable_note' ) );
+		add_action( 'rest_api_init', array( $this, 'update_note' ) );
+		add_action( 'add_option_woocommerce_fraud_protection_automatic_protection', array( $this, 'update_note' ) );
+		add_action( 'update_option_woocommerce_fraud_protection_automatic_protection', array( $this, 'update_note' ) );
 	}
 
 	/**
@@ -42,7 +45,7 @@ class AutomaticProtectionEarlyAccessNote {
 			return;
 		}
 
-		$this->delete_inapplicable_note();
+		$this->update_note();
 
 		try {
 			self::possibly_add_note();
@@ -52,15 +55,24 @@ class AutomaticProtectionEarlyAccessNote {
 	}
 
 	/**
-	 * Remove active invitations when the store is no longer eligible.
+	 * Complete invitations when protection is enabled, or remove ineligible invitations.
 	 *
 	 * @internal
 	 */
-	public function delete_inapplicable_note(): void {
+	public function update_note(): void {
 		try {
+			if ( wc_get_container()->get( AutomaticProtectionSetting::class )->is_enabled() ) {
+				$note = Notes::get_note_by_name( self::NOTE_NAME );
+				if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
+					$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
+					$note->save();
+				}
+				return;
+			}
+
 			self::delete_if_not_applicable();
 		} catch ( \Throwable $e ) {
-			FraudProtectionController::log( 'warning', 'Failed to remove automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
+			FraudProtectionController::log( 'warning', 'Failed to update automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
 		}
 	}
 
@@ -90,7 +102,7 @@ class AutomaticProtectionEarlyAccessNote {
 		$note->set_title( __( 'Start blocking risky checkout attempts', 'woocommerce-fraud-protection' ) );
 		$note->set_content(
 			sprintf(
-				/* translators: 1: Opening support link tag, 2: Closing support link tag. */
+				/* translators: 1: Opening documentation link tag, 2: Closing documentation link tag. */
 				__( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. %1$sLearn more%2$s', 'woocommerce-fraud-protection' ),
 				'<a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '">',
 				'</a>'

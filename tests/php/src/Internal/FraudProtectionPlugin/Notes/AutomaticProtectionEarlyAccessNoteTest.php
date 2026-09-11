@@ -51,7 +51,9 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	public function tearDown(): void {
 		remove_action( 'admin_init', array( $this->sut, 'maybe_add_note' ) );
 		remove_filter( 'wp_doing_ajax', '__return_true' );
-		remove_action( 'rest_api_init', array( $this->sut, 'delete_inapplicable_note' ) );
+		remove_action( 'rest_api_init', array( $this->sut, 'update_note' ) );
+		remove_action( 'add_option_woocommerce_fraud_protection_automatic_protection', array( $this->sut, 'update_note' ) );
+		remove_action( 'update_option_woocommerce_fraud_protection_automatic_protection', array( $this->sut, 'update_note' ) );
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
 		AutomaticProtectionEarlyAccessNote::possibly_delete_note();
 		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
@@ -101,21 +103,48 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$this->sut->maybe_add_note();
 		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
 		$gate->set_enabled( false );
-		$this->sut->maybe_add_note();
+		rest_get_server();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Exercise REST initialization after changing eligibility.
+		do_action( 'rest_api_init' );
 		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 		$gate->set_enabled( true );
 		$this->sut->maybe_add_note();
 		$this->sut->maybe_add_note();
 		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
-		rest_get_server();
-		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Exercise REST initialization after changing eligibility.
-		do_action( 'rest_api_init' );
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( false );
+	}
+
+	/**
+	 * @testdox Enabling protection completes the invitation immediately and disabling it does not restore it.
+	 * @dataProvider protection_settings
+	 * @param bool $existing_setting Whether the setting already exists.
+	 */
+	public function test_enabling_protection_completes_note( bool $existing_setting ): void {
+		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+		if ( $existing_setting ) {
+			$setting->set_enabled( false );
+		}
 		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$setting->set_enabled( true );
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note( $note->get_id() )->get_status() );
+		$setting->set_enabled( false );
 		$this->sut->maybe_add_note();
+		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertSame( $note->get_id(), $reloaded->get_id() );
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status() );
 		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	}
+
+	/**
+	 * Setting storage states.
+	 *
+	 * @return array<string, array{bool}>
+	 */
+	public function protection_settings(): array {
+		return array(
+			'new setting'      => array( false ),
+			'existing setting' => array( true ),
+		);
 	}
 
 	/**
