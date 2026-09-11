@@ -28,7 +28,7 @@ class AutomaticProtectionEarlyAccessNote {
 	 * Register note creation and cleanup.
 	 */
 	public function register(): void {
-		add_action( 'admin_init', array( $this, 'handle_admin_init' ) );
+		add_action( 'admin_init', array( $this, 'maybe_add_note' ) );
 		add_action( 'rest_api_init', array( $this, 'delete_inapplicable_note' ) );
 	}
 
@@ -37,7 +37,7 @@ class AutomaticProtectionEarlyAccessNote {
 	 *
 	 * @internal
 	 */
-	public function handle_admin_init(): void {
+	public function maybe_add_note(): void {
 		if ( wp_doing_ajax() ) {
 			return;
 		}
@@ -88,8 +88,14 @@ class AutomaticProtectionEarlyAccessNote {
 		$note->set_source( 'woocommerce-fraud-protection' );
 		$note->set_type( Note::E_WC_ADMIN_NOTE_INFORMATIONAL );
 		$note->set_title( __( 'Start blocking risky checkout attempts', 'woocommerce-fraud-protection' ) );
-		$content = __( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically.', 'woocommerce-fraud-protection' );
-		$note->set_content( $content . ' <a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '">' . esc_html__( 'Learn more', 'woocommerce-fraud-protection' ) . '</a>' );
+		$note->set_content(
+			sprintf(
+				/* translators: 1: Opening support link tag, 2: Closing support link tag. */
+				__( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. %1$sLearn more%2$s', 'woocommerce-fraud-protection' ),
+				'<a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '">',
+				'</a>'
+			)
+		);
 		$note->add_action(
 			'review-automatic-protection',
 			__( 'Manage in settings', 'woocommerce-fraud-protection' ),

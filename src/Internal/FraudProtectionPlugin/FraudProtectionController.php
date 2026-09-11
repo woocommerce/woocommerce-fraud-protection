@@ -236,6 +236,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->payment_method_event_tracker->register();
 		$this->settings_telemetry->register();
 
+		// Keep note cleanup active when merchant-facing features are disabled.
 		wc_get_container()->get( AutomaticProtectionEarlyAccessNote::class )->register();
 
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {

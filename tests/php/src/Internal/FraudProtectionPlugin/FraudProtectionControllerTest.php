@@ -229,7 +229,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
-		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'handle_admin_init' ) ) );
+		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'maybe_add_note' ) ) );
 		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );

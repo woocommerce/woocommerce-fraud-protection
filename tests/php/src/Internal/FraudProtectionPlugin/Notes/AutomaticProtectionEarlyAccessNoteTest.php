@@ -27,13 +27,6 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	private $sut;
 
 	/**
-	 * Original admin-header callback priorities.
-	 *
-	 * @var array<string, int>
-	 */
-	private $admin_header_priorities = array();
-
-	/**
 	 * Set up the note through its registered hook.
 	 */
 	public function setUp(): void {
@@ -42,7 +35,6 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		foreach ( array( 'wp_admin_headers', 'send_frame_options_header', 'send_referrer_policy_header' ) as $callback ) {
 			$priority = has_action( 'admin_init', $callback );
 			if ( false !== $priority ) {
-				$this->admin_header_priorities[ $callback ] = $priority;
 				remove_action( 'admin_init', $callback, $priority );
 			}
 		}
@@ -57,16 +49,12 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 * Remove test notes, options, and hooks.
 	 */
 	public function tearDown(): void {
-		remove_action( 'admin_init', array( $this->sut, 'handle_admin_init' ) );
+		remove_action( 'admin_init', array( $this->sut, 'maybe_add_note' ) );
 		remove_filter( 'wp_doing_ajax', '__return_true' );
 		remove_action( 'rest_api_init', array( $this->sut, 'delete_inapplicable_note' ) );
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
 		AutomaticProtectionEarlyAccessNote::possibly_delete_note();
 		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
-		foreach ( $this->admin_header_priorities as $callback => $priority ) {
-			add_action( 'admin_init', $callback, $priority );
-		}
-		$this->admin_header_priorities = array();
 		set_current_screen( 'front' );
 		parent::tearDown();
 	}
@@ -110,35 +98,39 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 * @testdox Eligibility changes delete active invitations and allow one new invitation.
 	 */
 	public function test_eligibility_controls_stored_note(): void {
-		$this->sut->handle_admin_init();
+		$this->sut->maybe_add_note();
 		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
 		$gate->set_enabled( false );
-		$this->sut->handle_admin_init();
+		$this->sut->maybe_add_note();
 		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 		$gate->set_enabled( true );
-		$this->sut->handle_admin_init();
-		$this->sut->handle_admin_init();
+		$this->sut->maybe_add_note();
+		$this->sut->maybe_add_note();
 		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
 		rest_get_server();
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Exercise REST initialization after changing eligibility.
 		do_action( 'rest_api_init' );
 		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( false );
+		$this->sut->maybe_add_note();
+		$this->sut->maybe_add_note();
+		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 	}
 
 	/**
 	 * @testdox Completed invitations survive eligibility changes without being recreated.
 	 */
 	public function test_actioned_note_is_not_recreated(): void {
-		$this->sut->handle_admin_init();
+		$this->sut->maybe_add_note();
 		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
 		$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
 		$note->save();
 		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
 		$gate->set_enabled( false );
-		$this->sut->handle_admin_init();
+		$this->sut->maybe_add_note();
 		$gate->set_enabled( true );
-		$this->sut->handle_admin_init();
+		$this->sut->maybe_add_note();
 		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
 		$this->assertSame( $note->get_id(), $reloaded->get_id() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status() );
@@ -153,7 +145,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		};
 		add_filter( 'woocommerce_admin-note_data_store', $unavailable_store );
 		try {
-			$this->sut->handle_admin_init();
+			$this->sut->maybe_add_note();
 			$this->assertLogged( 'warning', 'Failed to create automatic protection early-access note.' );
 		} finally {
 			remove_filter( 'woocommerce_admin-note_data_store', $unavailable_store );
@@ -186,7 +178,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$note->save();
 		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
 		$gate->set_enabled( false );
-		$this->sut->handle_admin_init();
+		$this->sut->maybe_add_note();
 		$gate->set_enabled( true );
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Exercise the WordPress admin hook.
 		do_action( 'admin_init' );
