@@ -47,8 +47,6 @@ class AutomaticProtectionEarlyAccessNote {
 			return;
 		}
 
-		$this->update_note();
-
 		try {
 			self::possibly_add_note();
 		} catch ( \Throwable $e ) {
