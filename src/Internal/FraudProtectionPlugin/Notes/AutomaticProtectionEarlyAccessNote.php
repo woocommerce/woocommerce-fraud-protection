@@ -25,11 +25,11 @@ class AutomaticProtectionEarlyAccessNote {
 	public const NOTE_NAME = 'wc-fraud-protection-automatic-protection-early-access';
 
 	/**
-	 * Register note creation.
+	 * Register note creation and cleanup.
 	 */
 	public function register(): void {
 		add_action( 'admin_init', array( $this, 'handle_admin_init' ) );
-		add_filter( 'woocommerce_note_where_clauses', array( $this, 'filter_visible_notes' ) );
+		add_action( 'rest_api_init', array( $this, 'delete_inapplicable_note' ) );
 	}
 
 	/**
@@ -42,6 +42,8 @@ class AutomaticProtectionEarlyAccessNote {
 			return;
 		}
 
+		$this->delete_inapplicable_note();
+
 		try {
 			self::possibly_add_note();
 		} catch ( \Throwable $e ) {
@@ -50,20 +52,16 @@ class AutomaticProtectionEarlyAccessNote {
 	}
 
 	/**
-	 * Keep stored invitations out of the Inbox when the store is no longer eligible.
+	 * Remove active invitations when the store is no longer eligible.
 	 *
 	 * @internal
-	 *
-	 * @param mixed $where_clauses Existing note query conditions.
-	 * @return mixed
 	 */
-	public function filter_visible_notes( $where_clauses ) {
-		if ( ! is_string( $where_clauses ) || self::is_applicable() ) {
-			return $where_clauses;
+	public function delete_inapplicable_note(): void {
+		try {
+			self::delete_if_not_applicable();
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log( 'warning', 'Failed to remove automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
 		}
-
-		global $wpdb;
-		return $where_clauses . $wpdb->prepare( ' AND name <> %s', self::NOTE_NAME );
 	}
 
 	/**
