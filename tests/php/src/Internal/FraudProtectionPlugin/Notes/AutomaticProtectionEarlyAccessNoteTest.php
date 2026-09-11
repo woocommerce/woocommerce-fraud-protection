@@ -79,7 +79,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$this->assertSame( 'woocommerce-fraud-protection', $note->get_source() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_INFORMATIONAL, $note->get_type() );
 		$this->assertSame( 'Start blocking risky checkout attempts', $note->get_title() );
-		$this->assertSame( "Fraud prevention scans checkout attempts on every supported payment gateway for signs of bot or automated behavior. Flagged attempts are only recorded. You can turn on blocking today, or do nothing and it will turn on automatically on October 20. If you'd rather keep recording only, opt out before then. <a href=\"https://woocommerce.com/document/fraud-protection/\">Learn more</a>", $note->get_content() );
+		$this->assertSame( 'Fraud prevention scans checkout attempts for signs of bot or automated behavior. Flagged attempts are only recorded today. On October 20, blocking turns on automatically for all supported payment providers. Turn it on early, or opt out before then. <a href="https://woocommerce.com/document/fraud-protection/">Learn more</a>', $note->get_content() );
 		$this->assertLessThanOrEqual( 320, mb_strlen( wp_strip_all_tags( $note->get_content() ) ) );
 		$actions = $note->get_actions();
 		$this->assertCount( 1, $actions );
