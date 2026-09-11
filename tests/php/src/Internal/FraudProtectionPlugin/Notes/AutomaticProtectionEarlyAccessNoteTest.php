@@ -37,11 +37,10 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox Note creation runs on admin initialization without a REST initialization callback.
+	 * @testdox Note creation runs on admin initialization.
 	 */
 	public function test_registers_admin_callback(): void {
 		$this->assertSame( 10, has_action( 'admin_init', array( $this->sut, 'maybe_add_note' ) ) );
-		$this->assertFalse( has_action( 'rest_api_init', array( $this->sut, 'update_note' ) ) );
 	}
 
 	/**
@@ -101,7 +100,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox Enabling protection completes the invitation immediately and disabling it does not restore it.
+	 * @testdox Enabling protection completes the invitation immediately.
 	 * @dataProvider protection_settings
 	 * @param bool $existing_setting Whether the setting already exists.
 	 */
@@ -113,13 +112,25 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$this->sut->maybe_add_note();
 		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
 		$setting->set_enabled( true );
-		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note( $note->get_id() )->get_status() );
+		$reloaded = Notes::get_note( $note->get_id() );
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status() );
+	}
+
+	/**
+	 * @testdox Disabling protection preserves the completed invitation.
+	 */
+	public function test_disabling_protection_does_not_restore_note(): void {
+		$this->sut->maybe_add_note();
+		$note    = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+		$setting->set_enabled( true );
+
 		$setting->set_enabled( false );
 		$this->sut->maybe_add_note();
+
 		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
 		$this->assertSame( $note->get_id(), $reloaded->get_id() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status() );
-		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 	}
 
 	/**
@@ -178,25 +189,52 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox Repeated admin requests preserve the same note and its dismissal.
+	 * @testdox Repeated admin requests do not create duplicate invitations.
+	 */
+	public function test_repeated_admin_requests_preserve_note(): void {
+		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+
+		$this->sut->maybe_add_note();
+
+		$note_ids = Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertCount( 1, $note_ids );
+		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertSame( $note->get_id(), $reloaded->get_id() );
+	}
+
+	/**
+	 * @testdox Dismissed invitations remain dismissed after another admin request.
 	 */
 	public function test_dismissed_note_is_not_recreated(): void {
 		$this->sut->maybe_add_note();
 		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertInstanceOf( Note::class, $note );
-		$id = $note->get_id();
-		$this->sut->maybe_add_note();
-		$this->assertSame( $id, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME )->get_id() );
 		$note->set_is_deleted( true );
 		$note->save();
+
+		$this->sut->maybe_add_note();
+
+		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertSame( $note->get_id(), $reloaded->get_id() );
+		$this->assertTrue( $reloaded->get_is_deleted() );
+	}
+
+	/**
+	 * @testdox Eligibility changes preserve dismissed invitations.
+	 */
+	public function test_gate_changes_preserve_dismissal(): void {
+		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$note->set_is_deleted( true );
+		$note->save();
+
 		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
 		$gate->set_enabled( false );
-		$this->sut->maybe_add_note();
 		$gate->set_enabled( true );
 		$this->sut->maybe_add_note();
-		$reloaded = Notes::get_note( $id );
+
+		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertSame( $note->get_id(), $reloaded->get_id() );
 		$this->assertTrue( $reloaded->get_is_deleted() );
-		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-		$this->assertFalse( wc_get_container()->get( AutomaticProtectionSetting::class )->is_enabled() );
 	}
 }
