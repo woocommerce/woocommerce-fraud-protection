@@ -51,7 +51,6 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		parent::setUp();
 		$this->setting = new AutomaticProtectionSetting();
 		$this->setting->reset();
-		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
 		$this->performance_counts = array(
 			'recommended_for_blocking' => 0,
 			'blocked_automatically'    => 0,
@@ -67,15 +66,6 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->sut->init( $this->setting, $this->updater, $this->event_store );
 		$this->sut->register_routes();
 		wp_set_current_user( 1 );
-	}
-
-	/**
-	 * Tear down test fixtures.
-	 */
-	public function tearDown(): void {
-		$this->setting->reset();
-		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
-		parent::tearDown();
 	}
 
 	/**
@@ -205,9 +195,9 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox An opt-out stores both values and returns the saved state.
+	 * @testdox An opt-out stores both values, and later enablement preserves the marker.
 	 */
-	public function test_opt_out_stores_and_returns_saved_state(): void {
+	public function test_opt_out_stores_values_and_later_enablement_preserves_marker(): void {
 		$this->telemetry->expects( $this->once() )->method( 'record_enrollment_opt_out' )->with( 'inbox' );
 
 		$response = $this->server->dispatch( $this->opt_out_request( 'inbox' ) );

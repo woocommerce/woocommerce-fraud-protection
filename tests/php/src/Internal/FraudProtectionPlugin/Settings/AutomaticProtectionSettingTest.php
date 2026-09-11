@@ -34,7 +34,6 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 		$this->sut = new AutomaticProtectionSetting();
 		$this->sut->reset();
-		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
 	}
 
 	/**
@@ -42,7 +41,6 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		$this->sut->reset();
-		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
 		parent::tearDown();
 	}
 
