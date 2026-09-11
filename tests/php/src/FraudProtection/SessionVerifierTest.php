@@ -504,15 +504,19 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() fails open when payment data resolution throws — verify still runs with null payment.
+	 * @testdox verify_session() fails open when payment resolution throws — verify still runs with null payment.
 	 */
 	public function test_verify_session_fails_open_when_resolver_throws(): void {
-		$spy   = $this->spy_on_controller_logging();
-		$error = new \RuntimeException( 'Compat layer exploded with resolver-exception-marker' );
+		$spy           = $this->spy_on_controller_logging();
+		$error         = new \RuntimeException( 'Compat layer exploded with resolver-exception-marker' );
+		$version_error = new \RuntimeException( 'Gateway version resolution failed' );
 
 		$this->payment_data_resolver
 			->method( 'resolve' )
 			->willThrowException( $error );
+		$this->payment_data_resolver
+			->method( 'resolve_gateway_plugin_version' )
+			->willThrowException( $version_error );
 
 		$this->data_collector
 			->method( 'get_collected_data' )
@@ -562,6 +566,18 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 				'exception_line'    => $error->getLine(),
 			),
 			$spy->entries[0]['context']
+		);
+		$this->assertLogged(
+			'warning',
+			'Payment gateway plugin version resolution failed',
+			array(
+				'event_source'    => 'blocks_checkout',
+				'session_id'      => 'test-session',
+				'order_id'        => 0,
+				'payment_type'    => 'stripe',
+				'exception_class' => \RuntimeException::class,
+			),
+			false
 		);
 	}
 

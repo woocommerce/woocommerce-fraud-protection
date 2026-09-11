@@ -50,7 +50,19 @@ class PaymentDataResolver {
 
 			$gateway_file = ( new \ReflectionClass( $gateway ) )->getFileName();
 			return is_string( $gateway_file ) ? $this->resolve_active_plugin_version( $gateway_file ) : '';
-		} catch ( \Throwable ) {
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Payment gateway plugin version resolution failed',
+				array(
+					'payment_type'      => $payment_method,
+					'hook'              => 'payment_gateway_plugin_version_resolution',
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+				)
+			);
 			return '';
 		}
 	}

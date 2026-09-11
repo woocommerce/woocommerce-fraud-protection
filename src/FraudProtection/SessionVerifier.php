@@ -301,8 +301,22 @@ class SessionVerifier {
 			if ( is_string( $payment_method ) ) {
 				$payment_gateway_plugin_version = $this->payment_data_resolver->resolve_gateway_plugin_version( $payment_method );
 			}
-		} catch ( \Throwable ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
-			// Graceful degradation.
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Payment gateway plugin version resolution failed',
+				array(
+					'event_source'      => $source,
+					'session_id'        => $normalized_session_id,
+					'order_id'          => $order_id,
+					'payment_type'      => is_string( $payment_method ) ? $payment_method : '',
+					'hook'              => 'payment_gateway_plugin_version_resolution',
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+				)
+			);
 		}
 
 		// Collect data, call API, apply decision (fail-open).
