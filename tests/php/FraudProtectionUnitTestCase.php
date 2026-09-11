@@ -114,7 +114,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 		$this->restore_server_variables();
 		$this->remove_controller_logging_spy();
 
-		$this->reset_woocommerce_checkout_page_cache();
+		$this->reset_woocommerce_cart_checkout_page_cache();
 		$this->reset_legacy_proxy_mocks();
 		WC()->session                  = $this->original_woocommerce_session;
 		WC()->cart                     = $this->original_woocommerce_cart;
@@ -240,23 +240,25 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	}
 
 	/**
-	 * Clear WooCommerce's request-lifetime memo of whether this request is the checkout page.
+	 * Clear WooCommerce's request-lifetime cart and checkout page caches.
 	 *
-	 * WooCommerce never resets it, so without this a go_to() in one test class leaves a stale
-	 * verdict that silently changes is_checkout() for every later test in the process.
+	 * WooCommerce does not reset these caches, so a go_to() call can otherwise leave a stale
+	 * verdict that changes is_cart() or is_checkout() for later tests in the process.
 	 *
 	 * @return void
 	 */
-	protected function reset_woocommerce_checkout_page_cache(): void {
+	protected function reset_woocommerce_cart_checkout_page_cache(): void {
 		$reflection = new \ReflectionClass( \Automattic\WooCommerce\Blocks\Utils\CartCheckoutUtils::class );
 
-		if ( ! $reflection->hasProperty( 'is_checkout_page' ) ) {
-			return;
-		}
+		foreach ( array( 'is_cart_page', 'is_checkout_page' ) as $property_name ) {
+			if ( ! $reflection->hasProperty( $property_name ) ) {
+				continue;
+			}
 
-		$property = $reflection->getProperty( 'is_checkout_page' );
-		$property->setAccessible( true );
-		$property->setValue( null, null );
+			$property = $reflection->getProperty( $property_name );
+			$property->setAccessible( true );
+			$property->setValue( null, null );
+		}
 	}
 
 	/**

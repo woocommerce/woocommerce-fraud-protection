@@ -17,6 +17,21 @@ defined( 'ABSPATH' ) || exit;
 class PayPalScriptCompat {
 
 	/**
+	 * Legacy PayPal Payments script handles.
+	 */
+	private const LEGACY_SMART_BUTTON_HANDLE       = 'ppcp-smart-button';
+	private const LEGACY_BLOCKS_HANDLE             = 'ppcp-checkout-block';
+	private const LEGACY_ADD_PAYMENT_METHOD_HANDLE = 'ppcp-add-payment-method';
+
+	/**
+	 * PayPal Payments SDK v6 script handles.
+	 */
+	private const SDK_V6_BOOT_HANDLE               = 'wc-ppcp-sdk-v6-boot';
+	private const SDK_V6_BLOCKS_HANDLE             = 'wc-ppcp-sdk-v6-blocks';
+	private const SDK_V6_ADD_PAYMENT_METHOD_HANDLE = 'wc-ppcp-sdk-v6-add-payment-method';
+	private const SDK_V6_VAULT_HANDLE              = 'ppcp-vault-component';
+
+	/**
 	 * First PayPal Payments version that uses the styling option at runtime.
 	 */
 	private const PAYPAL_STYLING_SETTINGS_VERSION = '4.0.0';
@@ -58,6 +73,7 @@ class PayPalScriptCompat {
 		add_action( 'before_woocommerce_pay_form', array( $this, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20, 0 );
 		add_action( 'woocommerce_add_payment_method_form_bottom', array( $this, 'enqueue_paypal_script_for_add_payment_method' ), 20, 0 );
 		add_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this, 'enqueue_paypal_script_if_add_payment_method_enqueued' ), 20, 0 );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_paypal_script_for_sdk_v6' ), PHP_INT_MAX, 0 );
 	}
 
 	/**
@@ -89,7 +105,13 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_block_script_if_registered(): void {
-		if ( $this->is_checkout_endpoint() || ! wp_script_is( 'ppcp-checkout-block', 'registered' ) ) {
+		if (
+			$this->is_checkout_endpoint()
+			|| (
+				! wp_script_is( self::LEGACY_BLOCKS_HANDLE, 'registered' )
+				&& ! wp_script_is( self::SDK_V6_BLOCKS_HANDLE, 'registered' )
+			)
+		) {
 			return;
 		}
 
@@ -104,7 +126,13 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_cart_block_scripts_if_registered(): void {
-		if ( $this->is_checkout_endpoint() || ! wp_script_is( 'ppcp-checkout-block', 'registered' ) ) {
+		if (
+			$this->is_checkout_endpoint()
+			|| (
+				! wp_script_is( self::LEGACY_BLOCKS_HANDLE, 'registered' )
+				&& ! wp_script_is( self::SDK_V6_BLOCKS_HANDLE, 'registered' )
+			)
+		) {
 			return;
 		}
 
@@ -133,8 +161,10 @@ class PayPalScriptCompat {
 	public function enqueue_paypal_mini_cart_script_if_enabled(): void {
 		if (
 			! $this->is_paypal_mini_cart_enabled()
-			|| ! wp_script_is( 'ppcp-smart-button', 'registered' )
-			|| ! wp_script_is( 'ppcp-smart-button', 'enqueued' )
+			|| (
+				! $this->is_script_enqueued( self::LEGACY_SMART_BUTTON_HANDLE )
+				&& ! $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE )
+			)
 		) {
 			return;
 		}
@@ -166,7 +196,7 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_if_smart_button_enqueued(): void {
-		if ( ! wp_script_is( 'ppcp-smart-button', 'registered' ) || ! wp_script_is( 'ppcp-smart-button', 'enqueued' ) ) {
+		if ( ! $this->is_script_enqueued( self::LEGACY_SMART_BUTTON_HANDLE ) ) {
 			return;
 		}
 
@@ -196,11 +226,82 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_if_add_payment_method_enqueued(): void {
-		if ( ! wp_script_is( 'ppcp-add-payment-method', 'registered' ) || ! wp_script_is( 'ppcp-add-payment-method', 'enqueued' ) ) {
+		if (
+			! $this->is_script_enqueued( self::LEGACY_ADD_PAYMENT_METHOD_HANDLE )
+			&& ! $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
+		) {
 			return;
 		}
 
 		$this->enqueue_paypal_script();
+	}
+
+	/**
+	 * Enqueue the interceptor for active SDK v6 payment scripts.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function enqueue_paypal_script_for_sdk_v6(): void {
+		$payment_script_enqueued = ( $this->is_sdk_v6_payment_page() && $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE ) )
+			|| $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
+			|| $this->is_script_enqueued( self::SDK_V6_VAULT_HANDLE );
+
+		if ( ! $payment_script_enqueued ) {
+			return;
+		}
+
+		$this->enqueue_paypal_script();
+	}
+
+	/**
+	 * Check whether a script is registered and enqueued.
+	 *
+	 * @param string $handle Script handle.
+	 * @return bool
+	 */
+	private function is_script_enqueued( string $handle ): bool {
+		return wp_script_is( $handle, 'registered' ) && wp_script_is( $handle, 'enqueued' );
+	}
+
+	/**
+	 * Check whether the current page can render an SDK v6 payment control.
+	 *
+	 * @return bool
+	 */
+	private function is_sdk_v6_payment_page(): bool {
+		return ( is_product() && true === $this->get_paypal_styling_location_enabled( 'product' ) )
+			|| ( is_cart() && true === $this->get_paypal_styling_location_enabled( 'cart' ) )
+			|| is_wc_endpoint_url( 'order-pay' )
+			|| ( is_checkout() && ! is_wc_endpoint_url( 'order-received' ) );
+	}
+
+	/**
+	 * Get whether PayPal Payments enables a payment location in its current settings.
+	 *
+	 * @param string $location PayPal Payments location key.
+	 * @return bool|null Enabled state, or null when the current settings are absent.
+	 */
+	private function get_paypal_styling_location_enabled( string $location ): ?bool {
+		$styling = get_option( 'woocommerce-ppcp-data-styling', null );
+
+		if ( null === $styling ) {
+			return null;
+		}
+
+		if ( ! is_array( $styling ) || ! array_key_exists( $location, $styling ) ) {
+			return false;
+		}
+
+		$location_styling = $styling[ $location ];
+
+		if ( is_object( $location_styling ) ) {
+			$location_styling = get_object_vars( $location_styling );
+		}
+
+		return is_array( $location_styling )
+			&& true === ( $location_styling['enabled'] ?? false );
 	}
 
 	/**
@@ -228,24 +329,10 @@ class PayPalScriptCompat {
 			return $this->is_legacy_paypal_mini_cart_enabled();
 		}
 
-		$styling = get_option( 'woocommerce-ppcp-data-styling', null );
+		$location_enabled = $this->get_paypal_styling_location_enabled( 'mini_cart' );
 
-		if ( null !== $styling ) {
-			if ( ! is_array( $styling ) || ! array_key_exists( 'mini_cart', $styling ) ) {
-				return false;
-			}
-
-			$mini_cart = $styling['mini_cart'];
-
-			if ( is_object( $mini_cart ) ) {
-				$mini_cart = get_object_vars( $mini_cart );
-			}
-
-			if ( is_array( $mini_cart ) && array_key_exists( 'enabled', $mini_cart ) ) {
-				return true === $mini_cart['enabled'];
-			}
-
-			return false;
+		if ( null !== $location_enabled ) {
+			return $location_enabled;
 		}
 
 		return $this->is_legacy_paypal_mini_cart_enabled();
