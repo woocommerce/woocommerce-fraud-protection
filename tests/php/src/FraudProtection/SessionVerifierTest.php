@@ -137,8 +137,10 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		$session_id     = 'test-session-abc';
 		$order_id       = 42;
 		$collected_data = array(
-			'session'  => array( 'wc_identity_id' => 'abc' ),
-			'customer' => array(),
+			'wc_version'               => '11.1.0',
+			'fraud_protection_version' => '0.2.4',
+			'session'                  => array( 'wc_identity_id' => 'abc' ),
+			'customer'                 => array(),
 		);
 		$request_data   = array(
 			'billing_address' => array( 'first_name' => 'John' ),
@@ -180,12 +182,18 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->method( 'resolve' )
 			->with( 'woocommerce_payments', array() )
 			->willReturn( $resolved_payment );
+		$this->payment_data_resolver
+			->expects( $this->once() )
+			->method( 'resolve_gateway_plugin_version' )
+			->with( 'woocommerce_payments' )
+			->willReturn( '10.2.0' );
 
 		$base_payload = array_merge(
 			$collected_data,
 			array(
-				'source'  => 'blocks_checkout',
-				'payment' => $resolved_payment->to_array(),
+				'source'                         => 'blocks_checkout',
+				'payment'                        => $resolved_payment->to_array(),
+				'payment_gateway_plugin_version' => '10.2.0',
 			)
 		);
 		$payload      = array_merge(
@@ -268,12 +276,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->with(
 				'test-session',
 				array(
-					'source'                      => 'blocks_checkout',
-					'payment'                     => array(),
-					'automatic_protection_status' => 'default_disabled',
-					'automatic_protection_source' => 'none',
-					'matched_rule_action'         => 'block',
-					'matched_rule_type'           => 'email',
+					'source'                         => 'blocks_checkout',
+					'payment'                        => array(),
+					'payment_gateway_plugin_version' => '',
+					'automatic_protection_status'    => 'default_disabled',
+					'automatic_protection_source'    => 'none',
+					'matched_rule_action'            => 'block',
+					'matched_rule_type'              => 'email',
 				)
 			)
 			->willReturn( VerifyResult::create( FraudDecision::Allow, 'test-session' ) );
@@ -304,8 +313,9 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->willReturn( array() );
 
 		$expected_payload = array(
-			'source'  => $expected_source,
-			'payment' => array(),
+			'source'                         => $expected_source,
+			'payment'                        => array(),
+			'payment_gateway_plugin_version' => '',
 		);
 		$verify_result    = VerifyResult::create( FraudDecision::Allow, 'test-session' );
 
@@ -494,15 +504,19 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() fails open when payment data resolution throws — verify still runs with null payment.
+	 * @testdox verify_session() fails open when payment resolution throws — verify still runs with null payment.
 	 */
 	public function test_verify_session_fails_open_when_resolver_throws(): void {
-		$spy   = $this->spy_on_controller_logging();
-		$error = new \RuntimeException( 'Compat layer exploded with resolver-exception-marker' );
+		$spy           = $this->spy_on_controller_logging();
+		$error         = new \RuntimeException( 'Compat layer exploded with resolver-exception-marker' );
+		$version_error = new \RuntimeException( 'Gateway version resolution failed' );
 
 		$this->payment_data_resolver
 			->method( 'resolve' )
 			->willThrowException( $error );
+		$this->payment_data_resolver
+			->method( 'resolve_gateway_plugin_version' )
+			->willThrowException( $version_error );
 
 		$this->data_collector
 			->method( 'get_collected_data' )
@@ -552,6 +566,18 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 				'exception_line'    => $error->getLine(),
 			),
 			$spy->entries[0]['context']
+		);
+		$this->assertLogged(
+			'warning',
+			'Payment gateway plugin version resolution failed',
+			array(
+				'event_source'    => 'blocks_checkout',
+				'session_id'      => 'test-session',
+				'order_id'        => 0,
+				'payment_type'    => 'stripe',
+				'exception_class' => \RuntimeException::class,
+			),
+			false
 		);
 	}
 

@@ -3,6 +3,7 @@
 2026-xx-xx - version 0.2.4
 * Added - Inbox invitation to enable automatic protection during early access.
 * Updated - Fraud Protection scripts now load on PayPal Payments pages that use PayPal JavaScript SDK v6.
+* Updated - Verification requests now include Fraud Protection and selected payment gateway plugin versions.
 
 2026-09-10 - version 0.2.3
 * Added - Fraud prevention settings now show a 30-day summary of protected payment attempts.

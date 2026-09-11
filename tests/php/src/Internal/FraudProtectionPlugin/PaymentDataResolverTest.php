@@ -60,6 +60,105 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Resolves the active plugin that declares a payment gateway.
+	 */
+	public function test_resolves_declaring_plugin_version(): void {
+		$this->assert_bacs_gateway_version(
+			WC_VERSION,
+			array( plugin_basename( WC_PLUGIN_FILE ) )
+		);
+	}
+
+	/**
+	 * @testdox Does not resolve the declaring plugin when it is not active.
+	 */
+	public function test_does_not_resolve_inactive_declaring_plugin(): void {
+		$this->assert_bacs_gateway_version( '', array() );
+	}
+
+	/**
+	 * @testdox Skips invalid active plugin entries and resolves a later valid entry.
+	 */
+	public function test_skips_invalid_active_plugin_entries(): void {
+		$plugin_file      = plugin_basename( WC_PLUGIN_FILE );
+		$plugin_directory = dirname( $plugin_file );
+
+		$this->assert_bacs_gateway_version(
+			WC_VERSION,
+			array(
+				"{$plugin_directory}/invalid\0.php",
+				"{$plugin_directory}/changelog.txt",
+				$plugin_file,
+			)
+		);
+	}
+
+	/**
+	 * @testdox Returns an empty version when multiple active entries share the gateway directory.
+	 */
+	public function test_returns_empty_version_for_ambiguous_active_plugins(): void {
+		$plugin_file = plugin_basename( WC_PLUGIN_FILE );
+
+		$this->assert_bacs_gateway_version(
+			'',
+			array(
+				$plugin_file,
+				plugin_basename( WC_ABSPATH . 'includes/class-woocommerce.php' ),
+			)
+		);
+	}
+
+	/**
+	 * @testdox Resolves a gateway declared by a network-active plugin.
+	 */
+	public function test_resolves_network_active_declaring_plugin(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'This test requires WordPress Multisite.' );
+		}
+
+		$plugin_file = plugin_basename( WC_PLUGIN_FILE );
+
+		$this->assert_bacs_gateway_version(
+			WC_VERSION,
+			array(),
+			array( $plugin_file => time() )
+		);
+	}
+
+	/**
+	 * @testdox Returns an empty plugin version when the payment gateway is unavailable.
+	 */
+	public function test_returns_empty_plugin_version_for_unavailable_gateway(): void {
+		$this->assertSame( '', $this->sut->resolve_gateway_plugin_version( 'missing_gateway' ) );
+	}
+
+	/**
+	 * Assert the version resolved for the BACS gateway.
+	 *
+	 * @param string             $expected_version Expected version.
+	 * @param array<int, string> $active_plugins Active site plugins.
+	 * @param array<string, int> $network_plugins Active network plugins.
+	 */
+	private function assert_bacs_gateway_version( string $expected_version, array $active_plugins, array $network_plugins = array() ): void {
+		$original_active_plugins  = get_option( 'active_plugins', array() );
+		$original_network_plugins = is_multisite() ? get_site_option( 'active_sitewide_plugins', array() ) : array();
+
+		update_option( 'active_plugins', $active_plugins );
+		if ( is_multisite() ) {
+			update_site_option( 'active_sitewide_plugins', $network_plugins );
+		}
+
+		try {
+			$this->assertSame( $expected_version, $this->sut->resolve_gateway_plugin_version( 'bacs' ) );
+		} finally {
+			update_option( 'active_plugins', $original_active_plugins );
+			if ( is_multisite() ) {
+				update_site_option( 'active_sitewide_plugins', $original_network_plugins );
+			}
+		}
+	}
+
+	/**
 	 * @testdox Returns PaymentMethodData when filter returns valid instance.
 	 */
 	public function test_returns_payment_method_data_from_filter(): void {
