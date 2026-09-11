@@ -19,6 +19,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacin
  */
 class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase {
 
+	private const OPT_OUT_DATE_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_at';
+
 	/**
 	 * The System Under Test.
 	 *
@@ -31,6 +33,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 */
 	public function setUp(): void {
 		parent::setUp();
+		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->set_enabled( true );
 		$this->sut = new AutomaticProtectionEarlyAccessNote();
 		$this->sut->register();
@@ -81,6 +84,18 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 */
 	public function test_enabled_stores_do_not_receive_note(): void {
 		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
+		$this->sut->maybe_add_note();
+		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	}
+
+	/**
+	 * @testdox Opting out removes the invitation and prevents it from returning.
+	 */
+	public function test_opted_out_stores_do_not_receive_note(): void {
+		$this->sut->maybe_add_note();
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_opted_out();
+
+		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 		$this->sut->maybe_add_note();
 		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 	}

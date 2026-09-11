@@ -180,8 +180,33 @@ class SettingsTelemetry {
 			$this->log_aggregate_failure( 'rule_creation_counts', $error );
 		}
 
+		$this->record_event( 'fraud_protection_automatic_protection_changed', $properties );
+	}
+
+	/**
+	 * Record a confirmed automatic-enrollment opt-out.
+	 *
+	 * @param string $source Settings action source.
+	 */
+	public function record_enrollment_opt_out( string $source ): void {
+		$this->record_event(
+			'fraud_protection_enrollment_preference_changed',
+			array(
+				'state'  => 'opted_out',
+				'source' => 'inbox' === $source ? 'inbox' : 'settings',
+			)
+		);
+	}
+
+	/**
+	 * Record an isolated Tracks event.
+	 *
+	 * @param string               $event_name Event name.
+	 * @param array<string, mixed> $properties Event properties.
+	 */
+	private function record_event( string $event_name, array $properties ): void {
 		try {
-			\WC_Tracks::record_event( 'fraud_protection_automatic_protection_changed', $properties );
+			\WC_Tracks::record_event( $event_name, $properties );
 		} catch ( \Throwable $error ) {
 			$this->logger->log(
 				'warning',

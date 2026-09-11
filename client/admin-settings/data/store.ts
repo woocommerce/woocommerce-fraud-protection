@@ -3,6 +3,7 @@ import { createReduxStore, register } from '@wordpress/data';
 
 export type Settings = {
 	automatic_protection: boolean;
+	automatic_protection_opted_out: boolean;
 };
 
 export type Performance = {
@@ -18,13 +19,14 @@ type SettingsResponse = Settings & {
 
 export type SettingsError = {
 	message: string | null;
-	operation: 'load' | 'save';
+	operation: 'load' | 'opt_out' | 'save';
 } | null;
 
 type State = {
 	current: Settings | null;
 	error: SettingsError;
 	isSaving: boolean;
+	isOptingOut: boolean;
 	performance: Performance | null;
 	saved: Settings | null;
 };
@@ -35,12 +37,14 @@ type Action =
 	| { type: 'RECEIVE_SETTINGS_RESPONSE'; response: SettingsResponse }
 	| { type: 'SET_AUTOMATIC_PROTECTION'; value: boolean }
 	| { type: 'SET_ERROR'; error: SettingsError }
+	| { type: 'SET_IS_OPTING_OUT'; isOptingOut: boolean }
 	| { type: 'SET_IS_SAVING'; isSaving: boolean };
 
 const DEFAULT_STATE: State = {
 	current: null,
 	error: null,
 	isSaving: false,
+	isOptingOut: false,
 	performance: null,
 	saved: null,
 };
@@ -77,6 +81,8 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 		case 'RECEIVE_SETTINGS_RESPONSE': {
 			const settings = {
 				automatic_protection: action.response.automatic_protection,
+				automatic_protection_opted_out:
+					action.response.automatic_protection_opted_out,
 			};
 
 			return {
@@ -100,6 +106,8 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 			};
 		case 'SET_ERROR':
 			return { ...state, error: action.error };
+		case 'SET_IS_OPTING_OUT':
+			return { ...state, isOptingOut: action.isOptingOut };
 		case 'SET_IS_SAVING':
 			return { ...state, isSaving: action.isSaving };
 		default:
@@ -123,6 +131,9 @@ const actions = {
 	setError( error: SettingsError ): Action {
 		return { type: 'SET_ERROR', error };
 	},
+	setIsOptingOut( isOptingOut: boolean ): Action {
+		return { type: 'SET_IS_OPTING_OUT', isOptingOut };
+	},
 	setIsSaving( isSaving: boolean ): Action {
 		return { type: 'SET_IS_SAVING', isSaving };
 	},
@@ -131,7 +142,12 @@ const actions = {
 		async ( { dispatch, select }: StoreCallback ) => {
 			const settings = select.getSettings();
 
-			if ( ! settings || select.isSaving() || ! select.isDirty() ) {
+			if (
+				! settings ||
+				select.isSaving() ||
+				select.isOptingOut() ||
+				! select.isDirty()
+			) {
 				return false;
 			}
 
@@ -142,7 +158,9 @@ const actions = {
 				const response = await apiFetch< Settings >( {
 					path: '/wc-fraud-protection/v1/settings',
 					method: 'POST',
-					data: settings,
+					data: {
+						automatic_protection: settings.automatic_protection,
+					},
 				} );
 				dispatch.receiveSettings( response );
 				return true;
@@ -154,6 +172,41 @@ const actions = {
 				return false;
 			} finally {
 				dispatch.setIsSaving( false );
+			}
+		},
+	optOut:
+		( source: 'inbox' | 'settings' ) =>
+		async ( { dispatch, select }: StoreCallback ) => {
+			const settings = select.getSettings();
+
+			if (
+				! settings ||
+				settings.automatic_protection_opted_out ||
+				select.isSaving() ||
+				select.isOptingOut()
+			) {
+				return false;
+			}
+
+			dispatch.setIsOptingOut( true );
+			dispatch.setError( null );
+
+			try {
+				const response = await apiFetch< Settings >( {
+					path: '/wc-fraud-protection/v1/settings/opt-out',
+					method: 'POST',
+					data: { source },
+				} );
+				dispatch.receiveSettings( response );
+				return true;
+			} catch ( error ) {
+				dispatch.setError( {
+					message: getApiErrorMessage( error ),
+					operation: 'opt_out',
+				} );
+				return false;
+			} finally {
+				dispatch.setIsOptingOut( false );
 			}
 		},
 };
@@ -171,6 +224,9 @@ const selectors = {
 	isSaving( state: State ): boolean {
 		return state.isSaving;
 	},
+	isOptingOut( state: State ): boolean {
+		return state.isOptingOut;
+	},
 	isDirty( state: State ): boolean {
 		return (
 			state.saved !== null &&
@@ -186,6 +242,7 @@ type StoreSelectors = {
 	getError: () => SettingsError;
 	getPerformance: () => Performance | null;
 	isSaving: () => boolean;
+	isOptingOut: () => boolean;
 	isDirty: () => boolean;
 };
 
@@ -195,6 +252,7 @@ type StoreActions = {
 	receiveSettingsResponse: ( response: SettingsResponse ) => void;
 	setAutomaticProtection: ( value: boolean ) => void;
 	setError: ( error: SettingsError ) => void;
+	setIsOptingOut: ( isOptingOut: boolean ) => void;
 	setIsSaving: ( isSaving: boolean ) => void;
 };
 

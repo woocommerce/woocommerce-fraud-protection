@@ -30,7 +30,7 @@ class AutomaticProtectionEarlyAccessNote {
 	 */
 	public function register(): void {
 		add_action( 'admin_init', array( $this, 'maybe_add_note' ) );
-		foreach ( array( 'woocommerce_fraud_protection_automatic_protection', 'woocommerce_fraud_protection_merchant_facing_features' ) as $option ) {
+		foreach ( array( 'woocommerce_fraud_protection_automatic_protection', 'woocommerce_fraud_protection_automatic_protection_opted_out_at', 'woocommerce_fraud_protection_merchant_facing_features' ) as $option ) {
 			foreach ( array( 'add_option_', 'update_option_', 'delete_option_' ) as $hook ) {
 				add_action( $hook . $option, array( $this, 'update_note' ) );
 			}
@@ -82,7 +82,8 @@ class AutomaticProtectionEarlyAccessNote {
 	public static function is_applicable(): bool {
 		$container = wc_get_container();
 		return $container->get( MerchantFacingFeaturesGate::class )->is_enabled()
-			&& ! $container->get( AutomaticProtectionSetting::class )->is_enabled();
+			&& ! $container->get( AutomaticProtectionSetting::class )->is_enabled()
+			&& ! $container->get( AutomaticProtectionSetting::class )->is_opted_out();
 	}
 
 	/**

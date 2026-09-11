@@ -494,26 +494,29 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_change_event_isolates_tracks_sender_failure(): void {
 		$this->stub_default_change_counts();
-		$failure = function ( $properties, $event_name ) {
-			if ( 'wcadmin_fraud_protection_automatic_protection_changed' === $event_name ) {
-				throw new \RuntimeException( 'Tracks unavailable' );
-			}
-			return $properties;
-		};
-		$this->logger->expects( $this->once() )
-			->method( 'log' )
-			->with(
-				'warning',
-				'Unable to record a Fraud Protection Tracks event.',
-				array(
-					'exception_class'   => \RuntimeException::class,
-					'exception_message' => 'Tracks unavailable',
-				)
-			);
-		update_option( 'woocommerce_allow_tracking', 'yes' );
-		add_filter( 'woocommerce_tracks_event_properties', $failure, 20, 2 );
+		$this->assert_tracks_failure_isolated(
+			'wcadmin_fraud_protection_automatic_protection_changed',
+			fn() => $this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings )
+		);
+	}
 
-		$this->sut->record_automatic_protection_change( AutomaticProtectionChange::Enabled, SettingsChangeChannel::Settings );
+	/**
+	 * @testdox Enrollment opt-outs use the exact event and normalize an unexpected source.
+	 */
+	public function test_enrollment_opt_out_uses_exact_event_properties(): void {
+		$captured = $this->capture_tracks_event(
+			'wcadmin_fraud_protection_enrollment_preference_changed',
+			fn() => $this->sut->record_enrollment_opt_out( 'other' )
+		);
+		unset( $captured['feature_email_improvements'] );
+
+		$this->assertSame(
+			array(
+				'state'  => 'opted_out',
+				'source' => 'settings',
+			),
+			$captured
+		);
 	}
 
 	/**
@@ -597,9 +600,24 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 * @return array<string, mixed>
 	 */
 	private function capture_tracks_change_event( AutomaticProtectionChange $change, SettingsChangeChannel $channel ): array {
+		return $this->capture_tracks_event(
+			'wcadmin_fraud_protection_automatic_protection_changed',
+			fn() => $this->sut->record_automatic_protection_change( $change, $channel )
+		);
+	}
+
+	/**
+	 * Capture one event before WooCommerce adds global properties.
+	 *
+	 * @param string   $expected_event Expected event name.
+	 * @param callable $record_event   Event sender.
+	 * @phpstan-param callable(): void $record_event
+	 * @return array<string, mixed>
+	 */
+	private function capture_tracks_event( string $expected_event, callable $record_event ): array {
 		$captured = array();
-		$filter   = function ( $properties, $event_name ) use ( &$captured ) {
-			if ( 'wcadmin_fraud_protection_automatic_protection_changed' === $event_name ) {
+		$filter   = function ( $properties, $event_name ) use ( &$captured, $expected_event ) {
+			if ( $expected_event === $event_name ) {
 				$captured = $properties;
 			}
 
@@ -613,15 +631,70 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 				'cookies'  => array(),
 			);
 		};
+		$tracking = get_option( 'woocommerce_allow_tracking', null );
+		$user_id  = get_current_user_id();
 
-		update_option( 'woocommerce_allow_tracking', 'yes' );
-		wp_set_current_user( 0 );
-		add_filter( 'woocommerce_tracks_event_properties', $filter, 20, 2 );
-		add_filter( 'pre_http_request', $request );
+		try {
+			update_option( 'woocommerce_allow_tracking', 'yes' );
+			wp_set_current_user( 0 );
+			add_filter( 'woocommerce_tracks_event_properties', $filter, 20, 2 );
+			add_filter( 'pre_http_request', $request );
 
-		$this->sut->record_automatic_protection_change( $change, $channel );
+			$record_event();
+		} finally {
+			remove_filter( 'woocommerce_tracks_event_properties', $filter, 20 );
+			remove_filter( 'pre_http_request', $request );
+			wp_set_current_user( $user_id );
+			if ( null === $tracking ) {
+				delete_option( 'woocommerce_allow_tracking' );
+			} else {
+				update_option( 'woocommerce_allow_tracking', $tracking );
+			}
+		}
 
 		return $captured;
+	}
+
+	/**
+	 * Check that a Tracks failure is logged and contained.
+	 *
+	 * @param string   $expected_event Expected event name.
+	 * @param callable $record_event   Event sender.
+	 * @phpstan-param callable(): void $record_event
+	 */
+	private function assert_tracks_failure_isolated( string $expected_event, callable $record_event ): void {
+		$failure = function ( $properties, $event_name ) use ( $expected_event ) {
+			if ( $expected_event === $event_name ) {
+				throw new \RuntimeException( 'Tracks unavailable' );
+			}
+
+			return $properties;
+		};
+		$this->logger->expects( $this->once() )
+			->method( 'log' )
+			->with(
+				'warning',
+				'Unable to record a Fraud Protection Tracks event.',
+				array(
+					'exception_class'   => \RuntimeException::class,
+					'exception_message' => 'Tracks unavailable',
+				)
+			);
+		$tracking = get_option( 'woocommerce_allow_tracking', null );
+
+		try {
+			update_option( 'woocommerce_allow_tracking', 'yes' );
+			add_filter( 'woocommerce_tracks_event_properties', $failure, 20, 2 );
+
+			$record_event();
+		} finally {
+			remove_filter( 'woocommerce_tracks_event_properties', $failure, 20 );
+			if ( null === $tracking ) {
+				delete_option( 'woocommerce_allow_tracking' );
+			} else {
+				update_option( 'woocommerce_allow_tracking', $tracking );
+			}
+		}
 	}
 
 	/**

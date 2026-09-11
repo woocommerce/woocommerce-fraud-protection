@@ -94,6 +94,18 @@ class SettingsRestController extends \WP_REST_Controller {
 				'schema' => array( $this, 'get_public_item_schema' ),
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/' . $this->rest_base . '/opt-out',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::EDITABLE,
+					'callback'            => array( $this, 'opt_out' ),
+					'permission_callback' => array( $this, 'permissions_check' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -121,8 +133,9 @@ class SettingsRestController extends \WP_REST_Controller {
 
 		return rest_ensure_response(
 			array(
-				'automatic_protection' => $this->automatic_protection->is_enabled(),
-				'performance'          => $performance,
+				'automatic_protection'           => $this->automatic_protection->is_enabled(),
+				'automatic_protection_opted_out' => $this->automatic_protection->is_opted_out(),
+				'performance'                    => $performance,
 			)
 		);
 	}
@@ -142,7 +155,25 @@ class SettingsRestController extends \WP_REST_Controller {
 			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
-		return rest_ensure_response( array( 'automatic_protection' => $this->automatic_protection->is_enabled() ) );
+		return rest_ensure_response( $this->get_setting_values() );
+	}
+
+	/**
+	 * Store an automatic-enrollment opt-out.
+	 *
+	 * @internal
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function opt_out( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		$source = 'inbox' === $request->get_param( 'source' ) ? 'inbox' : 'settings';
+
+		if ( ! $this->updater->opt_out( $source ) ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response( $this->get_setting_values() );
 	}
 
 	/**
@@ -156,12 +187,18 @@ class SettingsRestController extends \WP_REST_Controller {
 			'title'      => 'woocommerce_fraud_protection_settings',
 			'type'       => 'object',
 			'properties' => array(
-				'automatic_protection' => array(
+				'automatic_protection'           => array(
 					'description' => __( 'Whether automatic protection is enabled.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view', 'edit' ),
 				),
-				'performance'          => array(
+				'automatic_protection_opted_out' => array(
+					'description' => __( 'Whether automatic protection enrollment was declined.', 'woocommerce-fraud-protection' ),
+					'type'        => 'boolean',
+					'context'     => array( 'view' ),
+					'readonly'    => true,
+				),
+				'performance'                    => array(
 					'description' => __( 'Fraud prevention performance for the previous 30 days.', 'woocommerce-fraud-protection' ),
 					'type'        => 'object',
 					'context'     => array( 'view' ),
@@ -174,6 +211,18 @@ class SettingsRestController extends \WP_REST_Controller {
 					),
 				),
 			),
+		);
+	}
+
+	/**
+	 * Get the stored setting values.
+	 *
+	 * @return array{automatic_protection: bool, automatic_protection_opted_out: bool}
+	 */
+	private function get_setting_values(): array {
+		return array(
+			'automatic_protection'           => $this->automatic_protection->is_enabled(),
+			'automatic_protection_opted_out' => $this->automatic_protection->is_opted_out(),
 		);
 	}
 }

@@ -12,7 +12,9 @@ export function FraudProtectionSettingsPage() {
 		error,
 		isDirty,
 		isLoading,
+		isOptingOut,
 		isSaving,
+		optOut,
 		performance,
 		save,
 		settings,
@@ -27,7 +29,10 @@ export function FraudProtectionSettingsPage() {
 			'The fraud prevention settings could not be loaded.',
 			'woocommerce-fraud-protection'
 		);
-	} else if ( error?.operation === 'save' ) {
+	} else if (
+		error?.operation === 'save' ||
+		error?.operation === 'opt_out'
+	) {
 		errorMessage = __(
 			'The fraud prevention setting could not be saved.',
 			'woocommerce-fraud-protection'
@@ -53,9 +58,15 @@ export function FraudProtectionSettingsPage() {
 			) }
 			<AutomaticProtectionCard
 				checked={ settings?.automatic_protection ?? false }
-				disabled={ ! settings || isSaving }
+				disabled={ ! settings || isSaving || isOptingOut }
 				isLoading={ isLoading }
+				isOptingOut={ isOptingOut }
 				onChange={ setAutomaticProtection }
+				onOptOut={ optOut }
+				optedOut={ settings?.automatic_protection_opted_out ?? true }
+				recommendedForBlocking={
+					performance?.recommended_for_blocking ?? 0
+				}
 			/>
 			<PerformanceCard
 				isLoading={ isLoading }
@@ -66,7 +77,7 @@ export function FraudProtectionSettingsPage() {
 					variant="solid"
 					type="button"
 					loading={ isSaving }
-					disabled={ ! isDirty || isSaving }
+					disabled={ ! isDirty || isSaving || isOptingOut }
 					onClick={ save }
 				>
 					{ __( 'Save', 'woocommerce-fraud-protection' ) }
