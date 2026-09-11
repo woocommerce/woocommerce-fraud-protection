@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-xx-xx - version 0.2.4
+* Added - Inbox invitation to enable automatic protection during early access.
+
 2026-09-10 - version 0.2.3
 * Added - Fraud prevention settings now show a 30-day summary of protected payment attempts.
 * Updated - Usage tracking now reports automatic protection changes and recent store outcomes.
