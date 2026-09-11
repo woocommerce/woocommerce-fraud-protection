@@ -743,11 +743,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	private function go_to_sdk_v6_page_context( string $context ): void {
 		global $wp;
 		unset( $wp->query_vars['order-pay'], $wp->query_vars['order-received'] );
-		foreach ( array( 'is_cart_page', 'is_checkout_page' ) as $property_name ) {
-			$property = new \ReflectionProperty( \Automattic\WooCommerce\Blocks\Utils\CartCheckoutUtils::class, $property_name );
-			$property->setAccessible( true );
-			$property->setValue( null, null );
-		}
+		$this->reset_woocommerce_cart_checkout_page_cache();
 
 		$other_page_id = self::factory()->post->create(
 			array(
