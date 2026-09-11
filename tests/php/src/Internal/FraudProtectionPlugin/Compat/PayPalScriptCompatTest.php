@@ -31,18 +31,31 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	/** @var bool Whether the add-payment-method handle changed. */
 	private bool $touched_add_payment_method_handle = false;
 
+	/** @var string[] SDK v6 handles changed by the test. */
+	private array $touched_sdk_v6_handles = array();
+
+	/** @var array<string, mixed> Original WooCommerce page options. */
+	private array $original_page_options = array();
+
 	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		$this->sut = $this->make_compat_with_script_handler( $this->make_blackbox_script_handler() );
+		$this->sut                   = $this->make_compat_with_script_handler( $this->make_blackbox_script_handler() );
+		$this->original_page_options = array(
+			'woocommerce_cart_page_id'     => get_option( 'woocommerce_cart_page_id', null ),
+			'woocommerce_checkout_page_id' => get_option( 'woocommerce_checkout_page_id', null ),
+			'woocommerce_shop_page_id'     => get_option( 'woocommerce_shop_page_id', null ),
+		);
 	}
 
 	/**
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
+		global $wp;
+
 		if ( $this->touched_smart_button_handle ) {
 			wp_dequeue_script( 'ppcp-smart-button' );
 			wp_deregister_script( 'ppcp-smart-button' );
@@ -55,6 +68,18 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			wp_dequeue_script( 'ppcp-add-payment-method' );
 			wp_deregister_script( 'ppcp-add-payment-method' );
 		}
+		foreach ( $this->touched_sdk_v6_handles as $handle ) {
+			wp_dequeue_script( $handle );
+			wp_deregister_script( $handle );
+		}
+		foreach ( $this->original_page_options as $option => $value ) {
+			if ( null === $value ) {
+				delete_option( $option );
+			} else {
+				update_option( $option, $value );
+			}
+		}
+		unset( $wp->query_vars['order-pay'], $wp->query_vars['order-received'] );
 		$this->reset_fraud_protection_scripts();
 
 		parent::tearDown();
@@ -77,6 +102,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 20, has_action( 'before_woocommerce_pay_form', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this->sut, 'enqueue_paypal_script_if_add_payment_method_enqueued' ) ) );
+		$this->assertSame( PHP_INT_MAX, has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script_for_sdk_v6' ) ) );
 	}
 
 	/*
@@ -169,6 +195,26 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
 
+	/** @testdox The block follower supports the registered SDK v6 Blocks script. */
+	public function test_block_follower_supports_sdk_v6(): void {
+		$this->register_sdk_v6_handle( 'wc-ppcp-sdk-v6-blocks', false );
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_block_script_if_registered();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @testdox The Cart block follower loads its carrier for the SDK v6 Blocks script. */
+	public function test_cart_block_follower_supports_sdk_v6(): void {
+		$this->register_sdk_v6_handle( 'wc-ppcp-sdk-v6-blocks', false );
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_cart_block_scripts_if_registered();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blocks-checkout', 'enqueued' ) );
+	}
+
 	/**
 	 * @testdox The block follower ignores another PPCP gateway without the PayPal block integration.
 	 */
@@ -258,6 +304,17 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_mini_cart_follower_enqueues_for_paypal_fragment_script(): void {
 		$this->configure_paypal_mini_cart( true, true, true );
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @testdox The mini-cart follower supports the active SDK v6 boot script. */
+	public function test_mini_cart_follower_supports_sdk_v6(): void {
+		$this->configure_paypal_mini_cart( true, false, false );
+		$this->register_sdk_v6_handle( 'wc-ppcp-sdk-v6-boot' );
 		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
@@ -446,6 +503,106 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The late SDK v6 follower loads the interceptor only on payment-capable pages.
+	 *
+	 * @dataProvider sdk_v6_page_context_provider
+	 *
+	 * @param string $context Page context.
+	 * @param bool   $expected Whether the SDK v6 payment script should be followed.
+	 */
+	public function test_sdk_v6_boot_follower_uses_payment_page_context( string $context, bool $expected ): void {
+		$this->go_to_sdk_v6_page_context( $context );
+		$condition_state = array(
+			'product'        => is_product(),
+			'cart'           => is_cart(),
+			'order-pay'      => is_wc_endpoint_url( 'order-pay' ),
+			'checkout'       => is_checkout(),
+			'order-received' => is_wc_endpoint_url( 'order-received' ),
+		);
+		$payment_page    = $condition_state['product']
+			|| $condition_state['cart']
+			|| $condition_state['order-pay']
+			|| ( $condition_state['checkout'] && ! $condition_state['order-received'] );
+		$this->assertSame( $expected, $payment_page, wp_json_encode( $condition_state ) );
+		$this->register_sdk_v6_handle( 'wc-ppcp-sdk-v6-boot' );
+		$sut = $expected ? $this->make_sut_expecting_script_request( true ) : $this->make_sut_expecting_no_script_request();
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		$this->assertSame( $expected, wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @return array<string, array{string, bool}> */
+	public function sdk_v6_page_context_provider(): array {
+		return array(
+			'product'        => array( 'product', true ),
+			'cart'           => array( 'cart', true ),
+			'checkout'       => array( 'checkout', true ),
+			'pay for order'  => array( 'order-pay', true ),
+			'order received' => array( 'order-received', false ),
+			'home'           => array( 'home', false ),
+			'shop'           => array( 'shop', false ),
+		);
+	}
+
+	/**
+	 * @testdox The late SDK v6 follower supports auxiliary payment scripts.
+	 *
+	 * @dataProvider sdk_v6_auxiliary_handle_provider
+	 *
+	 * @param string $handle SDK v6 script handle.
+	 */
+	public function test_sdk_v6_follower_supports_auxiliary_payment_scripts( string $handle ): void {
+		$this->register_sdk_v6_handle( $handle );
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @return array<string, array{string}> */
+	public function sdk_v6_auxiliary_handle_provider(): array {
+		return array(
+			'add payment method' => array( 'wc-ppcp-sdk-v6-add-payment-method' ),
+			'standalone vault'   => array( 'ppcp-vault-component' ),
+		);
+	}
+
+	/** @testdox The late SDK v6 follower leaves PayPal script dependencies unchanged. */
+	public function test_sdk_v6_follower_does_not_change_paypal_dependencies(): void {
+		$this->go_to_sdk_v6_page_context( 'checkout' );
+		$handles = array(
+			'wc-ppcp-sdk-v6-boot',
+			'wc-ppcp-sdk-v6-add-payment-method',
+			'ppcp-vault-component',
+		);
+		foreach ( $handles as $handle ) {
+			$this->register_sdk_v6_handle( $handle, true, array( 'jquery' ) );
+		}
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		foreach ( $handles as $handle ) {
+			$script = wp_scripts()->query( $handle, 'registered' );
+			$this->assertNotFalse( $script );
+			$this->assertSame( array( 'jquery' ), $script->deps );
+		}
+	}
+
+	/** @testdox The SDK v6 follower does not enqueue the interceptor when shared scripts are unavailable. */
+	public function test_sdk_v6_follower_skips_when_shared_scripts_are_unavailable(): void {
+		$this->go_to_sdk_v6_page_context( 'checkout' );
+		$this->register_sdk_v6_handle( 'wc-ppcp-sdk-v6-boot' );
+		$sut = $this->make_sut_expecting_script_request( false );
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
 	 * Build a PayPal compatibility layer with a controlled script handler.
 	 *
 	 * @param BlackboxScriptHandler $handler Test value.
@@ -533,6 +690,97 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	private function register_paypal_block_handle(): void {
 		wp_register_script( 'ppcp-checkout-block', 'https://example.com/paypal-block.js', array(), '1.0', true );
 		$this->registered_block_handle = true;
+	}
+
+	/**
+	 * Register an SDK v6 handle and optionally enqueue it.
+	 *
+	 * @param string   $handle       Script handle.
+	 * @param bool     $enqueue      Whether to enqueue the script.
+	 * @param string[] $dependencies Script dependencies.
+	 */
+	private function register_sdk_v6_handle( string $handle, bool $enqueue = true, array $dependencies = array() ): void {
+		wp_register_script( $handle, 'https://example.com/' . $handle . '.js', $dependencies, '1.0', true );
+		if ( $enqueue ) {
+			wp_enqueue_script( $handle );
+		}
+
+		$this->touched_sdk_v6_handles[] = $handle;
+	}
+
+	/**
+	 * Set the frontend context for an SDK v6 boot check.
+	 *
+	 * @param string $context Page context.
+	 */
+	private function go_to_sdk_v6_page_context( string $context ): void {
+		global $wp;
+		unset( $wp->query_vars['order-pay'], $wp->query_vars['order-received'] );
+		foreach ( array( 'is_cart_page', 'is_checkout_page' ) as $property_name ) {
+			$property = new \ReflectionProperty( \Automattic\WooCommerce\Blocks\Utils\CartCheckoutUtils::class, $property_name );
+			$property->setAccessible( true );
+			$property->setValue( null, null );
+		}
+
+		$other_page_id = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+			)
+		);
+		update_option( 'woocommerce_cart_page_id', $other_page_id );
+		update_option( 'woocommerce_checkout_page_id', $other_page_id );
+		update_option( 'woocommerce_shop_page_id', $other_page_id );
+
+		if ( 'product' === $context ) {
+			$product = \WC_Helper_Product::create_simple_product();
+			$this->go_to( get_permalink( $product->get_id() ) );
+			return;
+		}
+
+		if ( 'home' === $context ) {
+			$this->go_to( home_url( '/' ) );
+			return;
+		}
+
+		$page_id = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+			)
+		);
+
+		if ( 'shop' === $context ) {
+			update_option( 'woocommerce_shop_page_id', $page_id );
+			$this->go_to( get_permalink( $page_id ) );
+			return;
+		}
+
+		if ( 'cart' === $context ) {
+			wp_update_post(
+				array(
+					'ID'           => $page_id,
+					'post_content' => '[woocommerce_cart]',
+				)
+			);
+			update_option( 'woocommerce_cart_page_id', $page_id );
+			$this->go_to( get_permalink( $page_id ) );
+			return;
+		}
+
+		wp_update_post(
+			array(
+				'ID'           => $page_id,
+				'post_content' => '[woocommerce_checkout]',
+			)
+		);
+		update_option( 'woocommerce_checkout_page_id', $page_id );
+		$this->go_to( get_permalink( $page_id ) );
+		if ( 'order-pay' === $context ) {
+			$wp->query_vars['order-pay'] = '123';
+		} elseif ( 'order-received' === $context ) {
+			$wp->query_vars['order-received'] = '123';
+		}
 	}
 
 	/**

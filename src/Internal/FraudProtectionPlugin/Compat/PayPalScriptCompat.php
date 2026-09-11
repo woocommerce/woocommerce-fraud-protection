@@ -17,6 +17,14 @@ defined( 'ABSPATH' ) || exit;
 class PayPalScriptCompat {
 
 	/**
+	 * PayPal Payments SDK v6 script handles.
+	 */
+	private const SDK_V6_BOOT_HANDLE               = 'wc-ppcp-sdk-v6-boot';
+	private const SDK_V6_BLOCKS_HANDLE             = 'wc-ppcp-sdk-v6-blocks';
+	private const SDK_V6_ADD_PAYMENT_METHOD_HANDLE = 'wc-ppcp-sdk-v6-add-payment-method';
+	private const SDK_V6_VAULT_HANDLE              = 'ppcp-vault-component';
+
+	/**
 	 * First PayPal Payments version that uses the styling option at runtime.
 	 */
 	private const PAYPAL_STYLING_SETTINGS_VERSION = '4.0.0';
@@ -58,6 +66,7 @@ class PayPalScriptCompat {
 		add_action( 'before_woocommerce_pay_form', array( $this, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20, 0 );
 		add_action( 'woocommerce_add_payment_method_form_bottom', array( $this, 'enqueue_paypal_script_for_add_payment_method' ), 20, 0 );
 		add_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this, 'enqueue_paypal_script_if_add_payment_method_enqueued' ), 20, 0 );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_paypal_script_for_sdk_v6' ), PHP_INT_MAX, 0 );
 	}
 
 	/**
@@ -89,7 +98,13 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_block_script_if_registered(): void {
-		if ( $this->is_checkout_endpoint() || ! wp_script_is( 'ppcp-checkout-block', 'registered' ) ) {
+		if (
+			$this->is_checkout_endpoint()
+			|| (
+				! wp_script_is( 'ppcp-checkout-block', 'registered' )
+				&& ! wp_script_is( self::SDK_V6_BLOCKS_HANDLE, 'registered' )
+			)
+		) {
 			return;
 		}
 
@@ -104,7 +119,13 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_cart_block_scripts_if_registered(): void {
-		if ( $this->is_checkout_endpoint() || ! wp_script_is( 'ppcp-checkout-block', 'registered' ) ) {
+		if (
+			$this->is_checkout_endpoint()
+			|| (
+				! wp_script_is( 'ppcp-checkout-block', 'registered' )
+				&& ! wp_script_is( self::SDK_V6_BLOCKS_HANDLE, 'registered' )
+			)
+		) {
 			return;
 		}
 
@@ -133,8 +154,10 @@ class PayPalScriptCompat {
 	public function enqueue_paypal_mini_cart_script_if_enabled(): void {
 		if (
 			! $this->is_paypal_mini_cart_enabled()
-			|| ! wp_script_is( 'ppcp-smart-button', 'registered' )
-			|| ! wp_script_is( 'ppcp-smart-button', 'enqueued' )
+			|| (
+				! $this->is_script_enqueued( 'ppcp-smart-button' )
+				&& ! $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE )
+			)
 		) {
 			return;
 		}
@@ -196,11 +219,55 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_if_add_payment_method_enqueued(): void {
-		if ( ! wp_script_is( 'ppcp-add-payment-method', 'registered' ) || ! wp_script_is( 'ppcp-add-payment-method', 'enqueued' ) ) {
+		if (
+			! $this->is_script_enqueued( 'ppcp-add-payment-method' )
+			&& ! $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
+		) {
 			return;
 		}
 
 		$this->enqueue_paypal_script();
+	}
+
+	/**
+	 * Enqueue the interceptor for active SDK v6 payment scripts.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function enqueue_paypal_script_for_sdk_v6(): void {
+		$payment_script_enqueued = ( $this->is_sdk_v6_payment_page() && $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE ) )
+			|| $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
+			|| $this->is_script_enqueued( self::SDK_V6_VAULT_HANDLE );
+
+		if ( ! $payment_script_enqueued ) {
+			return;
+		}
+
+		$this->enqueue_paypal_script();
+	}
+
+	/**
+	 * Check whether a script is registered and enqueued.
+	 *
+	 * @param string $handle Script handle.
+	 * @return bool
+	 */
+	private function is_script_enqueued( string $handle ): bool {
+		return wp_script_is( $handle, 'registered' ) && wp_script_is( $handle, 'enqueued' );
+	}
+
+	/**
+	 * Check whether the current page can render an SDK v6 payment control.
+	 *
+	 * @return bool
+	 */
+	private function is_sdk_v6_payment_page(): bool {
+		return is_product()
+			|| is_cart()
+			|| is_wc_endpoint_url( 'order-pay' )
+			|| ( is_checkout() && ! is_wc_endpoint_url( 'order-received' ) );
 	}
 
 	/**

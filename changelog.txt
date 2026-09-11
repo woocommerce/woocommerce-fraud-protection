@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.2.4
+* Fixed - Fraud Protection scripts now load on PayPal Payments pages that use PayPal JavaScript SDK v6.
+
 2026-09-10 - version 0.2.3
 * Added - Fraud prevention settings now show a 30-day summary of protected payment attempts.
 * Updated - Usage tracking now reports automatic protection changes and recent store outcomes.
