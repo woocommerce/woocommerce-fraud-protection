@@ -264,10 +264,37 @@ class PayPalScriptCompat {
 	 * @return bool
 	 */
 	private function is_sdk_v6_payment_page(): bool {
-		return is_product()
-			|| is_cart()
+		return ( is_product() && true === $this->get_paypal_styling_location_enabled( 'product' ) )
+			|| ( is_cart() && true === $this->get_paypal_styling_location_enabled( 'cart' ) )
 			|| is_wc_endpoint_url( 'order-pay' )
 			|| ( is_checkout() && ! is_wc_endpoint_url( 'order-received' ) );
+	}
+
+	/**
+	 * Get whether PayPal Payments enables a payment location in its current settings.
+	 *
+	 * @param string $location PayPal Payments location key.
+	 * @return bool|null Enabled state, or null when the current settings are absent.
+	 */
+	private function get_paypal_styling_location_enabled( string $location ): ?bool {
+		$styling = get_option( 'woocommerce-ppcp-data-styling', null );
+
+		if ( null === $styling ) {
+			return null;
+		}
+
+		if ( ! is_array( $styling ) || ! array_key_exists( $location, $styling ) ) {
+			return false;
+		}
+
+		$location_styling = $styling[ $location ];
+
+		if ( is_object( $location_styling ) ) {
+			$location_styling = get_object_vars( $location_styling );
+		}
+
+		return is_array( $location_styling )
+			&& true === ( $location_styling['enabled'] ?? false );
 	}
 
 	/**
@@ -295,24 +322,10 @@ class PayPalScriptCompat {
 			return $this->is_legacy_paypal_mini_cart_enabled();
 		}
 
-		$styling = get_option( 'woocommerce-ppcp-data-styling', null );
+		$location_enabled = $this->get_paypal_styling_location_enabled( 'mini_cart' );
 
-		if ( null !== $styling ) {
-			if ( ! is_array( $styling ) || ! array_key_exists( 'mini_cart', $styling ) ) {
-				return false;
-			}
-
-			$mini_cart = $styling['mini_cart'];
-
-			if ( is_object( $mini_cart ) ) {
-				$mini_cart = get_object_vars( $mini_cart );
-			}
-
-			if ( is_array( $mini_cart ) && array_key_exists( 'enabled', $mini_cart ) ) {
-				return true === $mini_cart['enabled'];
-			}
-
-			return false;
+		if ( null !== $location_enabled ) {
+			return $location_enabled;
 		}
 
 		return $this->is_legacy_paypal_mini_cart_enabled();

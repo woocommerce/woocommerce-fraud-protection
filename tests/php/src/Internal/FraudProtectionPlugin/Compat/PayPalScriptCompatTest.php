@@ -512,18 +512,9 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_sdk_v6_boot_follower_uses_payment_page_context( string $context, bool $expected ): void {
 		$this->go_to_sdk_v6_page_context( $context );
-		$condition_state = array(
-			'product'        => is_product(),
-			'cart'           => is_cart(),
-			'order-pay'      => is_wc_endpoint_url( 'order-pay' ),
-			'checkout'       => is_checkout(),
-			'order-received' => is_wc_endpoint_url( 'order-received' ),
-		);
-		$payment_page    = $condition_state['product']
-			|| $condition_state['cart']
-			|| $condition_state['order-pay']
-			|| ( $condition_state['checkout'] && ! $condition_state['order-received'] );
-		$this->assertSame( $expected, $payment_page, wp_json_encode( $condition_state ) );
+		if ( in_array( $context, array( 'product', 'cart' ), true ) ) {
+			$this->configure_paypal_styling_location( $context, true );
+		}
 		$this->register_sdk_v6_handle( 'wc-ppcp-sdk-v6-boot' );
 		$sut = $expected ? $this->make_sut_expecting_script_request( true ) : $this->make_sut_expecting_no_script_request();
 
@@ -542,6 +533,32 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			'order received' => array( 'order-received', false ),
 			'home'           => array( 'home', false ),
 			'shop'           => array( 'shop', false ),
+		);
+	}
+
+	/**
+	 * @testdox The late SDK v6 follower ignores message-only product and cart pages.
+	 *
+	 * @dataProvider sdk_v6_message_only_context_provider
+	 *
+	 * @param string $context Page context.
+	 */
+	public function test_sdk_v6_boot_follower_ignores_message_only_pages( string $context ): void {
+		$this->go_to_sdk_v6_page_context( $context );
+		$this->configure_paypal_styling_location( $context, false );
+		$this->register_sdk_v6_handle( 'wc-ppcp-sdk-v6-boot' );
+		$sut = $this->make_sut_expecting_no_script_request();
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @return array<string, array{string}> */
+	public function sdk_v6_message_only_context_provider(): array {
+		return array(
+			'product' => array( 'product' ),
+			'cart'    => array( 'cart' ),
 		);
 	}
 
@@ -644,9 +661,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	private function configure_paypal_mini_cart( bool $location_enabled, bool $script_registered, bool $script_enqueued ): void {
 		update_option( 'woocommerce-ppcp-version', '4.0.0' );
-		$mini_cart          = new \stdClass();
-		$mini_cart->enabled = $location_enabled;
-		update_option( 'woocommerce-ppcp-data-styling', array( 'mini_cart' => $mini_cart ) );
+		$this->configure_paypal_styling_location( 'mini_cart', $location_enabled );
 
 		if ( $script_registered ) {
 			wp_register_script( 'ppcp-smart-button', 'https://example.com/paypal-button.js', array(), '1.0', true );
@@ -657,6 +672,18 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			wp_enqueue_script( 'ppcp-smart-button' );
 			$this->touched_smart_button_handle = true;
 		}
+	}
+
+	/**
+	 * Configure a PayPal Payments location in its current styling settings.
+	 *
+	 * @param string $location Location key.
+	 * @param bool   $enabled Whether the payment location is enabled.
+	 */
+	private function configure_paypal_styling_location( string $location, bool $enabled ): void {
+		$location_styling          = new \stdClass();
+		$location_styling->enabled = $enabled;
+		update_option( 'woocommerce-ppcp-data-styling', array( $location => $location_styling ) );
 	}
 
 	/**
