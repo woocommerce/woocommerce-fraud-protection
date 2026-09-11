@@ -90,7 +90,7 @@ class AutomaticProtectionEarlyAccessNote {
 		$note->set_source( 'woocommerce-fraud-protection' );
 		$note->set_type( Note::E_WC_ADMIN_NOTE_INFORMATIONAL );
 		$note->set_title( __( 'Start blocking risky checkout attempts', 'woocommerce-fraud-protection' ) );
-		$content = __( 'Fraud prevention scans checkout attempts for signs of bot or automated behavior. Flagged attempts are only recorded today. On October 20, blocking turns on automatically for all supported payment providers. Turn it on early, or opt out before then.', 'woocommerce-fraud-protection' );
+		$content = __( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically.', 'woocommerce-fraud-protection' );
 		$note->set_content( $content . ' <a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '">' . esc_html__( 'Learn more', 'woocommerce-fraud-protection' ) . '</a>' );
 		$note->add_action(
 			'review-automatic-protection',
