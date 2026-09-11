@@ -31,28 +31,9 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		AutomaticProtectionEarlyAccessNote::possibly_delete_note();
-		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->set_enabled( true );
 		$this->sut = new AutomaticProtectionEarlyAccessNote();
 		$this->sut->register();
-	}
-
-	/**
-	 * Remove test notes, options, and hooks.
-	 */
-	public function tearDown(): void {
-		remove_action( 'admin_init', array( $this->sut, 'maybe_add_note' ) );
-		remove_filter( 'wp_doing_ajax', '__return_true' );
-		foreach ( array( 'woocommerce_fraud_protection_automatic_protection', 'woocommerce_fraud_protection_merchant_facing_features' ) as $option ) {
-			foreach ( array( 'add_option_', 'update_option_', 'delete_option_' ) as $hook ) {
-				remove_action( $hook . $option, array( $this->sut, 'update_note' ) );
-			}
-		}
-		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
-		AutomaticProtectionEarlyAccessNote::possibly_delete_note();
-		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
-		parent::tearDown();
 	}
 
 	/**
