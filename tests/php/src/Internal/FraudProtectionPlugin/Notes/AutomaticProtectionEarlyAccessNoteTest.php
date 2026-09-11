@@ -27,11 +27,11 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	private $sut;
 
 	/**
-	 * Original admin-header callback priority.
+	 * Original admin-header callback priorities.
 	 *
-	 * @var int|false
+	 * @var array<string, int>
 	 */
-	private $admin_headers_priority;
+	private $admin_header_priorities = array();
 
 	/**
 	 * Set up the note through its registered hook.
@@ -39,9 +39,12 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	public function setUp(): void {
 		parent::setUp();
 		set_current_screen( 'dashboard' );
-		$this->admin_headers_priority = has_action( 'admin_init', 'wp_admin_headers' );
-		if ( false !== $this->admin_headers_priority ) {
-			remove_action( 'admin_init', 'wp_admin_headers', $this->admin_headers_priority );
+		foreach ( array( 'wp_admin_headers', 'send_frame_options_header', 'send_referrer_policy_header' ) as $callback ) {
+			$priority = has_action( 'admin_init', $callback );
+			if ( false !== $priority ) {
+				$this->admin_header_priorities[ $callback ] = $priority;
+				remove_action( 'admin_init', $callback, $priority );
+			}
 		}
 		AutomaticProtectionEarlyAccessNote::possibly_delete_note();
 		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
@@ -60,9 +63,10 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
 		AutomaticProtectionEarlyAccessNote::possibly_delete_note();
 		wc_get_container()->get( AutomaticProtectionSetting::class )->reset();
-		if ( false !== $this->admin_headers_priority ) {
-			add_action( 'admin_init', 'wp_admin_headers', $this->admin_headers_priority );
+		foreach ( $this->admin_header_priorities as $callback => $priority ) {
+			add_action( 'admin_init', $callback, $priority );
 		}
+		$this->admin_header_priorities = array();
 		set_current_screen( 'front' );
 		parent::tearDown();
 	}
