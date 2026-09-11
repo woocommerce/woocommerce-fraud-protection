@@ -22,6 +22,7 @@ export function FraudProtectionSettingsPage() {
 	} = useFraudProtectionSettings();
 
 	useUnsavedChangesGuard( isDirty, discardChanges );
+	const controlsDisabled = ! settings || isSaving || isOptingOut;
 
 	let errorMessage = null;
 	if ( error?.operation === 'load' ) {
@@ -58,13 +59,13 @@ export function FraudProtectionSettingsPage() {
 			) }
 			<AutomaticProtectionCard
 				checked={ settings?.automatic_protection ?? false }
-				disabled={ ! settings || isSaving || isOptingOut }
+				controlsDisabled={ controlsDisabled }
 				isLoading={ isLoading }
 				isOptingOut={ isOptingOut }
 				onChange={ setAutomaticProtection }
 				onOptOut={ optOut }
 				optedOut={ settings?.automatic_protection_opted_out ?? true }
-				recommendedForBlocking={
+				recommendedForBlockingCount={
 					performance?.recommended_for_blocking ?? 0
 				}
 			/>

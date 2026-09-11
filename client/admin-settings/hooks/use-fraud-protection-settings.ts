@@ -23,7 +23,7 @@ export function useFraudProtectionSettings() {
 	}, [] );
 	const {
 		discardChanges,
-		optOut: saveOptOut,
+		requestOptOut,
 		saveSettings,
 		setAutomaticProtection,
 	} = useDispatch( settingsStore );
@@ -48,7 +48,7 @@ export function useFraudProtectionSettings() {
 			new URLSearchParams( window.location.search ).get( 'source' )
 				? 'inbox'
 				: 'settings';
-		const didOptOut = await saveOptOut( source );
+		const didOptOut = await requestOptOut( source );
 
 		if ( didOptOut ) {
 			createSuccessNotice(

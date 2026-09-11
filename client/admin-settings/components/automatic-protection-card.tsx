@@ -1,27 +1,32 @@
-import { useState } from '@wordpress/element';
+import { createInterpolateElement, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { Card, Checkbox, Notice, Spinner, Stack, Text } from '@wordpress/ui';
+import { Link } from 'react-router-dom';
+
+import { getFraudProtectionRoute } from '../navigation';
 
 type AutomaticProtectionCardProps = {
 	checked: boolean;
-	disabled: boolean;
+	controlsDisabled: boolean;
 	isLoading: boolean;
 	isOptingOut: boolean;
 	onChange: ( value: boolean ) => void;
 	onOptOut: () => void;
 	optedOut: boolean;
-	recommendedForBlocking: number;
+	recommendedForBlockingCount: number;
 };
+
+const checkoutAttemptsHref = getFraudProtectionRoute( '/checkout-attempts' );
 
 export function AutomaticProtectionCard( {
 	checked,
-	disabled,
+	controlsDisabled,
 	isLoading,
 	isOptingOut,
 	onChange,
 	onOptOut,
 	optedOut,
-	recommendedForBlocking,
+	recommendedForBlockingCount,
 }: AutomaticProtectionCardProps ) {
 	const [ isNoticeDismissed, setIsNoticeDismissed ] = useState( false );
 	const showOptOutNotice =
@@ -76,7 +81,7 @@ export function AutomaticProtectionCard( {
 								<Checkbox
 									id="automatic-protection-checkbox"
 									checked={ checked }
-									disabled={ disabled }
+									disabled={ controlsDisabled }
 									onCheckedChange={ onChange }
 								/>
 								<label htmlFor="automatic-protection-checkbox">
@@ -93,21 +98,26 @@ export function AutomaticProtectionCard( {
 					{ showOptOutNotice && (
 						<Notice.Root intent="warning">
 							<Notice.Description>
-								{ sprintf(
-									/* translators: %d: Number of checkout attempts. */
-									_n(
-										'%d checkout attempt was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
-										'%d checkout attempts were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
-										recommendedForBlocking,
-										'woocommerce-fraud-protection'
+								{ createInterpolateElement(
+									sprintf(
+										/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
+										_n(
+											'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+											'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+											recommendedForBlockingCount,
+											'woocommerce-fraud-protection'
+										),
+										recommendedForBlockingCount
 									),
-									recommendedForBlocking
+									{
+										a: <Link to={ checkoutAttemptsHref } />,
+									}
 								) }
 							</Notice.Description>
 							<Notice.Actions>
 								<Notice.ActionButton
 									variant="outline"
-									disabled={ disabled }
+									disabled={ controlsDisabled }
 									loading={ isOptingOut }
 									onClick={ onOptOut }
 								>

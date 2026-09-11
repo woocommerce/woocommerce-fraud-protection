@@ -174,7 +174,7 @@ const actions = {
 				dispatch.setIsSaving( false );
 			}
 		},
-	optOut:
+	requestOptOut:
 		( source: 'inbox' | 'settings' ) =>
 		async ( { dispatch, select }: StoreCallback ) => {
 			const settings = select.getSettings();

@@ -414,30 +414,31 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toHaveLength( 0 );
 	} );
 
-	it( 'shows, dismisses, and restores the opt-out notice until the marker is stored', async () => {
+	it.each< [ number, string ] >( [
+		[ 1, '1 checkout attempt' ],
+		[ 12, '12 checkout attempts' ],
+	] )( 'links the %s flagged attempt count', async ( count, label ) => {
 		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, performanceWithRecommended( 1 ) )
+			settingsResponse( false, performanceWithRecommended( count ) )
 		);
-		const singularRender = renderSettings();
-		expect(
-			await screen.findByText(
-				'1 checkout attempt was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.'
-			)
-		).toBeVisible();
-		singularRender.unmount();
+		renderSettings();
 
+		expect(
+			await screen.findByRole( 'link', { name: label } )
+		).toHaveAttribute(
+			'href',
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
+		);
+	} );
+
+	it( 'shows the opt-out actions and dismisses the notice', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, performanceWithRecommended( 12 ) )
 		);
-		const firstRender = renderSettings();
+		renderSettings();
 
 		expect(
-			await screen.findByText(
-				'12 checkout attempts were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.'
-			)
-		).toBeVisible();
-		expect(
-			screen.getByRole( 'button', {
+			await screen.findByRole( 'button', {
 				name: 'Opt out of automatic blocking',
 			} )
 		).toBeEnabled();
@@ -458,8 +459,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 				name: 'Opt out of automatic blocking',
 			} )
 		).not.toBeInTheDocument();
+	} );
 
-		firstRender.unmount();
+	it( 'hides the opt-out notice after an opt-out is stored', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, zeroPerformance, true )
 		);
