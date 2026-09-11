@@ -9,6 +9,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
@@ -210,6 +211,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( $container->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
 		$this->assertNotFalse( has_filter( 'woocommerce_tracks_event_properties', array( $container->get( SettingsTelemetry::class ), 'add_settings_view_source' ) ) );
+		$this->assertNull( AutomaticProtectionEarlyAccessNote::get_note() );
 		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
@@ -227,6 +229,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
+		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'maybe_add_note' ) ) );
 		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );
