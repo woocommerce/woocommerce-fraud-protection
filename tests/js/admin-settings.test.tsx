@@ -471,7 +471,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			name: '12 checkout attempts',
 		} );
 		expect( countLink.parentElement ).toHaveTextContent(
-			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic protection is off. Turning it on is recommended.'
+			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.'
 		);
 		expect(
 			screen.queryByRole( 'button', {
@@ -482,6 +482,27 @@ describe( 'FraudProtectionSettingsPage', () => {
 			screen.queryByRole( 'link', { name: 'Learn more' } )
 		).not.toBeInTheDocument();
 	} );
+
+	it.each( [
+		[
+			false,
+			'Automatic protection is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+		],
+		[ true, 'Automatic protection is off. We recommend turning it on.' ],
+	] )(
+		'shows count-free copy when opted-out is %s and no attempts were flagged',
+		async ( optedOut, copy ) => {
+			mockedApiFetch.mockResolvedValueOnce(
+				settingsResponse( false, zeroPerformance, optedOut )
+			);
+			renderSettings();
+
+			expect( await screen.findByText( copy ) ).toBeVisible();
+			expect(
+				screen.queryByRole( 'link', { name: '0 checkout attempts' } )
+			).not.toBeInTheDocument();
+		}
+	);
 
 	it.each( [
 		[ 'inbox', '/?source=inbox' ],
@@ -513,7 +534,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			} );
 			await waitFor( () => {
 				expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-					'You have successfully opted out and automatic protection will stay off.',
+					'Automatic blocking stays off.',
 					{ type: 'snackbar' }
 				);
 			} );
@@ -536,7 +557,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		expect(
 			await findVisibleText(
-				'The fraud prevention setting could not be saved. Try again later.'
+				'We could not opt you out of automatic blocking. Try again later.'
 			)
 		).toBeVisible();
 		expect( optOut ).toBeEnabled();

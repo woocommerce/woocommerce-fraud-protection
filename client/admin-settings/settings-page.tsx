@@ -30,12 +30,14 @@ export function FraudProtectionSettingsPage() {
 			'The fraud prevention settings could not be loaded.',
 			'woocommerce-fraud-protection'
 		);
-	} else if (
-		error?.operation === 'save' ||
-		error?.operation === 'opt_out'
-	) {
+	} else if ( error?.operation === 'save' ) {
 		errorMessage = __(
 			'The fraud prevention setting could not be saved.',
+			'woocommerce-fraud-protection'
+		);
+	} else if ( error?.operation === 'opt_out' ) {
+		errorMessage = __(
+			'We could not opt you out of automatic blocking.',
 			'woocommerce-fraud-protection'
 		);
 	}

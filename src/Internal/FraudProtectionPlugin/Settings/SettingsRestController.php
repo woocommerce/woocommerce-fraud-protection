@@ -170,7 +170,7 @@ class SettingsRestController extends \WP_REST_Controller {
 		$source = 'inbox' === $request->get_param( 'source' ) ? 'inbox' : 'settings';
 
 		if ( ! $this->updater->opt_out( $source ) ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'We could not opt you out of automatic blocking.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
 		return rest_ensure_response( $this->get_setting_values() );

@@ -30,27 +30,40 @@ export function AutomaticProtectionCard( {
 }: AutomaticProtectionCardProps ) {
 	const [ isNoticeDismissed, setIsNoticeDismissed ] = useState( false );
 	const showNotice = ! isLoading && ! checked && ! isNoticeDismissed;
-	const noticeText = optedOut
-		? sprintf(
-				/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
-				_n(
-					'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic protection is off. Turning it on is recommended.',
-					'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic protection is off. Turning it on is recommended.',
-					recommendedForBlockingCount,
+	let noticeText: string;
+	if ( 0 === recommendedForBlockingCount ) {
+		noticeText = optedOut
+			? __(
+					'Automatic protection is off. We recommend turning it on.',
 					'woocommerce-fraud-protection'
-				),
-				recommendedForBlockingCount
-		  )
-		: sprintf(
-				/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
-				_n(
-					'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
-					'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
-					recommendedForBlockingCount,
+			  )
+			: __(
+					'Automatic protection is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 					'woocommerce-fraud-protection'
-				),
-				recommendedForBlockingCount
-		  );
+			  );
+	} else if ( optedOut ) {
+		noticeText = sprintf(
+			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
+			_n(
+				'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
+				'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
+				recommendedForBlockingCount,
+				'woocommerce-fraud-protection'
+			),
+			recommendedForBlockingCount
+		);
+	} else {
+		noticeText = sprintf(
+			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
+			_n(
+				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+				recommendedForBlockingCount,
+				'woocommerce-fraud-protection'
+			),
+			recommendedForBlockingCount
+		);
+	}
 
 	return (
 		<Card.Root

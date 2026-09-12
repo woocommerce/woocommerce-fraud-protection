@@ -195,6 +195,18 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox An opt-out storage failure returns its specific error.
+	 */
+	public function test_opt_out_storage_failure_returns_specific_error(): void {
+		add_filter( 'pre_update_option_' . self::OPTION_NAME, '__return_false' );
+
+		$response = $this->server->dispatch( $this->opt_out_request( 'settings' ) );
+
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertSame( 'We could not opt you out of automatic blocking.', $response->get_data()['message'] );
+	}
+
+	/**
 	 * @testdox An opt-out stores both values, and later enablement preserves the marker.
 	 */
 	public function test_opt_out_stores_values_and_later_enablement_preserves_marker(): void {
