@@ -35,6 +35,22 @@ class AutomaticProtectionEarlyAccessNote {
 				add_action( $hook . $option, array( $this, 'update_note' ) );
 			}
 		}
+		add_action( 'delete_option_woocommerce_fraud_protection_automatic_protection_opted_out_at', array( $this, 'reset_dismissed_note' ) );
+	}
+
+	/**
+	 * Delete the dismissed invitation when the opt-out is reset.
+	 *
+	 * @internal
+	 */
+	public function reset_dismissed_note(): void {
+		try {
+			if ( self::is_applicable() ) {
+				self::possibly_delete_note();
+			}
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log( 'warning', 'Failed to reset automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
+		}
 	}
 
 	/**

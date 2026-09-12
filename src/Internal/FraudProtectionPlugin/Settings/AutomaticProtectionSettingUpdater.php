@@ -109,13 +109,14 @@ class AutomaticProtectionSettingUpdater {
 			return false;
 		}
 
-		$before = $this->setting->get_status();
+		$before        = $this->setting->get_status();
+		$was_opted_out = $this->setting->is_opted_out();
 		if ( ! $this->setting->reset() ) {
 			return false;
 		}
 
 		$after = $this->setting->get_status();
-		if ( $before !== $after ) {
+		if ( $before !== $after || $was_opted_out ) {
 			$this->telemetry->record_automatic_protection_change( AutomaticProtectionChange::Reset, $channel );
 		}
 

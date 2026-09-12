@@ -103,6 +103,23 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
+	 * @testdox Resetting an opt-out allows the invitation to return.
+	 */
+	public function test_resetting_opt_out_allows_note_to_return(): void {
+		$this->sut->maybe_add_note();
+		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+		$setting->set_opted_out();
+
+		$this->assertTrue( $setting->reset() );
+		$this->assertCount( 0, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+
+		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertInstanceOf( Note::class, $note );
+		$this->assertFalse( $note->get_is_deleted() );
+	}
+
+	/**
 	 * @testdox Eligibility changes delete active invitations and allow one new invitation.
 	 */
 	public function test_eligibility_controls_stored_note(): void {

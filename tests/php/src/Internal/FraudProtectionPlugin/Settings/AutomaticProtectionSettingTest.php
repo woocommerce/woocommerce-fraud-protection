@@ -130,12 +130,15 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Reset removes an explicit value.
+	 * @testdox Reset removes the explicit value and opt-out date.
 	 */
 	public function test_reset_deletes_value(): void {
 		$this->sut->set_enabled( false );
+		$this->sut->set_opted_out();
 
 		$this->assertTrue( $this->sut->reset() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
+		$this->assertNull( get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) );
+		$this->assertFalse( $this->sut->is_opted_out() );
 	}
 }

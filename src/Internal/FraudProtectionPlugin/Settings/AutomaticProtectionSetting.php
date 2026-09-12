@@ -106,13 +106,15 @@ class AutomaticProtectionSetting {
 	}
 
 	/**
-	 * Delete the stored state.
+	 * Delete the stored state and opt-out date.
 	 *
 	 * @return bool Whether the state is absent.
 	 */
 	public function reset(): bool {
 		delete_option( self::OPTION_NAME );
+		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
 
-		return null === get_option( self::OPTION_NAME, null );
+		return null === get_option( self::OPTION_NAME, null )
+			&& null === get_option( self::OPT_OUT_DATE_OPTION_NAME, null );
 	}
 }
