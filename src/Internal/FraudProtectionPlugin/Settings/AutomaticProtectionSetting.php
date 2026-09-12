@@ -58,6 +58,17 @@ class AutomaticProtectionSetting {
 	}
 
 	/**
+	 * Get the stored automatic-enrollment opt-out date.
+	 *
+	 * @return string|null The UTC date, or null when unavailable.
+	 */
+	public function get_opted_out_at(): ?string {
+		$value = get_option( self::OPT_OUT_DATE_OPTION_NAME, null );
+
+		return is_string( $value ) && '' !== $value ? $value : null;
+	}
+
+	/**
 	 * Get the source of the current setting state.
 	 */
 	public function get_source(): AutomaticProtectionSource {

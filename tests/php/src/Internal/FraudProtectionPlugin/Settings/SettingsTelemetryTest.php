@@ -86,6 +86,7 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'default_disabled', $plugin['merchant_facing_features_status'] );
 		$this->assertSame( 'default_disabled', $plugin['automatic_protection_status'] );
 		$this->assertSame( 'none', $plugin['automatic_protection_source'] );
+		$this->assertNull( $plugin['automatic_protection_opted_out_at'] );
 	}
 
 	/**
@@ -144,19 +145,20 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	 */
 	public function malformed_tracker_data_provider(): array {
 		$plugin = array(
-			'merchant_facing_features_status' => 'default_disabled',
-			'automatic_protection_status'     => 'default_disabled',
-			'automatic_protection_source'     => 'none',
-			'automatic_blocks_suppressed_30d' => 0,
-			'automatic_blocks_applied_30d'    => 0,
-			'allow_rule_matches_30d'          => 0,
-			'block_rule_matches_30d'          => 0,
-			'sessions_total_30d'              => 0,
-			'automatic_allows_applied_30d'    => 0,
-			'verify_errors_30d'               => 0,
-			'requests_rejected_30d'           => 0,
-			'allow_rules_total'               => 0,
-			'block_rules_total'               => 0,
+			'merchant_facing_features_status'   => 'default_disabled',
+			'automatic_protection_status'       => 'default_disabled',
+			'automatic_protection_source'       => 'none',
+			'automatic_protection_opted_out_at' => null,
+			'automatic_blocks_suppressed_30d'   => 0,
+			'automatic_blocks_applied_30d'      => 0,
+			'allow_rule_matches_30d'            => 0,
+			'block_rule_matches_30d'            => 0,
+			'sessions_total_30d'                => 0,
+			'automatic_allows_applied_30d'      => 0,
+			'verify_errors_30d'                 => 0,
+			'requests_rejected_30d'             => 0,
+			'allow_rules_total'                 => 0,
+			'block_rules_total'                 => 0,
 		);
 
 		return array(
@@ -211,6 +213,21 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( $expected_status, $plugin['automatic_protection_status'] );
 		$this->assertSame( $expected_source, $plugin['automatic_protection_source'] );
+	}
+
+	/**
+	 * @testdox Tracker data reports the automatic-protection opt-out date.
+	 */
+	public function test_tracker_reports_opt_out_date(): void {
+		$this->stub_default_tracker_counts();
+		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Disabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
+		$this->automatic_protection->method( 'get_opted_out_at' )->willReturn( '2026-09-11 12:00:00' );
+
+		$plugin = $this->sut->add_tracker_data( array() )['extensions']['woocommerce_fraud_protection'];
+
+		$this->assertSame( '2026-09-11 12:00:00', $plugin['automatic_protection_opted_out_at'] );
 	}
 
 	/**

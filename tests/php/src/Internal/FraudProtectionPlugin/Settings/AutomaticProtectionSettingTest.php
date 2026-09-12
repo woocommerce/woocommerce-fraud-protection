@@ -53,6 +53,7 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $this->sut->is_enabled() );
 		$this->assertSame( AutomaticProtectionSource::None, $this->sut->get_source() );
 		$this->assertFalse( $this->sut->is_opted_out() );
+		$this->assertNull( $this->sut->get_opted_out_at() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
 		$this->assertNull( get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) );
 	}
@@ -116,6 +117,7 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 
 		$stored_date = get_option( self::OPT_OUT_DATE_OPTION_NAME );
 		$this->assertIsString( $stored_date );
+		$this->assertSame( $stored_date, $this->sut->get_opted_out_at() );
 		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $stored_date );
 		$stored_timestamp = strtotime( $stored_date . ' UTC' );
 		$this->assertGreaterThanOrEqual( $before, $stored_timestamp );

@@ -124,9 +124,10 @@ class SettingsTelemetry {
 		$extensions = is_array( $data['extensions'] ?? null ) ? $data['extensions'] : array();
 		$plugin     = is_array( $extensions['woocommerce_fraud_protection'] ?? null ) ? $extensions['woocommerce_fraud_protection'] : array();
 
-		$plugin['merchant_facing_features_status'] = $this->merchant_facing_features_gate->get_status()->value;
-		$plugin['automatic_protection_status']     = $this->automatic_protection->get_status()->value;
-		$plugin['automatic_protection_source']     = $this->automatic_protection->get_source()->value;
+		$plugin['merchant_facing_features_status']   = $this->merchant_facing_features_gate->get_status()->value;
+		$plugin['automatic_protection_status']       = $this->automatic_protection->get_status()->value;
+		$plugin['automatic_protection_source']       = $this->automatic_protection->get_source()->value;
+		$plugin['automatic_protection_opted_out_at'] = $this->automatic_protection->get_opted_out_at();
 
 		try {
 			$performance                               = $this->session_event_store->get_performance_counts();
