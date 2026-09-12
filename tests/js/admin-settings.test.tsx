@@ -461,16 +461,25 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).not.toBeInTheDocument();
 	} );
 
-	it( 'hides the opt-out notice after an opt-out is stored', async () => {
+	it( 'shows the automatic-protection recommendation after an opt-out is stored', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, zeroPerformance, true )
+			settingsResponse( false, performanceWithRecommended( 12 ), true )
 		);
 		renderSettings();
-		await screen.findByRole( 'checkbox' );
+
+		const countLink = await screen.findByRole( 'link', {
+			name: '12 checkout attempts',
+		} );
+		expect( countLink.parentElement ).toHaveTextContent(
+			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic protection is off. Turning it on is recommended.'
+		);
 		expect(
 			screen.queryByRole( 'button', {
 				name: 'Opt out of automatic blocking',
 			} )
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'link', { name: 'Learn more' } )
 		).not.toBeInTheDocument();
 	} );
 
@@ -504,7 +513,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			} );
 			await waitFor( () => {
 				expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-					'You have successfully opted out and automatic protection will stay off',
+					'You have successfully opted out and automatic protection will stay off.',
 					{ type: 'snackbar' }
 				);
 			} );

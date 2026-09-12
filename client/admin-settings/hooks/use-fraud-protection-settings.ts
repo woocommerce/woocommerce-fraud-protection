@@ -53,7 +53,7 @@ export function useFraudProtectionSettings() {
 		if ( didOptOut ) {
 			createSuccessNotice(
 				__(
-					'You have successfully opted out and automatic protection will stay off',
+					'You have successfully opted out and automatic protection will stay off.',
 					'woocommerce-fraud-protection'
 				),
 				{ type: 'snackbar' }
