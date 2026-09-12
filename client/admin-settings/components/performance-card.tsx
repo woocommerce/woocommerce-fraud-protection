@@ -112,12 +112,15 @@ export function PerformanceCard( {
 										render={ <dd /> }
 									>
 										{ metric.key ===
-											'flagged_by_fraud_prevention' && (
-											<Icon
-												className="wc-fraud-protection-settings__performance-caution-icon"
-												icon={ caution }
-											/>
-										) }
+											'flagged_by_fraud_prevention' &&
+											! isLoading &&
+											( performance?.[ metric.key ] ??
+												0 ) > 0 && (
+												<Icon
+													className="wc-fraud-protection-settings__performance-caution-icon"
+													icon={ caution }
+												/>
+											) }
 										{ isLoading ? (
 											<Skeleton className="wc-fraud-protection-settings__performance-skeleton" />
 										) : (

@@ -151,6 +151,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 				'.wc-fraud-protection-settings__performance-skeleton'
 			)
 		).toHaveLength( 4 );
+		expect(
+			performanceCard?.querySelector(
+				'.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).not.toBeInTheDocument();
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
 			screen.getByRole( 'heading', { name: 'Automatic protection' } )
@@ -178,6 +183,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.queryByRole( 'presentation' ) ).not.toBeInTheDocument();
 		expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
 		expect( screen.getAllByText( '0' ) ).toHaveLength( 4 );
+		expect(
+			performanceCard?.querySelector(
+				'.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'loads the enabled value', async () => {
