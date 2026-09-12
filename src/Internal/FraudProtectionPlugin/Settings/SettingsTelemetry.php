@@ -131,7 +131,7 @@ class SettingsTelemetry {
 
 		try {
 			$performance                               = $this->session_event_store->get_performance_counts();
-			$plugin['automatic_blocks_suppressed_30d'] = $performance['recommended_for_blocking'];
+			$plugin['automatic_blocks_suppressed_30d'] = $performance['flagged_by_fraud_prevention'];
 			$plugin['automatic_blocks_applied_30d']    = $performance['blocked_automatically'];
 			$plugin['allow_rule_matches_30d']          = $performance['allowed_by_rules'];
 			$plugin['block_rule_matches_30d']          = $performance['blocked_by_rules'];

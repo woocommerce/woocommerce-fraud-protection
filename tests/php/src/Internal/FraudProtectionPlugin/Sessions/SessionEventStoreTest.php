@@ -233,10 +233,10 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_performance_counts_return_zeroes_without_events(): void {
 		$expected = array(
-			'recommended_for_blocking' => 0,
-			'blocked_automatically'    => 0,
-			'allowed_by_rules'         => 0,
-			'blocked_by_rules'         => 0,
+			'flagged_by_fraud_prevention' => 0,
+			'blocked_automatically'       => 0,
+			'allowed_by_rules'            => 0,
+			'blocked_by_rules'            => 0,
 		);
 
 		$this->assertSame(
@@ -253,11 +253,11 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		global $wpdb;
 
 		$cached_counts = array(
-			'recommended_for_blocking' => 12,
-			'blocked_automatically'    => 3,
-			'allowed_by_rules'         => 4,
-			'blocked_by_rules'         => 5,
-			'unapproved_value'         => 6,
+			'flagged_by_fraud_prevention' => 12,
+			'blocked_automatically'       => 3,
+			'allowed_by_rules'            => 4,
+			'blocked_by_rules'            => 5,
+			'unapproved_value'            => 6,
 		);
 		$expected      = array_diff_key( $cached_counts, array( 'unapproved_value' => true ) );
 		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, $cached_counts, 5 * MINUTE_IN_SECONDS );
@@ -281,16 +281,16 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		set_transient(
 			self::PERFORMANCE_COUNTS_TRANSIENT,
 			array(
-				'recommended_for_blocking' => '12',
+				'flagged_by_fraud_prevention' => '12',
 			),
 			5 * MINUTE_IN_SECONDS
 		);
 
 		$expected = array(
-			'recommended_for_blocking' => 0,
-			'blocked_automatically'    => 0,
-			'allowed_by_rules'         => 0,
-			'blocked_by_rules'         => 0,
+			'flagged_by_fraud_prevention' => 0,
+			'blocked_automatically'       => 0,
+			'allowed_by_rules'            => 0,
+			'blocked_by_rules'            => 0,
 		);
 
 		$this->assertSame( $expected, $this->sut->get_performance_counts() );
@@ -367,10 +367,10 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'recommended_for_blocking' => 2,
-				'blocked_automatically'    => 2,
-				'allowed_by_rules'         => 1,
-				'blocked_by_rules'         => 1,
+				'flagged_by_fraud_prevention' => 2,
+				'blocked_automatically'       => 2,
+				'allowed_by_rules'            => 1,
+				'blocked_by_rules'            => 1,
 			),
 			$this->sut->get_performance_counts()
 		);

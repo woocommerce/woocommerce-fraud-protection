@@ -129,19 +129,19 @@ class SessionEventStore {
 	/**
 	 * Count performance outcomes recorded during the previous 30 days.
 	 *
-	 * @return array{recommended_for_blocking: int, blocked_automatically: int, allowed_by_rules: int, blocked_by_rules: int}
+	 * @return array{flagged_by_fraud_prevention: int, blocked_automatically: int, allowed_by_rules: int, blocked_by_rules: int}
 	 * @throws \RuntimeException When the aggregate query fails.
 	 */
 	public function get_performance_counts(): array {
 		global $wpdb;
 
 		$cached_counts = get_transient( self::PERFORMANCE_COUNTS_TRANSIENT );
-		if ( $this->has_valid_cached_counts( $cached_counts, array( 'recommended_for_blocking', 'blocked_automatically', 'allowed_by_rules', 'blocked_by_rules' ) ) ) {
+		if ( $this->has_valid_cached_counts( $cached_counts, array( 'flagged_by_fraud_prevention', 'blocked_automatically', 'allowed_by_rules', 'blocked_by_rules' ) ) ) {
 			return array(
-				'recommended_for_blocking' => $cached_counts['recommended_for_blocking'],
-				'blocked_automatically'    => $cached_counts['blocked_automatically'],
-				'allowed_by_rules'         => $cached_counts['allowed_by_rules'],
-				'blocked_by_rules'         => $cached_counts['blocked_by_rules'],
+				'flagged_by_fraud_prevention' => $cached_counts['flagged_by_fraud_prevention'],
+				'blocked_automatically'       => $cached_counts['blocked_automatically'],
+				'allowed_by_rules'            => $cached_counts['allowed_by_rules'],
+				'blocked_by_rules'            => $cached_counts['blocked_by_rules'],
 			);
 		}
 
@@ -149,7 +149,7 @@ class SessionEventStore {
 		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
 
 		$sql = "SELECT
-			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS recommended_for_blocking,
+			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS flagged_by_fraud_prevention,
 			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS blocked_automatically,
 			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS allowed_by_rules,
 			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS blocked_by_rules
@@ -178,10 +178,10 @@ class SessionEventStore {
 		}
 
 		$performance_counts = array(
-			'recommended_for_blocking' => (int) $counts['recommended_for_blocking'],
-			'blocked_automatically'    => (int) $counts['blocked_automatically'],
-			'allowed_by_rules'         => (int) $counts['allowed_by_rules'],
-			'blocked_by_rules'         => (int) $counts['blocked_by_rules'],
+			'flagged_by_fraud_prevention' => (int) $counts['flagged_by_fraud_prevention'],
+			'blocked_automatically'       => (int) $counts['blocked_automatically'],
+			'allowed_by_rules'            => (int) $counts['allowed_by_rules'],
+			'blocked_by_rules'            => (int) $counts['blocked_by_rules'],
 		);
 
 		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, $performance_counts, self::PERFORMANCE_COUNTS_CACHE_TTL );
