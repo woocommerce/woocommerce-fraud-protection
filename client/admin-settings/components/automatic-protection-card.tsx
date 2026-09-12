@@ -14,6 +14,7 @@ type AutomaticProtectionCardProps = {
 	onOptOut: () => void;
 	optedOut: boolean;
 	flaggedByFraudPreventionCount: number;
+	savedAutomaticProtection: boolean | null;
 };
 
 const checkoutAttemptsHref = getFraudProtectionRoute( '/checkout-attempts' );
@@ -27,9 +28,13 @@ export function AutomaticProtectionCard( {
 	onOptOut,
 	optedOut,
 	flaggedByFraudPreventionCount,
+	savedAutomaticProtection,
 }: AutomaticProtectionCardProps ) {
 	const [ isNoticeDismissed, setIsNoticeDismissed ] = useState( false );
-	const showNotice = ! isLoading && ! checked && ! isNoticeDismissed;
+	const showNotice =
+		! isLoading &&
+		savedAutomaticProtection === false &&
+		! isNoticeDismissed;
 	let noticeText: string;
 	if ( 0 === flaggedByFraudPreventionCount ) {
 		noticeText = optedOut

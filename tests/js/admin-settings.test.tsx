@@ -361,6 +361,17 @@ describe( 'FraudProtectionSettingsPage', () => {
 			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
 		);
 		await userEvent.click( checkbox );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' ) as HTMLElement;
+		expect(
+			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).toBeInTheDocument();
 		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
 		await waitFor( () => {
@@ -382,6 +393,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.getByText( '3' ) ).toBeInTheDocument();
 		expect( screen.getByText( '4' ) ).toBeInTheDocument();
 		expect( screen.getByText( '5' ) ).toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'keeps the controls disabled while a changed value is saving', async () => {
@@ -424,7 +440,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 	it( 'shows an inline Notice when saving fails', async () => {
 		mockedApiFetch
-			.mockResolvedValueOnce( settingsResponse( true ) )
+			.mockResolvedValueOnce(
+				settingsResponse( true, performanceWithFlagged( 12 ) )
+			)
 			.mockRejectedValueOnce( new Error( 'Try again later.' ) )
 			.mockResolvedValueOnce( {
 				automatic_protection: false,
@@ -437,6 +455,19 @@ describe( 'FraudProtectionSettingsPage', () => {
 			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
 		);
 		await userEvent.click( checkbox );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' ) as HTMLElement;
+		expect(
+			within( performanceCard ).queryByText(
+				'Flagged by fraud prevention'
+			)
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		await userEvent.click( save );
 
@@ -447,6 +478,16 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toBeVisible();
 		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		expect( save ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect(
+			within( performanceCard ).queryByText(
+				'Flagged by fraud prevention'
+			)
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 		await userEvent.click( save );
 
 		await waitFor( () => {
@@ -460,6 +501,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
 		} );
+		expect(
+			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).toBeInTheDocument();
 		expect(
 			screen
 				.queryAllByText(

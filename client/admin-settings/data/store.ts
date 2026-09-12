@@ -215,6 +215,9 @@ const selectors = {
 	getSettings( state: State ): Settings | null {
 		return state.current;
 	},
+	getSavedSettings( state: State ): Settings | null {
+		return state.saved;
+	},
 	getError( state: State ): SettingsError {
 		return state.error;
 	},

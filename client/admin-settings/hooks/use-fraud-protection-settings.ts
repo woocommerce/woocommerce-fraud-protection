@@ -18,6 +18,7 @@ export function useFraudProtectionSettings() {
 			isSaving: store.isSaving(),
 			isOptingOut: store.isOptingOut(),
 			performance: store.getPerformance(),
+			savedSettings: store.getSavedSettings(),
 			settings,
 		};
 	}, [] );
