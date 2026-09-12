@@ -17,6 +17,7 @@ export function FraudProtectionSettingsPage() {
 		optOut,
 		performance,
 		save,
+		savedSettings,
 		settings,
 		setAutomaticProtection,
 	} = useFraudProtectionSettings();
@@ -67,11 +68,17 @@ export function FraudProtectionSettingsPage() {
 				onChange={ setAutomaticProtection }
 				onOptOut={ optOut }
 				optedOut={ settings?.automatic_protection_opted_out ?? true }
-				recommendedForBlockingCount={
-					performance?.recommended_for_blocking ?? 0
+				flaggedByFraudPreventionCount={
+					performance?.flagged_by_fraud_prevention ?? 0
+				}
+				savedAutomaticProtection={
+					savedSettings?.automatic_protection ?? null
 				}
 			/>
 			<PerformanceCard
+				automaticProtection={
+					savedSettings?.automatic_protection ?? false
+				}
 				isLoading={ isLoading }
 				performance={ performance }
 			/>

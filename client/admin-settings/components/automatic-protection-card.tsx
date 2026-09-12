@@ -13,7 +13,8 @@ type AutomaticProtectionCardProps = {
 	onChange: ( value: boolean ) => void;
 	onOptOut: () => void;
 	optedOut: boolean;
-	recommendedForBlockingCount: number;
+	flaggedByFraudPreventionCount: number;
+	savedAutomaticProtection: boolean | null;
 };
 
 const checkoutAttemptsHref = getFraudProtectionRoute( '/checkout-attempts' );
@@ -26,12 +27,16 @@ export function AutomaticProtectionCard( {
 	onChange,
 	onOptOut,
 	optedOut,
-	recommendedForBlockingCount,
+	flaggedByFraudPreventionCount,
+	savedAutomaticProtection,
 }: AutomaticProtectionCardProps ) {
 	const [ isNoticeDismissed, setIsNoticeDismissed ] = useState( false );
-	const showNotice = ! isLoading && ! checked && ! isNoticeDismissed;
+	const showNotice =
+		! isLoading &&
+		savedAutomaticProtection === false &&
+		! isNoticeDismissed;
 	let noticeText: string;
-	if ( 0 === recommendedForBlockingCount ) {
+	if ( 0 === flaggedByFraudPreventionCount ) {
 		noticeText = optedOut
 			? __(
 					'Automatic protection is off. We recommend turning it on.',
@@ -47,10 +52,10 @@ export function AutomaticProtectionCard( {
 			_n(
 				'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
 				'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
-				recommendedForBlockingCount,
+				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
-			recommendedForBlockingCount
+			flaggedByFraudPreventionCount
 		);
 	} else {
 		noticeText = sprintf(
@@ -58,10 +63,10 @@ export function AutomaticProtectionCard( {
 			_n(
 				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
-				recommendedForBlockingCount,
+				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
-			recommendedForBlockingCount
+			flaggedByFraudPreventionCount
 		);
 	}
 

@@ -40,7 +40,7 @@ const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 const settingsResponse = {
 	automatic_protection: false,
 	performance: {
-		recommended_for_blocking: 0,
+		flagged_by_fraud_prevention: 0,
 		blocked_automatically: 0,
 		allowed_by_rules: 0,
 		blocked_by_rules: 0,
@@ -83,7 +83,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		await userEvent.click(
 			await screen.findByRole( 'link', {
-				name: 'View checkout attempts',
+				name: 'View checkout sessions',
 			} )
 		);
 
@@ -129,7 +129,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		await userEvent.click( checkbox );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+			screen.getByRole( 'link', { name: 'View checkout sessions' } )
 		);
 
 		expect( confirm ).toHaveBeenCalledTimes( 1 );
@@ -140,7 +140,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		).not.toHaveAttribute( 'aria-disabled', 'true' );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+			screen.getByRole( 'link', { name: 'View checkout sessions' } )
 		);
 		expect( confirm ).toHaveBeenCalledTimes( 2 );
 		expect( mockHistory.location.pathname ).toBe( '/' );
@@ -152,7 +152,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		await userEvent.click( await screen.findByRole( 'checkbox' ) );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+			screen.getByRole( 'link', { name: 'View checkout sessions' } )
 		);
 
 		expect( window.confirm ).toHaveBeenCalledTimes( 1 );
@@ -178,7 +178,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		await userEvent.click(
 			await screen.findByRole( 'link', {
-				name: 'View checkout attempts',
+				name: 'View checkout sessions',
 			} )
 		);
 		await userEvent.click( screen.getByRole( 'link', { name: 'Back' } ) );

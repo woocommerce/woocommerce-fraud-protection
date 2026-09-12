@@ -253,10 +253,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
 		$this->session_event_store->method( 'get_performance_counts' )->willReturn(
 			array(
-				'recommended_for_blocking' => 11,
-				'blocked_automatically'    => 12,
-				'allowed_by_rules'         => 13,
-				'blocked_by_rules'         => 14,
+				'flagged_by_fraud_prevention' => 11,
+				'blocked_automatically'       => 12,
+				'allowed_by_rules'            => 13,
+				'blocked_by_rules'            => 14,
 			)
 		);
 		$this->session_event_store->method( 'get_tracker_counts' )->willReturn(
@@ -307,10 +307,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 		} else {
 			$performance->willReturn(
 				array(
-					'recommended_for_blocking' => 11,
-					'blocked_automatically'    => 12,
-					'allowed_by_rules'         => 13,
-					'blocked_by_rules'         => 14,
+					'flagged_by_fraud_prevention' => 11,
+					'blocked_automatically'       => 12,
+					'allowed_by_rules'            => 13,
+					'blocked_by_rules'            => 14,
 				)
 			);
 		}
@@ -686,10 +686,10 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	private function stub_default_tracker_counts(): void {
 		$this->session_event_store->method( 'get_performance_counts' )->willReturn(
 			array(
-				'recommended_for_blocking' => 0,
-				'blocked_automatically'    => 0,
-				'allowed_by_rules'         => 0,
-				'blocked_by_rules'         => 0,
+				'flagged_by_fraud_prevention' => 0,
+				'blocked_automatically'       => 0,
+				'allowed_by_rules'            => 0,
+				'blocked_by_rules'            => 0,
 			)
 		);
 		$this->session_event_store->method( 'get_tracker_counts' )->willReturn(
