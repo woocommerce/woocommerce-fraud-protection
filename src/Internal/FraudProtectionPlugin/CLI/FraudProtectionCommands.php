@@ -202,6 +202,8 @@ class FraudProtectionCommands {
 		$this->write_line( __( 'Merchant-facing features status', 'woocommerce-fraud-protection' ), $this->merchant_facing_features_gate->get_status()->value );
 		$this->write_line( __( 'Automatic protection status', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_status()->value );
 		$this->write_line( __( 'Automatic protection source', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_source()->value );
+		$opted_out_at = $this->automatic_protection->get_opted_out_at();
+		$this->write_line( __( 'Automatic protection opted out at', 'woocommerce-fraud-protection' ), null === $opted_out_at ? __( 'Not opted out', 'woocommerce-fraud-protection' ) : $opted_out_at . ' UTC' );
 		$this->write_line( __( 'Jetpack blog ID', 'woocommerce-fraud-protection' ), self::value_or_unavailable( $this->get_jetpack_blog_id() ) );
 		$this->write_line( __( 'Required schema version', 'woocommerce-fraud-protection' ), (string) $schema_status['required_version'] );
 		$this->write_line( __( 'Installed schema version', 'woocommerce-fraud-protection' ), (string) $schema_status['installed_version'] );

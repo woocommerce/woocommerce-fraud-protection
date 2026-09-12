@@ -290,6 +290,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( 'Merchant-facing features status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic protection status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic protection source: none', $output );
+		$this->assertStringContainsString( 'Automatic protection opted out at: Not opted out', $output );
 		$this->assertStringNotContainsString( 'code default', $output );
 		$this->assertStringNotContainsString( 'stored state', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
@@ -324,6 +325,22 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Merchant-facing features status: enabled', $output );
+	}
+
+	/**
+	 * @testdox Status reports the automatic-protection opt-out date.
+	 */
+	public function test_status_reports_automatic_protection_opt_out(): void {
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::Enabled );
+		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::Disabled );
+		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::Manual );
+		$this->automatic_protection->method( 'get_opted_out_at' )->willReturn( '2026-09-11 12:00:00' );
+
+		$this->sut->status();
+
+		$this->assertContains( 'Automatic protection opted out at: 2026-09-11 12:00:00 UTC', $this->wp_cli_lines );
 	}
 
 	/**
@@ -469,6 +486,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->merchant_facing_features_gate->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_status' )->willReturn( SettingStatus::DefaultDisabled );
 		$this->automatic_protection->method( 'get_source' )->willReturn( AutomaticProtectionSource::None );
+		$this->automatic_protection->method( 'get_opted_out_at' )->willReturn( null );
 	}
 
 	/**

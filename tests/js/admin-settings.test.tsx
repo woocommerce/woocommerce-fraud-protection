@@ -1,5 +1,12 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -64,10 +71,17 @@ const zeroPerformance: Performance = {
 
 const settingsResponse = (
 	automaticProtection: boolean,
-	performance: Performance = zeroPerformance
+	performance: Performance = zeroPerformance,
+	optedOut = false
 ) => ( {
 	automatic_protection: automaticProtection,
+	automatic_protection_opted_out: optedOut,
 	performance,
+} );
+
+const performanceWithRecommended = ( recommendedForBlocking: number ) => ( {
+	...zeroPerformance,
+	recommended_for_blocking: recommendedForBlocking,
 } );
 
 const findVisibleText = async ( text: string ) => {
@@ -99,6 +113,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockedApiFetch.mockReset();
 		mockCreateSuccessNotice.mockReset();
 		mockSettingsHistory.block.mockClear();
+		window.history.replaceState( {}, '', '/' );
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
@@ -244,6 +259,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 		const performanceCard = screen
 			.getByRole( 'heading', { name: 'Performance' } )
 			.closest( 'section' );
@@ -274,7 +294,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 					blocked_by_rules: 5,
 				} )
 			)
-			.mockResolvedValueOnce( { automatic_protection: true } );
+			.mockResolvedValueOnce( {
+				automatic_protection: true,
+				automatic_protection_opted_out: false,
+			} );
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
@@ -308,12 +331,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 	it( 'keeps the controls disabled while a changed value is saving', async () => {
 		let resolveSave: ( response: {
 			automatic_protection: boolean;
+			automatic_protection_opted_out: boolean;
 		} ) => void = () => {};
-		const pendingSave = new Promise< { automatic_protection: boolean } >(
-			( resolve ) => {
-				resolveSave = resolve;
-			}
-		);
+		const pendingSave = new Promise< {
+			automatic_protection: boolean;
+			automatic_protection_opted_out: boolean;
+		} >( ( resolve ) => {
+			resolveSave = resolve;
+		} );
 		mockedApiFetch
 			.mockResolvedValueOnce( settingsResponse( false ) )
 			.mockReturnValueOnce( pendingSave );
@@ -332,7 +357,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 			expect( checkbox ).toHaveAttribute( 'aria-disabled', 'true' );
 		} );
 
-		resolveSave( { automatic_protection: true } );
+		resolveSave( {
+			automatic_protection: true,
+			automatic_protection_opted_out: false,
+		} );
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
 		} );
@@ -342,7 +370,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( settingsResponse( true ) )
 			.mockRejectedValueOnce( new Error( 'Try again later.' ) )
-			.mockResolvedValueOnce( { automatic_protection: false } );
+			.mockResolvedValueOnce( {
+				automatic_protection: false,
+				automatic_protection_opted_out: false,
+			} );
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
@@ -382,4 +413,158 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.filter( ( element ) => ! element.hasAttribute( 'aria-live' ) )
 		).toHaveLength( 0 );
 	} );
+
+	it.each< [ number, string ] >( [
+		[ 1, '1 checkout attempt' ],
+		[ 12, '12 checkout attempts' ],
+	] )( 'links the %s flagged attempt count', async ( count, label ) => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithRecommended( count ) )
+		);
+		renderSettings();
+
+		expect(
+			await screen.findByRole( 'link', { name: label } )
+		).toHaveAttribute(
+			'href',
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
+		);
+	} );
+
+	it( 'shows the opt-out actions and dismisses the notice', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithRecommended( 12 ) )
+		);
+		renderSettings();
+
+		expect(
+			await screen.findByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).toBeEnabled();
+		expect(
+			screen.getByRole( 'link', { name: 'Learn more' } )
+		).toHaveAttribute(
+			'href',
+			'https://woocommerce.com/document/fraud-protection/'
+		);
+
+		fireEvent.click(
+			screen.getByRole( 'button', {
+				name: 'Dismiss automatic protection notice',
+			} )
+		);
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
+	} );
+
+	it( 'shows the automatic-protection recommendation after an opt-out is stored', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithRecommended( 12 ), true )
+		);
+		renderSettings();
+
+		const countLink = await screen.findByRole( 'link', {
+			name: '12 checkout attempts',
+		} );
+		expect( countLink.parentElement ).toHaveTextContent(
+			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.'
+		);
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'link', { name: 'Learn more' } )
+		).not.toBeInTheDocument();
+	} );
+
+	it.each( [
+		[
+			false,
+			'Automatic protection is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+		],
+		[ true, 'Automatic protection is off. We recommend turning it on.' ],
+	] )(
+		'shows count-free copy when opted-out is %s and no attempts were flagged',
+		async ( optedOut, copy ) => {
+			mockedApiFetch.mockResolvedValueOnce(
+				settingsResponse( false, zeroPerformance, optedOut )
+			);
+			renderSettings();
+
+			expect( await screen.findByText( copy ) ).toBeVisible();
+			expect(
+				screen.queryByRole( 'link', { name: '0 checkout attempts' } )
+			).not.toBeInTheDocument();
+		}
+	);
+
+	it.each( [
+		[ 'inbox', '/?source=inbox' ],
+		[ 'settings', '/' ],
+	] )(
+		'stores a %s opt-out and queues the approved success message',
+		async ( source, path ) => {
+			window.history.replaceState( {}, '', path );
+			mockedApiFetch
+				.mockResolvedValueOnce( settingsResponse( false ) )
+				.mockResolvedValueOnce( {
+					automatic_protection: false,
+					automatic_protection_opted_out: true,
+				} );
+			renderSettings();
+
+			await userEvent.click(
+				await screen.findByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			);
+
+			await waitFor( () => {
+				expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+					path: '/wc-fraud-protection/v1/settings/opt-out',
+					method: 'POST',
+					data: { source },
+				} );
+			} );
+			await waitFor( () => {
+				expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+					'Automatic blocking stays off.',
+					{ type: 'snackbar' }
+				);
+			} );
+			expect(
+				screen.queryByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			).not.toBeInTheDocument();
+		}
+	);
+
+	it( 'keeps the opt-out available when the request fails', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( new Error( 'Try again later.' ) );
+		renderSettings();
+
+		const optOut = await findOptOutButton();
+		await userEvent.click( optOut );
+
+		expect(
+			await findVisibleText(
+				'We could not opt you out of automatic blocking. Try again later.'
+			)
+		).toBeVisible();
+		expect( optOut ).toBeEnabled();
+		expect( screen.getByRole( 'checkbox' ) ).toBeEnabled();
+		expect( mockCreateSuccessNotice ).not.toHaveBeenCalled();
+	} );
 } );
+
+const findOptOutButton = () =>
+	screen.findByRole( 'button', { name: 'Opt out of automatic blocking' } );

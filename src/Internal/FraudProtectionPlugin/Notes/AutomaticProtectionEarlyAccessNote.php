@@ -30,10 +30,26 @@ class AutomaticProtectionEarlyAccessNote {
 	 */
 	public function register(): void {
 		add_action( 'admin_init', array( $this, 'maybe_add_note' ) );
-		foreach ( array( 'woocommerce_fraud_protection_automatic_protection', 'woocommerce_fraud_protection_merchant_facing_features' ) as $option ) {
+		foreach ( array( 'woocommerce_fraud_protection_automatic_protection', 'woocommerce_fraud_protection_automatic_protection_opted_out_at', 'woocommerce_fraud_protection_merchant_facing_features' ) as $option ) {
 			foreach ( array( 'add_option_', 'update_option_', 'delete_option_' ) as $hook ) {
 				add_action( $hook . $option, array( $this, 'update_note' ) );
 			}
+		}
+		add_action( 'delete_option_woocommerce_fraud_protection_automatic_protection_opted_out_at', array( $this, 'reset_dismissed_note' ) );
+	}
+
+	/**
+	 * Delete the dismissed invitation when the opt-out is reset.
+	 *
+	 * @internal
+	 */
+	public function reset_dismissed_note(): void {
+		try {
+			if ( self::is_applicable() ) {
+				self::possibly_delete_note();
+			}
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log( 'warning', 'Failed to reset automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
 		}
 	}
 
@@ -61,10 +77,20 @@ class AutomaticProtectionEarlyAccessNote {
 	 */
 	public function update_note(): void {
 		try {
-			if ( wc_get_container()->get( AutomaticProtectionSetting::class )->is_enabled() ) {
+			$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+			if ( $setting->is_enabled() ) {
 				$note = Notes::get_note_by_name( self::NOTE_NAME );
 				if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
 					$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
+					$note->save();
+				}
+				return;
+			}
+
+			if ( $setting->is_opted_out() ) {
+				$note = Notes::get_note_by_name( self::NOTE_NAME );
+				if ( $note instanceof Note && ! $note->get_is_deleted() ) {
+					$note->set_is_deleted( true );
 					$note->save();
 				}
 				return;
@@ -82,7 +108,8 @@ class AutomaticProtectionEarlyAccessNote {
 	public static function is_applicable(): bool {
 		$container = wc_get_container();
 		return $container->get( MerchantFacingFeaturesGate::class )->is_enabled()
-			&& ! $container->get( AutomaticProtectionSetting::class )->is_enabled();
+			&& ! $container->get( AutomaticProtectionSetting::class )->is_enabled()
+			&& ! $container->get( AutomaticProtectionSetting::class )->is_opted_out();
 	}
 
 	/**

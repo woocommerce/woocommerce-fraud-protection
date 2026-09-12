@@ -18,7 +18,6 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacin
  * Tests the early-access Inbox invitation.
  */
 class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase {
-
 	/**
 	 * The System Under Test.
 	 *
@@ -48,6 +47,8 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 */
 	public function test_resetting_merchant_gate_removes_note(): void {
 		$this->sut->maybe_add_note();
+		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
 		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 	}
@@ -83,6 +84,39 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
 		$this->sut->maybe_add_note();
 		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	}
+
+	/**
+	 * @testdox Opting out dismisses the invitation and prevents another one.
+	 */
+	public function test_opt_out_dismisses_note_without_recreation(): void {
+		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertInstanceOf( Note::class, $note );
+
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_opted_out();
+
+		$reloaded = Notes::get_note( $note->get_id() );
+		$this->assertTrue( $reloaded->get_is_deleted() );
+		$this->sut->maybe_add_note();
+		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	}
+
+	/**
+	 * @testdox Resetting an opt-out allows the invitation to return.
+	 */
+	public function test_resetting_opt_out_allows_note_to_return(): void {
+		$this->sut->maybe_add_note();
+		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+		$setting->set_opted_out();
+
+		$this->assertTrue( $setting->reset() );
+		$this->assertCount( 0, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+
+		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertInstanceOf( Note::class, $note );
+		$this->assertFalse( $note->get_is_deleted() );
 	}
 
 	/**

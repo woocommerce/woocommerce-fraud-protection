@@ -16,12 +16,17 @@ export function useFraudProtectionSettings() {
 				store.isResolving( 'getSettings' ) ||
 				! store.hasFinishedResolution( 'getSettings' ),
 			isSaving: store.isSaving(),
+			isOptingOut: store.isOptingOut(),
 			performance: store.getPerformance(),
 			settings,
 		};
 	}, [] );
-	const { discardChanges, saveSettings, setAutomaticProtection } =
-		useDispatch( settingsStore );
+	const {
+		discardChanges,
+		requestOptOut,
+		saveSettings,
+		setAutomaticProtection,
+	} = useDispatch( settingsStore );
 	const { createSuccessNotice } = useDispatch( noticesStore );
 
 	const save = async () => {
@@ -37,9 +42,31 @@ export function useFraudProtectionSettings() {
 		return didSave;
 	};
 
+	const optOut = async () => {
+		const source =
+			'inbox' ===
+			new URLSearchParams( window.location.search ).get( 'source' )
+				? 'inbox'
+				: 'settings';
+		const didOptOut = await requestOptOut( source );
+
+		if ( didOptOut ) {
+			createSuccessNotice(
+				__(
+					'Automatic blocking stays off.',
+					'woocommerce-fraud-protection'
+				),
+				{ type: 'snackbar' }
+			);
+		}
+
+		return didOptOut;
+	};
+
 	return {
 		...state,
 		discardChanges,
+		optOut,
 		save,
 		setAutomaticProtection,
 	};

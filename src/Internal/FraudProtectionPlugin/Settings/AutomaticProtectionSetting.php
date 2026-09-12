@@ -14,7 +14,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class AutomaticProtectionSetting {
 
-	private const OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection';
+	private const OPTION_NAME              = 'woocommerce_fraud_protection_automatic_protection';
+	private const OPT_OUT_DATE_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_at';
 
 	/**
 	 * Get the setting status.
@@ -50,6 +51,24 @@ class AutomaticProtectionSetting {
 	}
 
 	/**
+	 * Check whether automatic enrollment was declined.
+	 */
+	public function is_opted_out(): bool {
+		return null !== get_option( self::OPT_OUT_DATE_OPTION_NAME, null );
+	}
+
+	/**
+	 * Get the stored automatic-enrollment opt-out date.
+	 *
+	 * @return string|null The UTC date, or null when unavailable.
+	 */
+	public function get_opted_out_at(): ?string {
+		$value = get_option( self::OPT_OUT_DATE_OPTION_NAME, null );
+
+		return is_string( $value ) && '' !== $value ? $value : null;
+	}
+
+	/**
 	 * Get the source of the current setting state.
 	 */
 	public function get_source(): AutomaticProtectionSource {
@@ -72,13 +91,30 @@ class AutomaticProtectionSetting {
 	}
 
 	/**
-	 * Delete the stored state.
+	 * Store the first automatic-enrollment opt-out date.
+	 *
+	 * @return bool|null True when created, false when already stored, or null on failure.
+	 */
+	public function set_opted_out(): ?bool {
+		$opted_out_at = gmdate( 'Y-m-d H:i:s' );
+		$created      = add_option( self::OPT_OUT_DATE_OPTION_NAME, $opted_out_at, '', false );
+		if ( $created ) {
+			return get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) === $opted_out_at ? true : null;
+		}
+
+		return $this->is_opted_out() ? false : null;
+	}
+
+	/**
+	 * Delete the stored state and opt-out date.
 	 *
 	 * @return bool Whether the state is absent.
 	 */
 	public function reset(): bool {
 		delete_option( self::OPTION_NAME );
+		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
 
-		return null === get_option( self::OPTION_NAME, null );
+		return null === get_option( self::OPTION_NAME, null )
+			&& null === get_option( self::OPT_OUT_DATE_OPTION_NAME, null );
 	}
 }
