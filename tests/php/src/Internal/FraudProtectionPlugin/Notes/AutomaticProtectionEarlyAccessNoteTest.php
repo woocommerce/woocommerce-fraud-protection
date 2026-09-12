@@ -87,17 +87,19 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox Opting out removes the invitation and prevents it from returning.
+	 * @testdox Opting out dismisses the invitation and prevents another one.
 	 */
-	public function test_opted_out_stores_do_not_receive_note(): void {
+	public function test_opt_out_dismisses_note_without_recreation(): void {
 		$this->sut->maybe_add_note();
-		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertInstanceOf( Note::class, $note );
 
 		wc_get_container()->get( AutomaticProtectionSetting::class )->set_opted_out();
 
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+		$reloaded = Notes::get_note( $note->get_id() );
+		$this->assertTrue( $reloaded->get_is_deleted() );
 		$this->sut->maybe_add_note();
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 	}
 
 	/**

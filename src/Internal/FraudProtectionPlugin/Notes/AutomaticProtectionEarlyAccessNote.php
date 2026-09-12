@@ -61,10 +61,20 @@ class AutomaticProtectionEarlyAccessNote {
 	 */
 	public function update_note(): void {
 		try {
-			if ( wc_get_container()->get( AutomaticProtectionSetting::class )->is_enabled() ) {
+			$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+			if ( $setting->is_enabled() ) {
 				$note = Notes::get_note_by_name( self::NOTE_NAME );
 				if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
 					$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
+					$note->save();
+				}
+				return;
+			}
+
+			if ( $setting->is_opted_out() ) {
+				$note = Notes::get_note_by_name( self::NOTE_NAME );
+				if ( $note instanceof Note && ! $note->get_is_deleted() ) {
+					$note->set_is_deleted( true );
 					$note->save();
 				}
 				return;
