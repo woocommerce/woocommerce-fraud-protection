@@ -7,7 +7,7 @@ export type Settings = {
 };
 
 export type Performance = {
-	recommended_for_blocking: number;
+	flagged_by_fraud_prevention: number;
 	blocked_automatically: number;
 	allowed_by_rules: number;
 	blocked_by_rules: number;

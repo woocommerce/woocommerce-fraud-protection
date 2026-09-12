@@ -63,7 +63,7 @@ jest.mock( '@woocommerce/navigation', () => ( {
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 
 const zeroPerformance: Performance = {
-	recommended_for_blocking: 0,
+	flagged_by_fraud_prevention: 0,
 	blocked_automatically: 0,
 	allowed_by_rules: 0,
 	blocked_by_rules: 0,
@@ -79,9 +79,9 @@ const settingsResponse = (
 	performance,
 } );
 
-const performanceWithRecommended = ( recommendedForBlocking: number ) => ( {
+const performanceWithFlagged = ( flaggedByFraudPrevention: number ) => ( {
 	...zeroPerformance,
-	recommended_for_blocking: recommendedForBlocking,
+	flagged_by_fraud_prevention: flaggedByFraudPrevention,
 } );
 
 const findVisibleText = async ( text: string ) => {
@@ -147,7 +147,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 			'true'
 		);
 		expect(
-			performanceCard?.querySelectorAll( '[aria-hidden="true"]' )
+			performanceCard?.querySelectorAll(
+				'.wc-fraud-protection-settings__performance-skeleton'
+			)
 		).toHaveLength( 4 );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
@@ -195,10 +197,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'shows all four performance outcomes with semantic labels', async () => {
+	it( 'shows all four performance outcomes when automatic protection is disabled', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, {
-				recommended_for_blocking: 12,
+				flagged_by_fraud_prevention: 12,
 				blocked_automatically: 3,
 				allowed_by_rules: 4,
 				blocked_by_rules: 5,
@@ -222,7 +224,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.getAllByRole( 'term' )
 				.map( ( element ) => element.textContent )
 		).toEqual( [
-			'Recommended for blocking',
+			'Flagged by fraud prevention',
 			'Blocked automatically',
 			'Allowed by rules',
 			'Blocked by rules',
@@ -233,13 +235,57 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.map( ( element ) => element.textContent )
 		).toEqual( [ '12', '3', '4', '5' ] );
 		expect(
+			performanceCard?.querySelector(
+				'svg.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).toBeInTheDocument();
+		expect(
 			performance.getByRole( 'link', {
-				name: 'View checkout attempts',
+				name: 'View checkout sessions',
 			} )
 		).toHaveAttribute(
 			'href',
 			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
 		);
+	} );
+
+	it( 'hides flagged checkout attempts when automatic protection is enabled', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( true, {
+				flagged_by_fraud_prevention: 12,
+				blocked_automatically: 3,
+				allowed_by_rules: 4,
+				blocked_by_rules: 5,
+			} )
+		);
+		renderSettings();
+
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
+		await screen.findByText( '3' );
+		expect( performanceCard ).not.toBeNull();
+		const performance = within( performanceCard as HTMLElement );
+
+		expect(
+			performance
+				.getAllByRole( 'term' )
+				.map( ( element ) => element.textContent )
+		).toEqual( [
+			'Blocked automatically',
+			'Allowed by rules',
+			'Blocked by rules',
+		] );
+		expect(
+			performance
+				.getAllByRole( 'definition' )
+				.map( ( element ) => element.textContent )
+		).toEqual( [ '3', '4', '5' ] );
+		expect(
+			performanceCard?.querySelector(
+				'.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'shows an error and keeps controls disabled when loading fails', async () => {
@@ -288,7 +334,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockedApiFetch
 			.mockResolvedValueOnce(
 				settingsResponse( false, {
-					recommended_for_blocking: 12,
+					flagged_by_fraud_prevention: 12,
 					blocked_automatically: 3,
 					allowed_by_rules: 4,
 					blocked_by_rules: 5,
@@ -322,7 +368,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 				}
 			);
 		} );
-		expect( screen.getByText( '12' ) ).toBeInTheDocument();
+		expect( screen.queryByText( '12' ) ).not.toBeInTheDocument();
 		expect( screen.getByText( '3' ) ).toBeInTheDocument();
 		expect( screen.getByText( '4' ) ).toBeInTheDocument();
 		expect( screen.getByText( '5' ) ).toBeInTheDocument();
@@ -419,7 +465,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		[ 12, '12 checkout attempts' ],
 	] )( 'links the %s flagged attempt count', async ( count, label ) => {
 		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, performanceWithRecommended( count ) )
+			settingsResponse( false, performanceWithFlagged( count ) )
 		);
 		renderSettings();
 
@@ -433,7 +479,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 	it( 'shows the opt-out actions and dismisses the notice', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, performanceWithRecommended( 12 ) )
+			settingsResponse( false, performanceWithFlagged( 12 ) )
 		);
 		renderSettings();
 
@@ -463,7 +509,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 	it( 'shows the automatic-protection recommendation after an opt-out is stored', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, performanceWithRecommended( 12 ), true )
+			settingsResponse( false, performanceWithFlagged( 12 ), true )
 		);
 		renderSettings();
 

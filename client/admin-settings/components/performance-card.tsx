@@ -1,11 +1,13 @@
 import {
 	Card,
+	Icon,
 	LinkButton,
 	Skeleton,
 	Stack,
 	Text,
 	VisuallyHidden,
 } from '@wordpress/ui';
+import { caution } from '@wordpress/icons';
 import { __ } from '@wordpress/i18n';
 import { Link } from 'react-router-dom';
 
@@ -13,6 +15,7 @@ import type { Performance } from '../data/store';
 import { getFraudProtectionRoute } from '../navigation';
 
 type PerformanceCardProps = {
+	automaticProtection: boolean;
 	isLoading: boolean;
 	performance: Performance | null;
 };
@@ -22,8 +25,11 @@ const metrics: Array< {
 	label: string;
 } > = [
 	{
-		key: 'recommended_for_blocking',
-		label: __( 'Recommended for blocking', 'woocommerce-fraud-protection' ),
+		key: 'flagged_by_fraud_prevention',
+		label: __(
+			'Flagged by fraud prevention',
+			'woocommerce-fraud-protection'
+		),
 	},
 	{
 		key: 'blocked_automatically',
@@ -42,9 +48,16 @@ const metrics: Array< {
 const checkoutAttemptsHref = getFraudProtectionRoute( '/checkout-attempts' );
 
 export function PerformanceCard( {
+	automaticProtection,
 	isLoading,
 	performance,
 }: PerformanceCardProps ) {
+	const visibleMetrics = automaticProtection
+		? metrics.filter(
+				( metric ) => metric.key !== 'flagged_by_fraud_prevention'
+		  )
+		: metrics;
+
 	return (
 		<Card.Root
 			className="wc-fraud-protection-settings__card"
@@ -82,7 +95,7 @@ export function PerformanceCard( {
 							className="wc-fraud-protection-settings__performance-metrics"
 							aria-busy={ isLoading }
 						>
-							{ metrics.map( ( metric ) => (
+							{ visibleMetrics.map( ( metric ) => (
 								<div
 									className="wc-fraud-protection-settings__performance-metric"
 									key={ metric.key }
@@ -93,7 +106,18 @@ export function PerformanceCard( {
 									>
 										{ metric.label }
 									</Text>
-									<Text variant="body-lg" render={ <dd /> }>
+									<Text
+										className="wc-fraud-protection-settings__performance-value"
+										variant="body-lg"
+										render={ <dd /> }
+									>
+										{ metric.key ===
+											'flagged_by_fraud_prevention' && (
+											<Icon
+												className="wc-fraud-protection-settings__performance-caution-icon"
+												icon={ caution }
+											/>
+										) }
 										{ isLoading ? (
 											<Skeleton className="wc-fraud-protection-settings__performance-skeleton" />
 										) : (
@@ -118,7 +142,7 @@ export function PerformanceCard( {
 							render={ <Link to={ checkoutAttemptsHref } /> }
 						>
 							{ __(
-								'View checkout attempts',
+								'View checkout sessions',
 								'woocommerce-fraud-protection'
 							) }
 						</LinkButton>
