@@ -3,9 +3,13 @@ import { __ } from '@wordpress/i18n';
 import { Notice, Stack, Tabs, Text } from '@wordpress/ui';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { Field, View } from '@wordpress/dataviews';
+import { Link } from 'react-router-dom';
 
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
+import { getFraudProtectionRoute } from './navigation';
+
+const rootSettingsHref = getFraudProtectionRoute( '/' );
 
 const ruleActions = [
 	{ value: 'allow', label: __( 'Allow', 'woocommerce-fraud-protection' ) },
@@ -135,6 +139,21 @@ export function RulesPage() {
 			direction="column"
 			gap="lg"
 		>
+			<nav
+				className="wc-fraud-protection-rules__breadcrumb"
+				aria-label={ __(
+					'Breadcrumb',
+					'woocommerce-fraud-protection'
+				) }
+			>
+				<Link to={ rootSettingsHref }>
+					{ __( 'Fraud prevention', 'woocommerce-fraud-protection' ) }
+				</Link>
+				<span aria-hidden="true">/</span>
+				<span aria-current="page">
+					{ __( 'Rules', 'woocommerce-fraud-protection' ) }
+				</span>
+			</nav>
 			<Stack direction="column" gap="xs">
 				<Text variant="heading-lg" render={ <h1 /> }>
 					{ __( 'Rules', 'woocommerce-fraud-protection' ) }
