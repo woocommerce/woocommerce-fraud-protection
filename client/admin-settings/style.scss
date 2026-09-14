@@ -89,4 +89,15 @@
 .wc-fraud-protection-rules {
 	max-width: 1280px;
 	margin: 0 auto;
+
+	&__breadcrumb {
+		display: flex;
+		align-items: center;
+		gap: var(--wpds-dimension-gap-xs);
+		color: var(--wpds-color-foreground-content-neutral-weak);
+
+		a {
+			color: inherit;
+		}
+	}
 }

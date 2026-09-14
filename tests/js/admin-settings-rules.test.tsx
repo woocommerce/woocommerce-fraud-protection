@@ -14,6 +14,16 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 	default: jest.fn(),
 } ) );
 
+jest.mock( '@woocommerce/navigation', () => ( {
+	getNewPath: ( query: Record< string, string >, path: string ) => {
+		const route = new URLSearchParams( query );
+		if ( path !== '/' ) {
+			route.set( 'path', path );
+		}
+		return `/wp-admin/admin.php?${ route.toString() }`;
+	},
+} ) );
+
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 
 type RulesResponse = {
@@ -81,6 +91,18 @@ describe( 'RulesPage', () => {
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
 				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&action=block',
 			} )
+		);
+	} );
+
+	it( 'links back to fraud prevention settings', async () => {
+		renderRules();
+		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
+
+		expect(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		).toHaveAttribute(
+			'href',
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection'
 		);
 	} );
 
