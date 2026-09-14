@@ -36,6 +36,22 @@ jest.mock( '@woocommerce/navigation', () => ( {
 	getNewPath: mockGetNewPath,
 } ) );
 
+// The real checkout attempts page renders DataViews; it is bundled and heavy,
+// and these tests cover the app's routing rather than the list, so it is
+// replaced with a no-op. Its Tabs still render and need a ResizeObserver.
+jest.mock( '@wordpress/dataviews', () => ( {
+	__esModule: true,
+	DataViews: () => null,
+} ) );
+
+if ( ! window.ResizeObserver ) {
+	window.ResizeObserver = class {
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	};
+}
+
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 const settingsResponse = {
 	automatic_protection: false,
@@ -46,6 +62,31 @@ const settingsResponse = {
 		blocked_by_rules: 0,
 	},
 };
+
+const SETTINGS_PATH = '/wc-fraud-protection/v1/settings';
+
+// The settings data is fetched as a plain object; the checkout attempts list is
+// fetched with `parse: false` and reads a Response. Answer each in kind so the
+// real list page mounts without error while the routing is exercised.
+const apiFetchImplementation = ( options: unknown ) => {
+	const { path } = ( options ?? {} ) as { path?: string };
+	if ( path && path.startsWith( '/wc-fraud-protection/v1/sessions' ) ) {
+		return Promise.resolve( {
+			json: () => Promise.resolve( [] ),
+			headers: { get: () => '0' },
+		} );
+	}
+
+	return Promise.resolve( settingsResponse );
+};
+
+// How many times the settings endpoint specifically was requested; the list
+// route also calls apiFetch, so a bare call count no longer isolates settings.
+const settingsFetchCount = () =>
+	mockedApiFetch.mock.calls.filter(
+		( [ options ] ) =>
+			( options as { path?: string } )?.path === SETTINGS_PATH
+	).length;
 
 const noticesStore = createReduxStore( 'core/notices', {
 	reducer: ( state = null ) => state,
@@ -70,7 +111,7 @@ const renderApp = ( initialRoute = '/' ) => {
 describe( 'FraudProtectionAdminApp navigation', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
-		mockedApiFetch.mockResolvedValue( settingsResponse );
+		mockedApiFetch.mockImplementation( apiFetchImplementation );
 	} );
 
 	afterEach( () => {
@@ -89,10 +130,12 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( 'Hello from the checkout attempts page.' )
+			screen.getByText( /A record of past checkout attempts/ )
 		).toBeVisible();
 
-		await userEvent.click( screen.getByRole( 'link', { name: 'Back' } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 
 		await waitFor( () =>
 			expect( mockHistory.location.pathname ).toBe( '/' )
@@ -107,14 +150,17 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		renderApp( '/checkout-attempts' );
 
 		expect(
-			screen.getByText( 'Hello from the checkout attempts page.' )
+			screen.getByText( /A record of past checkout attempts/ )
 		).toBeVisible();
-		expect( mockedApiFetch ).not.toHaveBeenCalled();
+		// The list route never fetches the settings data, only its own list.
+		expect( settingsFetchCount() ).toBe( 0 );
 
-		await userEvent.click( screen.getByRole( 'link', { name: /^Back$/ } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 
 		expect( await screen.findByRole( 'checkbox' ) ).not.toBeChecked();
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
 			path: '/wc-fraud-protection/v1/settings',
 		} );
@@ -158,10 +204,12 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( window.confirm ).toHaveBeenCalledTimes( 1 );
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( 'Hello from the checkout attempts page.' )
+			screen.getByText( /A record of past checkout attempts/ )
 		).toBeVisible();
 
-		await userEvent.click( screen.getByRole( 'link', { name: /^Back$/ } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 		const checkbox = await screen.findByRole( 'checkbox' );
 		expect( checkbox ).not.toBeChecked();
 		expect(
@@ -181,7 +229,9 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 				name: 'View checkout sessions',
 			} )
 		);
-		await userEvent.click( screen.getByRole( 'link', { name: 'Back' } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 		await userEvent.click( await screen.findByRole( 'checkbox' ) );
 
 		act( () => mockHistory.back() );
@@ -192,7 +242,9 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect( confirm ).toHaveBeenCalledTimes( 2 );
 
-		await userEvent.click( screen.getByRole( 'link', { name: /^Back$/ } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 		expect( await screen.findByRole( 'checkbox' ) ).not.toBeChecked();
 	} );
 

@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionOutcome;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
 
 defined( 'ABSPATH' ) || exit;
@@ -21,8 +22,46 @@ defined( 'ABSPATH' ) || exit;
  * event, so repeated session IDs keep one row each and a decision change
  * across repeated attempts is never lost. Attempt counts are a read-time
  * aggregate, not a stored column.
+ *
+ * The read side also serves the merchant-facing checkout attempts list:
+ * `query_events()` pages, sorts and filters the retained rows and
+ * `get_payment_methods()` feeds the list's provider filter.
  */
 class SessionEventStore {
+
+	/**
+	 * Columns the checkout attempts list can be sorted by.
+	 */
+	public const SORTABLE_COLUMNS = array( 'recorded_at', 'email', 'ip', 'ip_country', 'billing_country', 'payment_method' );
+
+	/**
+	 * Maximum rows per checkout attempts list page.
+	 */
+	public const MAX_PER_PAGE = 100;
+
+	/**
+	 * Columns loaded for the checkout attempts list. The risk score is deliberately excluded.
+	 */
+	private const LIST_COLUMNS = array(
+		'id',
+		'session_id',
+		'recorded_at',
+		'source',
+		'decision',
+		'final_status',
+		'trigger_type',
+		'email',
+		'ip',
+		'ip_country',
+		'billing_country',
+		'billing_state',
+		'billing_city',
+		'billing_postcode',
+		'billing_name',
+		'order_id',
+		'payment_method',
+		'matched_rule_id',
+	);
 
 	/**
 	 * Transient holding performance outcome counts.
@@ -346,5 +385,234 @@ class SessionEventStore {
 		} while ( 1000 <= $deleted );
 
 		return $total;
+	}
+
+	/**
+	 * Query the retained events for the checkout attempts list.
+	 *
+	 * @param array<string, mixed> $args {
+	 *     Optional. Query arguments.
+	 *
+	 *     @type int                 $days            Only events recorded within this many days. Default the retention period.
+	 *     @type int                 $page            1-based page number. Default 1.
+	 *     @type int                 $per_page        Rows per page, capped at MAX_PER_PAGE. Default 20.
+	 *     @type string              $orderby         One of SORTABLE_COLUMNS. Default 'recorded_at'.
+	 *     @type string              $order           'asc' or 'desc'. Default 'desc'.
+	 *     @type ?SessionFinalStatus $final_status    Only events with this final status. Default null (any).
+	 *     @type SessionOutcome[]    $outcomes        Only events with one of these outcomes. Default none (any).
+	 *     @type string[]            $payment_methods Only events with one of these payment method ids. Default none (any).
+	 *     @type string              $search          Only events whose email or IP contains this text. Default ''.
+	 *     @type string              $rules           'with' or 'without' to keep only events that do or do not have an
+	 *                                               active rule targeting their email or IP. Default '' (any).
+	 *     @type array{email: string[], ip: string[]} $rule_values The normalized values active rules target, used when
+	 *                                               $rules is set. Default empty.
+	 * }
+	 * @return array{items: array<int, array<string, mixed>>, total: int} The page rows, with integer id, order_id and
+	 *                                                                    matched_rule_id, and the total matching count.
+	 * @throws \RuntimeException When a query fails.
+	 */
+	public function query_events( array $args = array() ): array {
+		global $wpdb;
+
+		$args = wp_parse_args(
+			$args,
+			array(
+				'days'            => SessionEventPruner::RETENTION_DAYS,
+				'page'            => 1,
+				'per_page'        => 20,
+				'orderby'         => 'recorded_at',
+				'order'           => 'desc',
+				'final_status'    => null,
+				'outcomes'        => array(),
+				'payment_methods' => array(),
+				'search'          => '',
+				'rules'           => '',
+				'rule_values'     => array(),
+			)
+		);
+
+		$table    = $this->schema_manager->get_sessions_table_name();
+		$where    = $this->build_where( $args );
+		$per_page = max( 1, min( self::MAX_PER_PAGE, (int) $args['per_page'] ) );
+		$offset   = ( max( 1, (int) $args['page'] ) - 1 ) * $per_page;
+		$orderby  = in_array( $args['orderby'], self::SORTABLE_COLUMNS, true ) ? $args['orderby'] : 'recorded_at';
+		$order    = 'asc' === strtolower( (string) $args['order'] ) ? 'ASC' : 'DESC';
+		$columns  = implode( ', ', self::LIST_COLUMNS );
+		$limit    = $wpdb->prepare( 'LIMIT %d OFFSET %d', $per_page, $offset );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Every clause is prepared in build_where().
+		$total = $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE {$where}" );
+		$this->throw_on_database_error( 'Session event count failed.' );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Clauses and limit are prepared, the other fragments are allowlisted constants.
+		$rows = $wpdb->get_results( "SELECT {$columns} FROM {$table} WHERE {$where} ORDER BY {$orderby} {$order}, id DESC {$limit}", ARRAY_A );
+		$this->throw_on_database_error( 'Session event query failed.' );
+
+		return array(
+			'items' => array_map( fn( array $row ): array => self::type_row( $row ), is_array( $rows ) ? $rows : array() ),
+			'total' => (int) $total,
+		);
+	}
+
+	/**
+	 * Get the distinct payment method ids of the retained events.
+	 *
+	 * @param int $days Only events recorded within this many days.
+	 * @return string[] The non-empty payment method ids, sorted.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_payment_methods( int $days ): array {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_sessions_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$values = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT payment_method FROM {$table} WHERE recorded_at >= %s AND payment_method <> '' ORDER BY payment_method", self::cutoff( $days ) ) );
+		$this->throw_on_database_error( 'Session payment method query failed.' );
+
+		return array_values( array_filter( array_map( 'strval', is_array( $values ) ? $values : array() ), fn( string $value ): bool => '' !== $value ) );
+	}
+
+	/**
+	 * Build the WHERE clause of a checkout attempts list query.
+	 *
+	 * Each clause is prepared on its own, so the returned SQL is complete.
+	 *
+	 * @param array<string, mixed> $args The parsed query arguments.
+	 * @return string
+	 */
+	private function build_where( array $args ): string {
+		global $wpdb;
+
+		$clauses = array( $wpdb->prepare( 'recorded_at >= %s', self::cutoff( max( 1, (int) $args['days'] ) ) ) );
+
+		$final_status = $args['final_status'];
+		if ( $final_status instanceof SessionFinalStatus ) {
+			$clauses[] = $wpdb->prepare( 'final_status = %s', $final_status->value );
+		}
+
+		$outcome_conditions = array();
+		foreach ( (array) $args['outcomes'] as $outcome ) {
+			if ( $outcome instanceof SessionOutcome ) {
+				$outcome_conditions[ $outcome->value ] = '(' . $outcome->sql_condition() . ')';
+			}
+		}
+		if ( array() !== $outcome_conditions ) {
+			$clauses[] = '(' . implode( ' OR ', $outcome_conditions ) . ')';
+		}
+
+		$payment_methods = array_values( array_filter( array_filter( (array) $args['payment_methods'], 'is_string' ), fn( string $method ): bool => '' !== $method ) );
+		if ( array() !== $payment_methods ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $payment_methods ), '%s' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+			$clauses[] = $wpdb->prepare( "payment_method IN ({$placeholders})", ...$payment_methods );
+		}
+
+		$search = trim( (string) $args['search'] );
+		if ( '' !== $search ) {
+			$like      = '%' . $wpdb->esc_like( $search ) . '%';
+			$clauses[] = $wpdb->prepare( '(email LIKE %s OR ip LIKE %s)', $like, $like );
+		}
+
+		foreach ( $this->rule_filter_clauses( (string) $args['rules'], $args['rule_values'] ?? array() ) as $clause ) {
+			$clauses[] = $clause;
+		}
+
+		return implode( ' AND ', $clauses );
+	}
+
+	/**
+	 * Build the clauses keeping only events with or without a matching rule.
+	 *
+	 * The rule values are the finder's normalized keys: emails are trimmed and
+	 * lowercased, so the stored email is normalized the same way in SQL; IPs are
+	 * the canonical text form, matched as stored (exact for IPv4; a stored
+	 * non-canonical IPv6 is a rare edge that the finder would still flag).
+	 *
+	 * @param string $mode        '' (no filter), 'with', or 'without'.
+	 * @param mixed  $rule_values The normalized values active rules target, keyed by field.
+	 * @return string[] The prepared clauses to AND into the query.
+	 */
+	private function rule_filter_clauses( string $mode, $rule_values ): array {
+		global $wpdb;
+
+		if ( 'with' !== $mode && 'without' !== $mode ) {
+			return array();
+		}
+
+		$rule_values = is_array( $rule_values ) ? $rule_values : array();
+		$normalize   = fn( $values ): array => array_values( array_filter( array_filter( (array) $values, 'is_string' ), fn( string $value ): bool => '' !== $value ) );
+		$emails      = $normalize( $rule_values['email'] ?? array() );
+		$ips         = $normalize( $rule_values['ip'] ?? array() );
+
+		if ( 'with' === $mode ) {
+			$parts = array();
+			if ( array() !== $emails ) {
+				$placeholders = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+				$parts[] = $wpdb->prepare( "LOWER(TRIM(email)) IN ({$placeholders})", ...$emails );
+			}
+			if ( array() !== $ips ) {
+				$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+				$parts[] = $wpdb->prepare( "ip IN ({$placeholders})", ...$ips );
+			}
+
+			// With no active rules, nothing can match a rule.
+			return array( array() === $parts ? '0 = 1' : '(' . implode( ' OR ', $parts ) . ')' );
+		}
+
+		$clauses = array();
+		if ( array() !== $emails ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+			$clauses[] = $wpdb->prepare( "(email IS NULL OR email = '' OR LOWER(TRIM(email)) NOT IN ({$placeholders}))", ...$emails );
+		}
+		if ( array() !== $ips ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+			$clauses[] = $wpdb->prepare( "(ip IS NULL OR ip = '' OR ip NOT IN ({$placeholders}))", ...$ips );
+		}
+
+		return $clauses;
+	}
+
+	/**
+	 * Get the oldest `recorded_at` value inside a window of days.
+	 *
+	 * @param int $days The window length in days.
+	 * @return string The cutoff as a MySQL datetime in UTC.
+	 */
+	private static function cutoff( int $days ): string {
+		return gmdate( 'Y-m-d H:i:s', time() - ( $days * DAY_IN_SECONDS ) );
+	}
+
+	/**
+	 * Cast the integer columns of a loaded row.
+	 *
+	 * @param array<string, mixed> $row The row as loaded.
+	 * @return array<string, mixed>
+	 */
+	private static function type_row( array $row ): array {
+		$row['id']              = (int) ( $row['id'] ?? 0 );
+		$row['order_id']        = is_null( $row['order_id'] ?? null ) ? null : (int) $row['order_id'];
+		$row['matched_rule_id'] = is_null( $row['matched_rule_id'] ?? null ) ? null : (int) $row['matched_rule_id'];
+
+		return $row;
+	}
+
+	/**
+	 * Throw when the last database operation failed.
+	 *
+	 * @param string $message The exception message.
+	 * @throws \RuntimeException When the database reported an error.
+	 */
+	private function throw_on_database_error( string $message ): void {
+		global $wpdb;
+
+		if ( '' !== (string) $wpdb->last_error ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The message is a fixed internal string.
+			throw new \RuntimeException( $message );
+		}
 	}
 }

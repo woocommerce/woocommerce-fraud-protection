@@ -8,6 +8,9 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\PaymentMethodTitleResolver;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -26,6 +29,27 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	 * @var FraudProtectionLogger
 	 */
 	private FraudProtectionLogger $logger;
+
+	/**
+	 * Automatic protection setting.
+	 *
+	 * @var AutomaticProtectionSetting
+	 */
+	private AutomaticProtectionSetting $automatic_protection;
+
+	/**
+	 * Session event store.
+	 *
+	 * @var SessionEventStore
+	 */
+	private SessionEventStore $event_store;
+
+	/**
+	 * Payment method title resolver.
+	 *
+	 * @var PaymentMethodTitleResolver
+	 */
+	private PaymentMethodTitleResolver $payment_method_titles;
 
 	/**
 	 * Whether the settings asset metadata failed to load.
@@ -49,10 +73,16 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	 *
 	 * @internal
 	 *
-	 * @param FraudProtectionLogger $logger Logger instance.
+	 * @param FraudProtectionLogger      $logger                Logger instance.
+	 * @param AutomaticProtectionSetting $automatic_protection  Automatic protection setting.
+	 * @param SessionEventStore          $event_store           Session event store.
+	 * @param PaymentMethodTitleResolver $payment_method_titles Payment method title resolver.
 	 */
-	final public function init( FraudProtectionLogger $logger ): void {
-		$this->logger = $logger;
+	final public function init( FraudProtectionLogger $logger, AutomaticProtectionSetting $automatic_protection, SessionEventStore $event_store, PaymentMethodTitleResolver $payment_method_titles ): void {
+		$this->logger                = $logger;
+		$this->automatic_protection  = $automatic_protection;
+		$this->event_store           = $event_store;
+		$this->payment_method_titles = $payment_method_titles;
 	}
 
 	/**
@@ -125,7 +155,59 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			array( 'in_footer' => true )
 		);
 		wp_set_script_translations( self::SCRIPT_HANDLE, 'woocommerce-fraud-protection', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages' );
+		$this->inject_checkout_attempts_config();
 		$this->maybe_preload_settings_data();
+	}
+
+	/**
+	 * Expose the checkout attempts list configuration to its React route.
+	 *
+	 * The list route lives inside this single-page settings app, so the config
+	 * is injected on every route: automatic-protection state (for the flagged
+	 * tooltip and the "turn it on" row action), the settings page URL that
+	 * action opens in a new tab, and the payment methods present in the data
+	 * (for the provider filter). The value reflects page-load state; a change
+	 * made without a reload is picked up on the next one.
+	 */
+	private function inject_checkout_attempts_config(): void {
+		$config = array(
+			'automaticProtection'          => $this->automatic_protection->is_enabled(),
+			'automaticProtectionEnabledAt' => null,
+			'settingsUrl'                  => admin_url( 'admin.php?page=wc-settings&tab=' . self::PAGE_ID ),
+			'paymentMethods'               => $this->checkout_attempts_payment_methods(),
+		);
+
+		wp_add_inline_script(
+			self::SCRIPT_HANDLE,
+			'window.wcFraudProtectionCheckoutAttempts = ' . wp_json_encode( $config, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';',
+			'before'
+		);
+	}
+
+	/**
+	 * Build the payment method options present in the retained checkout attempts.
+	 *
+	 * @return array<int, array{id: string, title: string}>
+	 */
+	private function checkout_attempts_payment_methods(): array {
+		try {
+			$ids = $this->event_store->get_payment_methods( SessionEventPruner::RETENTION_DAYS );
+		} catch ( \RuntimeException ) {
+			// The provider filter simply offers no options (for example before the
+			// sessions table exists); the list still loads, and its REST endpoint
+			// reports any genuine query failure when the merchant opens it.
+			return array();
+		}
+
+		$options = array();
+		foreach ( $ids as $id ) {
+			$options[] = array(
+				'id'    => $id,
+				'title' => $this->payment_method_titles->resolve( $id ),
+			);
+		}
+
+		return $options;
 	}
 
 	/**

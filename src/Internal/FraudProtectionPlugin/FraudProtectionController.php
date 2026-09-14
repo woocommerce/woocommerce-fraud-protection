@@ -24,6 +24,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheck
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
@@ -244,6 +245,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
 			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_settings_page_assets' ) );
 			wc_get_container()->get( SettingsRestController::class )->register();
+			wc_get_container()->get( SessionsRestController::class )->register();
 		}
 	}
 

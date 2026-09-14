@@ -11,6 +11,8 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 // phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir, WordPress.PHP.DevelopmentFunctions.error_log_var_export
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\PaymentMethodTitleResolver;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
@@ -91,7 +93,12 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->reset_asset_registrations();
 		$this->automatic_protection = wc_get_container()->get( AutomaticProtectionSetting::class );
 		$this->sut                  = new FraudProtectionSettingsPage();
-		$this->sut->init( $this->spy_on_controller_logging() );
+		$this->sut->init(
+			$this->spy_on_controller_logging(),
+			$this->automatic_protection,
+			wc_get_container()->get( SessionEventStore::class ),
+			wc_get_container()->get( PaymentMethodTitleResolver::class )
+		);
 		$this->automatic_protection->reset();
 	}
 
@@ -222,10 +229,12 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
 		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
+		// The checkout attempts config is exposed on every route of the app.
+		$this->assertStringContainsString( 'window.wcFraudProtectionCheckoutAttempts', $before_script );
 	}
 
 	/**
-	 * @testdox The checkout attempts route does not preload settings data.
+	 * @testdox The checkout attempts route exposes the list config but does not preload settings data.
 	 */
 	public function test_checkout_attempts_route_does_not_preload_settings(): void {
 		$this->write_asset_fixture( array( 'wp-api-fetch' ), 'settings-test-version' );
@@ -245,7 +254,15 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
 		$this->assertSame( 0, $rest_requests );
-		$this->assertFalse( wp_scripts()->get_data( self::ASSET_HANDLE, 'before' ) );
+
+		// The route still receives the checkout attempts config global, so a
+		// client-side navigation into it has the data it needs, but never the
+		// settings data preload.
+		$before = wp_scripts()->get_data( self::ASSET_HANDLE, 'before' );
+		$this->assertIsArray( $before );
+		$before_script = implode( "\n", $before );
+		$this->assertStringContainsString( 'window.wcFraudProtectionCheckoutAttempts', $before_script );
+		$this->assertStringNotContainsString( 'createPreloadingMiddleware', $before_script );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 	}
 
