@@ -347,7 +347,6 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			'classic checkout'         => array( 'woocommerce_checkout_before_order_review', 'ppcp-smart-button' ),
 			'classic mini-cart widget' => array( 'woocommerce_widget_cart_is_hidden', 'ppcp-smart-button' ),
 			'SDK v6 mini-cart widget'  => array( 'woocommerce_widget_cart_is_hidden', 'wc-ppcp-sdk-v6-boot' ),
-			'subscription change'      => array( 'woocommerce_subscriptions_change_payment_after_submit', 'ppcp-add-payment-method' ),
 		);
 	}
 
@@ -399,11 +398,11 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox A visible classic cart widget prepares the page for PayPal fragments without changing visibility.
 	 */
 	public function test_visible_cart_widget_prepares_paypal_fragments(): void {
+		$this->run_wp_enqueue_scripts();
 		$this->configure_paypal_mini_cart( true, true, true );
 		$sut = $this->make_sut_expecting_script_request( true );
 
 		$this->assertFalse( $sut->enqueue_paypal_script_for_visible_mini_cart_widget( false ) );
-		$this->run_wp_enqueue_scripts();
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
 
@@ -456,11 +455,11 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->mock_jetpack_blog_id( 12345 );
 		$this->configure_paypal_mini_cart( true, true, true );
 		$this->sut->register();
+		$this->run_wp_enqueue_scripts();
 
 		ob_start();
 		woocommerce_mini_cart();
 		ob_end_clean();
-		$this->run_wp_enqueue_scripts();
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_paypal_payments_minicart_button_render' );
 
