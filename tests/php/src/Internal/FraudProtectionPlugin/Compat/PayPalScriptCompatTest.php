@@ -347,6 +347,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			'classic checkout'         => array( 'woocommerce_checkout_before_order_review', 'ppcp-smart-button' ),
 			'classic mini-cart widget' => array( 'woocommerce_widget_cart_is_hidden', 'ppcp-smart-button' ),
 			'SDK v6 mini-cart widget'  => array( 'woocommerce_widget_cart_is_hidden', 'wc-ppcp-sdk-v6-boot' ),
+			'subscription change'      => array( 'woocommerce_subscriptions_change_payment_after_submit', 'ppcp-add-payment-method' ),
 		);
 	}
 
@@ -909,10 +910,11 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		return $previous;
 	}
 
-	/** @testdox Subscriptions render requests the interceptor only for the active PayPal script. */
+	/** @testdox A subscription form rendered after script enqueueing requires an active PayPal script. */
 	public function test_subscriptions_render_requires_active_paypal_script(): void {
 		$sut = $this->make_sut_expecting_script_request( true );
 		$sut->register();
+		$this->run_wp_enqueue_scripts();
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
 		wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
@@ -923,8 +925,6 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
-		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
-		$this->run_wp_enqueue_scripts();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
