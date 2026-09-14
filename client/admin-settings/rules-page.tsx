@@ -27,6 +27,7 @@ const fields: Field< Rule >[] = [
 		type: 'text',
 		elements: ruleActions,
 		filterBy: { operators: [ 'is' ] },
+		enableSorting: false,
 		render: ( { item } ) =>
 			item.action === 'allow'
 				? __( 'Allow', 'woocommerce-fraud-protection' )
@@ -45,6 +46,7 @@ const fields: Field< Rule >[] = [
 		type: 'text',
 		elements: ruleTypes,
 		filterBy: { operators: [ 'is' ] },
+		enableSorting: false,
 		render: ( { item } ) =>
 			item.type === 'email'
 				? __( 'Email', 'woocommerce-fraud-protection' )
@@ -55,10 +57,11 @@ const fields: Field< Rule >[] = [
 		label: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
+		enableSorting: false,
 	},
 ];
 
-const getQueryFromView = ( view: View ): RulesQuery => {
+export const getQueryFromView = ( view: View ): RulesQuery => {
 	const query: RulesQuery = {
 		page: view.page ?? 1,
 		perPage: view.perPage ?? 20,
@@ -97,7 +100,6 @@ export function RulesPage() {
 		type: 'table' as const,
 		page: 1,
 		perPage: 20,
-		sort: { field: 'created_at', direction: 'desc' as const },
 		filters: [],
 		fields: [ 'action', 'value', 'type', 'created_at' ],
 		layout: {},

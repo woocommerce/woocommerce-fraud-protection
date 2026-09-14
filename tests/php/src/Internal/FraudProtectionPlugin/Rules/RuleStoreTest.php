@@ -82,9 +82,10 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox The merchant rules page filters by action, type, exact value and dates, and orders newest first.
 	 */
 	public function test_active_rules_page_filters_and_paginates(): void {
-		$old_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'old@example.com' ) );
-		$new_block = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'new@example.com' ) );
-		$this->sut->create_rule(
+		$old_allow      = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'old@example.com' ) );
+		$same_day_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'same-day@example.com' ) );
+		$new_block      = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'new@example.com' ) );
+		$ip_allow       = $this->sut->create_rule(
 			FraudDecision::Allow,
 			array(
 				'field'    => 'ip',
@@ -92,14 +93,18 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 				'value'    => '2001:db8::1',
 			)
 		);
+		$disabled_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'disabled@example.com' ) );
 		$this->set_created_at( $old_allow->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $same_day_allow->id, '2026-01-01 23:59:59' );
 		$this->set_created_at( $new_block->id, '2026-02-01 00:00:00' );
+		$this->set_created_at( $ip_allow->id, '2026-01-01 12:00:00' );
+		$this->set_created_at( $disabled_allow->id, '2026-01-01 12:00:00' );
+		$this->sut->update_rule( $disabled_allow->id, status: RuleStatus::Disabled );
 
 		$page = $this->sut->get_active_rules_page(
 			array(
 				'action' => 'allow',
 				'type'   => 'email',
-				'value'  => 'OLD@EXAMPLE.COM',
 				'from'   => '2026-01-01 00:00:00',
 				'to'     => '2026-01-01 23:59:59',
 			),
@@ -107,9 +112,33 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 			1
 		);
 
-		$this->assertSame( 1, $page['total'] );
-		$this->assertSame( 1, $page['pages'] );
-		$this->assertSame( 'old@example.com', $page['items'][0]->conditions['value'] );
+		$this->assertSame( 2, $page['total'] );
+		$this->assertSame( 2, $page['pages'] );
+		$this->assertSame( 'same-day@example.com', $page['items'][0]->conditions['value'] );
+
+		$second_page = $this->sut->get_active_rules_page(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'from'   => '2026-01-01 00:00:00',
+				'to'     => '2026-01-01 23:59:59',
+			),
+			2,
+			1
+		);
+
+		$this->assertSame( 2, $second_page['total'] );
+		$this->assertSame( 2, $second_page['pages'] );
+		$this->assertSame( 'old@example.com', $second_page['items'][0]->conditions['value'] );
+
+		$exact_value_page = $this->sut->get_active_rules_page(
+			array(
+				'type'  => 'email',
+				'value' => 'OLD@EXAMPLE.COM',
+			)
+		);
+		$this->assertSame( 1, $exact_value_page['total'] );
+		$this->assertSame( 'old@example.com', $exact_value_page['items'][0]->conditions['value'] );
 	}
 
 	/**

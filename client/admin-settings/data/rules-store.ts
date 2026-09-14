@@ -144,6 +144,9 @@ const actions = {
 				dispatch.receiveRules( response );
 				return response;
 			} catch ( error ) {
+				if ( ! areQueriesEqual( select.getQuery(), query ) ) {
+					return null;
+				}
 				dispatch.setError( getErrorMessage( error ) );
 				return null;
 			}
