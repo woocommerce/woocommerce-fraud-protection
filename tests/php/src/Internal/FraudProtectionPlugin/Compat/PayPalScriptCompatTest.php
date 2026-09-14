@@ -102,7 +102,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 20, has_action( 'before_woocommerce_pay_form', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this->sut, 'enqueue_paypal_script_if_add_payment_method_enqueued' ) ) );
-		$this->assertSame( PHP_INT_MAX, has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
+		$this->assertFalse( has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
 		$this->assertSame( PHP_INT_MAX, has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script_for_sdk_v6' ) ) );
 	}
 
@@ -249,6 +249,19 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_script_if_smart_button_enqueued();
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		$this->run_wp_enqueue_scripts();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @testdox A form rendered after script enqueueing loads the PayPal interceptor immediately. */
+	public function test_standard_form_follower_runs_after_wp_enqueue_scripts(): void {
+		$this->run_wp_enqueue_scripts();
+		$this->register_and_enqueue_paypal_smart_button();
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_script_if_smart_button_enqueued();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
@@ -266,6 +279,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut = $this->make_sut_expecting_no_script_request();
 
 		$sut->enqueue_paypal_script_if_smart_button_enqueued();
+		$this->run_wp_enqueue_scripts();
 
 		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
@@ -279,6 +293,61 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		return array(
 			'not registered' => array( false, true ),
 			'not enqueued'   => array( true, false ),
+		);
+	}
+
+	/**
+	 * @testdox A payment-surface hook waits for PayPal to enqueue its script before loading the interceptor.
+	 *
+	 * @dataProvider early_payment_surface_provider
+	 * @param string $hook PayPal payment-surface hook.
+	 * @param string $handle PayPal script handle.
+	 */
+	public function test_early_payment_surface_follows_later_paypal_script( string $hook, string $handle ): void {
+		$this->go_to( home_url( '/' ) );
+		if ( 'woocommerce_widget_cart_is_hidden' === $hook ) {
+			$this->configure_paypal_mini_cart( true, false, false );
+		}
+		$sut = $this->make_sut_expecting_script_request( true );
+		$sut->register();
+		$enqueue_paypal_script = function () use ( $handle ): void {
+			wp_register_script( $handle, 'https://example.com/paypal.js', array(), '1.0', true );
+			wp_enqueue_script( $handle );
+		};
+		add_action( 'wp_enqueue_scripts', $enqueue_paypal_script, 10 );
+
+		try {
+			if ( 'woocommerce_widget_cart_is_hidden' === $hook ) {
+				// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+				$this->assertFalse( apply_filters( 'woocommerce_widget_cart_is_hidden', false ) );
+			} else {
+				// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+				do_action( $hook );
+			}
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+
+			$this->run_wp_enqueue_scripts();
+
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+			$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-paypal-express'] ?? 0 );
+		} finally {
+			remove_action( 'wp_enqueue_scripts', $enqueue_paypal_script, 10 );
+			wp_dequeue_script( $handle );
+			wp_deregister_script( $handle );
+		}
+	}
+
+	/**
+	 * Payment surfaces that can render before PayPal enqueues its script.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function early_payment_surface_provider(): array {
+		return array(
+			'classic checkout'         => array( 'woocommerce_checkout_before_order_review', 'ppcp-smart-button' ),
+			'classic mini-cart widget' => array( 'woocommerce_widget_cart_is_hidden', 'ppcp-smart-button' ),
+			'SDK v6 mini-cart widget'  => array( 'woocommerce_widget_cart_is_hidden', 'wc-ppcp-sdk-v6-boot' ),
+			'subscription change'      => array( 'woocommerce_subscriptions_change_payment_after_submit', 'ppcp-add-payment-method' ),
 		);
 	}
 
@@ -308,6 +377,8 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		$this->run_wp_enqueue_scripts();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
@@ -319,6 +390,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut = $this->make_sut_expecting_script_request( true );
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+		$this->run_wp_enqueue_scripts();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
@@ -331,6 +403,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut = $this->make_sut_expecting_script_request( true );
 
 		$this->assertFalse( $sut->enqueue_paypal_script_for_visible_mini_cart_widget( false ) );
+		$this->run_wp_enqueue_scripts();
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
 
@@ -387,6 +460,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		ob_start();
 		woocommerce_mini_cart();
 		ob_end_clean();
+		$this->run_wp_enqueue_scripts();
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_paypal_payments_minicart_button_render' );
 
@@ -409,6 +483,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut = $this->make_sut_expecting_no_script_request();
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+		$this->run_wp_enqueue_scripts();
 
 		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
@@ -448,6 +523,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$sut = $expected ? $this->make_sut_expecting_script_request( true ) : $this->make_sut_expecting_no_script_request();
 
 		$sut->enqueue_paypal_mini_cart_script_if_enabled();
+		$this->run_wp_enqueue_scripts();
 
 		$this->assertSame( $expected, wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
@@ -653,6 +729,12 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		return $this->make_compat_with_script_handler( $handler );
 	}
 
+	/** Run the script-enqueue action for a page load. */
+	private function run_wp_enqueue_scripts(): void {
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'wp_enqueue_scripts' );
+	}
+
 	/**
 	 * Configure PayPal's current mini-cart setting and smart-button handle.
 	 *
@@ -842,6 +924,8 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_subscriptions_change_payment_after_submit' );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		$this->run_wp_enqueue_scripts();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 	}
@@ -873,6 +957,8 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			$wp->query_vars['add-payment-method'] = '';
 			$sut->enqueue_paypal_script_for_add_payment_method();
 
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+			$this->run_wp_enqueue_scripts();
 			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 		} finally {
 			if ( null === $previous_page_id ) {
@@ -888,7 +974,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		}
 	}
 
-	/** @testdox The add-payment-method interceptor loads when PayPal enqueues its script before form rendering. */
+	/** @testdox The add-payment-method interceptor loads when PayPal enqueues after the form hook. */
 	public function test_add_payment_method_script_loads_during_wp_enqueue_scripts(): void {
 		global $wp;
 
@@ -913,7 +999,9 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 			$sut->register();
 
 			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-			do_action( 'wp_enqueue_scripts' );
+			do_action( 'woocommerce_add_payment_method_form_bottom' );
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+			$this->run_wp_enqueue_scripts();
 
 			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 		} finally {
