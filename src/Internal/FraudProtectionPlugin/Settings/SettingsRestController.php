@@ -188,12 +188,12 @@ class SettingsRestController extends \WP_REST_Controller {
 			'type'       => 'object',
 			'properties' => array(
 				'automatic_protection'           => array(
-					'description' => __( 'Whether automatic protection is enabled.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'Whether automatic fraud prevention is enabled.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view', 'edit' ),
 				),
 				'automatic_protection_opted_out' => array(
-					'description' => __( 'Whether automatic protection enrollment was declined.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'Whether automatic fraud prevention enrollment was declined.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view' ),
 					'readonly'    => true,

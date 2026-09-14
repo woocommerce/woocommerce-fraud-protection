@@ -174,13 +174,15 @@ describe( 'checkout attempts row actions', () => {
 		paymentMethods: [],
 	};
 
+	const noopEnable = () => {};
+
 	const eligibleIds = ( session: Session ) =>
-		buildActions( actionsConfig )
+		buildActions( actionsConfig, noopEnable )
 			.filter( ( action ) => action.isEligible?.( session ) ?? true )
 			.map( ( action ) => action.id );
 
 	const labelFor = ( actionId: string, session: Session ): string => {
-		const action = buildActions( actionsConfig ).find(
+		const action = buildActions( actionsConfig, noopEnable ).find(
 			( a ) => a.id === actionId
 		)!;
 		return typeof action.label === 'string'
@@ -257,7 +259,7 @@ describe( 'checkout attempts row actions', () => {
 		expect( ids ).toContain( 'ip-block' );
 	} );
 
-	it( 'offers turning on automatic protection for a flagged attempt while it is off', () => {
+	it( 'offers turning on automatic fraud prevention for a flagged attempt while it is off', () => {
 		const flagged = aSession( { outcome: 'flagged_by_fraud_prevention' } );
 
 		expect( eligibleIds( flagged ) ).toContain(
@@ -267,28 +269,31 @@ describe( 'checkout attempts row actions', () => {
 		expect( eligibleIds( aSession() ) ).not.toContain(
 			'enable-automatic-protection'
 		);
-		// ...nor once automatic protection is already on.
-		const whenOn = buildActions( {
-			...actionsConfig,
-			automaticProtection: true,
-		} )
+		// ...nor once automatic fraud prevention is already on.
+		const whenOn = buildActions(
+			{
+				...actionsConfig,
+				automaticProtection: true,
+			},
+			noopEnable
+		)
 			.filter( ( action ) => action.isEligible?.( flagged ) ?? true )
 			.map( ( action ) => action.id );
 		expect( whenOn ).not.toContain( 'enable-automatic-protection' );
 	} );
 
 	it( 'leads the menu with the automatic-protection shortcut', () => {
-		expect( buildActions( actionsConfig )[ 0 ].id ).toBe(
+		expect( buildActions( actionsConfig, noopEnable )[ 0 ].id ).toBe(
 			'enable-automatic-protection'
 		);
 	} );
 
-	it( 'renders the automatic-protection shortcut as an external-link label', () => {
-		const action = buildActions( actionsConfig ).find(
+	it( 'renders the automatic-protection shortcut with the accent label', () => {
+		const action = buildActions( actionsConfig, noopEnable ).find(
 			( a ) => a.id === 'enable-automatic-protection'
 		)!;
 		// The label is a function returning a node (see actions.tsx); render it
-		// to confirm the wording and the external-link class the CSS styles.
+		// to confirm the wording and the accent class the CSS styles.
 		const label =
 			typeof action.label === 'function'
 				? action.label( [] )
@@ -296,7 +301,7 @@ describe( 'checkout attempts row actions', () => {
 		const { container } = render( <>{ label }</> );
 
 		expect(
-			screen.getByText( 'Turn on automatic protection' )
+			screen.getByText( 'Turn on automatic fraud prevention' )
 		).toBeInTheDocument();
 		expect(
 			container.querySelector(
@@ -305,22 +310,15 @@ describe( 'checkout attempts row actions', () => {
 		).toBeInTheDocument();
 	} );
 
-	it( 'opens the settings page in a new tab when the shortcut is chosen', () => {
-		const action = buildActions( actionsConfig ).find(
+	it( 'runs the enable callback when the shortcut is chosen', () => {
+		const onEnable = jest.fn();
+		const action = buildActions( actionsConfig, onEnable ).find(
 			( a ) => a.id === 'enable-automatic-protection'
 		)!;
-		const open = jest
-			.spyOn( window, 'open' )
-			.mockImplementation( () => null );
 
 		( action as unknown as { callback: () => void } ).callback();
 
-		expect( open ).toHaveBeenCalledWith(
-			'https://example.test/wp-admin/settings',
-			'_blank',
-			'noopener,noreferrer'
-		);
-		open.mockRestore();
+		expect( onEnable ).toHaveBeenCalledTimes( 1 );
 	} );
 } );
 
@@ -372,14 +370,14 @@ describe( 'checkout attempts status field', () => {
 
 		expect(
 			await screen.findByText(
-				/because automatic protection is off/,
+				/because automatic fraud prevention is off/,
 				{},
 				{ timeout: 3000 }
 			)
 		).toBeInTheDocument();
 		expect(
 			screen.getByRole( 'link', {
-				name: 'Enable automatic protection',
+				name: 'Enable automatic fraud prevention',
 			} )
 		).toHaveAttribute( 'href', config.settingsUrl );
 	} );
@@ -399,7 +397,7 @@ describe( 'checkout attempts status field', () => {
 
 		expect(
 			await screen.findByText(
-				/because automatic protection was off\. Enabled/,
+				/because automatic fraud prevention was off\. Enabled/,
 				{},
 				{ timeout: 3000 }
 			)
@@ -407,7 +405,7 @@ describe( 'checkout attempts status field', () => {
 		// No enable link once protection is on.
 		expect(
 			screen.queryByRole( 'link', {
-				name: 'Enable automatic protection',
+				name: 'Enable automatic fraud prevention',
 			} )
 		).not.toBeInTheDocument();
 	} );
@@ -887,7 +885,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		).toHaveLength( 1 );
 	} );
 
-	it( 'shows the automatic-protection banner linking to settings in a new tab when protection is off', async () => {
+	it( 'shows the automatic-protection banner while protection is off', async () => {
 		mockedApiFetch.mockResolvedValue( listResponse( [], 0 ) );
 
 		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
@@ -895,20 +893,64 @@ describe( 'CheckoutAttemptsPage', () => {
 		// The banner's message renders visibly (the Notice also mirrors it into an
 		// aria-live region, so there are two matches).
 		expect(
-			screen.getAllByText( /Automatic protection is off/ ).length
+			screen.getAllByText( /Automatic fraud prevention is off/ ).length
 		).toBeGreaterThan( 0 );
+		expect(
+			await screen.findByRole( 'button', {
+				name: 'Enable automatic fraud prevention',
+			} )
+		).toBeInTheDocument();
+	} );
 
-		// The action opens settings in a new tab. It renders as an <a> (so it
-		// navigates) but keeps the Base UI button role.
-		const link = await screen.findByRole( 'button', {
-			name: 'Enable automatic protection',
-		} );
-		expect( link ).toHaveAttribute(
-			'href',
-			'https://example.test/wp-admin/settings'
+	it( 'opens the enable drawer from the banner and turns protection on in place', async () => {
+		mockedApiFetch.mockResolvedValue( listResponse( [], 0 ) );
+
+		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+
+		// Clicking the banner button opens the drawer, without navigating away.
+		await userEvent.click(
+			await screen.findByRole( 'button', {
+				name: 'Enable automatic fraud prevention',
+			} )
 		);
-		expect( link ).toHaveAttribute( 'target', '_blank' );
-		expect( link ).toHaveAttribute( 'rel', 'noopener noreferrer' );
+		expect(
+			await screen.findByRole( 'heading', {
+				name: 'Enable fraud prevention',
+			} )
+		).toBeVisible();
+
+		// Save stays disabled until the checkbox changes from its initial state.
+		// The @wordpress/ui Button marks its disabled state with aria-disabled
+		// rather than the native attribute.
+		expect(
+			screen.getByRole( 'button', { name: 'Save' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
+
+		// Check the box and save: it posts to the settings endpoint...
+		await userEvent.click(
+			screen.getByRole( 'checkbox', {
+				name: /Automatically block checkout attempts/,
+			} )
+		);
+		expect(
+			screen.getByRole( 'button', { name: 'Save' } )
+		).not.toHaveAttribute( 'aria-disabled', 'true' );
+		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/settings',
+				method: 'POST',
+				data: { automatic_protection: true },
+			} )
+		);
+
+		// ...and the banner goes away once protection is on.
+		await waitFor( () =>
+			expect(
+				screen.queryByText( /Automatic fraud prevention is off/ )
+			).not.toBeInTheDocument()
+		);
 	} );
 
 	it( 'hides the automatic-protection banner when protection is on', async () => {
@@ -920,7 +962,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		await waitFor( () => expect( lastDataViewsProps() ).toBeDefined() );
 		expect(
 			screen.queryByRole( 'button', {
-				name: 'Enable automatic protection',
+				name: 'Enable automatic fraud prevention',
 			} )
 		).not.toBeInTheDocument();
 	} );

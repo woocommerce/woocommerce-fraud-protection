@@ -118,7 +118,7 @@ class FraudProtectionCommands {
 			'add_command',
 			'wc fraud-protection automatic-protection set',
 			array( $this, 'automatic_protection_set' ),
-			array( 'shortdesc' => __( 'Set automatic protection for this site.', 'woocommerce-fraud-protection' ) )
+			array( 'shortdesc' => __( 'Set automatic fraud prevention for this site.', 'woocommerce-fraud-protection' ) )
 		);
 		$this->legacy_proxy->call_static(
 			WP_CLI::class,
@@ -200,10 +200,10 @@ class FraudProtectionCommands {
 
 		$this->write_line( __( 'Plugin version', 'woocommerce-fraud-protection' ), defined( 'WC_FRAUD_PROTECTION_VERSION' ) ? (string) WC_FRAUD_PROTECTION_VERSION : __( 'Unknown', 'woocommerce-fraud-protection' ) );
 		$this->write_line( __( 'Merchant-facing features status', 'woocommerce-fraud-protection' ), $this->merchant_facing_features_gate->get_status()->value );
-		$this->write_line( __( 'Automatic protection status', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_status()->value );
-		$this->write_line( __( 'Automatic protection source', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_source()->value );
+		$this->write_line( __( 'Automatic fraud prevention status', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_status()->value );
+		$this->write_line( __( 'Automatic fraud prevention source', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_source()->value );
 		$opted_out_at = $this->automatic_protection->get_opted_out_at();
-		$this->write_line( __( 'Automatic protection opted out at', 'woocommerce-fraud-protection' ), null === $opted_out_at ? __( 'Not opted out', 'woocommerce-fraud-protection' ) : $opted_out_at . ' UTC' );
+		$this->write_line( __( 'Automatic fraud prevention opted out at', 'woocommerce-fraud-protection' ), null === $opted_out_at ? __( 'Not opted out', 'woocommerce-fraud-protection' ) : $opted_out_at . ' UTC' );
 		$this->write_line( __( 'Jetpack blog ID', 'woocommerce-fraud-protection' ), self::value_or_unavailable( $this->get_jetpack_blog_id() ) );
 		$this->write_line( __( 'Required schema version', 'woocommerce-fraud-protection' ), (string) $schema_status['required_version'] );
 		$this->write_line( __( 'Installed schema version', 'woocommerce-fraud-protection' ), (string) $schema_status['installed_version'] );

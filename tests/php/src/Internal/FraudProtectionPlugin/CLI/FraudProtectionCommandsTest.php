@@ -288,9 +288,9 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
 		$this->assertStringContainsString( 'Merchant-facing features status: default_disabled', $output );
-		$this->assertStringContainsString( 'Automatic protection status: default_disabled', $output );
-		$this->assertStringContainsString( 'Automatic protection source: none', $output );
-		$this->assertStringContainsString( 'Automatic protection opted out at: Not opted out', $output );
+		$this->assertStringContainsString( 'Automatic fraud prevention status: default_disabled', $output );
+		$this->assertStringContainsString( 'Automatic fraud prevention source: none', $output );
+		$this->assertStringContainsString( 'Automatic fraud prevention opted out at: Not opted out', $output );
 		$this->assertStringNotContainsString( 'code default', $output );
 		$this->assertStringNotContainsString( 'stored state', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
@@ -340,7 +340,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->status();
 
-		$this->assertContains( 'Automatic protection opted out at: 2026-09-11 12:00:00 UTC', $this->wp_cli_lines );
+		$this->assertContains( 'Automatic fraud prevention opted out at: 2026-09-11 12:00:00 UTC', $this->wp_cli_lines );
 	}
 
 	/**

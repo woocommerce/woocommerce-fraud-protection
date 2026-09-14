@@ -39,19 +39,19 @@ export function AutomaticProtectionCard( {
 	if ( 0 === flaggedByFraudPreventionCount ) {
 		noticeText = optedOut
 			? __(
-					'Automatic protection is off. We recommend turning it on.',
+					'Automatic fraud prevention is off. We recommend turning it on.',
 					'woocommerce-fraud-protection'
 			  )
 			: __(
-					'Automatic protection is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+					'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 					'woocommerce-fraud-protection'
 			  );
 	} else if ( optedOut ) {
 		noticeText = sprintf(
 			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
 			_n(
-				'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
-				'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
+				'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.',
+				'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.',
 				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
@@ -77,10 +77,7 @@ export function AutomaticProtectionCard( {
 		>
 			<Card.Header>
 				<Card.Title render={ <h2 /> }>
-					{ __(
-						'Automatic protection',
-						'woocommerce-fraud-protection'
-					) }
+					{ __( 'Fraud prevention', 'woocommerce-fraud-protection' ) }
 				</Card.Title>
 			</Card.Header>
 			<Card.Content>
@@ -109,7 +106,7 @@ export function AutomaticProtectionCard( {
 									role="status"
 								>
 									{ __(
-										'Loading automatic protection setting.',
+										'Loading automatic fraud prevention setting.',
 										'woocommerce-fraud-protection'
 									) }
 								</span>
@@ -174,7 +171,7 @@ export function AutomaticProtectionCard( {
 							) }
 							<Notice.CloseIcon
 								label={ __(
-									'Dismiss automatic protection notice',
+									'Dismiss automatic fraud prevention notice',
 									'woocommerce-fraud-protection'
 								) }
 								disabled={ isOptingOut }

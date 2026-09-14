@@ -52,21 +52,21 @@ export function FlaggedChip( {
 	if ( protectionOn ) {
 		tooltip = enabledAt
 			? sprintf(
-					// translators: %s is the date automatic protection was enabled.
+					// translators: %s is the date automatic fraud prevention was enabled.
 					__(
-						'Flagged as suspicious but allowed because automatic protection was off. Enabled %s.',
+						'Flagged as suspicious but allowed because automatic fraud prevention was off. Enabled %s.',
 						'woocommerce-fraud-protection'
 					),
 					formatSiteDate( enabledAt )
 			  )
 			: __(
-					'Flagged as suspicious but allowed because automatic protection was off.',
+					'Flagged as suspicious but allowed because automatic fraud prevention was off.',
 					'woocommerce-fraud-protection'
 			  );
 	} else if ( settingsUrl ) {
 		tooltip = createInterpolateElement(
 			__(
-				'Flagged as suspicious but allowed because automatic protection is off. <a>Enable automatic protection</a>',
+				'Flagged as suspicious but allowed because automatic fraud prevention is off. <a>Enable automatic fraud prevention</a>',
 				'woocommerce-fraud-protection'
 			),
 			{
@@ -76,7 +76,7 @@ export function FlaggedChip( {
 		);
 	} else {
 		tooltip = __(
-			'Flagged as suspicious but allowed because automatic protection is off.',
+			'Flagged as suspicious but allowed because automatic fraud prevention is off.',
 			'woocommerce-fraud-protection'
 		);
 	}

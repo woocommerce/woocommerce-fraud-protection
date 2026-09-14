@@ -1,11 +1,12 @@
 import { Notice, Tabs } from '@wordpress/ui';
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { DataViews } from '@wordpress/dataviews';
 import type { View } from '@wordpress/dataviews';
 import { Link } from 'react-router-dom';
 
 import { buildActions } from './actions';
+import { EnableFraudPreventionDrawer } from './enable-fraud-prevention-drawer';
 import { getFields } from './fields';
 import { ProtectionOffBanner } from './protection-off-banner';
 import { loadState, saveState } from './persisted-state';
@@ -53,12 +54,29 @@ export function CheckoutAttemptsPage() {
 	const [ view, setView ] = useState< View >( initialState.view );
 	const [ tab, setTab ] = useState< StatusTab >( initialState.tab );
 
+	// Automatic fraud prevention state starts from the injected config but can be
+	// turned on from the enable drawer, so the banner and flagged tooltips update
+	// without a reload.
+	const [ protectionOn, setProtectionOn ] = useState(
+		config.automaticProtection
+	);
+	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );
+	const openDrawer = useCallback( () => setIsDrawerOpen( true ), [] );
+
+	const effectiveConfig = useMemo(
+		() => ( { ...config, automaticProtection: protectionOn } ),
+		[ config, protectionOn ]
+	);
+
 	const isCompact = 'compact' === view.layout?.density;
 	const fields = useMemo(
-		() => getFields( config, isCompact ),
-		[ config, isCompact ]
+		() => getFields( effectiveConfig, isCompact ),
+		[ effectiveConfig, isCompact ]
 	);
-	const actions = useMemo( () => buildActions( config ), [ config ] );
+	const actions = useMemo(
+		() => buildActions( effectiveConfig, openDrawer ),
+		[ effectiveConfig, openDrawer ]
+	);
 
 	// Remember how the merchant left the list — including the page — so a reload
 	// restores it. The list lives inside the settings single-page app, so page
@@ -151,8 +169,8 @@ export function CheckoutAttemptsPage() {
 				<Tabs.Panel value="blocked" />
 			</Tabs.Root>
 
-			{ ! config.automaticProtection && (
-				<ProtectionOffBanner settingsUrl={ config.settingsUrl } />
+			{ ! protectionOn && (
+				<ProtectionOffBanner onEnable={ openDrawer } />
 			) }
 
 			<DataViews< ( typeof sessions )[ number ] >
@@ -177,6 +195,12 @@ export function CheckoutAttemptsPage() {
 						) }
 					</p>
 				}
+			/>
+
+			<EnableFraudPreventionDrawer
+				open={ isDrawerOpen }
+				onOpenChange={ setIsDrawerOpen }
+				onEnabled={ () => setProtectionOn( true ) }
 			/>
 		</div>
 	);

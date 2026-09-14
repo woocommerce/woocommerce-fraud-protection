@@ -137,7 +137,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.getByRole( 'presentation' ) ).toBeInTheDocument();
 		expect( screen.getAllByRole( 'status' ) ).toHaveLength( 2 );
 		expect(
-			screen.getByText( 'Loading automatic protection setting.' )
+			screen.getByText( 'Loading automatic fraud prevention setting.' )
 		).toBeInTheDocument();
 		expect(
 			screen.getByText( 'Loading performance results.' )
@@ -158,7 +158,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).not.toBeInTheDocument();
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
-			screen.getByRole( 'heading', { name: 'Automatic protection' } )
+			screen.getByRole( 'heading', { name: 'Fraud prevention' } )
 		).toBeInTheDocument();
 		expect(
 			screen.getByText(
@@ -207,7 +207,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'shows all four performance outcomes when automatic protection is disabled', async () => {
+	it( 'shows all four performance outcomes when automatic fraud prevention is disabled', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, {
 				flagged_by_fraud_prevention: 12,
@@ -259,7 +259,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 	} );
 
-	it( 'hides flagged checkout attempts when automatic protection is enabled', async () => {
+	it( 'hides flagged checkout attempts when automatic fraud prevention is enabled', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( true, {
 				flagged_by_fraud_prevention: 12,
@@ -556,7 +556,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		fireEvent.click(
 			screen.getByRole( 'button', {
-				name: 'Dismiss automatic protection notice',
+				name: 'Dismiss automatic fraud prevention notice',
 			} )
 		);
 		expect(
@@ -576,7 +576,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			name: '12 checkout attempts',
 		} );
 		expect( countLink.parentElement ).toHaveTextContent(
-			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.'
+			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.'
 		);
 		expect(
 			screen.queryByRole( 'button', {
@@ -591,9 +591,12 @@ describe( 'FraudProtectionSettingsPage', () => {
 	it.each( [
 		[
 			false,
-			'Automatic protection is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+			'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 		],
-		[ true, 'Automatic protection is off. We recommend turning it on.' ],
+		[
+			true,
+			'Automatic fraud prevention is off. We recommend turning it on.',
+		],
 	] )(
 		'shows count-free copy when opted-out is %s and no attempts were flagged',
 		async ( optedOut, copy ) => {

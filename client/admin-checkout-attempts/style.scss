@@ -48,7 +48,7 @@
 		color: $gray-700;
 	}
 
-	// The "automatic protection is off" info banner sits between the tabs and the
+	// The "automatic fraud prevention is off" info banner sits between the tabs and the
 	// list; give it room on both sides. The @wordpress/ui Notice supplies the
 	// info styling (light-blue surface, border, icon) and the dark action button.
 	.wc-fraud-protection-checkout-attempts__protection-banner {
@@ -215,34 +215,30 @@
 	margin-bottom: 0;
 }
 
-// The banner's action renders as an <a> so it can open the settings in a new
-// tab. WordPress admin colours every <a> with its blue link colour, which is
-// unreadable on the dark button — restore the button's own white text in every
-// state. The #mainform prefix outranks WordPress' link rules without
-// !important.
-#mainform .wc-fraud-protection-checkout-attempts__protection-banner [role='button'] {
-	&,
-	&:hover,
-	&:focus,
-	&:active {
-		color: #fff;
-	}
-}
-
-// The "Turn on automatic protection" row action renders inside the DataViews
-// actions menu, which portals outside the page wrapper — so this rule is
-// intentionally unscoped. It presents that one item as the design's external
-// link: the admin accent colour plus a trailing north-east arrow. The item
-// still activates its action (navigating to the settings page) on click.
+// The "Turn on automatic fraud prevention" row action renders inside the
+// DataViews actions menu, which portals outside the page wrapper — so this rule
+// is intentionally unscoped. It highlights that one item with the admin accent
+// colour. The item opens the enable drawer when selected.
 .wc-fraud-protection-checkout-attempts__menu-link {
 	color: var(--wp-admin-theme-color, #2271b1);
 	font-weight: 500;
+}
 
-	&::after {
-		content: '\2197';
-		margin-inline-start: 4px;
-		font-weight: 400;
-	}
+// The @wordpress/ui Drawer leaves its z-index as `initial` (which computes to
+// `auto`): each of its layers is `z-index: var(--wp-ui-drawer-z-index, initial)`,
+// expecting the host app to set that variable. Without it, WordPress admin chrome
+// paints over the drawer — the admin bar (z-index 99999/100000) covers the header
+// and the positioned content column (#wpcontent, z-index 1) covers the panel and
+// backdrop — so the open drawer looks unstyled and clipped. The drawer portals to
+// the document body, outside our page wrapper, so this can't be scoped through
+// `__page`; instead scope it to the portal that actually holds our drawer via
+// `:has()`, and let the variable inherit to the backdrop, viewport and popup.
+// 100001 clears the admin bar (and its 100000 submenus) so the drawer, like its
+// Figma design, covers the whole viewport.
+[data-base-ui-portal]:has(
+		.wc-fraud-protection-checkout-attempts__enable-drawer
+	) {
+	--wp-ui-drawer-z-index: 100001;
 }
 
 // The flagged-session info tooltip renders inside the portaled tooltip popup
