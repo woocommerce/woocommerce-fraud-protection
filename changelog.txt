@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+2026-xx-xx - version 0.2.5
+* Added - Merchants can view their active allow and block rules with filters and paging.
+
 2026-09-14 - version 0.2.4
 * Added - Inbox invitation to enable automatic protection during early access.
 * Added - Merchants can opt out before automatic protection is enabled automatically.

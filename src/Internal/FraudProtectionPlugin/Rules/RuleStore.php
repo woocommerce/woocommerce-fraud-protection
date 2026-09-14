@@ -274,6 +274,124 @@ class RuleStore {
 	}
 
 	/**
+	 * Get a page of active rules for the merchant management view.
+	 *
+	 * @param array{action?: string, type?: string, value?: string, from?: string, to?: string} $filters Filters in normalized or UTC form.
+	 * @param int                                                                               $page    One-based page number.
+	 * @param int                                                                               $per_page Items per page.
+	 * @return array{items: Rule[], total: int, pages: int}
+	 * @throws \RuntimeException When a query fails.
+	 */
+	public function get_active_rules_page( array $filters = array(), int $page = 1, int $per_page = 20 ): array {
+		global $wpdb;
+
+		$page     = max( 1, $page );
+		$per_page = min( 100, max( 1, $per_page ) );
+		$where    = array( 'status = %s' );
+		$values   = array( RuleStatus::Active->value );
+
+		if ( isset( $filters['action'] ) && in_array( $filters['action'], array( FraudDecision::Allow->value, FraudDecision::Block->value ), true ) ) {
+			$where[]  = 'action = %s';
+			$values[] = $filters['action'];
+		}
+
+		$type             = isset( $filters['type'] ) && is_string( $filters['type'] ) ? $filters['type'] : null;
+		$normalized_value = null;
+		if ( isset( $filters['value'] ) && is_string( $filters['value'] ) && '' !== $filters['value'] ) {
+			if ( is_string( $type ) && in_array( $type, array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) ) {
+				$normalized_value = RuleConditions::normalize_value( $type, $filters['value'] );
+				if ( is_null( $normalized_value ) ) {
+					return array(
+						'items' => array(),
+						'total' => 0,
+						'pages' => 0,
+					);
+				}
+				$hash     = RuleConditions::hash(
+					array(
+						'field'    => $type,
+						'operator' => 'equals',
+						'value'    => $normalized_value,
+					)
+				);
+				$where[]  = 'condition_hash = %s';
+				$values[] = $hash;
+			} else {
+				$hashes = array();
+				foreach ( array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ) as $field ) {
+					$value = RuleConditions::normalize_value( $field, $filters['value'] );
+					if ( ! is_null( $value ) ) {
+						$hashes[] = RuleConditions::hash(
+							array(
+								'field'    => $field,
+								'operator' => 'equals',
+								'value'    => $value,
+							)
+						);
+					}
+				}
+				if ( empty( $hashes ) ) {
+					return array(
+						'items' => array(),
+						'total' => 0,
+						'pages' => 0,
+					);
+				}
+				$where[] = 'condition_hash IN ( ' . implode( ', ', array_fill( 0, count( $hashes ), '%s' ) ) . ' )';
+				$values  = array_merge( $values, $hashes );
+			}
+		}
+
+		if ( is_string( $type ) && in_array( $type, array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) && is_null( $normalized_value ) && ! isset( $filters['value'] ) ) {
+			$where[]  = 'conditions LIKE %s';
+			$values[] = '%"field":"' . $wpdb->esc_like( $type ) . '"%';
+		}
+
+		foreach ( array(
+			'from' => '>=',
+			'to'   => '<=',
+		) as $filter => $operator ) {
+			if ( isset( $filters[ $filter ] ) && is_string( $filters[ $filter ] ) && '' !== $filters[ $filter ] ) {
+				$where[]  = 'created_at ' . $operator . ' %s';
+				$values[] = $filters[ $filter ];
+			}
+		}
+
+		$table     = $this->schema_manager->get_rules_table_name();
+		$where_sql = implode( ' AND ', $where );
+		$count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
+		$total = $wpdb->get_var( $wpdb->prepare( $count_sql, $values ) );
+		if ( false === $total || is_null( $total ) ) {
+			throw new \RuntimeException( 'Active rule count query failed.' );
+		}
+
+		$offset = ( $page - 1 ) * $per_page;
+		$sql    = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC, id DESC LIMIT %d OFFSET %d";
+		$args   = array_merge( $values, array( $per_page, $offset ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
+		if ( ! is_array( $rows ) ) {
+			throw new \RuntimeException( 'Active rule list query failed.' );
+		}
+
+		$items = array();
+		foreach ( $rows as $row ) {
+			$rule = Rule::from_row( $row );
+			if ( ! is_null( $rule ) && RuleStatus::Active === $rule->status ) {
+				$items[] = $rule;
+			}
+		}
+
+		$total = (int) $total;
+		return array(
+			'items' => $items,
+			'total' => $total,
+			'pages' => $total > 0 ? (int) ceil( $total / $per_page ) : 0,
+		);
+	}
+
+	/**
 	 * Get the active rules in evaluation order (position, then id).
 	 *
 	 * The backing rows are loaded with a single query and kept in the object
