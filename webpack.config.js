@@ -12,7 +12,6 @@ module.exports = {
 			requestToExternal: ( request ) => {
 				if (
 					[
-						'@woocommerce/navigation',
 						'@wordpress/private-apis',
 						'@wordpress/theme',
 					].includes( request )
