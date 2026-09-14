@@ -155,8 +155,23 @@ class RulesRestController extends \WP_REST_Controller {
 			'action'     => $rule->action->value,
 			'value'      => (string) ( $rule->conditions['value'] ?? '' ),
 			'type'       => (string) ( $rule->conditions['field'] ?? '' ),
-			'created_at' => $rule->created_at,
+			'created_at' => $this->format_created_at( $rule->created_at ),
 		);
+	}
+
+	/**
+	 * Format a UTC database timestamp as an explicit UTC date-time.
+	 *
+	 * @param string $created_at UTC MySQL timestamp.
+	 * @return string RFC3339 timestamp.
+	 */
+	private function format_created_at( string $created_at ): string {
+		$parsed = \DateTimeImmutable::createFromFormat( '!Y-m-d H:i:s', $created_at, new \DateTimeZone( 'UTC' ) );
+		if ( false === $parsed ) {
+			return $created_at . '+00:00';
+		}
+
+		return $parsed->format( 'Y-m-d\\TH:i:s\\Z' );
 	}
 
 	/**

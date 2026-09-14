@@ -58,7 +58,7 @@
 		"@wordpress/api-fetch": "^7.54.0",
 		"@wordpress/base-styles": "^6.20.0",
 		"@wordpress/data": "^10.54.0",
-		"@wordpress/dataviews": "^18.1.0",
+		"@wordpress/dataviews": "^19.0.0",
 		"@wordpress/date": "^5.54.0",
 		"@wordpress/element": "^8.6.0",
 		"@wordpress/env": "11.14.0",

@@ -5,9 +5,13 @@ import { MemoryRouter } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
+import type { View } from '@wordpress/dataviews';
 
 import { rulesStore } from '../../client/admin-settings/data/rules-store';
-import { RulesPage } from '../../client/admin-settings/rules-page';
+import {
+	getQueryFromView,
+	RulesPage,
+} from '../../client/admin-settings/rules-page';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
@@ -165,6 +169,95 @@ describe( 'RulesPage', () => {
 		} );
 		expect( registry.select( rulesStore ).getRules()[ 0 ].value ).toBe(
 			'newer@example.com'
+		);
+	} );
+
+	it( 'ignores a stale error after the query changes', async () => {
+		let rejectFirst: ( error: Error ) => void = () => {};
+		let resolveSecond: ( response: RulesResponse ) => void = () => {};
+		const firstResponse = new Promise< RulesResponse >( ( _, reject ) => {
+			rejectFirst = reject;
+		} );
+		const secondResponse = new Promise< RulesResponse >( ( resolve ) => {
+			resolveSecond = resolve;
+		} );
+		mockedApiFetch
+			.mockReturnValueOnce( firstResponse )
+			.mockReturnValueOnce( secondResponse );
+
+		const registry = createRegistry();
+		registry.register( rulesStore );
+		const firstRequest = registry
+			.dispatch( rulesStore )
+			.requestRules( { page: 1, perPage: 20 } );
+		const secondRequest = registry
+			.dispatch( rulesStore )
+			.requestRules( { page: 2, perPage: 20 } );
+
+		await act( async () => {
+			resolveSecond( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+				page: 2,
+				perPage: 20,
+			} );
+			await secondRequest;
+		} );
+		await act( async () => {
+			rejectFirst( new Error( 'The older request failed.' ) );
+			await firstRequest;
+		} );
+
+		expect( registry.select( rulesStore ).getError() ).toBeNull();
+	} );
+
+	it( 'maps all supported view filters to the rules query', () => {
+		const query = getQueryFromView( {
+			type: 'table',
+			page: 3,
+			perPage: 50,
+			filters: [
+				{ field: 'action', operator: 'is', value: 'block' },
+				{ field: 'type', operator: 'is', value: 'ip' },
+				{ field: 'value', operator: 'is', value: '198.51.100.1' },
+				{
+					field: 'created_at',
+					operator: 'between',
+					value: [ '2026-09-01T00:00:00', '2026-09-30T23:59:59' ],
+				},
+			],
+			fields: [],
+			layout: {},
+		} as View );
+
+		expect( query ).toEqual( {
+			page: 3,
+			perPage: 50,
+			action: 'block',
+			type: 'ip',
+			value: '198.51.100.1',
+			from: '2026-09-01',
+			to: '2026-09-30',
+		} );
+	} );
+
+	it( 'exposes request errors and stops loading', async () => {
+		mockedApiFetch.mockRejectedValueOnce(
+			new Error( 'Rules unavailable.' )
+		);
+		const registry = createRegistry();
+		registry.register( rulesStore );
+
+		await act( async () => {
+			await registry
+				.dispatch( rulesStore )
+				.requestRules( { page: 1, perPage: 20 } );
+		} );
+
+		expect( registry.select( rulesStore ).isLoading() ).toBe( false );
+		expect( registry.select( rulesStore ).getError() ).toBe(
+			'Rules unavailable.'
 		);
 	} );
 } );
