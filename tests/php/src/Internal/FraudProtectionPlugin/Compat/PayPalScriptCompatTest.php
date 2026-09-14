@@ -102,6 +102,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 20, has_action( 'before_woocommerce_pay_form', array( $this->sut, 'enqueue_paypal_script_if_smart_button_enqueued' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this->sut, 'enqueue_paypal_script_if_add_payment_method_enqueued' ) ) );
+		$this->assertSame( PHP_INT_MAX, has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script_for_add_payment_method' ) ) );
 		$this->assertSame( PHP_INT_MAX, has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_paypal_script_for_sdk_v6' ) ) );
 	}
 
@@ -874,6 +875,49 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 
 			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
 		} finally {
+			if ( null === $previous_page_id ) {
+				delete_option( 'woocommerce_myaccount_page_id' );
+			} else {
+				update_option( 'woocommerce_myaccount_page_id', $previous_page_id );
+			}
+			if ( $had_endpoint_query_var ) {
+				$wp->query_vars['add-payment-method'] = $previous_query_var;
+			} else {
+				unset( $wp->query_vars['add-payment-method'] );
+			}
+		}
+	}
+
+	/** @testdox The add-payment-method interceptor loads when PayPal enqueues its script before form rendering. */
+	public function test_add_payment_method_script_loads_during_wp_enqueue_scripts(): void {
+		global $wp;
+
+		$handler = $this->createMock( BlackboxScriptHandler::class );
+		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$sut                    = $this->make_compat_with_script_handler( $handler );
+		$page_id                = self::factory()->post->create( array( 'post_type' => 'page' ) );
+		$previous_page_id       = get_option( 'woocommerce_myaccount_page_id', null );
+		$had_endpoint_query_var = array_key_exists( 'add-payment-method', $wp->query_vars );
+		$previous_query_var     = $wp->query_vars['add-payment-method'] ?? null;
+		$enqueue_paypal_script  = function (): void {
+			wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
+			wp_enqueue_script( 'ppcp-add-payment-method' );
+			$this->touched_add_payment_method_handle = true;
+		};
+
+		try {
+			update_option( 'woocommerce_myaccount_page_id', $page_id );
+			$this->go_to( get_permalink( $page_id ) );
+			$wp->query_vars['add-payment-method'] = '';
+			add_action( 'wp_enqueue_scripts', $enqueue_paypal_script, 10 );
+			$sut->register();
+
+			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+			do_action( 'wp_enqueue_scripts' );
+
+			$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+		} finally {
+			remove_action( 'wp_enqueue_scripts', $enqueue_paypal_script, 10 );
 			if ( null === $previous_page_id ) {
 				delete_option( 'woocommerce_myaccount_page_id' );
 			} else {

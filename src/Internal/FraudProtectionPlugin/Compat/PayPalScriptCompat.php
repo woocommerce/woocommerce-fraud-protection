@@ -73,6 +73,7 @@ class PayPalScriptCompat {
 		add_action( 'before_woocommerce_pay_form', array( $this, 'enqueue_paypal_script_if_smart_button_enqueued' ), 20, 0 );
 		add_action( 'woocommerce_add_payment_method_form_bottom', array( $this, 'enqueue_paypal_script_for_add_payment_method' ), 20, 0 );
 		add_action( 'woocommerce_subscriptions_change_payment_after_submit', array( $this, 'enqueue_paypal_script_if_add_payment_method_enqueued' ), 20, 0 );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_paypal_script_for_add_payment_method' ), PHP_INT_MAX, 0 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_paypal_script_for_sdk_v6' ), PHP_INT_MAX, 0 );
 	}
 
