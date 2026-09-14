@@ -16,6 +16,18 @@ if ( ! window.PointerEvent ) {
 	} );
 }
 
+if ( ! window.ResizeObserver ) {
+	Object.defineProperty( window, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class ResizeObserver {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		},
+	} );
+}
+
 // Stub HTMLFormElement.prototype.submit to prevent jsdom "Not implemented" errors.
 // Individual tests can override form.submit with their own spy when they need to assert on it.
 if ( typeof window.HTMLFormElement !== 'undefined' ) {

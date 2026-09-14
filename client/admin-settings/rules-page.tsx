@@ -22,7 +22,7 @@ const fields: Field< Rule >[] = [
 		label: __( 'Action', 'woocommerce-fraud-protection' ),
 		type: 'text',
 		elements: ruleActions,
-		filterBy: { operators: [ 'isAny' ] },
+		filterBy: { operators: [ 'is' ] },
 		render: ( { item } ) =>
 			item.action === 'allow'
 				? __( 'Allow', 'woocommerce-fraud-protection' )
@@ -40,7 +40,7 @@ const fields: Field< Rule >[] = [
 		label: __( 'Rule type', 'woocommerce-fraud-protection' ),
 		type: 'text',
 		elements: ruleTypes,
-		filterBy: { operators: [ 'isAny' ] },
+		filterBy: { operators: [ 'is' ] },
 		render: ( { item } ) =>
 			item.type === 'email'
 				? __( 'Email', 'woocommerce-fraud-protection' )
@@ -60,11 +60,15 @@ const getQueryFromView = ( view: View ): RulesQuery => {
 		perPage: view.perPage ?? 20,
 	};
 	( view.filters ?? [] ).forEach( ( filter ) => {
-		if ( filter.field === 'action' && Array.isArray( filter.value ) ) {
-			query.action = String( filter.value[ 0 ] ?? '' );
+		if ( filter.field === 'action' ) {
+			query.action = Array.isArray( filter.value )
+				? String( filter.value[ 0 ] ?? '' )
+				: String( filter.value ?? '' );
 		}
-		if ( filter.field === 'type' && Array.isArray( filter.value ) ) {
-			query.type = String( filter.value[ 0 ] ?? '' );
+		if ( filter.field === 'type' ) {
+			query.type = Array.isArray( filter.value )
+				? String( filter.value[ 0 ] ?? '' )
+				: String( filter.value ?? '' );
 		}
 		if ( filter.field === 'value' && typeof filter.value === 'string' ) {
 			query.value = filter.value;
@@ -109,6 +113,21 @@ export function RulesPage() {
 		),
 		[]
 	);
+	const dataViews = (
+		<DataViews
+			data={ rules }
+			fields={ fields }
+			view={ view }
+			onChangeView={ setView }
+			isLoading={ isLoading }
+			paginationInfo={ { totalItems, totalPages } }
+			getItemId={ ( item ) => String( item.id ) }
+			defaultLayouts={ { table: {} } }
+			empty={ empty }
+			search={ false }
+			config={ { perPageSizes: [ 20, 50, 100 ] } }
+		/>
+	);
 
 	return (
 		<Stack
@@ -142,8 +161,8 @@ export function RulesPage() {
 					if ( value !== 'all' ) {
 						filters.push( {
 							field: 'action',
-							operator: 'isAny',
-							value: [ value ],
+							operator: 'is',
+							value,
 						} );
 					}
 					setView( {
@@ -164,20 +183,16 @@ export function RulesPage() {
 						{ __( 'Block', 'woocommerce-fraud-protection' ) }
 					</Tabs.Tab>
 				</Tabs.List>
+				<Tabs.Panel value="all">
+					{ actionTab === 'all' && dataViews }
+				</Tabs.Panel>
+				<Tabs.Panel value="allow">
+					{ actionTab === 'allow' && dataViews }
+				</Tabs.Panel>
+				<Tabs.Panel value="block">
+					{ actionTab === 'block' && dataViews }
+				</Tabs.Panel>
 			</Tabs.Root>
-			<DataViews
-				data={ rules }
-				fields={ fields }
-				view={ view }
-				onChangeView={ setView }
-				isLoading={ isLoading }
-				paginationInfo={ { totalItems, totalPages } }
-				getItemId={ ( item ) => String( item.id ) }
-				defaultLayouts={ { table: {} } }
-				empty={ empty }
-				search={ false }
-				config={ { perPageSizes: [ 20, 50, 100 ] } }
-			/>
 		</Stack>
 	);
 }
