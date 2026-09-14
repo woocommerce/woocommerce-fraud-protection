@@ -11,6 +11,7 @@ import './data/store';
 import { CheckoutAttemptsPage } from '../admin-checkout-attempts/checkout-attempts-page';
 import { getFraudProtectionRoute } from './navigation';
 import { FraudProtectionSettingsPage } from './settings-page';
+import { RulesPage } from './rules-page';
 import './style.scss';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
@@ -20,6 +21,7 @@ export function FraudProtectionAdminApp() {
 		<HistoryRouter history={ getHistory() }>
 			<Routes>
 				<Route path="/" element={ <FraudProtectionSettingsPage /> } />
+				<Route path="/rules" element={ <RulesPage /> } />
 				<Route
 					path="/checkout-attempts"
 					element={ <CheckoutAttemptsPage /> }

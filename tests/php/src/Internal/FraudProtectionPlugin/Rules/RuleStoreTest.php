@@ -79,6 +79,40 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The merchant rules page filters by action, type, exact value and dates, and orders newest first.
+	 */
+	public function test_active_rules_page_filters_and_paginates(): void {
+		$old_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'old@example.com' ) );
+		$new_block = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'new@example.com' ) );
+		$this->sut->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '2001:db8::1',
+			)
+		);
+		$this->set_created_at( $old_allow->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $new_block->id, '2026-02-01 00:00:00' );
+
+		$page = $this->sut->get_active_rules_page(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'value'  => 'OLD@EXAMPLE.COM',
+				'from'   => '2026-01-01 00:00:00',
+				'to'     => '2026-01-01 23:59:59',
+			),
+			1,
+			1
+		);
+
+		$this->assertSame( 1, $page['total'] );
+		$this->assertSame( 1, $page['pages'] );
+		$this->assertSame( 'old@example.com', $page['items'][0]->conditions['value'] );
+	}
+
+	/**
 	 * Get a rule row straight from the table.
 	 *
 	 * @param int $id The rule id.
