@@ -159,17 +159,14 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_mini_cart_script_if_enabled(): void {
-		if (
-			! $this->is_paypal_mini_cart_enabled()
-			|| (
-				! $this->is_script_enqueued( self::LEGACY_SMART_BUTTON_HANDLE )
-				&& ! $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE )
-			)
-		) {
+		if ( ! $this->is_paypal_mini_cart_enabled() ) {
 			return;
 		}
 
-		$this->enqueue_paypal_script();
+		$this->enqueue_when_paypal_scripts_are_ready(
+			array( $this, __FUNCTION__ ),
+			array( self::LEGACY_SMART_BUTTON_HANDLE, self::SDK_V6_BOOT_HANDLE )
+		);
 	}
 
 	/**
@@ -196,11 +193,7 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_if_smart_button_enqueued(): void {
-		if ( ! $this->is_script_enqueued( self::LEGACY_SMART_BUTTON_HANDLE ) ) {
-			return;
-		}
-
-		$this->enqueue_paypal_script();
+		$this->enqueue_when_paypal_scripts_are_ready( array( $this, __FUNCTION__ ), array( self::LEGACY_SMART_BUTTON_HANDLE ) );
 	}
 
 	/**
@@ -226,14 +219,30 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_if_add_payment_method_enqueued(): void {
-		if (
-			! $this->is_script_enqueued( self::LEGACY_ADD_PAYMENT_METHOD_HANDLE )
-			&& ! $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
-		) {
+		$this->enqueue_when_paypal_scripts_are_ready(
+			array( $this, __FUNCTION__ ),
+			array( self::LEGACY_ADD_PAYMENT_METHOD_HANDLE, self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
+		);
+	}
+
+	/**
+	 * Enqueue after PayPal has had time to register its payment scripts.
+	 *
+	 * @param callable $callback Method to rerun after script enqueueing.
+	 * @param string[] $handles  PayPal payment script handles for the surface.
+	 */
+	private function enqueue_when_paypal_scripts_are_ready( callable $callback, array $handles ): void {
+		if ( ! did_action( 'wp_enqueue_scripts' ) ) {
+			add_action( 'wp_enqueue_scripts', $callback, PHP_INT_MAX, 0 );
 			return;
 		}
 
-		$this->enqueue_paypal_script();
+		foreach ( $handles as $handle ) {
+			if ( $this->is_script_enqueued( $handle ) ) {
+				$this->enqueue_paypal_script();
+				return;
+			}
+		}
 	}
 
 	/**
