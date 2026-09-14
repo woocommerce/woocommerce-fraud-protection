@@ -82,6 +82,9 @@
 	},
 	"jest": {
 		"preset": "@wordpress/jest-preset-default",
+		"moduleNameMapper": {
+			"^@wordpress/dataviews/wp$": "<rootDir>/tests/js/mocks/dataviews.tsx"
+		},
 		"testMatch": [
 			"**/tests/js/**/*.test.js",
 			"**/tests/js/**/*.test.ts",

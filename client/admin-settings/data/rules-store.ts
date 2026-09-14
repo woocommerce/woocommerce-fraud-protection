@@ -47,6 +47,19 @@ const DEFAULT_STATE: State = {
 	query: DEFAULT_QUERY,
 };
 
+const QUERY_KEYS: Array< keyof RulesQuery > = [
+	'page',
+	'perPage',
+	'action',
+	'type',
+	'value',
+	'from',
+	'to',
+];
+
+const areQueriesEqual = ( first: RulesQuery, second: RulesQuery ): boolean =>
+	QUERY_KEYS.every( ( key ) => first[ key ] === second[ key ] );
+
 const getErrorMessage = ( error: unknown ): string | null => {
 	if (
 		typeof error === 'object' &&
@@ -98,7 +111,13 @@ const actions = {
 	},
 	requestRules:
 		( query: RulesQuery ) =>
-		async ( { dispatch }: { dispatch: typeof actions } ) => {
+		async ( {
+			dispatch,
+			select,
+		}: {
+			dispatch: typeof actions;
+			select: { getQuery: () => RulesQuery };
+		} ) => {
 			dispatch.setQuery( query );
 			dispatch.setLoading( true );
 			const params = new URLSearchParams();
@@ -119,6 +138,9 @@ const actions = {
 				} >( {
 					path: `/wc-fraud-protection/v1/rules?${ params.toString() }`,
 				} );
+				if ( ! areQueriesEqual( select.getQuery(), query ) ) {
+					return null;
+				}
 				dispatch.receiveRules( response );
 				return response;
 			} catch ( error ) {
