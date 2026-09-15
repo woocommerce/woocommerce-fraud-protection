@@ -328,7 +328,7 @@ class RulesRestController extends \WP_REST_Controller {
 				);
 			}
 		}
-		$this->telemetry->record_rule_change( 'create', $decision, $type, $origin );
+		$this->telemetry->record_rule_change( 'created', $decision, $type, $origin );
 
 		return rest_ensure_response( $this->to_public_rule( $rule ) );
 	}

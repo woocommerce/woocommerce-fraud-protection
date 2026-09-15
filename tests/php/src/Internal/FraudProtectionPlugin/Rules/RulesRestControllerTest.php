@@ -365,7 +365,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$api_client = $this->createMock( ApiClient::class );
 		$api_client->expects( $this->never() )->method( 'report' );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
-		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'create', FraudDecision::Allow, 'email', 'api' );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'created', FraudDecision::Allow, 'email', 'api' );
 		$this->sut->init(
 			$this->rule_store,
 			$this->schema_manager,
@@ -433,7 +433,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$api_client = $this->createMock( ApiClient::class );
 		$api_client->expects( $this->never() )->method( 'report' );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
-		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'create', FraudDecision::Allow, 'email', 'rules' );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'created', FraudDecision::Allow, 'email', 'rules' );
 		$this->sut->init(
 			$this->rule_store,
 			$this->schema_manager,
@@ -678,7 +678,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 				)
 			);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
-		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'create', FraudDecision::Block, 'ip', 'checkout_attempts' );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'created', FraudDecision::Block, 'ip', 'checkout_attempts' );
 		$this->sut->init(
 			$this->rule_store,
 			$this->schema_manager,
