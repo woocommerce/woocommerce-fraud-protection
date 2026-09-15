@@ -1,9 +1,10 @@
 import { createInterpolateElement } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { Card, Checkbox, Notice, Spinner, Stack, Text } from '@wordpress/ui';
+import { Card, Notice, Stack } from '@wordpress/ui';
 import { Link } from 'react-router-dom';
 
 import { getFraudProtectionRoute } from '../navigation';
+import { AutomaticProtectionControl } from './automatic-protection-control';
 
 type AutomaticProtectionCardProps = {
 	checked: boolean;
@@ -78,54 +79,13 @@ export function AutomaticProtectionCard( {
 			</Card.Header>
 			<Card.Content>
 				<Stack direction="column" gap="xl">
-					<Text
-						className="wc-fraud-protection-settings__description"
-						variant="body-md"
-						render={ <p /> }
-					>
-						{ __(
-							'Fraud prevention scans checkout attempts for potentially automated or malicious shopper behavior. Flagged checkout attempts are recorded by default and are only blocked when automatic blocking is turned on.',
-							'woocommerce-fraud-protection'
-						) }
-					</Text>
-					<Stack
-						className="wc-fraud-protection-settings__control"
-						direction="row"
-						align="center"
-						gap="sm"
-					>
-						{ isLoading ? (
-							<>
-								<Spinner />
-								<span
-									className="screen-reader-text"
-									role="status"
-								>
-									{ __(
-										'Loading automatic fraud prevention setting.',
-										'woocommerce-fraud-protection'
-									) }
-								</span>
-							</>
-						) : (
-							<>
-								<Checkbox
-									id="automatic-protection-checkbox"
-									checked={ checked }
-									disabled={ controlsDisabled }
-									onCheckedChange={ onChange }
-								/>
-								<label htmlFor="automatic-protection-checkbox">
-									<Text variant="body-md">
-										{ __(
-											'Automatically block checkout attempts flagged by fraud prevention.',
-											'woocommerce-fraud-protection'
-										) }
-									</Text>
-								</label>
-							</>
-						) }
-					</Stack>
+					<AutomaticProtectionControl
+						id="automatic-protection-checkbox"
+						checked={ checked }
+						disabled={ controlsDisabled }
+						isLoading={ isLoading }
+						onChange={ onChange }
+					/>
 					{ showNotice && (
 						<Notice.Root
 							key={ optedOut ? 'opted-out' : 'opt-out' }

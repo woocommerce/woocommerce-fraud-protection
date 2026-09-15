@@ -1,17 +1,14 @@
-import { Button, Checkbox, Drawer, Notice, Stack, Text } from '@wordpress/ui';
+import { Button, Drawer, Notice, Stack } from '@wordpress/ui';
 import { useDispatch, useSelect } from '@wordpress/data';
 import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { store as noticesStore } from '@wordpress/notices';
 
 import { settingsStore } from '../admin-settings/data/store';
+import { AutomaticProtectionControl } from '../admin-settings/components/automatic-protection-control';
 
-// A right-side drawer that lets the merchant turn on automatic fraud prevention
-// without leaving the checkout attempts list. It mirrors the settings card's
-// enable control (description + "automatically block" checkbox) and saves
-// through the shared settings store, so the list and the settings page both
-// reflect the change without a reload. Opened from the list banner and the
-// flagged-row action.
+// Lets the merchant turn on automatic fraud prevention without leaving the
+// checkout attempts list. It uses the settings page control and store.
 
 const CHECKBOX_ID = 'wc-fraud-protection-enable-drawer-checkbox';
 
@@ -94,35 +91,21 @@ export function EnableFraudPreventionDrawer( {
 				</Drawer.Header>
 				<Drawer.Content>
 					<Stack direction="column" gap="lg">
-						<Drawer.Description>
-							{ __(
-								'Fraud prevention scans checkout attempts for potentially automated or malicious shopper behavior. Flagged checkout attempts are recorded by default and are only blocked when automatic blocking is turned on.',
-								'woocommerce-fraud-protection'
+						<AutomaticProtectionControl
+							id={ CHECKBOX_ID }
+							checked={ checked }
+							disabled={ isSaving }
+							onChange={ setChecked }
+							descriptionRender={ <Drawer.Description /> }
+						>
+							{ saveError && (
+								<Notice.Root intent="error">
+									<Notice.Description>
+										{ saveError }
+									</Notice.Description>
+								</Notice.Root>
 							) }
-						</Drawer.Description>
-						{ saveError && (
-							<Notice.Root intent="error">
-								<Notice.Description>
-									{ saveError }
-								</Notice.Description>
-							</Notice.Root>
-						) }
-						<Stack direction="row" align="center" gap="sm">
-							<Checkbox
-								id={ CHECKBOX_ID }
-								checked={ checked }
-								disabled={ isSaving }
-								onCheckedChange={ setChecked }
-							/>
-							<label htmlFor={ CHECKBOX_ID }>
-								<Text variant="body-md">
-									{ __(
-										'Automatically block checkout attempts flagged by fraud prevention.',
-										'woocommerce-fraud-protection'
-									) }
-								</Text>
-							</label>
-						</Stack>
+						</AutomaticProtectionControl>
 					</Stack>
 				</Drawer.Content>
 				<Drawer.Footer>

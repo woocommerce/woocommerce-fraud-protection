@@ -31,6 +31,13 @@ jest.mock( '@wordpress/notices', () => ( {
 	store: { name: 'core/notices' },
 } ) );
 
+jest.mock( '@woocommerce/data', () => ( {
+	useUserPreferences: () => ( {
+		isRequesting: false,
+		updateUserPreferences: jest.fn(),
+	} ),
+} ) );
+
 jest.mock( '@woocommerce/navigation', () => ( {
 	getHistory: () => mockHistory,
 	getNewPath: mockGetNewPath,
