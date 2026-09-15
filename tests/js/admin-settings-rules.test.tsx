@@ -239,6 +239,109 @@ describe( 'RulesPage', () => {
 		expect( registry.select( rulesStore ).getError() ).toBeNull();
 	} );
 
+	it( 'ignores an older success after a newer request refreshes the same query', async () => {
+		let resolveFirst: ( response: RulesResponse ) => void = () => {};
+		let resolveSecond: ( response: RulesResponse ) => void = () => {};
+		const firstResponse = new Promise< RulesResponse >( ( resolve ) => {
+			resolveFirst = resolve;
+		} );
+		const secondResponse = new Promise< RulesResponse >( ( resolve ) => {
+			resolveSecond = resolve;
+		} );
+		mockedApiFetch
+			.mockReturnValueOnce( firstResponse )
+			.mockReturnValueOnce( secondResponse );
+
+		const registry = createRegistry();
+		registry.register( rulesStore );
+		const query = { page: 1, perPage: 20 };
+		const firstRequest = registry
+			.dispatch( rulesStore )
+			.requestRules( query );
+		const secondRequest = registry
+			.dispatch( rulesStore )
+			.requestRules( query );
+		const newerRules = {
+			data: [
+				{
+					id: 2,
+					action: 'allow' as const,
+					value: 'newer@example.com',
+					type: 'email' as const,
+					created_at: '2026-09-15T12:00:00Z',
+				},
+			],
+			totalItems: 1,
+			totalPages: 1,
+			page: 1,
+			perPage: 20,
+		};
+
+		await act( async () => {
+			resolveSecond( newerRules );
+			await secondRequest;
+		} );
+		await act( async () => {
+			resolveFirst( {
+				...newerRules,
+				data: [
+					{
+						...newerRules.data[ 0 ],
+						id: 1,
+						value: 'older@example.com',
+					},
+				],
+			} );
+			await firstRequest;
+		} );
+
+		expect( registry.select( rulesStore ).getRules() ).toEqual(
+			newerRules.data
+		);
+	} );
+
+	it( 'ignores an older failure after a newer request refreshes the same query', async () => {
+		let rejectFirst: ( error: Error ) => void = () => {};
+		let resolveSecond: ( response: RulesResponse ) => void = () => {};
+		const firstResponse = new Promise< RulesResponse >( ( _, reject ) => {
+			rejectFirst = reject;
+		} );
+		const secondResponse = new Promise< RulesResponse >( ( resolve ) => {
+			resolveSecond = resolve;
+		} );
+		mockedApiFetch
+			.mockReturnValueOnce( firstResponse )
+			.mockReturnValueOnce( secondResponse );
+
+		const registry = createRegistry();
+		registry.register( rulesStore );
+		const query = { page: 1, perPage: 20 };
+		const firstRequest = registry
+			.dispatch( rulesStore )
+			.requestRules( query );
+		const secondRequest = registry
+			.dispatch( rulesStore )
+			.requestRules( query );
+
+		await act( async () => {
+			resolveSecond( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+				page: 1,
+				perPage: 20,
+			} );
+			await secondRequest;
+		} );
+		await act( async () => {
+			rejectFirst( new Error( 'The older request failed.' ) );
+			await firstRequest;
+		} );
+
+		expect( registry.select( rulesStore ).getError() ).toBeNull();
+		expect( registry.select( rulesStore ).isLoading() ).toBe( false );
+	} );
+
 	it( 'maps all supported view filters to the rules query', () => {
 		const query = getQueryFromView( {
 			type: 'table',
