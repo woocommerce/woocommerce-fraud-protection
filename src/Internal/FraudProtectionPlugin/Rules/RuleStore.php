@@ -373,7 +373,7 @@ class RuleStore {
 		$order            = isset( $filters['order'] ) && 'asc' === strtolower( (string) $filters['order'] ) ? 'ASC' : 'DESC';
 		$order_expression = match ( $orderby ) {
 			'action' => 'action',
-			'value'  => "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"value\":\"', -1), '\"', 1))",
+			'value'  => "LOWER(LEFT(SUBSTRING_INDEX(conditions, '\"value\":\"', -1), CHAR_LENGTH(SUBSTRING_INDEX(conditions, '\"value\":\"', -1)) - 2))",
 			'type'   => "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"field\":\"', -1), '\"', 1))",
 			default  => 'created_at',
 		};

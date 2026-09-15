@@ -222,8 +222,8 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox Value and type sorting works without database JSON functions.
 	 */
 	public function test_active_rules_page_sorting_supports_minimum_database_versions(): void {
-		$email = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
-		$ip    = $this->sut->create_rule(
+		$email    = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$ip       = $this->sut->create_rule(
 			FraudDecision::Block,
 			array(
 				'field'    => 'ip',
@@ -231,6 +231,8 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 				'value'    => '10.0.0.1',
 			)
 		);
+		$quoted_z = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'a"z@example.com' ) );
+		$quoted_a = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'a"a@example.com' ) );
 
 		$reject_json_functions = static function ( string $query ): string {
 			if ( preg_match( '/JSON_(?:EXTRACT|UNQUOTE)/i', $query ) ) {
@@ -241,13 +243,19 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		add_filter( 'query', $reject_json_functions );
 
 		try {
-			$value_page = $this->sut->get_active_rules_page(
+			$value_ascending  = $this->sut->get_active_rules_page(
 				array(
 					'orderby' => 'value',
 					'order'   => 'asc',
 				)
 			);
-			$type_page  = $this->sut->get_active_rules_page(
+			$value_descending = $this->sut->get_active_rules_page(
+				array(
+					'orderby' => 'value',
+					'order'   => 'desc',
+				)
+			);
+			$type_page        = $this->sut->get_active_rules_page(
 				array(
 					'orderby' => 'type',
 					'order'   => 'asc',
@@ -257,8 +265,9 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 			remove_filter( 'query', $reject_json_functions );
 		}
 
-		$this->assertSame( array( $ip->id, $email->id ), array_map( fn( Rule $rule ) => $rule->id, $value_page['items'] ) );
-		$this->assertSame( array( $email->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $type_page['items'] ) );
+		$this->assertSame( array( $ip->id, $quoted_a->id, $quoted_z->id, $email->id ), array_map( fn( Rule $rule ) => $rule->id, $value_ascending['items'] ) );
+		$this->assertSame( array( $email->id, $quoted_z->id, $quoted_a->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $value_descending['items'] ) );
+		$this->assertSame( array( $email->id, $quoted_z->id, $quoted_a->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $type_page['items'] ) );
 	}
 
 	/**
