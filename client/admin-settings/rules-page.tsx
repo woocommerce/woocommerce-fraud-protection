@@ -309,6 +309,8 @@ export function RulesPage() {
 				label: __( 'Delete', 'woocommerce-fraud-protection' ),
 				supportsBulk: false,
 				callback: ( items ) => {
+					detailRequest.current++;
+					setDetailError( null );
 					setDeleteError( null );
 					setDeletingRule( items[ 0 ] );
 				},
@@ -427,6 +429,8 @@ export function RulesPage() {
 								variant="solid"
 								size="compact"
 								onClick={ () => {
+									detailRequest.current++;
+									setDetailError( null );
 									setEditingRule( undefined );
 									setIsDrawerOpen( true );
 								} }

@@ -1357,6 +1357,88 @@ describe( 'RulesPage', () => {
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( second.value );
 	} );
 
+	it( 'keeps Create open when an older edit request finishes', async () => {
+		const rule: Rule = {
+			id: 1,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		let resolveDetail: ( rule: Rule ) => void = () => undefined;
+		const detailRequest = new Promise< Rule >( ( resolve ) => {
+			resolveDetail = resolve;
+		} );
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				data: [ rule ],
+				totalItems: 1,
+				totalPages: 1,
+			} )
+			.mockReturnValueOnce( detailRequest );
+		renderRules();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Edit' } )
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		expect(
+			screen.getByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+
+		await act( async () => resolveDetail( rule ) );
+
+		expect(
+			screen.getByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+		).not.toBeInTheDocument();
+	} );
+
+	it( 'keeps Delete open when an older edit request finishes', async () => {
+		const rule: Rule = {
+			id: 1,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		let resolveDetail: ( rule: Rule ) => void = () => undefined;
+		const detailRequest = new Promise< Rule >( ( resolve ) => {
+			resolveDetail = resolve;
+		} );
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				data: [ rule ],
+				totalItems: 1,
+				totalPages: 1,
+			} )
+			.mockReturnValueOnce( detailRequest );
+		renderRules();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Edit' } )
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Delete' } )
+		);
+		expect(
+			screen.getByRole( 'dialog', { name: 'Delete rule' } )
+		).toBeInTheDocument();
+
+		await act( async () => resolveDetail( rule ) );
+
+		expect(
+			screen.getByRole( 'dialog', { name: 'Delete rule' } )
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+		).not.toBeInTheDocument();
+	} );
+
 	it( 'confirms a row deletion, refreshes rules, and shows the exact toast', async () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( {
