@@ -1150,8 +1150,7 @@ describe( 'RulesPage', () => {
 		expect( error.parentElement?.previousElementSibling ).toContainElement(
 			value
 		);
-		expect( ( value as HTMLInputElement ).validity.valid ).toBe( false );
-		expect( value ).toHaveAttribute( 'data-validity-visible' );
+		expect( value ).toHaveAttribute( 'aria-invalid', 'true' );
 		expect( value ).toHaveAttribute( 'aria-describedby', error.id );
 		expect(
 			within( drawer ).getAllByText(
@@ -1205,8 +1204,7 @@ describe( 'RulesPage', () => {
 		expect( error.parentElement?.previousElementSibling ).toContainElement(
 			value
 		);
-		expect( ( value as HTMLInputElement ).validity.valid ).toBe( false );
-		expect( value ).toHaveAttribute( 'data-validity-visible' );
+		expect( value ).toHaveAttribute( 'aria-invalid', 'true' );
 		expect( value ).toHaveAttribute( 'aria-describedby', error.id );
 		expect(
 			within( drawer ).getAllByText(

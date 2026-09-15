@@ -10,6 +10,7 @@ import { DataForm, useFormValidity } from '@wordpress/dataviews/wp';
 import type { DataFormControlProps, Field, Form } from '@wordpress/dataviews';
 import { useDispatch } from '@wordpress/data';
 import { store as noticesStore } from '@wordpress/notices';
+import { Button as ComponentsButton } from '@wordpress/components';
 import {
 	Button,
 	Drawer,
@@ -88,21 +89,11 @@ function RuleValueEditControl( {
 			onChange( field.setValue( { item: data, value: newValue } ) ),
 		[ data, field, onChange ]
 	);
-	const setDuplicateInput = useCallback(
-		( input: HTMLInputElement | null ) => {
-			if ( input && duplicateError ) {
-				input.setCustomValidity( duplicateError );
-				input.setAttribute( 'data-validity-visible', '' );
-			}
-		},
-		[ duplicateError ]
-	);
 
 	if ( duplicateError ) {
 		return (
-			<Stack direction="column" gap="sm">
+			<Stack direction="column" gap="xs">
 				<InputControl
-					ref={ setDuplicateInput }
 					aria-describedby={ duplicateMessageId }
 					aria-invalid="true"
 					required={ Boolean( field.isValid.required ) }
@@ -113,22 +104,22 @@ function RuleValueEditControl( {
 					hideLabelFromVision={ hideLabelFromVision }
 					disabled={ field.isDisabled( { item: data, field } ) }
 				/>
-				<Stack direction="row" align="center" gap="xs">
+				<Stack direction="row" align="center" gap="none">
 					<ValidityIndicator
 						id={ duplicateMessageId }
 						type="invalid"
 						message={ duplicateError }
 					/>
 					{ duplicateRuleId && onViewRule && (
-						<Button
-							variant="minimal"
+						<ComponentsButton
+							variant="link"
 							onClick={ () => onViewRule( duplicateRuleId ) }
 						>
 							{ __(
 								'View rule',
 								'woocommerce-fraud-protection'
 							) }
-						</Button>
+						</ComponentsButton>
 					) }
 				</Stack>
 			</Stack>
