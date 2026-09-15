@@ -8,6 +8,7 @@ export type Rule = {
 	value: string;
 	type: 'email' | 'ip';
 	created_at: string;
+	updated_at: string | null;
 };
 
 export type RulesQuery = {
@@ -49,6 +50,11 @@ export type CreateRuleRequest = {
 	origin?: 'rules' | 'checkout_attempts' | 'api';
 };
 
+export type UpdateRuleRequest = Pick<
+	CreateRuleRequest,
+	'action' | 'type' | 'value' | 'origin'
+>;
+
 const DEFAULT_QUERY: RulesQuery = { page: 1, perPage: 20 };
 const DEFAULT_STATE: State = {
 	data: [],
@@ -76,7 +82,8 @@ const isRule = ( value: unknown ): value is Rule => {
 		( rule.action === 'allow' || rule.action === 'block' ) &&
 		typeof rule.value === 'string' &&
 		( rule.type === 'email' || rule.type === 'ip' ) &&
-		typeof rule.created_at === 'string'
+		typeof rule.created_at === 'string' &&
+		( rule.updated_at === null || typeof rule.updated_at === 'string' )
 	);
 };
 
@@ -218,6 +225,47 @@ const actions = {
 			} );
 			await dispatch.requestRules( select.getQuery() );
 			return response;
+		},
+	requestRule: ( id: number ) => async () => {
+		const response = await apiFetch< unknown >( {
+			path: `/wc-fraud-protection/v1/rules/${ id }`,
+		} );
+		if ( ! isRule( response ) ) {
+			throw new Error( INVALID_RESPONSE_MESSAGE );
+		}
+		return response;
+	},
+	updateRule:
+		( id: number, request: UpdateRuleRequest ) =>
+		async ( {
+			dispatch,
+			select,
+		}: {
+			dispatch: typeof actions;
+			select: { getQuery: () => RulesQuery };
+		} ) => {
+			const response = await apiFetch< Rule >( {
+				path: `/wc-fraud-protection/v1/rules/${ id }`,
+				method: 'PUT',
+				data: request,
+			} );
+			await dispatch.requestRules( select.getQuery() );
+			return response;
+		},
+	deleteRule:
+		( id: number, origin: UpdateRuleRequest[ 'origin' ] = 'api' ) =>
+		async ( {
+			dispatch,
+			select,
+		}: {
+			dispatch: typeof actions;
+			select: { getQuery: () => RulesQuery };
+		} ) => {
+			await apiFetch( {
+				path: `/wc-fraud-protection/v1/rules/${ id }?origin=${ origin }`,
+				method: 'DELETE',
+			} );
+			await dispatch.requestRules( select.getQuery() );
 		},
 };
 
