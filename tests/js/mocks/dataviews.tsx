@@ -1,4 +1,4 @@
-import type { View } from '@wordpress/dataviews';
+import type { Field, View } from '@wordpress/dataviews';
 
 type Rule = {
 	id: number;
@@ -11,6 +11,7 @@ type Rule = {
 type DataViewsProps = {
 	data: Rule[];
 	children?: React.ReactNode;
+	fields?: Field< Rule >[];
 	view?: View;
 	onChangeView?: ( view: View ) => void;
 };
