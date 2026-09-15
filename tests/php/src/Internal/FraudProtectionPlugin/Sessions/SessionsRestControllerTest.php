@@ -27,6 +27,8 @@ class SessionsRestControllerTest extends \WC_REST_Unit_Test_Case {
 
 	private const LIST_ROUTE = '/wc-fraud-protection/v1/sessions';
 
+	private const PAYMENT_METHODS_ROUTE = self::LIST_ROUTE . '/payment-methods';
+
 	/**
 	 * Schema manager instance.
 	 *
@@ -301,6 +303,39 @@ class SessionsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox The list can be sorted by provider (ordered by the resolved title).
+	 */
+	public function test_list_sorts_by_provider(): void {
+		$this->record(
+			array(
+				'session_id'     => 'a',
+				'payment_method' => 'stripe',
+				'email'          => 'a@example.com',
+			)
+		);
+		$this->record(
+			array(
+				'session_id'     => 'b',
+				'payment_method' => 'ppcp',
+				'email'          => 'b@example.com',
+			)
+		);
+
+		$request = new \WP_REST_Request( 'GET', self::LIST_ROUTE );
+		$request->set_param( 'orderby', 'payment_method' );
+		$request->set_param( 'order', 'asc' );
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		// Unregistered gateways resolve to their id, so ascending title order is
+		// ppcp then stripe.
+		$this->assertSame(
+			array( 'b@example.com', 'a@example.com' ),
+			array_column( $response->get_data(), 'email' )
+		);
+	}
+
+	/**
 	 * @testdox An invalid sort column is rejected.
 	 */
 	public function test_list_rejects_unknown_sort_column(): void {
@@ -332,5 +367,89 @@ class SessionsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$customer_id = wc_create_new_customer( 'sessions-customer@example.com', 'sessions-customer', 'password' );
 		wp_set_current_user( $customer_id );
 		$this->assertSame( 403, $this->server->dispatch( new \WP_REST_Request( 'GET', self::LIST_ROUTE ) )->get_status() );
+	}
+
+	/**
+	 * @testdox The payment methods route lists the providers present in retained attempts, with resolved titles.
+	 */
+	public function test_payment_methods_lists_providers(): void {
+		$this->record( array( 'payment_method' => 'stripe' ) );
+		$this->record( array( 'payment_method' => 'ppcp' ) );
+		$this->record( array( 'payment_method' => 'stripe' ) );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', self::PAYMENT_METHODS_ROUTE ) );
+		$this->assertSame( 200, $response->get_status() );
+
+		$data = $response->get_data();
+		$ids  = array_column( $data, 'id' );
+		sort( $ids );
+		$this->assertSame( array( 'ppcp', 'stripe' ), $ids );
+		foreach ( $data as $option ) {
+			$this->assertArrayHasKey( 'title', $option );
+			// An unregistered gateway resolves to its id.
+			$this->assertSame( $option['id'], $option['title'] );
+		}
+	}
+
+	/**
+	 * @testdox The payment methods route returns empty without an installed schema.
+	 */
+	public function test_payment_methods_empty_without_schema(): void {
+		delete_option( SchemaManager::DB_VERSION_OPTION );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', self::PAYMENT_METHODS_ROUTE ) );
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array(), $response->get_data() );
+	}
+
+	/**
+	 * @testdox Unauthorized users cannot read the payment method options.
+	 */
+	public function test_payment_methods_permissions_require_woocommerce_management(): void {
+		wp_set_current_user( 0 );
+		$this->assertSame( 401, $this->server->dispatch( new \WP_REST_Request( 'GET', self::PAYMENT_METHODS_ROUTE ) )->get_status() );
+	}
+
+	/**
+	 * @testdox The rules filter matches a stored IPv6 address regardless of its text form.
+	 */
+	public function test_list_filters_rules_normalize_ipv6(): void {
+		$this->rule_store->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '2001:db8::1',
+			)
+		);
+		// Stored in an expanded, upper-case — but equivalent — form.
+		$this->record(
+			array(
+				'session_id' => 'ipv6-ruled',
+				'email'      => 'ipv6@example.com',
+				'ip'         => '2001:0DB8:0000:0000:0000:0000:0000:0001',
+			)
+		);
+		$this->record(
+			array(
+				'session_id' => 'ipv6-clean',
+				'email'      => 'clean@example.com',
+				'ip'         => '2001:db8::2',
+			)
+		);
+
+		$with = new \WP_REST_Request( 'GET', self::LIST_ROUTE );
+		$with->set_param( 'rules', 'with' );
+		$this->assertSame(
+			array( 'ipv6@example.com' ),
+			array_column( $this->server->dispatch( $with )->get_data(), 'email' )
+		);
+
+		$without = new \WP_REST_Request( 'GET', self::LIST_ROUTE );
+		$without->set_param( 'rules', 'without' );
+		$this->assertSame(
+			array( 'clean@example.com' ),
+			array_column( $this->server->dispatch( $without )->get_data(), 'email' )
+		);
 	}
 }

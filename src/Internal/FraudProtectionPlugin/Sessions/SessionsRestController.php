@@ -108,6 +108,18 @@ class SessionsRestController extends \WP_REST_Controller {
 				'schema' => array( $this, 'get_public_item_schema' ),
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/' . $this->rest_base . '/payment-methods',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_payment_methods' ),
+					'permission_callback' => array( $this, 'permissions_check' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -139,18 +151,22 @@ class SessionsRestController extends \WP_REST_Controller {
 		$rules = in_array( $rules, array( 'with', 'without' ), true ) ? $rules : '';
 
 		try {
+			$orderby = (string) $request->get_param( 'orderby' );
+			$order   = (string) $request->get_param( 'order' );
+
 			$result = $this->event_store->query_events(
 				array(
-					'page'            => $page,
-					'per_page'        => $per_page,
-					'orderby'         => (string) $request->get_param( 'orderby' ),
-					'order'           => (string) $request->get_param( 'order' ),
-					'final_status'    => self::final_status_param( $request->get_param( 'final_status' ) ),
-					'outcomes'        => self::outcome_params( $request->get_param( 'outcome' ) ),
-					'payment_methods' => self::string_list_param( $request->get_param( 'payment_method' ) ),
-					'search'          => (string) $request->get_param( 'search' ),
-					'rules'           => $rules,
-					'rule_values'     => '' === $rules ? array() : $this->rule_finder->get_targeted_values(),
+					'page'                 => $page,
+					'per_page'             => $per_page,
+					'orderby'              => $orderby,
+					'order'                => $order,
+					'final_status'         => self::final_status_param( $request->get_param( 'final_status' ) ),
+					'outcomes'             => self::outcome_params( $request->get_param( 'outcome' ) ),
+					'payment_methods'      => self::string_list_param( $request->get_param( 'payment_method' ) ),
+					'search'               => (string) $request->get_param( 'search' ),
+					'rules'                => $rules,
+					'rule_values'          => '' === $rules ? array() : $this->rule_finder->get_targeted_values(),
+					'payment_method_order' => $this->payment_method_order_by_title( $orderby, $order ),
 				)
 			);
 		} catch ( \RuntimeException $e ) {
@@ -164,6 +180,77 @@ class SessionsRestController extends \WP_REST_Controller {
 		}
 
 		return $this->collection_response( $items, $result['total'], $per_page );
+	}
+
+	/**
+	 * Provider ids ordered by their resolved display title.
+	 *
+	 * Lets the list sort by the provider name the merchant sees rather than the
+	 * raw gateway id, across paginated results. Returns an empty array unless the
+	 * list is ordered by provider.
+	 *
+	 * @param string $orderby The requested sort column.
+	 * @param string $order   The requested sort direction.
+	 * @return string[]
+	 */
+	private function payment_method_order_by_title( string $orderby, string $order ): array {
+		if ( 'payment_method' !== $orderby ) {
+			return array();
+		}
+
+		try {
+			$ids = $this->event_store->get_payment_methods( SessionEventPruner::RETENTION_DAYS );
+		} catch ( \RuntimeException ) {
+			return array();
+		}
+
+		$titles = array();
+		foreach ( $ids as $id ) {
+			$titles[ $id ] = $this->payment_method_titles->resolve( $id );
+		}
+		uasort( $titles, static fn( string $a, string $b ): int => strcasecmp( $a, $b ) );
+
+		$ordered = array_keys( $titles );
+
+		return 'asc' === strtolower( $order ) ? $ordered : array_reverse( $ordered );
+	}
+
+	/**
+	 * List the payment method options present in the retained checkout attempts.
+	 *
+	 * Loaded on demand by the list's provider filter, so the query that scans
+	 * retained attempts only runs when the list needs the options rather than on
+	 * every settings-page load.
+	 *
+	 * @internal
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response
+	 */
+	public function get_payment_methods( $request ): \WP_REST_Response {
+		unset( $request );
+
+		if ( ! $this->schema_manager->is_schema_installed() ) {
+			return new \WP_REST_Response( array() );
+		}
+
+		try {
+			$ids = $this->event_store->get_payment_methods( SessionEventPruner::RETENTION_DAYS );
+		} catch ( \RuntimeException ) {
+			// The provider filter simply offers no options (for example before the
+			// sessions table exists); the list still loads.
+			return new \WP_REST_Response( array() );
+		}
+
+		$options = array();
+		foreach ( $ids as $id ) {
+			$options[] = array(
+				'id'    => $id,
+				'title' => $this->payment_method_titles->resolve( $id ),
+			);
+		}
+
+		return new \WP_REST_Response( $options );
 	}
 
 	/**

@@ -29,7 +29,7 @@
 		"postenv:update": "bash ./bin/wp-env-setup.sh",
 		"lint": "npm run lint:js && npm run lint:css && npm run lint:types && npm run lint:php",
 		"lint:js": "wp-scripts lint-js assets/js client tests/js",
-		"lint:css": "wp-scripts lint-style assets/css client/admin-settings/style.scss --allow-empty-input",
+		"lint:css": "wp-scripts lint-style assets/css \"client/**/*.scss\" --allow-empty-input",
 		"lint:types": "tsc --noEmit",
 		"lint:php": "vendor/bin/phpcs",
 		"lint:php:autofix": "vendor/bin/phpcbf",

@@ -1,10 +1,11 @@
 import '@testing-library/jest-dom';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
+import { dispatch as dataDispatch } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
 
 import { buildActions } from '../../client/admin-checkout-attempts/actions';
@@ -15,10 +16,10 @@ import {
 } from '../../client/admin-checkout-attempts/outcomes';
 import { buildListPath } from '../../client/admin-checkout-attempts/use-checkout-attempts';
 import {
-	loadState,
-	saveState,
+	loadPrefs,
+	savePrefs,
 } from '../../client/admin-checkout-attempts/persisted-state';
-import type { PersistedState } from '../../client/admin-checkout-attempts/persisted-state';
+import { settingsStore } from '../../client/admin-settings/data/store';
 import type {
 	CheckoutAttemptsConfig,
 	RuleReference,
@@ -41,12 +42,12 @@ jest.mock( '@woocommerce/navigation', () => ( {
 
 // DataViews is bundled and heavy; the page's own wiring is what these tests
 // cover, so DataViews is replaced with a spy that records the props it receives.
-jest.mock( '@wordpress/dataviews', () => ( {
+jest.mock( '@wordpress/dataviews/wp', () => ( {
 	__esModule: true,
 	DataViews: jest.fn( () => null ),
 } ) );
 
-import { DataViews } from '@wordpress/dataviews';
+import { DataViews } from '@wordpress/dataviews/wp';
 
 import { CheckoutAttemptsPage } from '../../client/admin-checkout-attempts/checkout-attempts-page';
 
@@ -375,11 +376,13 @@ describe( 'checkout attempts status field', () => {
 				{ timeout: 3000 }
 			)
 		).toBeInTheDocument();
-		expect(
-			screen.getByRole( 'link', {
-				name: 'Enable automatic fraud prevention',
-			} )
-		).toHaveAttribute( 'href', config.settingsUrl );
+		const link = screen.getByRole( 'link', {
+			name: 'Enable automatic fraud prevention',
+		} );
+		expect( link ).toHaveAttribute( 'href', config.settingsUrl );
+		// The settings page opens in a new tab.
+		expect( link ).toHaveAttribute( 'target', '_blank' );
+		expect( link ).toHaveAttribute( 'rel', 'noopener noreferrer' );
 	} );
 
 	it( 'notes when protection was enabled in the tooltip once it is on', async () => {
@@ -665,80 +668,150 @@ describe( 'checkout attempts list path', () => {
 	} );
 } );
 
-describe( 'checkout attempts persisted state', () => {
-	const DEFAULTS: PersistedState = {
-		view: {
-			type: 'table',
-			page: 1,
-			perPage: 20,
-			sort: { field: 'recorded_at', direction: 'desc' },
-			search: '',
-			filters: [],
-		},
-		tab: 'all',
-	};
-
-	const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-state';
+describe( 'checkout attempts display preferences', () => {
+	const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
 
 	beforeEach( () => window.localStorage.clear() );
 
-	it( 'returns the fallback when nothing is stored', () => {
-		expect( loadState( DEFAULTS ) ).toEqual( DEFAULTS );
+	it( 'returns empty when nothing is stored', () => {
+		expect( loadPrefs() ).toEqual( {} );
 	} );
 
-	it( 'round-trips saved state, including the page', () => {
-		saveState( {
-			view: { ...DEFAULTS.view, page: 4, perPage: 50, search: 'abc' },
-			tab: 'blocked',
+	it( 'round-trips fields, page size and layout', () => {
+		savePrefs( {
+			fields: [ 'email', 'ip' ],
+			perPage: 50,
+			layout: { density: 'compact' },
 		} );
 
-		const loaded = loadState( DEFAULTS );
-		expect( loaded.tab ).toBe( 'blocked' );
-		expect( loaded.view.perPage ).toBe( 50 );
-		expect( loaded.view.search ).toBe( 'abc' );
-		expect( loaded.view.page ).toBe( 4 );
+		expect( loadPrefs() ).toEqual( {
+			fields: [ 'email', 'ip' ],
+			perPage: 50,
+			layout: { density: 'compact' },
+		} );
 	} );
 
-	it( 'falls back when the stored payload is corrupt or a stale version', () => {
+	it( 'falls back to empty when the payload is corrupt or a stale version', () => {
 		window.localStorage.setItem( STORAGE_KEY, 'not json' );
-		expect( loadState( DEFAULTS ) ).toEqual( DEFAULTS );
+		expect( loadPrefs() ).toEqual( {} );
 
 		window.localStorage.setItem(
 			STORAGE_KEY,
-			JSON.stringify( { version: 999, state: { tab: 'blocked' } } )
+			JSON.stringify( { version: 999, prefs: { perPage: 50 } } )
 		);
-		expect( loadState( DEFAULTS ) ).toEqual( DEFAULTS );
+		expect( loadPrefs() ).toEqual( {} );
 	} );
 
-	it( 'ignores an invalid tab value', () => {
-		saveState( {
-			...DEFAULTS,
-			tab: 'bogus' as PersistedState[ 'tab' ],
-		} );
-
-		expect( loadState( DEFAULTS ).tab ).toBe( 'all' );
-	} );
-} );
-
-describe( 'CheckoutAttemptsPage', () => {
-	const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-state';
-
-	// Persist a starting page the way the list itself does, so a render restores
-	// it (page position lives in storage, not the URL, inside the settings SPA).
-	const persistPage = ( page: number ) =>
+	it( 'drops invalid preference values', () => {
+		// A payload at the current version but with the wrong value types.
 		window.localStorage.setItem(
 			STORAGE_KEY,
 			JSON.stringify( {
-				version: 1,
-				state: { view: { ...BASE_VIEW, page }, tab: 'all' },
+				version: 2,
+				prefs: { fields: 'nope', perPage: -3 },
 			} )
 		);
 
+		expect( loadPrefs() ).toEqual( {} );
+	} );
+} );
+
+const settingsResponse = ( automaticProtection = false ) => ( {
+	automatic_protection: automaticProtection,
+	automatic_protection_opted_out: true,
+	performance: {
+		flagged_by_fraud_prevention: 0,
+		blocked_automatically: 0,
+		allowed_by_rules: 0,
+		blocked_by_rules: 0,
+	},
+} );
+
+type ListResponse = ReturnType< typeof listResponse >;
+
+// Route apiFetch by path: the paginated sessions list (read with parse:false),
+// the on-demand provider options, and the settings GET/POST the store uses.
+const mockApi = ( {
+	sessions,
+	paymentMethods = [],
+	onPost,
+}: {
+	sessions?: ListResponse | ( () => ListResponse | Promise< ListResponse > );
+	paymentMethods?: Array< { id: string; title: string } >;
+	onPost?: ( value: boolean ) => void;
+} = {} ) => {
+	const nextSessions =
+		typeof sessions === 'function'
+			? sessions
+			: () => sessions ?? listResponse( [], 0 );
+
+	mockedApiFetch.mockImplementation(
+		( options: {
+			path: string;
+			method?: string;
+			data?: { automatic_protection?: boolean };
+		} ) => {
+			const path = String( options.path );
+			if ( path.includes( '/sessions/payment-methods' ) ) {
+				return Promise.resolve( paymentMethods );
+			}
+			if ( path.includes( '/wc-fraud-protection/v1/sessions' ) ) {
+				return Promise.resolve( nextSessions() );
+			}
+			if ( path.includes( '/wc-fraud-protection/v1/settings' ) ) {
+				if ( 'POST' === options.method ) {
+					const value = options.data?.automatic_protection ?? false;
+					onPost?.( value );
+					return Promise.resolve( settingsResponse( value ) );
+				}
+				return Promise.resolve( settingsResponse() );
+			}
+			return Promise.resolve( undefined );
+		}
+	);
+};
+
+// The list's navigation state lives in the URL, so render inside a router seeded
+// with the query string under test.
+const renderPage = ( url = '/' ) =>
+	render( <CheckoutAttemptsPage />, {
+		wrapper: ( { children }: { children: ReactNode } ) => (
+			<MemoryRouter initialEntries={ [ url ] }>{ children }</MemoryRouter>
+		),
+	} );
+
+// Only the paginated list requests (which carry query args), not the
+// provider-options request at /sessions/payment-methods.
+const listPaths = () =>
+	settledPaths().filter( ( path ) => path.includes( '/sessions?' ) );
+
+// The list reads automatic-protection state from the settings store; seed it to
+// a known value and mark it resolved so the resolver does not also fetch.
+const seedProtection = ( on: boolean ) => {
+	const store = dataDispatch( settingsStore ) as unknown as {
+		receiveSettings: ( settings: {
+			automatic_protection: boolean;
+			automatic_protection_opted_out: boolean;
+		} ) => void;
+		finishResolution: ( selector: string, args: unknown[] ) => void;
+		setError: ( error: null ) => void;
+	};
+	store.receiveSettings( {
+		automatic_protection: on,
+		automatic_protection_opted_out: true,
+	} );
+	store.finishResolution( 'getSettings', [] );
+	store.setError( null );
+};
+
+describe( 'CheckoutAttemptsPage', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
 		mockedDataViews.mockClear();
 		window.localStorage.clear();
 		setConfig();
+		seedProtection( false );
+		mockApi();
 	} );
 
 	afterEach( () => {
@@ -750,9 +823,9 @@ describe( 'CheckoutAttemptsPage', () => {
 			aSession(),
 			aSession( { id: 2, outcome: 'blocked_by_rules' } ),
 		];
-		mockedApiFetch.mockResolvedValue( listResponse( sessions, 2 ) );
+		mockApi( { sessions: listResponse( sessions, 2 ) } );
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage();
 
 		expect(
 			screen.getByText( /A record of past checkout attempts/ )
@@ -769,16 +842,16 @@ describe( 'CheckoutAttemptsPage', () => {
 		expect(
 			props.actions.map( ( action: { id: string } ) => action.id )
 		).toEqual( expect.arrayContaining( [ 'email-block', 'ip-block' ] ) );
-		expect( settledPaths()[ 0 ] ).toContain(
+		expect( listPaths()[ 0 ] ).toContain(
 			'/wc-fraud-protection/v1/sessions'
 		);
-		expect( settledPaths()[ 0 ] ).not.toContain( 'final_status' );
+		expect( listPaths()[ 0 ] ).not.toContain( 'final_status' );
 	} );
 
 	it( 'refetches with the enforced status when a tab is selected', async () => {
-		mockedApiFetch.mockResolvedValue( listResponse( [ aSession() ], 1 ) );
+		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage();
 
 		await waitFor( () => {
 			expect( lastDataViewsProps().data ).toHaveLength( 1 );
@@ -788,92 +861,135 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		await waitFor( () => {
 			expect(
-				settledPaths().some( ( path ) =>
+				listPaths().some( ( path ) =>
 					path.includes( 'final_status=blocked' )
 				)
 			).toBe( true );
 		} );
 	} );
 
-	it( 'starts on the persisted page', async () => {
-		persistPage( 2 );
-		mockedApiFetch.mockResolvedValue(
-			listResponse( [ aSession() ], 40, 2 )
-		);
+	it( 'starts on the page named in the URL', async () => {
+		mockApi( { sessions: listResponse( [ aSession() ], 40, 2 ) } );
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage( '/?paged=2' );
 
 		await waitFor( () => {
 			expect( lastDataViewsProps().data ).toHaveLength( 1 );
 		} );
-		expect( settledPaths()[ 0 ] ).toContain( 'page=2' );
+		expect(
+			listPaths().some( ( path ) => path.includes( 'page=2&' ) )
+		).toBe( true );
 	} );
 
-	it( 'falls back to the last page when the persisted page is past the end', async () => {
-		persistPage( 5 );
+	it( 'falls back to the last page when the URL page is past the end', async () => {
+		let call = 0;
 		// The out-of-range page returns no rows but the true total (2 pages);
 		// the list then refetches the last existing page.
-		mockedApiFetch
-			.mockResolvedValueOnce( listResponse( [], 30, 2 ) )
-			.mockResolvedValue( listResponse( [ aSession() ], 30, 2 ) );
+		mockApi( {
+			sessions: () =>
+				0 === call++
+					? listResponse( [], 30, 2 )
+					: listResponse( [ aSession() ], 30, 2 ),
+		} );
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage( '/?paged=5' );
 
 		// The page is corrected to the last existing one, in the view and the fetch.
 		await waitFor( () => {
 			expect(
-				settledPaths().some( ( path ) => path.includes( 'page=2&' ) )
+				listPaths().some( ( path ) => path.includes( 'page=2&' ) )
 			).toBe( true );
 		} );
 		expect( lastDataViewsProps().view.page ).toBe( 2 );
 	} );
 
 	it( 'resets to page 1 when there are no results', async () => {
-		persistPage( 3 );
-		mockedApiFetch.mockResolvedValue( listResponse( [], 0, 0 ) );
+		mockApi( { sessions: listResponse( [], 0, 0 ) } );
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage( '/?paged=3' );
 
 		await waitFor( () => {
 			expect( lastDataViewsProps().view.page ).toBe( 1 );
 		} );
 	} );
 
-	it( 'restores the tab from storage after a remount', async () => {
-		mockedApiFetch.mockResolvedValue( listResponse( [ aSession() ], 1 ) );
+	it( 'selects the tab named in the URL and filters by it', async () => {
+		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
 
-		const first = render( <CheckoutAttemptsPage />, {
-			wrapper: MemoryRouter,
-		} );
-		await waitFor( () => {
-			expect( lastDataViewsProps().data ).toHaveLength( 1 );
-		} );
+		renderPage( '/?status=blocked' );
 
-		await userEvent.click( screen.getByRole( 'tab', { name: 'Blocked' } ) );
 		await waitFor( () => {
-			const paths = settledPaths();
-			expect( paths[ paths.length - 1 ] ?? '' ).toContain(
-				'final_status=blocked'
-			);
-		} );
-		first.unmount();
-
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
-		await waitFor( () => {
-			const paths = settledPaths();
-			expect( paths[ paths.length - 1 ] ?? '' ).toContain(
-				'final_status=blocked'
-			);
+			expect(
+				listPaths().some( ( path ) =>
+					path.includes( 'final_status=blocked' )
+				)
+			).toBe( true );
 		} );
 		expect(
 			screen.getByRole( 'tab', { name: 'Blocked', selected: true } )
 		).toBeInTheDocument();
 	} );
 
-	it( 'shows a notice when the list cannot be loaded', async () => {
-		mockedApiFetch.mockRejectedValue( new Error( 'Service unavailable.' ) );
+	it( 'keeps an in-progress filter that has no value yet', async () => {
+		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage();
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 1 )
+		);
+
+		// DataViews adds a filter field before the merchant picks a value; the
+		// list must keep it so the value can then be chosen.
+		const before = lastDataViewsProps();
+		act( () => {
+			before.onChangeView( {
+				...before.view,
+				filters: [ { field: 'outcome', operator: 'isAny', value: [] } ],
+			} );
+		} );
+
+		await waitFor( () => {
+			expect( lastDataViewsProps().view.filters ).toEqual(
+				expect.arrayContaining( [
+					expect.objectContaining( { field: 'outcome' } ),
+				] )
+			);
+		} );
+	} );
+
+	it( 'prevents the enclosing settings form from submitting', async () => {
+		mockApi();
+
+		const { container } = render(
+			<form>
+				<CheckoutAttemptsPage />
+			</form>,
+			{
+				wrapper: ( { children }: { children: ReactNode } ) => (
+					<MemoryRouter>{ children }</MemoryRouter>
+				),
+			}
+		);
+		await waitFor( () => expect( lastDataViewsProps() ).toBeDefined() );
+
+		const form = container.querySelector( 'form' )!;
+		const submit = new Event( 'submit', {
+			bubbles: true,
+			cancelable: true,
+		} );
+		form.dispatchEvent( submit );
+
+		// e.g. pressing Enter in the search box must not reload the page.
+		expect( submit.defaultPrevented ).toBe( true );
+	} );
+
+	it( 'shows a notice when the list cannot be loaded', async () => {
+		mockApi( {
+			sessions: () =>
+				Promise.reject( new Error( 'Service unavailable.' ) ),
+		} );
+
+		renderPage();
 
 		// The Notice renders the message in both a visible node and an aria-live
 		// region, so assert on the visible one.
@@ -886,9 +1002,9 @@ describe( 'CheckoutAttemptsPage', () => {
 	} );
 
 	it( 'shows the automatic-protection banner while protection is off', async () => {
-		mockedApiFetch.mockResolvedValue( listResponse( [], 0 ) );
+		mockApi();
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage();
 
 		// The banner's message renders visibly (the Notice also mirrors it into an
 		// aria-live region, so there are two matches).
@@ -903,9 +1019,9 @@ describe( 'CheckoutAttemptsPage', () => {
 	} );
 
 	it( 'opens the enable drawer from the banner and turns protection on in place', async () => {
-		mockedApiFetch.mockResolvedValue( listResponse( [], 0 ) );
+		mockApi();
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage();
 
 		// Clicking the banner button opens the drawer, without navigating away.
 		await userEvent.click(
@@ -954,10 +1070,10 @@ describe( 'CheckoutAttemptsPage', () => {
 	} );
 
 	it( 'hides the automatic-protection banner when protection is on', async () => {
-		setConfig( { automaticProtection: true } );
-		mockedApiFetch.mockResolvedValue( listResponse( [], 0 ) );
+		seedProtection( true );
+		mockApi();
 
-		render( <CheckoutAttemptsPage />, { wrapper: MemoryRouter } );
+		renderPage();
 
 		await waitFor( () => expect( lastDataViewsProps() ).toBeDefined() );
 		expect(

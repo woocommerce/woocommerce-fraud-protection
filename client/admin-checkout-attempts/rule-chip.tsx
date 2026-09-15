@@ -1,3 +1,4 @@
+import { Icon, notAllowed, published } from '@wordpress/icons';
 import { Tooltip } from '@wordpress/ui';
 import { __, sprintf } from '@wordpress/i18n';
 
@@ -8,70 +9,15 @@ import type { RuleReference } from './types';
 // IP). It reflects the merchant's live rule configuration, not the historical
 // outcome of the attempt, so it disappears as soon as the rule is deleted.
 //
-// The shape carries the meaning alongside the colour: a green check inside a
-// circle for allow, a red prohibition circle for block. A tooltip states when
-// the rule was created or, if it was ever edited, when it was last updated. In
-// compact density only the icon shows (the label stays for assistive tech).
-
-function AllowIcon() {
-	return (
-		<svg
-			className="wc-fraud-protection-checkout-attempts__rule-chip-icon"
-			viewBox="0 0 24 24"
-			width="16"
-			height="16"
-			aria-hidden="true"
-			focusable="false"
-		>
-			<circle
-				cx="12"
-				cy="12"
-				r="9"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.6"
-			/>
-			<path
-				d="M7.8 12.4l2.8 2.8 5.6-6"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.6"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			/>
-		</svg>
-	);
-}
-
-function BlockIcon() {
-	return (
-		<svg
-			className="wc-fraud-protection-checkout-attempts__rule-chip-icon"
-			viewBox="0 0 24 24"
-			width="16"
-			height="16"
-			aria-hidden="true"
-			focusable="false"
-		>
-			{ /* Prohibition sign: a circle with a diagonal slash. */ }
-			<circle
-				cx="12"
-				cy="12"
-				r="9"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.6"
-			/>
-			<path
-				d="M6.3 6.3l11.4 11.4"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.6"
-				strokeLinecap="round"
-			/>
-		</svg>
-	);
-}
+// The shape carries the meaning alongside the colour: a check (WordPress
+// `published` glyph) for allow, a prohibition circle (`notAllowed`) for block. A
+// tooltip states when the rule was created or, if it was ever edited, when it
+// was last updated. In compact density only the icon shows.
+//
+// The trigger is a real button so it is reachable by keyboard, and it carries an
+// aria-label with the full rule type and date so assistive tech announces the
+// same information the tooltip shows sighted users (tooltip content alone is not
+// reliably exposed to screen readers).
 
 export function RuleChip( {
 	rule,
@@ -90,45 +36,60 @@ export function RuleChip( {
 		: __( 'Block rule', 'woocommerce-fraud-protection' );
 
 	// A rule that was edited after creation shows its last-update date; one that
-	// was never edited shows its creation date. In compact density the visible
-	// label is hidden, so the tooltip leads with "Allow"/"Block" instead.
+	// was never edited shows its creation date.
 	const updated = null !== rule.updated_at;
 	const date = formatSiteDate( rule.updated_at ?? rule.created_at );
 
-	let template;
-	if ( compact && updated && isAllow ) {
+	// The accessible label always names the rule type and whether the date is a
+	// creation or an update, so screen-reader users get the full context.
+	let accessibleTemplate;
+	if ( updated && isAllow ) {
 		// translators: %s is a date.
-		template = __(
+		accessibleTemplate = __(
 			'Allow rule updated %s',
-			'woocommerce-fraud-protection'
-		);
-	} else if ( compact && updated ) {
-		// translators: %s is a date.
-		template = __(
-			'Block rule updated %s',
-			'woocommerce-fraud-protection'
-		);
-	} else if ( compact && isAllow ) {
-		// translators: %s is a date.
-		template = __(
-			'Allow rule created %s',
-			'woocommerce-fraud-protection'
-		);
-	} else if ( compact ) {
-		// translators: %s is a date.
-		template = __(
-			'Block rule created %s',
 			'woocommerce-fraud-protection'
 		);
 	} else if ( updated ) {
 		// translators: %s is a date.
-		template = __( 'Rule updated %s', 'woocommerce-fraud-protection' );
+		accessibleTemplate = __(
+			'Block rule updated %s',
+			'woocommerce-fraud-protection'
+		);
+	} else if ( isAllow ) {
+		// translators: %s is a date.
+		accessibleTemplate = __(
+			'Allow rule created %s',
+			'woocommerce-fraud-protection'
+		);
 	} else {
 		// translators: %s is a date.
-		template = __( 'Rule created %s', 'woocommerce-fraud-protection' );
+		accessibleTemplate = __(
+			'Block rule created %s',
+			'woocommerce-fraud-protection'
+		);
 	}
+	const accessibleLabel = sprintf( accessibleTemplate, date );
 
-	const tooltip = sprintf( template, date );
+	// The visible tooltip is terser in the default density, where the visible
+	// label already names the rule type; in compact density the label is hidden,
+	// so it reuses the fuller accessible text.
+	let visibleTemplate;
+	if ( compact ) {
+		visibleTemplate = accessibleTemplate;
+	} else if ( updated ) {
+		// translators: %s is a date.
+		visibleTemplate = __(
+			'Rule updated %s',
+			'woocommerce-fraud-protection'
+		);
+	} else {
+		// translators: %s is a date.
+		visibleTemplate = __(
+			'Rule created %s',
+			'woocommerce-fraud-protection'
+		);
+	}
+	const tooltip = sprintf( visibleTemplate, date );
 
 	const classes = [
 		'wc-fraud-protection-checkout-attempts__rule-chip',
@@ -142,12 +103,24 @@ export function RuleChip( {
 		<Tooltip.Root>
 			<Tooltip.Trigger
 				render={
-					<span className={ classes }>
-						{ isAllow ? <AllowIcon /> : <BlockIcon /> }
-						<span className="wc-fraud-protection-checkout-attempts__rule-chip-label">
+					<button
+						type="button"
+						className={ classes }
+						aria-label={ accessibleLabel }
+					>
+						<Icon
+							className="wc-fraud-protection-checkout-attempts__rule-chip-icon"
+							icon={ isAllow ? published : notAllowed }
+							size={ 16 }
+							aria-hidden="true"
+						/>
+						<span
+							className="wc-fraud-protection-checkout-attempts__rule-chip-label"
+							aria-hidden="true"
+						>
 							{ label }
 						</span>
-					</span>
+					</button>
 				}
 			/>
 			<Tooltip.Popup>{ tooltip }</Tooltip.Popup>

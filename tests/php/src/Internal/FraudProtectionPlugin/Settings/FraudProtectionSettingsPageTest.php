@@ -11,8 +11,6 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 // phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir, WordPress.PHP.DevelopmentFunctions.error_log_var_export
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\PaymentMethodTitleResolver;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
@@ -95,9 +93,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut                  = new FraudProtectionSettingsPage();
 		$this->sut->init(
 			$this->spy_on_controller_logging(),
-			$this->automatic_protection,
-			wc_get_container()->get( SessionEventStore::class ),
-			wc_get_container()->get( PaymentMethodTitleResolver::class )
+			$this->automatic_protection
 		);
 		$this->automatic_protection->reset();
 	}

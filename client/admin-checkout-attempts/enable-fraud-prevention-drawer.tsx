@@ -1,77 +1,77 @@
-import apiFetch from '@wordpress/api-fetch';
 import { Button, Checkbox, Drawer, Notice, Stack, Text } from '@wordpress/ui';
+import { useDispatch, useSelect } from '@wordpress/data';
 import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
+import { settingsStore } from '../admin-settings/data/store';
+
 // A right-side drawer that lets the merchant turn on automatic fraud prevention
 // without leaving the checkout attempts list. It mirrors the settings card's
-// enable control (description + "automatically block" checkbox) and saves to the
-// same settings endpoint. Opened from the list banner and the flagged-row action.
+// enable control (description + "automatically block" checkbox) and saves
+// through the shared settings store, so the list and the settings page both
+// reflect the change without a reload. Opened from the list banner and the
+// flagged-row action.
 
-const SETTINGS_PATH = '/wc-fraud-protection/v1/settings';
 const CHECKBOX_ID = 'wc-fraud-protection-enable-drawer-checkbox';
 
 export function EnableFraudPreventionDrawer( {
 	open,
 	onOpenChange,
-	onEnabled,
 }: {
 	open: boolean;
 	onOpenChange: ( open: boolean ) => void;
-	onEnabled: () => void;
 } ) {
 	const [ checked, setChecked ] = useState( false );
-	const [ isSaving, setIsSaving ] = useState( false );
-	const [ error, setError ] = useState< string | null >( null );
+
+	const { saveSettings, setError } = useDispatch( settingsStore );
+	const { isSaving, error } = useSelect( ( select ) => {
+		const store = select( settingsStore );
+		return {
+			isSaving: store.isSaving(),
+			error: store.getError(),
+		};
+	}, [] );
 
 	// Each time the drawer opens, start from the default (unchecked) and clear
-	// any error left from a previous attempt.
+	// any save error left from a previous attempt.
 	useEffect( () => {
 		if ( open ) {
 			setChecked( false );
 			setError( null );
 		}
-	}, [ open ] );
+	}, [ open, setError ] );
 
 	const save = async () => {
-		if ( isSaving ) {
-			return;
-		}
-
-		setIsSaving( true );
-		setError( null );
-
-		try {
-			await apiFetch( {
-				path: SETTINGS_PATH,
-				method: 'POST',
-				data: { automatic_protection: checked },
-			} );
-
-			if ( checked ) {
-				onEnabled();
-			}
+		const didSave = await saveSettings( { automatic_protection: checked } );
+		if ( didSave ) {
 			onOpenChange( false );
-		} catch ( saveError: unknown ) {
-			setError(
-				saveError instanceof Error && saveError.message
-					? saveError.message
-					: __(
-							'The setting could not be saved.',
-							'woocommerce-fraud-protection'
-					  )
-			);
-		} finally {
-			setIsSaving( false );
 		}
 	};
+
+	const saveError =
+		error?.operation === 'save'
+			? error.message ||
+			  __(
+					'The setting could not be saved.',
+					'woocommerce-fraud-protection'
+			  )
+			: null;
 
 	return (
 		<Drawer.Root
 			open={ open }
-			onOpenChange={ onOpenChange }
+			// Cancel any close request (background click, Escape) while the save
+			// is in flight: the request would still complete, but the drawer would
+			// look as if the save was canceled. `disablePointerDismissal` alone
+			// would not stop Escape.
+			onOpenChange={ ( nextOpen, eventDetails ) => {
+				if ( ! nextOpen && isSaving ) {
+					eventDetails.cancel();
+					return;
+				}
+				onOpenChange( nextOpen );
+			} }
 			swipeDirection="right"
-			disablePointerDismissal={ isSaving }
 		>
 			<Drawer.Popup className="wc-fraud-protection-checkout-attempts__enable-drawer">
 				<Drawer.Header>
@@ -91,10 +91,10 @@ export function EnableFraudPreventionDrawer( {
 								'woocommerce-fraud-protection'
 							) }
 						</Drawer.Description>
-						{ error && (
+						{ saveError && (
 							<Notice.Root intent="error">
 								<Notice.Description>
-									{ error }
+									{ saveError }
 								</Notice.Description>
 							</Notice.Root>
 						) }

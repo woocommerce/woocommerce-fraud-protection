@@ -2,47 +2,47 @@ import type { View } from '@wordpress/dataviews';
 
 import type { FinalStatus } from './types';
 
-// The list remembers how the merchant left it — the tab and the DataViews view
-// (columns, density, sort, per-page, search, page and the outcome/provider/rules
-// filters) — in localStorage, so it survives a reload. It is a per-browser
-// convenience, not shared state, so every read and write is defensive: storage
-// may be unavailable (private mode, quota, disabled) and the stored payload may
-// be stale from an older build. A restored page past the last one is clamped by
-// the list itself.
+// Display preferences for the checkout attempts list: the choices that are
+// personal to the browser rather than part of what the list is showing — which
+// columns are visible, the table density, and the page size. They live in
+// localStorage so they persist across visits.
+//
+// Navigation state (search, filters, status tab, sort, page) is NOT stored here:
+// it lives in the URL, so a link reproduces the view and Back/Forward restore it.
+//
+// Storage is a best-effort convenience: it may be unavailable (private mode,
+// quota, disabled) and a stored payload may be stale from an older build, so
+// every read and write is defensive.
 
-const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-state';
+const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
 
 // Bump when the shape below changes so stale payloads are dropped, not merged.
-const VERSION = 1;
+const VERSION = 2;
 
 export type StatusTab = 'all' | FinalStatus;
 
-export type PersistedState = {
-	view: View;
-	tab: StatusTab;
+export type DisplayPrefs = {
+	fields?: string[];
+	perPage?: number;
+	layout?: View[ 'layout' ];
 };
 
-const TABS: StatusTab[] = [ 'all', 'allowed', 'blocked' ];
-
 /**
- * Load the persisted state, falling back to defaults for anything missing or
- * invalid.
+ * Load the stored display preferences, ignoring anything missing or invalid.
  *
- * @param fallback The defaults to use for missing or invalid values.
- * @return The restored state.
+ * @return The restored preferences, empty when nothing valid is stored.
  */
-export function loadState( fallback: PersistedState ): PersistedState {
+export function loadPrefs(): DisplayPrefs {
 	let raw: string | null = null;
 
 	try {
 		raw = window.localStorage.getItem( STORAGE_KEY );
 	} catch {
-		// Storage is unavailable; use defaults.
-		return fallback;
+		return {};
 	}
 
 	if ( ! raw ) {
-		return fallback;
+		return {};
 	}
 
 	try {
@@ -51,36 +51,51 @@ export function loadState( fallback: PersistedState ): PersistedState {
 		if (
 			! parsed ||
 			parsed.version !== VERSION ||
-			typeof parsed.state !== 'object'
+			typeof parsed.prefs !== 'object' ||
+			parsed.prefs === null
 		) {
-			return fallback;
+			return {};
 		}
 
-		const state = parsed.state;
-		const view =
-			state.view && typeof state.view === 'object' ? state.view : {};
+		const prefs = parsed.prefs;
+		const result: DisplayPrefs = {};
 
-		return {
-			view: { ...fallback.view, ...view },
-			tab: TABS.indexOf( state.tab ) !== -1 ? state.tab : fallback.tab,
-		};
+		if (
+			Array.isArray( prefs.fields ) &&
+			prefs.fields.every(
+				( field: unknown ) => typeof field === 'string'
+			)
+		) {
+			result.fields = prefs.fields;
+		}
+		if (
+			typeof prefs.perPage === 'number' &&
+			Number.isFinite( prefs.perPage ) &&
+			prefs.perPage > 0
+		) {
+			result.perPage = prefs.perPage;
+		}
+		if ( prefs.layout && typeof prefs.layout === 'object' ) {
+			result.layout = prefs.layout;
+		}
+
+		return result;
 	} catch {
-		// Corrupt payload; use defaults.
-		return fallback;
+		return {};
 	}
 }
 
 /**
- * Persist the current state. Storage failures are ignored on purpose: the list
- * stays usable, it just will not remember this change.
+ * Persist the display preferences. Storage failures are ignored on purpose: the
+ * list stays usable, it just will not remember the change.
  *
- * @param state The state to persist.
+ * @param prefs The preferences to persist.
  */
-export function saveState( state: PersistedState ): void {
+export function savePrefs( prefs: DisplayPrefs ): void {
 	try {
 		window.localStorage.setItem(
 			STORAGE_KEY,
-			JSON.stringify( { version: VERSION, state } )
+			JSON.stringify( { version: VERSION, prefs } )
 		);
 	} catch {
 		// Ignore storage failures (private mode, quota, disabled).

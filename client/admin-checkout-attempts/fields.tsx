@@ -32,6 +32,10 @@ export function getFields(
 			label: __( 'Provider', 'woocommerce-fraud-protection' ),
 			enableHiding: false,
 			enableGlobalSearch: false,
+			// Sortable by the displayed provider name. The names are resolved from
+			// the gateway ids and are not stored, so the REST endpoint sorts the
+			// rows by resolved title across all pages (see SessionsRestController)
+			// rather than by the raw id the merchant does not see.
 			getValue: ( { item } ) => item.payment_method.id,
 			render: ( { item } ) =>
 				item.payment_method.title || item.payment_method.id || EMPTY,

@@ -38,8 +38,9 @@ jest.mock( '@woocommerce/navigation', () => ( {
 
 // The real checkout attempts page renders DataViews; it is bundled and heavy,
 // and these tests cover the app's routing rather than the list, so it is
-// replaced with a no-op. Its Tabs still render and need a ResizeObserver.
-jest.mock( '@wordpress/dataviews', () => ( {
+// replaced with a no-op. Its Tabs still render and need a ResizeObserver. The
+// list imports DataViews from the `/wp` runtime entry point, so mock that.
+jest.mock( '@wordpress/dataviews/wp', () => ( {
 	__esModule: true,
 	DataViews: () => null,
 } ) );

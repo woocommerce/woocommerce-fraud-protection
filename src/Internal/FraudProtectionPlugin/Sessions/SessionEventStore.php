@@ -417,17 +417,20 @@ class SessionEventStore {
 		$args = wp_parse_args(
 			$args,
 			array(
-				'days'            => SessionEventPruner::RETENTION_DAYS,
-				'page'            => 1,
-				'per_page'        => 20,
-				'orderby'         => 'recorded_at',
-				'order'           => 'desc',
-				'final_status'    => null,
-				'outcomes'        => array(),
-				'payment_methods' => array(),
-				'search'          => '',
-				'rules'           => '',
-				'rule_values'     => array(),
+				'days'                 => SessionEventPruner::RETENTION_DAYS,
+				'page'                 => 1,
+				'per_page'             => 20,
+				'orderby'              => 'recorded_at',
+				'order'                => 'desc',
+				'final_status'         => null,
+				'outcomes'             => array(),
+				'payment_methods'      => array(),
+				'search'               => '',
+				'rules'                => '',
+				'rule_values'          => array(),
+				// Provider ids in the order rows should sort by when ordering by
+				// payment method (they are resolved to display titles upstream).
+				'payment_method_order' => array(),
 			)
 		);
 
@@ -440,12 +443,27 @@ class SessionEventStore {
 		$columns  = implode( ', ', self::LIST_COLUMNS );
 		$limit    = $wpdb->prepare( 'LIMIT %d OFFSET %d', $per_page, $offset );
 
+		// Ordering by provider sorts by the display title, not the raw id. The
+		// caller passes the provider ids already sorted by title (and direction),
+		// and FIELD() arranges the rows to match. Rows whose provider is not in
+		// the list (unknown or empty) sort first.
+		$order_by = "{$orderby} {$order}, id DESC";
+		if ( 'payment_method' === $orderby ) {
+			$ordered_ids = array_values( array_filter( (array) $args['payment_method_order'], 'is_string' ) );
+			if ( array() !== $ordered_ids ) {
+				$placeholders = implode( ', ', array_fill( 0, count( $ordered_ids ), '%s' ) );
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+				$field    = $wpdb->prepare( "FIELD(payment_method, {$placeholders})", ...$ordered_ids );
+				$order_by = "{$field}, id DESC";
+			}
+		}
+
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Every clause is prepared in build_where().
 		$total = $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE {$where}" );
 		$this->throw_on_database_error( 'Session event count failed.' );
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Clauses and limit are prepared, the other fragments are allowlisted constants.
-		$rows = $wpdb->get_results( "SELECT {$columns} FROM {$table} WHERE {$where} ORDER BY {$orderby} {$order}, id DESC {$limit}", ARRAY_A );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Clauses, order and limit are prepared, the other fragments are allowlisted constants.
+		$rows = $wpdb->get_results( "SELECT {$columns} FROM {$table} WHERE {$where} ORDER BY {$order_by} {$limit}", ARRAY_A );
 		$this->throw_on_database_error( 'Session event query failed.' );
 
 		return array(
@@ -524,10 +542,14 @@ class SessionEventStore {
 	/**
 	 * Build the clauses keeping only events with or without a matching rule.
 	 *
-	 * The rule values are the finder's normalized keys: emails are trimmed and
-	 * lowercased, so the stored email is normalized the same way in SQL; IPs are
-	 * the canonical text form, matched as stored (exact for IPv4; a stored
-	 * non-canonical IPv6 is a rare edge that the finder would still flag).
+	 * The rule values are the finder's normalized keys, so the stored value is
+	 * normalized the same way in SQL before comparing: emails are trimmed and
+	 * lowercased, and IPs are reduced to their canonical text form with
+	 * INET6_NTOA(INET6_ATON(...)) (compressed lowercase for IPv6, unchanged for
+	 * IPv4). This keeps the "with/without rules" filter consistent with the
+	 * per-row rule lookup, which also normalizes the IP, so a stored non-canonical
+	 * IPv6 address is filtered the same way it is chipped. A value INET6_ATON
+	 * cannot parse falls back to the raw column so it is never wrongly matched.
 	 *
 	 * @param string $mode        '' (no filter), 'with', or 'without'.
 	 * @param mixed  $rule_values The normalized values active rules target, keyed by field.
@@ -555,7 +577,7 @@ class SessionEventStore {
 			if ( array() !== $ips ) {
 				$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-				$parts[] = $wpdb->prepare( "ip IN ({$placeholders})", ...$ips );
+				$parts[] = $wpdb->prepare( "COALESCE(INET6_NTOA(INET6_ATON(ip)), ip) IN ({$placeholders})", ...$ips );
 			}
 
 			// With no active rules, nothing can match a rule.
@@ -571,7 +593,7 @@ class SessionEventStore {
 		if ( array() !== $ips ) {
 			$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-			$clauses[] = $wpdb->prepare( "(ip IS NULL OR ip = '' OR ip NOT IN ({$placeholders}))", ...$ips );
+			$clauses[] = $wpdb->prepare( "(ip IS NULL OR ip = '' OR COALESCE(INET6_NTOA(INET6_ATON(ip)), ip) NOT IN ({$placeholders}))", ...$ips );
 		}
 
 		return $clauses;

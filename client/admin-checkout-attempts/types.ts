@@ -57,6 +57,9 @@ export type CheckoutAttemptsConfig = {
 	// when off or unknown.
 	automaticProtectionEnabledAt: string | null;
 	settingsUrl: string;
+	// Provider filter options. These are not injected at page load; the list
+	// route loads them on demand from the REST API (see usePaymentMethodOptions)
+	// and merges them into the config it passes down.
 	paymentMethods: PaymentMethodOption[];
 };
 
@@ -81,8 +84,7 @@ export function getConfig(): CheckoutAttemptsConfig {
 		automaticProtectionEnabledAt:
 			config.automaticProtectionEnabledAt ?? null,
 		settingsUrl: config.settingsUrl ?? '',
-		paymentMethods: Array.isArray( config.paymentMethods )
-			? config.paymentMethods
-			: FALLBACK_CONFIG.paymentMethods,
+		// Loaded on demand from the REST API, not injected at page load.
+		paymentMethods: FALLBACK_CONFIG.paymentMethods,
 	};
 }

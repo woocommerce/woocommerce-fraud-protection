@@ -137,18 +137,27 @@ const actions = {
 	setIsSaving( isSaving: boolean ): Action {
 		return { type: 'SET_IS_SAVING', isSaving };
 	},
+	// Save the automatic-protection setting. With no argument it saves the store's
+	// current value (the settings page's dirty edit); with `overrides` it saves
+	// the given value directly, which lets other surfaces — such as the checkout
+	// attempts list's enable drawer — turn the setting on and update the shared
+	// store from the response, so every view stays in sync without a reload.
 	saveSettings:
-		() =>
+		( overrides?: Partial< Settings > ) =>
 		async ( { dispatch, select }: StoreCallback ) => {
-			const settings = select.getSettings();
-
-			if (
-				! settings ||
-				select.isSaving() ||
-				select.isOptingOut() ||
-				! select.isDirty()
-			) {
+			if ( select.isSaving() || select.isOptingOut() ) {
 				return false;
+			}
+
+			let automaticProtection: boolean;
+			if ( typeof overrides?.automatic_protection === 'boolean' ) {
+				automaticProtection = overrides.automatic_protection;
+			} else {
+				const settings = select.getSettings();
+				if ( ! settings || ! select.isDirty() ) {
+					return false;
+				}
+				automaticProtection = settings.automatic_protection;
 			}
 
 			dispatch.setIsSaving( true );
@@ -159,7 +168,7 @@ const actions = {
 					path: '/wc-fraud-protection/v1/settings',
 					method: 'POST',
 					data: {
-						automatic_protection: settings.automatic_protection,
+						automatic_protection: automaticProtection,
 					},
 				} );
 				dispatch.receiveSettings( response );

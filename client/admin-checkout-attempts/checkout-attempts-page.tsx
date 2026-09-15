@@ -1,23 +1,34 @@
 import { Notice, Tabs } from '@wordpress/ui';
-import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from '@wordpress/element';
+import { useSelect } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
-import { DataViews } from '@wordpress/dataviews';
+import { DataViews } from '@wordpress/dataviews/wp';
 import type { View } from '@wordpress/dataviews';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { buildActions } from './actions';
 import { EnableFraudPreventionDrawer } from './enable-fraud-prevention-drawer';
 import { getFields } from './fields';
 import { ProtectionOffBanner } from './protection-off-banner';
-import { loadState, saveState } from './persisted-state';
+import { loadPrefs, savePrefs } from './persisted-state';
 import { getConfig } from './types';
 import { useCheckoutAttempts } from './use-checkout-attempts';
+import { usePaymentMethodOptions } from './use-payment-method-options';
 import { getFraudProtectionRoute } from '../admin-settings/navigation';
-import type { StatusTab } from './persisted-state';
+import { settingsStore } from '../admin-settings/data/store';
+import type { DisplayPrefs, StatusTab } from './persisted-state';
 import type { FinalStatus } from './types';
 import './style.scss';
 
 const settingsRoute = getFraudProtectionRoute( '/' );
+
+const TABS: StatusTab[] = [ 'all', 'allowed', 'blocked' ];
 
 const TAB_TO_STATUS: Record< StatusTab, FinalStatus | null > = {
 	all: null,
@@ -25,47 +36,205 @@ const TAB_TO_STATUS: Record< StatusTab, FinalStatus | null > = {
 	blocked: 'blocked',
 };
 
-const DEFAULT_VIEW: View = {
-	type: 'table',
-	page: 1,
-	perPage: 20,
-	sort: { field: 'recorded_at', direction: 'desc' },
-	search: '',
-	filters: [],
-	titleField: 'payment_method',
-	fields: [
-		'recorded_at',
-		'email',
-		'ip',
-		'ip_country',
-		'billing_country',
-		'outcome',
-	],
-};
+const DEFAULT_SORT_FIELD = 'recorded_at';
+const DEFAULT_SORT_DIRECTION = 'desc';
+const DEFAULT_PER_PAGE = 20;
+const DEFAULT_FIELDS = [
+	'recorded_at',
+	'email',
+	'ip',
+	'ip_country',
+	'billing_country',
+	'outcome',
+];
 
-const DEFAULT_STATE = {
-	view: DEFAULT_VIEW,
-	tab: 'all' as StatusTab,
-};
+// The navigation state (search, filters, status tab, sort, page) lives in the
+// URL query so a link reproduces the view and Back/Forward restore it. Column
+// visibility, density and page size are display preferences and live in
+// localStorage instead. These helpers translate between the two and the
+// DataViews `view` object.
+
+function getListParam( params: URLSearchParams, key: string ): string[] {
+	const value = params.get( key );
+	return value ? value.split( ',' ).filter( Boolean ) : [];
+}
+
+function getTab( params: URLSearchParams ): StatusTab {
+	const status = params.get( 'status' );
+	return TABS.indexOf( status as StatusTab ) !== -1
+		? ( status as StatusTab )
+		: 'all';
+}
+
+function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
+	const filters: NonNullable< View[ 'filters' ] > = [];
+
+	const outcome = getListParam( params, 'outcome' );
+	if ( outcome.length ) {
+		filters.push( { field: 'outcome', operator: 'isAny', value: outcome } );
+	}
+	const provider = getListParam( params, 'provider' );
+	if ( provider.length ) {
+		filters.push( {
+			field: 'payment_method',
+			operator: 'isAny',
+			value: provider,
+		} );
+	}
+	const rules = params.get( 'rules' );
+	if ( 'with' === rules || 'without' === rules ) {
+		filters.push( { field: 'rules', operator: 'is', value: rules } );
+	}
+
+	const paged = parseInt( params.get( 'paged' ) ?? '', 10 );
+
+	return {
+		type: 'table',
+		page: Number.isInteger( paged ) && paged > 0 ? paged : 1,
+		perPage: prefs.perPage ?? DEFAULT_PER_PAGE,
+		sort: {
+			field: params.get( 'orderby' ) || DEFAULT_SORT_FIELD,
+			direction: 'asc' === params.get( 'order' ) ? 'asc' : 'desc',
+		},
+		search: params.get( 'search' ) ?? '',
+		filters,
+		titleField: 'payment_method',
+		fields: prefs.fields ?? DEFAULT_FIELDS,
+		...( prefs.layout ? { layout: prefs.layout } : {} ),
+	};
+}
+
+function filterValueList( view: View, field: string ): string[] {
+	const filter = ( view.filters ?? [] ).find(
+		( candidate ) => candidate.field === field
+	);
+	if ( ! filter || filter.value === undefined || filter.value === null ) {
+		return [];
+	}
+	return Array.isArray( filter.value )
+		? filter.value.map( String )
+		: [ String( filter.value ) ];
+}
+
+function setParam(
+	params: URLSearchParams,
+	key: string,
+	value: string,
+	defaultValue: string
+): void {
+	if ( '' === value || value === defaultValue ) {
+		params.delete( key );
+	} else {
+		params.set( key, value );
+	}
+}
+
+// The query args this list owns. Everything else in the URL (WooCommerce's own
+// page/tab/path) is preserved when the list writes its state.
+const NAV_PARAM_KEYS = [
+	'search',
+	'paged',
+	'orderby',
+	'order',
+	'outcome',
+	'provider',
+	'rules',
+	'status',
+];
+
+// Build the list's own query args from the current view and tab.
+function navParams( view: View, tab: StatusTab ): URLSearchParams {
+	const params = new URLSearchParams();
+	setParam( params, 'search', view.search ?? '', '' );
+	setParam( params, 'paged', String( view.page ?? 1 ), '1' );
+	setParam(
+		params,
+		'orderby',
+		view.sort?.field ?? DEFAULT_SORT_FIELD,
+		DEFAULT_SORT_FIELD
+	);
+	setParam(
+		params,
+		'order',
+		view.sort?.direction ?? DEFAULT_SORT_DIRECTION,
+		DEFAULT_SORT_DIRECTION
+	);
+	setParam(
+		params,
+		'outcome',
+		filterValueList( view, 'outcome' ).join( ',' ),
+		''
+	);
+	setParam(
+		params,
+		'provider',
+		filterValueList( view, 'payment_method' ).join( ',' ),
+		''
+	);
+	setParam(
+		params,
+		'rules',
+		filterValueList( view, 'rules' )[ 0 ] ?? '',
+		''
+	);
+	setParam( params, 'status', tab, 'all' );
+	return params;
+}
+
+// A canonical string of the list's nav state, for comparing the view against the
+// URL without being tripped up by param order or omitted defaults.
+function serializeNav( view: View, tab: StatusTab ): string {
+	const params = navParams( view, tab );
+	params.sort();
+	return params.toString();
+}
+
+// The canonical nav string the URL currently represents (defaults normalized the
+// same way as serializeNav, so an explicit `paged=1` matches an omitted one).
+function urlNav( params: URLSearchParams ): string {
+	return serializeNav( viewFromParams( params, {} ), getTab( params ) );
+}
 
 export function CheckoutAttemptsPage() {
 	const config = useMemo( getConfig, [] );
-	const [ initialState ] = useState( () => loadState( DEFAULT_STATE ) );
-	const [ view, setView ] = useState< View >( initialState.view );
-	const [ tab, setTab ] = useState< StatusTab >( initialState.tab );
+	const paymentMethods = usePaymentMethodOptions();
 
-	// Automatic fraud prevention state starts from the injected config but can be
-	// turned on from the enable drawer, so the banner and flagged tooltips update
-	// without a reload.
-	const [ protectionOn, setProtectionOn ] = useState(
-		config.automaticProtection
+	const pageRef = useRef< HTMLDivElement >( null );
+	const [ searchParams, setSearchParams ] = useSearchParams();
+
+	// The DataViews view and the status tab are local state, so the list keeps
+	// full control of its own interactions — including a filter that has been
+	// added but does not have a value yet. The navigation parts are mirrored to
+	// the URL (so a link reproduces the view and Back/Forward restore it), while
+	// column visibility, density and page size are saved as display preferences.
+	const [ view, setView ] = useState< View >( () =>
+		viewFromParams( searchParams, loadPrefs() )
 	);
+	const [ tab, setTab ] = useState< StatusTab >( () =>
+		getTab( searchParams )
+	);
+
+	// Automatic fraud prevention state: start from the value injected at page
+	// load so the banner does not flash, but prefer the settings store, which the
+	// resolver refreshes from the REST API (so a change made on the settings page
+	// is reflected here without a reload) and the enable drawer updates in place.
+	const savedProtection = useSelect(
+		( select ) =>
+			select( settingsStore ).getSettings()?.automatic_protection,
+		[]
+	);
+	const protectionOn = savedProtection ?? config.automaticProtection;
+
 	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );
 	const openDrawer = useCallback( () => setIsDrawerOpen( true ), [] );
 
 	const effectiveConfig = useMemo(
-		() => ( { ...config, automaticProtection: protectionOn } ),
-		[ config, protectionOn ]
+		() => ( {
+			...config,
+			automaticProtection: protectionOn,
+			paymentMethods,
+		} ),
+		[ config, protectionOn, paymentMethods ]
 	);
 
 	const isCompact = 'compact' === view.layout?.density;
@@ -78,17 +247,79 @@ export function CheckoutAttemptsPage() {
 		[ effectiveConfig, openDrawer ]
 	);
 
-	// Remember how the merchant left the list — including the page — so a reload
-	// restores it. The list lives inside the settings single-page app, so page
-	// position is kept in storage rather than a URL query arg the router owns.
+	// Mirror the current view and tab to the URL, preserving the query args the
+	// WooCommerce settings framework owns (page, tab, path). `replace` avoids a
+	// history entry for automatic corrections.
+	const commitToUrl = useCallback(
+		( nextView: View, nextTab: StatusTab, replace = false ) => {
+			const next = new URLSearchParams( searchParams );
+			NAV_PARAM_KEYS.forEach( ( key ) => next.delete( key ) );
+			navParams( nextView, nextTab ).forEach( ( value, key ) =>
+				next.set( key, value )
+			);
+			setSearchParams( next, { replace } );
+		},
+		[ searchParams, setSearchParams ]
+	);
+
+	const onChangeView = useCallback(
+		( nextView: View ) => {
+			setView( nextView );
+			// Column visibility, density and page size are display preferences.
+			savePrefs( {
+				fields: nextView.fields,
+				perPage: nextView.perPage,
+				layout: nextView.layout,
+			} );
+			commitToUrl( nextView, tab );
+		},
+		[ commitToUrl, tab ]
+	);
+
+	const onTabChange = useCallback(
+		( value: string ) => {
+			const nextTab: StatusTab =
+				TABS.indexOf( value as StatusTab ) !== -1
+					? ( value as StatusTab )
+					: 'all';
+			// A new tab starts at the first page.
+			const nextView = { ...view, page: 1 };
+			setTab( nextTab );
+			setView( nextView );
+			commitToUrl( nextView, nextTab );
+		},
+		[ commitToUrl, view ]
+	);
+
+	// Reconcile local state from the URL on external navigation (Back/Forward or
+	// a deep link). The list's own writes already match the URL and are skipped
+	// here — which also preserves an in-progress filter that has no value yet, as
+	// that is not represented in the URL.
 	useEffect( () => {
-		saveState( { view, tab } );
-	}, [ view, tab ] );
+		if ( urlNav( searchParams ) === serializeNav( view, tab ) ) {
+			return;
+		}
+		setView( ( previous ) => viewFromParams( searchParams, previous ) );
+		setTab( getTab( searchParams ) );
+	}, [ searchParams, view, tab ] );
+
+	// Stop the enclosing WooCommerce settings form from submitting — for example
+	// when Enter is pressed in the search box — which would reload the page to a
+	// broken URL. The list persists through the REST API, never a form submit.
+	useEffect( () => {
+		const form = pageRef.current?.closest( 'form' );
+		if ( ! form ) {
+			return;
+		}
+		const preventSubmit = ( event: Event ) => event.preventDefault();
+		form.addEventListener( 'submit', preventSubmit );
+		return () => form.removeEventListener( 'submit', preventSubmit );
+	}, [] );
 
 	const { sessions, totalItems, totalPages, isLoading, error } =
 		useCheckoutAttempts( view, TAB_TO_STATUS[ tab ] );
 
-	// A page past the last one (a stale URL, or rows pruned since) would show a
+	// A page past the last one (a stale link, or rows pruned since) would show a
 	// confusing empty list, so fall back to the last existing page — or page 1
 	// when there are no results at all.
 	useEffect( () => {
@@ -100,20 +331,68 @@ export function CheckoutAttemptsPage() {
 		const target = totalPages >= 1 ? Math.min( current, totalPages ) : 1;
 
 		if ( target !== current ) {
-			setView( ( previous ) => ( { ...previous, page: target } ) );
+			const nextView = { ...view, page: target };
+			setView( nextView );
+			commitToUrl( nextView, tab, true );
 		}
-	}, [ isLoading, totalPages, view.page ] );
+	}, [ isLoading, totalPages, view, tab, commitToUrl ] );
 
-	const resetToFirstPage = () =>
-		setView( ( current ) => ( { ...current, page: 1 } ) );
+	// The empty state depends on why the list is empty, so it does not claim
+	// there were no attempts when a search, filter, or load error is the cause.
+	let emptyMessage;
+	if ( error ) {
+		emptyMessage = __(
+			'No checkout attempts to show.',
+			'woocommerce-fraud-protection'
+		);
+	} else if (
+		Boolean( view.search ) ||
+		( view.filters?.length ?? 0 ) > 0 ||
+		tab !== 'all'
+	) {
+		emptyMessage = __(
+			'No checkout attempts match your search or filters.',
+			'woocommerce-fraud-protection'
+		);
+	} else {
+		emptyMessage = __(
+			'No checkout attempts have been recorded in the last 30 days.',
+			'woocommerce-fraud-protection'
+		);
+	}
 
-	const onTabChange = ( value: string ) => {
-		setTab( value as StatusTab );
-		resetToFirstPage();
-	};
+	// The banner and list are shared across tabs; rendered into whichever tab
+	// panel is active (see below) so the list the tab controls lives inside it.
+	const listContent = (
+		<>
+			{ ! protectionOn && (
+				<ProtectionOffBanner onEnable={ openDrawer } />
+			) }
+
+			<DataViews< ( typeof sessions )[ number ] >
+				data={ sessions }
+				fields={ fields }
+				view={ view }
+				onChangeView={ onChangeView }
+				actions={ actions }
+				paginationInfo={ { totalItems, totalPages } }
+				isLoading={ isLoading }
+				defaultLayouts={ { table: {} } }
+				getItemId={ ( item ) => String( item.id ) }
+				searchLabel={ __(
+					'Search by email or IP address',
+					'woocommerce-fraud-protection'
+				) }
+				empty={ <p>{ emptyMessage }</p> }
+			/>
+		</>
+	);
 
 	return (
-		<div className="wc-fraud-protection-checkout-attempts__page">
+		<div
+			ref={ pageRef }
+			className="wc-fraud-protection-checkout-attempts__page"
+		>
 			<header className="wc-fraud-protection-checkout-attempts__header">
 				<nav
 					className="wc-fraud-protection-checkout-attempts__breadcrumb"
@@ -150,8 +429,6 @@ export function CheckoutAttemptsPage() {
 				</Notice.Root>
 			) }
 
-			{ /* The list below is shared across tabs, so each tab pairs with an
-			     empty panel purely to satisfy the Tabs accessibility contract. */ }
 			<Tabs.Root value={ tab } onValueChange={ onTabChange }>
 				<Tabs.List>
 					<Tabs.Tab value="all">
@@ -164,43 +441,23 @@ export function CheckoutAttemptsPage() {
 						{ __( 'Blocked', 'woocommerce-fraud-protection' ) }
 					</Tabs.Tab>
 				</Tabs.List>
-				<Tabs.Panel value="all" />
-				<Tabs.Panel value="allowed" />
-				<Tabs.Panel value="blocked" />
+				{ /* Each tab controls its own panel (the accessibility contract),
+				     but the list is the same across tabs, so it is rendered only
+				     in the panel that is currently active. */ }
+				<Tabs.Panel value="all">
+					{ 'all' === tab && listContent }
+				</Tabs.Panel>
+				<Tabs.Panel value="allowed">
+					{ 'allowed' === tab && listContent }
+				</Tabs.Panel>
+				<Tabs.Panel value="blocked">
+					{ 'blocked' === tab && listContent }
+				</Tabs.Panel>
 			</Tabs.Root>
-
-			{ ! protectionOn && (
-				<ProtectionOffBanner onEnable={ openDrawer } />
-			) }
-
-			<DataViews< ( typeof sessions )[ number ] >
-				data={ sessions }
-				fields={ fields }
-				view={ view }
-				onChangeView={ setView }
-				actions={ actions }
-				paginationInfo={ { totalItems, totalPages } }
-				isLoading={ isLoading }
-				defaultLayouts={ { table: {} } }
-				getItemId={ ( item ) => String( item.id ) }
-				searchLabel={ __(
-					'Search by email or IP address',
-					'woocommerce-fraud-protection'
-				) }
-				empty={
-					<p>
-						{ __(
-							'No checkout attempts have been recorded in the last 30 days.',
-							'woocommerce-fraud-protection'
-						) }
-					</p>
-				}
-			/>
 
 			<EnableFraudPreventionDrawer
 				open={ isDrawerOpen }
 				onOpenChange={ setIsDrawerOpen }
-				onEnabled={ () => setProtectionOn( true ) }
 			/>
 		</div>
 	);

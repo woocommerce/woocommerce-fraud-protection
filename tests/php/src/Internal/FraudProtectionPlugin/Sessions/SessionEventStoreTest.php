@@ -168,6 +168,48 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Ordering by payment method follows the provided provider sequence (used to sort by display title).
+	 */
+	public function test_query_events_orders_by_provided_payment_method_sequence(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's-alpha',
+					'payment_method' => 'alpha',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's-beta',
+					'payment_method' => 'beta',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's-gamma',
+					'payment_method' => 'gamma',
+				)
+			)
+		);
+
+		$result = $this->sut->query_events(
+			array(
+				'orderby'              => 'payment_method',
+				'payment_method_order' => array( 'gamma', 'alpha', 'beta' ),
+			)
+		);
+
+		$this->assertSame(
+			array( 'gamma', 'alpha', 'beta' ),
+			array_column( $result['items'], 'payment_method' )
+		);
+	}
+
+	/**
 	 * @testdox Should insert a separate row for each event with the same session ID, preserving both decisions.
 	 */
 	public function test_repeated_session_ids_insert_separate_rows(): void {

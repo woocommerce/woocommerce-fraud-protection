@@ -1,43 +1,18 @@
-import { Badge, Tooltip } from '@wordpress/ui';
+import { Badge, Popover } from '@wordpress/ui';
+import { Icon, info } from '@wordpress/icons';
 import { createInterpolateElement } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
 import { formatSiteDate } from './dates';
 
 // Shown in the Outcome cell next to the "Allowed" badge for an attempt that was
-// flagged as suspicious but allowed: a "Flagged" badge and an info icon whose
-// tooltip explains it. While protection is off the tooltip links to turning it
+// flagged as suspicious but allowed: a "Flagged" badge and an info button whose
+// popover explains it. While protection is off the popover links to turning it
 // on; once on, it notes protection was off then and when it was enabled.
-
-function InfoIcon() {
-	return (
-		<svg
-			className="wc-fraud-protection-checkout-attempts__flagged-info-icon"
-			viewBox="0 0 24 24"
-			width="16"
-			height="16"
-			aria-hidden="true"
-			focusable="false"
-		>
-			<circle
-				cx="12"
-				cy="12"
-				r="9"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.6"
-			/>
-			<circle cx="12" cy="8" r="1.15" fill="currentColor" />
-			<path
-				d="M12 11v6"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.6"
-				strokeLinecap="round"
-			/>
-		</svg>
-	);
-}
+//
+// This is a Popover, not a Tooltip: the explanation can contain a link, and a
+// popover's content (and that link) is reachable by keyboard, touch, and screen
+// readers, which a tooltip's is not.
 
 export function FlaggedChip( {
 	protectionOn,
@@ -48,9 +23,9 @@ export function FlaggedChip( {
 	enabledAt: string | null;
 	settingsUrl: string;
 } ) {
-	let tooltip;
+	let explanation;
 	if ( protectionOn ) {
-		tooltip = enabledAt
+		explanation = enabledAt
 			? sprintf(
 					// translators: %s is the date automatic fraud prevention was enabled.
 					__(
@@ -64,18 +39,24 @@ export function FlaggedChip( {
 					'woocommerce-fraud-protection'
 			  );
 	} else if ( settingsUrl ) {
-		tooltip = createInterpolateElement(
+		explanation = createInterpolateElement(
 			__(
 				'Flagged as suspicious but allowed because automatic fraud prevention is off. <a>Enable automatic fraud prevention</a>',
 				'woocommerce-fraud-protection'
 			),
 			{
-				// eslint-disable-next-line jsx-a11y/anchor-has-content -- The link text is injected by createInterpolateElement.
-				a: <a href={ settingsUrl } />,
+				a: (
+					// eslint-disable-next-line jsx-a11y/anchor-has-content -- The link text is injected by createInterpolateElement.
+					<a
+						href={ settingsUrl }
+						target="_blank"
+						rel="noopener noreferrer"
+					/>
+				),
 			}
 		);
 	} else {
-		tooltip = __(
+		explanation = __(
 			'Flagged as suspicious but allowed because automatic fraud prevention is off.',
 			'woocommerce-fraud-protection'
 		);
@@ -86,8 +67,9 @@ export function FlaggedChip( {
 			<Badge intent="medium">
 				{ __( 'Flagged', 'woocommerce-fraud-protection' ) }
 			</Badge>
-			<Tooltip.Root>
-				<Tooltip.Trigger
+			<Popover.Root>
+				<Popover.Trigger
+					openOnHover
 					render={
 						<button
 							type="button"
@@ -97,19 +79,32 @@ export function FlaggedChip( {
 								'woocommerce-fraud-protection'
 							) }
 						>
-							<InfoIcon />
+							<Icon
+								className="wc-fraud-protection-checkout-attempts__flagged-info-icon"
+								icon={ info }
+								size={ 16 }
+								aria-hidden="true"
+							/>
 						</button>
 					}
 				/>
-				<Tooltip.Popup
-					className="wc-fraud-protection-checkout-attempts__flagged-tooltip"
+				<Popover.Popup
+					className="wc-fraud-protection-checkout-attempts__flagged-popover"
 					positioner={
-						<Tooltip.Positioner side="bottom" sideOffset={ 8 } />
+						<Popover.Positioner side="bottom" sideOffset={ 8 } />
 					}
 				>
-					{ tooltip }
-				</Tooltip.Popup>
-			</Tooltip.Root>
+					{ /* Required for accessibility; the visible content is the
+					     explanation, so the title is only for assistive tech. */ }
+					<Popover.Title className="screen-reader-text">
+						{ __(
+							'Why this checkout attempt was flagged',
+							'woocommerce-fraud-protection'
+						) }
+					</Popover.Title>
+					{ explanation }
+				</Popover.Popup>
+			</Popover.Root>
 		</>
 	);
 }
