@@ -125,38 +125,7 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			array( 'in_footer' => true )
 		);
 		wp_set_script_translations( self::SCRIPT_HANDLE, 'woocommerce-fraud-protection', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages' );
-		$this->inject_settings_config();
 		$this->maybe_preload_settings_data();
-	}
-
-	/**
-	 * Expose per-user settings-app state to the client.
-	 *
-	 * The current user's dismissal of the automatic-protection notice is injected
-	 * so the notice does not reappear on reload without an extra request. It is
-	 * read from the same WooCommerce Admin per-user preference the client writes
-	 * to (user meta `woocommerce_admin_<field>`).
-	 */
-	private function inject_settings_config(): void {
-		$user_id = get_current_user_id();
-		$config  = array(
-			'automaticProtectionNoticeDismissed' => 'yes' === get_user_meta(
-				$user_id,
-				'woocommerce_admin_fraud_protection_automatic_protection_notice_dismissed',
-				true
-			),
-			'checkoutAttemptsBannerDismissed'    => 'yes' === get_user_meta(
-				$user_id,
-				'woocommerce_admin_fraud_protection_checkout_attempts_banner_dismissed',
-				true
-			),
-		);
-
-		wp_add_inline_script(
-			self::SCRIPT_HANDLE,
-			'window.wcFraudProtectionSettings = ' . wp_json_encode( $config, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';',
-			'before'
-		);
 	}
 
 	/**

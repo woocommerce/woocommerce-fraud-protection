@@ -222,10 +222,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
 		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
-		// Per-user settings state (the notice and banner dismissals) is exposed too.
-		$this->assertStringContainsString( 'window.wcFraudProtectionSettings', $before_script );
-		$this->assertStringContainsString( '"automaticProtectionNoticeDismissed":false', $before_script );
-		$this->assertStringContainsString( '"checkoutAttemptsBannerDismissed":false', $before_script );
+		$this->assertStringNotContainsString( 'window.wcFraudProtectionSettings', $before_script );
 	}
 
 	/**
@@ -256,7 +253,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertIsArray( $before );
 		$before_script = implode( "\n", $before );
 		$this->assertStringContainsString( 'createPreloadingMiddleware', $before_script );
-		$this->assertStringContainsString( 'window.wcFraudProtectionSettings', $before_script );
+		$this->assertStringNotContainsString( 'window.wcFraudProtectionSettings', $before_script );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 	}
 

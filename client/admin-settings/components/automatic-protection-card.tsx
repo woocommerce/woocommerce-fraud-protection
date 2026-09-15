@@ -4,14 +4,6 @@ import { Card, Checkbox, Notice, Spinner, Stack, Text } from '@wordpress/ui';
 import { Link } from 'react-router-dom';
 
 import { getFraudProtectionRoute } from '../navigation';
-import { getSettingsConfig } from '../config';
-import { useNoticeDismissed } from '../hooks/use-notice-dismissed';
-
-// Per-user preference key for dismissing the automatic-protection notice. Stored
-// in user meta `woocommerce_admin_<key>`; allow-listed server-side (see
-// FraudProtectionController::add_user_data_fields).
-const NOTICE_DISMISSED_PREFERENCE =
-	'fraud_protection_automatic_protection_notice_dismissed';
 
 type AutomaticProtectionCardProps = {
 	checked: boolean;
@@ -38,12 +30,7 @@ export function AutomaticProtectionCard( {
 	flaggedByFraudPreventionCount,
 	savedAutomaticProtection,
 }: AutomaticProtectionCardProps ) {
-	const { isDismissed, dismiss } = useNoticeDismissed(
-		NOTICE_DISMISSED_PREFERENCE,
-		getSettingsConfig().automaticProtectionNoticeDismissed
-	);
-	const showNotice =
-		! isLoading && savedAutomaticProtection === false && ! isDismissed;
+	const showNotice = ! isLoading && savedAutomaticProtection === false;
 	let noticeText: string;
 	if ( 0 === flaggedByFraudPreventionCount ) {
 		noticeText = optedOut
@@ -177,19 +164,6 @@ export function AutomaticProtectionCard( {
 										}
 									/>
 								</Notice.Actions>
-							) }
-							{ /* The opt-out banner presents a decision (opt out /
-							     learn more), so it stays put and offers no dismiss.
-							     Only the post-opt-out reminder can be dismissed. */ }
-							{ optedOut && (
-								<Notice.CloseIcon
-									label={ __(
-										'Dismiss automatic fraud prevention notice',
-										'woocommerce-fraud-protection'
-									) }
-									disabled={ isOptingOut }
-									onClick={ dismiss }
-								/>
 							) }
 						</Notice.Root>
 					) }

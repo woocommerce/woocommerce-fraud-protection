@@ -255,7 +255,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 *
 	 * WooCommerce Admin persists these to `woocommerce_admin_<field>` user meta and
 	 * only saves fields returned here, so the settings UI can remember per-user
-	 * choices (such as dismissing the automatic-protection notice).
+	 * choices.
 	 *
 	 * @internal
 	 *
@@ -264,7 +264,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	 */
 	public function add_user_data_fields( $fields ): array {
 		$fields   = is_array( $fields ) ? $fields : array();
-		$fields[] = 'fraud_protection_automatic_protection_notice_dismissed';
 		$fields[] = 'fraud_protection_checkout_attempts_banner_dismissed';
 
 		return $fields;

@@ -45,6 +45,13 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 	default: jest.fn(),
 } ) );
 
+const mockUpdateUserPreferences = jest.fn();
+const mockUseUserPreferences = jest.fn();
+
+jest.mock( '@woocommerce/data', () => ( {
+	useUserPreferences: () => mockUseUserPreferences(),
+} ) );
+
 // The enable drawer confirms a successful save with a "Settings saved." snackbar
 // through @wordpress/notices. Point that store at a spy so the toast is
 // assertable; a matching core/notices store is registered below.
@@ -868,13 +875,15 @@ describe( 'CheckoutAttemptsPage', () => {
 		mockedApiFetch.mockReset();
 		mockedDataViews.mockClear();
 		mockCreateSuccessNotice.mockReset();
+		mockUpdateUserPreferences.mockReset();
+		mockUpdateUserPreferences.mockResolvedValue( {} );
+		mockUseUserPreferences.mockReturnValue( {
+			isRequesting: false,
+			updateUserPreferences: mockUpdateUserPreferences,
+		} );
 		window.localStorage.clear();
 		seedProtection( false );
 		mockApi();
-	} );
-
-	afterEach( () => {
-		delete window.wcFraudProtectionSettings;
 	} );
 
 	it( 'renders the header and passes the loaded rows to DataViews', async () => {
@@ -1129,32 +1138,17 @@ describe( 'CheckoutAttemptsPage', () => {
 			} )
 		);
 
-		// The banner goes away...
-		expect(
-			screen.queryByRole( 'button', {
-				name: 'Enable automatic fraud prevention',
-			} )
-		).not.toBeInTheDocument();
-
-		// ...and the dismissal is stored as a per-user WooCommerce Admin preference.
-		await waitFor( () =>
-			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wp/v2/users/me',
-				method: 'PUT',
-				data: {
-					woocommerce_meta: {
-						fraud_protection_checkout_attempts_banner_dismissed:
-							'yes',
-					},
-				},
-			} )
-		);
+		expect( mockUpdateUserPreferences ).toHaveBeenCalledWith( {
+			fraud_protection_checkout_attempts_banner_dismissed: 'yes',
+		} );
 	} );
 
 	it( 'does not show the banner once the user has dismissed it', async () => {
-		window.wcFraudProtectionSettings = {
-			checkoutAttemptsBannerDismissed: true,
-		};
+		mockUseUserPreferences.mockReturnValue( {
+			isRequesting: false,
+			updateUserPreferences: mockUpdateUserPreferences,
+			fraud_protection_checkout_attempts_banner_dismissed: 'yes',
+		} );
 		mockApi();
 
 		renderPage();

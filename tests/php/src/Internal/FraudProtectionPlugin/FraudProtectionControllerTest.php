@@ -236,10 +236,9 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );
 		$this->assertContains( $container->get( FraudProtectionSettingsPage::class ), $pages );
-		// The per-user preferences are allow-listed so the client can persist them.
+		// The checkout-attempts banner preference is allow-listed so the client can persist it.
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		$fields = apply_filters( 'woocommerce_admin_get_user_data_fields', array() );
-		$this->assertContains( 'fraud_protection_automatic_protection_notice_dismissed', $fields );
 		$this->assertContains( 'fraud_protection_checkout_attempts_banner_dismissed', $fields );
 	}
 

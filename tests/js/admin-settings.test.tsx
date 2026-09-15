@@ -1,12 +1,5 @@
 import '@testing-library/jest-dom';
-import {
-	act,
-	fireEvent,
-	render,
-	screen,
-	waitFor,
-	within,
-} from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -117,7 +110,6 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockCreateSuccessNotice.mockReset();
 		mockSettingsHistory.block.mockClear();
 		window.history.replaceState( {}, '', '/' );
-		delete window.wcFraudProtectionSettings;
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
@@ -566,64 +558,6 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).not.toBeInTheDocument();
 	} );
 
-	it( 'dismisses the post-opt-out reminder, persisting it per user', async () => {
-		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, performanceWithFlagged( 12 ), true )
-		);
-		// The dismissal is persisted with a PUT to the current-user endpoint.
-		mockedApiFetch.mockResolvedValue( {} as never );
-		renderSettings();
-
-		// The reminder shown after opting out has no opt-out button.
-		const countLink = await screen.findByRole( 'link', {
-			name: '12 checkout attempts',
-		} );
-		expect( countLink.parentElement ).toHaveTextContent(
-			'We recommend turning it on.'
-		);
-
-		fireEvent.click(
-			screen.getByRole( 'button', {
-				name: 'Dismiss automatic fraud prevention notice',
-			} )
-		);
-		expect(
-			screen.queryByRole( 'link', { name: '12 checkout attempts' } )
-		).not.toBeInTheDocument();
-
-		// The choice is stored as a per-user WooCommerce Admin preference.
-		await waitFor( () =>
-			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wp/v2/users/me',
-				method: 'PUT',
-				data: {
-					woocommerce_meta: {
-						fraud_protection_automatic_protection_notice_dismissed:
-							'yes',
-					},
-				},
-			} )
-		);
-	} );
-
-	it( 'does not show the notice once the user has dismissed it', async () => {
-		window.wcFraudProtectionSettings = {
-			automaticProtectionNoticeDismissed: true,
-		};
-		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, performanceWithFlagged( 12 ) )
-		);
-		renderSettings();
-
-		// Wait for the card to finish loading, then confirm the notice is absent.
-		await screen.findByRole( 'checkbox' );
-		expect(
-			screen.queryByRole( 'button', {
-				name: 'Opt out of automatic blocking',
-			} )
-		).not.toBeInTheDocument();
-	} );
-
 	it( 'shows the automatic-protection recommendation after an opt-out is stored', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, performanceWithFlagged( 12 ), true )
@@ -644,6 +578,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect(
 			screen.queryByRole( 'link', { name: 'Learn more' } )
 		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Dismiss automatic fraud prevention notice',
+			} )
+		).not.toBeInTheDocument();
 	} );
 
 	it.each( [
@@ -663,7 +602,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			);
 			renderSettings();
 
-			expect( await screen.findByText( copy ) ).toBeVisible();
+			expect( await findVisibleText( copy ) ).toBeVisible();
 			expect(
 				screen.queryByRole( 'link', { name: '0 checkout attempts' } )
 			).not.toBeInTheDocument();
