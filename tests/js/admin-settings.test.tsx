@@ -114,6 +114,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockCreateSuccessNotice.mockReset();
 		mockSettingsHistory.block.mockClear();
 		window.history.replaceState( {}, '', '/' );
+		delete window.wcFraudProtectionSettings;
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
@@ -536,10 +537,12 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 	} );
 
-	it( 'shows the opt-out actions and dismisses the notice', async () => {
+	it( 'shows the opt-out actions and dismisses the notice, persisting it per user', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, performanceWithFlagged( 12 ) )
 		);
+		// The dismissal is persisted with a PUT to the current-user endpoint.
+		mockedApiFetch.mockResolvedValue( {} as never );
 		renderSettings();
 
 		expect(
@@ -559,6 +562,38 @@ describe( 'FraudProtectionSettingsPage', () => {
 				name: 'Dismiss automatic fraud prevention notice',
 			} )
 		);
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
+
+		// The choice is stored as a per-user WooCommerce Admin preference.
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wp/v2/users/me',
+				method: 'PUT',
+				data: {
+					woocommerce_meta: {
+						fraud_protection_automatic_protection_notice_dismissed:
+							'yes',
+					},
+				},
+			} )
+		);
+	} );
+
+	it( 'does not show the notice once the user has dismissed it', async () => {
+		window.wcFraudProtectionSettings = {
+			automaticProtectionNoticeDismissed: true,
+		};
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithFlagged( 12 ) )
+		);
+		renderSettings();
+
+		// Wait for the card to finish loading, then confirm the notice is absent.
+		await screen.findByRole( 'checkbox' );
 		expect(
 			screen.queryByRole( 'button', {
 				name: 'Opt out of automatic blocking',

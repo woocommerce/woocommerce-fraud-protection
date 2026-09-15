@@ -20,7 +20,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelem
 class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 
 	private const OPTION_NAME              = 'woocommerce_fraud_protection_automatic_protection';
-	private const OPT_OUT_DATE_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_at';
+	private const OPT_OUT_INFO_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_info';
 
 	/** @var AutomaticProtectionSetting */
 	private $setting;
@@ -223,12 +223,12 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$response->get_data()
 		);
 		$this->assertSame( 'no', get_option( self::OPTION_NAME ) );
-		$stored_date = get_option( self::OPT_OUT_DATE_OPTION_NAME );
+		$stored_info = get_option( self::OPT_OUT_INFO_OPTION_NAME );
 
 		$update = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => true ) ) );
 		$this->assertTrue( $update->get_data()['automatic_protection'] );
 		$this->assertTrue( $update->get_data()['automatic_protection_opted_out'] );
-		$this->assertSame( $stored_date, get_option( self::OPT_OUT_DATE_OPTION_NAME ) );
+		$this->assertSame( $stored_info, get_option( self::OPT_OUT_INFO_OPTION_NAME ) );
 	}
 
 	/**

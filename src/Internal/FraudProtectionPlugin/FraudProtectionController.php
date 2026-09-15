@@ -244,9 +244,30 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {
 			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
 			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_settings_page_assets' ) );
+			add_filter( 'woocommerce_admin_get_user_data_fields', array( $this, 'add_user_data_fields' ) );
 			wc_get_container()->get( SettingsRestController::class )->register();
 			wc_get_container()->get( SessionsRestController::class )->register();
 		}
+	}
+
+	/**
+	 * Allow-list the plugin's per-user preferences on the current-user REST field.
+	 *
+	 * WooCommerce Admin persists these to `woocommerce_admin_<field>` user meta and
+	 * only saves fields returned here, so the settings UI can remember per-user
+	 * choices (such as dismissing the automatic-protection notice).
+	 *
+	 * @internal
+	 *
+	 * @param string[] $fields The allow-listed user data fields.
+	 * @return string[]
+	 */
+	public function add_user_data_fields( $fields ): array {
+		$fields   = is_array( $fields ) ? $fields : array();
+		$fields[] = 'fraud_protection_automatic_protection_notice_dismissed';
+		$fields[] = 'fraud_protection_checkout_attempts_banner_dismissed';
+
+		return $fields;
 	}
 
 	/**

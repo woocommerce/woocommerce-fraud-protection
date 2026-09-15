@@ -1,5 +1,12 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType, ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -816,6 +823,7 @@ describe( 'CheckoutAttemptsPage', () => {
 
 	afterEach( () => {
 		delete window.wcFraudProtectionCheckoutAttempts;
+		delete window.wcFraudProtectionSettings;
 	} );
 
 	it( 'renders the header and passes the loaded rows to DataViews', async () => {
@@ -1031,6 +1039,59 @@ describe( 'CheckoutAttemptsPage', () => {
 				name: 'Enable automatic fraud prevention',
 			} )
 		).toBeInTheDocument();
+	} );
+
+	it( 'dismisses the banner and persists it per user', async () => {
+		mockApi();
+
+		renderPage();
+
+		await screen.findByRole( 'button', {
+			name: 'Enable automatic fraud prevention',
+		} );
+
+		fireEvent.click(
+			screen.getByRole( 'button', {
+				name: 'Dismiss the automatic fraud prevention banner',
+			} )
+		);
+
+		// The banner goes away...
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Enable automatic fraud prevention',
+			} )
+		).not.toBeInTheDocument();
+
+		// ...and the dismissal is stored as a per-user WooCommerce Admin preference.
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wp/v2/users/me',
+				method: 'PUT',
+				data: {
+					woocommerce_meta: {
+						fraud_protection_checkout_attempts_banner_dismissed:
+							'yes',
+					},
+				},
+			} )
+		);
+	} );
+
+	it( 'does not show the banner once the user has dismissed it', async () => {
+		window.wcFraudProtectionSettings = {
+			checkoutAttemptsBannerDismissed: true,
+		};
+		mockApi();
+
+		renderPage();
+
+		await waitFor( () => expect( lastDataViewsProps() ).toBeDefined() );
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Enable automatic fraud prevention',
+			} )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'opens the enable drawer from the banner and turns protection on in place', async () => {

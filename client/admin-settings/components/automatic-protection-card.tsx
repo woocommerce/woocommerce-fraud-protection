@@ -1,9 +1,17 @@
-import { createInterpolateElement, useState } from '@wordpress/element';
+import { createInterpolateElement } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { Card, Checkbox, Notice, Spinner, Stack, Text } from '@wordpress/ui';
 import { Link } from 'react-router-dom';
 
 import { getFraudProtectionRoute } from '../navigation';
+import { getSettingsConfig } from '../config';
+import { useNoticeDismissed } from '../hooks/use-notice-dismissed';
+
+// Per-user preference key for dismissing the automatic-protection notice. Stored
+// in user meta `woocommerce_admin_<key>`; allow-listed server-side (see
+// FraudProtectionController::add_user_data_fields).
+const NOTICE_DISMISSED_PREFERENCE =
+	'fraud_protection_automatic_protection_notice_dismissed';
 
 type AutomaticProtectionCardProps = {
 	checked: boolean;
@@ -30,11 +38,12 @@ export function AutomaticProtectionCard( {
 	flaggedByFraudPreventionCount,
 	savedAutomaticProtection,
 }: AutomaticProtectionCardProps ) {
-	const [ isNoticeDismissed, setIsNoticeDismissed ] = useState( false );
+	const { isDismissed, dismiss } = useNoticeDismissed(
+		NOTICE_DISMISSED_PREFERENCE,
+		getSettingsConfig().automaticProtectionNoticeDismissed
+	);
 	const showNotice =
-		! isLoading &&
-		savedAutomaticProtection === false &&
-		! isNoticeDismissed;
+		! isLoading && savedAutomaticProtection === false && ! isDismissed;
 	let noticeText: string;
 	if ( 0 === flaggedByFraudPreventionCount ) {
 		noticeText = optedOut
@@ -175,7 +184,7 @@ export function AutomaticProtectionCard( {
 									'woocommerce-fraud-protection'
 								) }
 								disabled={ isOptingOut }
-								onClick={ () => setIsNoticeDismissed( true ) }
+								onClick={ dismiss }
 							/>
 						</Notice.Root>
 					) }

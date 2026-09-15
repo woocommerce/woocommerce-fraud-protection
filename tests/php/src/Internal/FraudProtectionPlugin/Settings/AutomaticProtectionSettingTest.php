@@ -18,7 +18,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus
 class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 
 	private const OPTION_NAME              = 'woocommerce_fraud_protection_automatic_protection';
-	private const OPT_OUT_DATE_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_at';
+	private const OPT_OUT_INFO_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_info';
 
 	/**
 	 * Automatic protection setting.
@@ -55,7 +55,7 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $this->sut->is_opted_out() );
 		$this->assertNull( $this->sut->get_opted_out_at() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
-		$this->assertNull( get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) );
+		$this->assertNull( get_option( self::OPT_OUT_INFO_OPTION_NAME, null ) );
 	}
 
 	/**
@@ -108,25 +108,43 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An opt-out stores its first UTC date.
+	 * @testdox An opt-out stores its UTC date and the user who made it.
 	 */
-	public function test_opt_out_stores_first_utc_date(): void {
+	public function test_opt_out_stores_date_and_user(): void {
+		$user_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $user_id );
+
 		$before = time();
 		$this->assertTrue( $this->sut->set_opted_out() );
 		$after = time();
 
-		$stored_date = get_option( self::OPT_OUT_DATE_OPTION_NAME );
-		$this->assertIsString( $stored_date );
-		$this->assertSame( $stored_date, $this->sut->get_opted_out_at() );
-		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $stored_date );
-		$stored_timestamp = strtotime( $stored_date . ' UTC' );
+		// The option holds a JSON record of the date and the user.
+		$record = json_decode( (string) get_option( self::OPT_OUT_INFO_OPTION_NAME ), true );
+		$this->assertIsArray( $record );
+		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $record['date'] );
+		$this->assertSame( $user_id, $record['user_id'] );
+
+		$this->assertTrue( $this->sut->is_opted_out() );
+		$this->assertSame( $record['date'], $this->sut->get_opted_out_at() );
+		$this->assertSame( $user_id, $this->sut->get_opted_out_by() );
+
+		$stored_timestamp = strtotime( $record['date'] . ' UTC' );
 		$this->assertGreaterThanOrEqual( $before, $stored_timestamp );
 		$this->assertLessThanOrEqual( $after, $stored_timestamp );
-		$this->assertTrue( $this->sut->is_opted_out() );
 
-		update_option( self::OPT_OUT_DATE_OPTION_NAME, '2026-09-11 12:00:00' );
+		// A second call keeps the first record.
 		$this->assertFalse( $this->sut->set_opted_out() );
-		$this->assertSame( '2026-09-11 12:00:00', get_option( self::OPT_OUT_DATE_OPTION_NAME ) );
+	}
+
+	/**
+	 * @testdox A malformed opt-out record exposes no date or user.
+	 */
+	public function test_opt_out_reads_malformed_record(): void {
+		update_option( self::OPT_OUT_INFO_OPTION_NAME, 'not-json' );
+
+		$this->assertTrue( $this->sut->is_opted_out() );
+		$this->assertNull( $this->sut->get_opted_out_at() );
+		$this->assertNull( $this->sut->get_opted_out_by() );
 	}
 
 	/**
@@ -138,7 +156,7 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 
 		$this->assertTrue( $this->sut->reset() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
-		$this->assertNull( get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) );
+		$this->assertNull( get_option( self::OPT_OUT_INFO_OPTION_NAME, null ) );
 		$this->assertFalse( $this->sut->is_opted_out() );
 	}
 }

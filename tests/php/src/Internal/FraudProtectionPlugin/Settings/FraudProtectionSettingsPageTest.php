@@ -227,6 +227,10 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
 		// The checkout attempts config is exposed on every route of the app.
 		$this->assertStringContainsString( 'window.wcFraudProtectionCheckoutAttempts', $before_script );
+		// Per-user settings state (the notice and banner dismissals) is exposed too.
+		$this->assertStringContainsString( 'window.wcFraudProtectionSettings', $before_script );
+		$this->assertStringContainsString( '"automaticProtectionNoticeDismissed":false', $before_script );
+		$this->assertStringContainsString( '"checkoutAttemptsBannerDismissed":false', $before_script );
 	}
 
 	/**
