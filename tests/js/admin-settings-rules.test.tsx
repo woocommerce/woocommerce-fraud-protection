@@ -783,7 +783,7 @@ describe( 'RulesPage', () => {
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		).toHaveAttribute( 'aria-disabled', 'true' );
 
-		await userEvent.type( value, 'x' );
+		await userEvent.type( within( drawer ).getByLabelText( 'Value' ), 'x' );
 		await waitFor( () =>
 			expect(
 				within( drawer ).queryByText( /This email is already allowed/ )
@@ -1191,9 +1191,33 @@ describe( 'RulesPage', () => {
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		);
-		await userEvent.click(
-			await screen.findByRole( 'button', { name: 'View rule' } )
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		const error = within( drawer ).getByText(
+			'This email is already allowed by a rule.'
 		);
+		const viewRule = within( drawer ).getByRole( 'button', {
+			name: 'View rule',
+		} );
+		const value = within( drawer ).getByLabelText( 'Value' );
+		expect( error.tagName ).toBe( 'P' );
+		expect( error.querySelector( 'svg[height="16"]' ) ).toBeInTheDocument();
+		expect( error.parentElement ).toBe( viewRule.parentElement );
+		expect( error.parentElement?.previousElementSibling ).toContainElement(
+			value
+		);
+		expect( ( value as HTMLInputElement ).validity.valid ).toBe( false );
+		expect( value ).toHaveAttribute( 'data-validity-visible' );
+		expect( value ).toHaveAttribute( 'aria-describedby', error.id );
+		expect(
+			within( drawer ).getAllByText(
+				'This email is already allowed by a rule.'
+			)
+		).toHaveLength( 1 );
+		expect(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
+
+		await userEvent.click( viewRule );
 
 		expect(
 			await screen.findByRole( 'heading', { name: 'Edit rule' } )

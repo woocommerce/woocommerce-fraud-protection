@@ -1,11 +1,8 @@
 import {
-	Children,
-	isValidElement,
 	useCallback,
 	useEffect,
 	useId,
 	useMemo,
-	useRef,
 	useState,
 } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
@@ -15,12 +12,12 @@ import { useDispatch } from '@wordpress/data';
 import { store as noticesStore } from '@wordpress/notices';
 import {
 	Button,
-	ControlWithError,
 	Drawer,
 	InputControl,
 	Notice,
 	Stack,
 	Text,
+	ValidatedInputControl,
 	ValidityIndicator,
 } from '@wordpress/ui';
 
@@ -35,12 +32,6 @@ export type RuleFormContext = {
 };
 
 type RuleFormData = Pick< CreateRuleRequest, 'action' | 'type' | 'value' >;
-
-type RuleValueField = Field< RuleFormData > & {
-	duplicateError?: string;
-	duplicateRuleId?: number;
-	onViewRule?: ( id: number ) => void;
-};
 
 export const getInitialRuleFormData = (
 	context?: RuleFormContext
@@ -82,96 +73,80 @@ function RuleValueEditControl( {
 	onChange,
 	hideLabelFromVision,
 	validity,
-}: DataFormControlProps< RuleFormData > ) {
-	const inputRef = useRef< HTMLInputElement >( null );
+	duplicateError,
+	duplicateRuleId,
+	onViewRule,
+}: DataFormControlProps< RuleFormData > & {
+	duplicateError?: string;
+	duplicateRuleId?: number;
+	onViewRule?: ( id: number ) => void;
+} ) {
 	const duplicateMessageId = useId();
-	const valueField = field as RuleValueField;
-	const { duplicateError, duplicateRuleId, onViewRule } = valueField;
 	const value = field.getValue( { item: data } );
-	const getValidityTarget = useCallback( () => inputRef.current, [] );
 	const onValueChange = useCallback(
 		( newValue: string ) =>
 			onChange( field.setValue( { item: data, value: newValue } ) ),
 		[ data, field, onChange ]
 	);
-	useEffect( () => {
-		const input = inputRef.current;
-		if ( ! input ) {
-			return;
-		}
-		if ( duplicateError ) {
-			input.setCustomValidity( duplicateError );
-			input.setAttribute( 'data-validity-visible', '' );
-		} else {
-			input.setCustomValidity(
-				validity?.custom?.type === 'invalid'
-					? validity.custom.message
-					: ''
-			);
-			if ( input.validity.valid ) {
-				input.removeAttribute( 'data-validity-visible' );
+	const setDuplicateInput = useCallback(
+		( input: HTMLInputElement | null ) => {
+			if ( input && duplicateError ) {
+				input.setCustomValidity( duplicateError );
+				input.setAttribute( 'data-validity-visible', '' );
 			}
-		}
-	}, [ duplicateError, validity?.custom ] );
+		},
+		[ duplicateError ]
+	);
+
+	if ( duplicateError ) {
+		return (
+			<Stack direction="column" gap="sm">
+				<InputControl
+					ref={ setDuplicateInput }
+					aria-describedby={ duplicateMessageId }
+					aria-invalid="true"
+					required={ Boolean( field.isValid.required ) }
+					label={ field.label }
+					placeholder={ field.placeholder }
+					value={ value ?? '' }
+					onValueChange={ onValueChange }
+					hideLabelFromVision={ hideLabelFromVision }
+					disabled={ field.isDisabled( { item: data, field } ) }
+				/>
+				<Stack direction="row" align="center" gap="xs">
+					<ValidityIndicator
+						id={ duplicateMessageId }
+						type="invalid"
+						message={ duplicateError }
+					/>
+					{ duplicateRuleId && onViewRule && (
+						<Button
+							variant="minimal"
+							onClick={ () => onViewRule( duplicateRuleId ) }
+						>
+							{ __(
+								'View rule',
+								'woocommerce-fraud-protection'
+							) }
+						</Button>
+					) }
+				</Stack>
+			</Stack>
+		);
+	}
 
 	return (
-		<ControlWithError
+		<ValidatedInputControl
 			required={ Boolean( field.isValid.required ) }
 			markWhenOptional={ true }
 			customValidity={ validity?.custom }
-			getValidityTarget={ getValidityTarget }
-			render={ ( props ) => {
-				const children = Children.toArray(
-					isValidElement( props.children )
-						? props.children.props.children
-						: props.children
-				);
-				return (
-					<Stack { ...props } direction="column" gap="sm">
-						{ children[ 0 ] }
-						{ ( duplicateError || children[ 1 ] ) && (
-							<Stack direction="row" align="center" gap="xs">
-								{ duplicateError ? (
-									<ValidityIndicator
-										id={ duplicateMessageId }
-										type="invalid"
-										message={ duplicateError }
-									/>
-								) : (
-									children[ 1 ]
-								) }
-								{ duplicateRuleId && onViewRule && (
-									<Button
-										variant="minimal"
-										onClick={ () =>
-											onViewRule( duplicateRuleId )
-										}
-									>
-										{ __(
-											'View rule',
-											'woocommerce-fraud-protection'
-										) }
-									</Button>
-								) }
-							</Stack>
-						) }
-					</Stack>
-				);
-			} }
-		>
-			<InputControl
-				ref={ inputRef }
-				aria-describedby={
-					duplicateError ? duplicateMessageId : undefined
-				}
-				label={ field.label }
-				placeholder={ field.placeholder }
-				value={ value ?? '' }
-				onValueChange={ onValueChange }
-				hideLabelFromVision={ hideLabelFromVision }
-				disabled={ field.isDisabled( { item: data, field } ) }
-			/>
-		</ControlWithError>
+			label={ field.label }
+			placeholder={ field.placeholder }
+			value={ value ?? '' }
+			onValueChange={ onValueChange }
+			hideLabelFromVision={ hideLabelFromVision }
+			disabled={ field.isDisabled( { item: data, field } ) }
+		/>
 	);
 }
 
@@ -320,12 +295,16 @@ export function RuleFormDrawer( {
 				id: 'value',
 				label: __( 'Value', 'woocommerce-fraud-protection' ),
 				type: 'text',
-				Edit: RuleValueEditControl,
-				duplicateError: hasDuplicateError
-					? saveError?.message
-					: undefined,
-				duplicateRuleId: saveError?.ruleId ?? undefined,
-				onViewRule,
+				Edit: ( props ) => (
+					<RuleValueEditControl
+						{ ...props }
+						duplicateError={
+							hasDuplicateError ? saveError?.message : undefined
+						}
+						duplicateRuleId={ saveError?.ruleId ?? undefined }
+						onViewRule={ onViewRule }
+					/>
+				),
 				placeholder: getRuleValuePlaceholder( data.type ),
 				isDisabled: isSaving || ( Boolean( context ) && ! rule ),
 				isValid: {
@@ -348,7 +327,7 @@ export function RuleFormDrawer( {
 							  );
 					},
 				},
-			} as RuleValueField,
+			},
 		],
 		[
 			context,
