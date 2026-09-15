@@ -142,6 +142,37 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The merchant rules page sorts each visible column on the server and uses the rule ID as a tie-breaker.
+	 */
+	public function test_active_rules_page_sorts_by_requested_column(): void {
+		$zulu  = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$alpha = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'alpha@example.com' ) );
+		$this->set_created_at( $zulu->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $alpha->id, '2026-01-01 00:00:00' );
+
+		$ascending = $this->sut->get_active_rules_page(
+			array(
+				'orderby' => 'value',
+				'order'   => 'asc',
+			),
+			1,
+			20
+		);
+		$this->assertSame( 'alpha@example.com', $ascending['items'][0]->conditions['value'] );
+		$this->assertSame( 'zulu@example.com', $ascending['items'][1]->conditions['value'] );
+
+		$descending = $this->sut->get_active_rules_page(
+			array(
+				'orderby' => 'created_at',
+				'order'   => 'desc',
+			),
+			1,
+			20
+		);
+		$this->assertSame( $alpha->id, $descending['items'][0]->id, 'Equal timestamps must use descending IDs as the tie-breaker.' );
+	}
+
+	/**
 	 * Get a rule row straight from the table.
 	 *
 	 * @param int $id The rule id.

@@ -118,6 +118,15 @@ class RulesRestController extends \WP_REST_Controller {
 			}
 		}
 
+		$orderby = $request->get_param( 'orderby' );
+		$order   = $request->get_param( 'order' );
+		if ( is_string( $orderby ) && '' !== $orderby ) {
+			$filters['orderby'] = $orderby;
+		}
+		if ( is_string( $order ) && '' !== $order ) {
+			$filters['order'] = $order;
+		}
+
 		$page     = max( 1, (int) $request->get_param( 'page' ) );
 		$per_page = min( 100, max( 1, (int) $request->get_param( 'per_page' ) ) );
 
@@ -231,6 +240,16 @@ class RulesRestController extends \WP_REST_Controller {
 			'to'       => array(
 				'type'    => 'string',
 				'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+			),
+			'orderby'  => array(
+				'type'    => 'string',
+				'enum'    => array( 'action', 'value', 'type', 'created_at' ),
+				'default' => 'created_at',
+			),
+			'order'    => array(
+				'type'    => 'string',
+				'enum'    => array( 'asc', 'desc' ),
+				'default' => 'desc',
 			),
 		);
 	}

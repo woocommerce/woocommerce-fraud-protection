@@ -17,6 +17,8 @@ export type RulesQuery = {
 	value?: string;
 	from?: string;
 	to?: string;
+	orderby?: string;
+	order?: 'asc' | 'desc';
 };
 
 type State = {
@@ -55,6 +57,8 @@ const QUERY_KEYS: Array< keyof RulesQuery > = [
 	'value',
 	'from',
 	'to',
+	'orderby',
+	'order',
 ];
 
 const areQueriesEqual = ( first: RulesQuery, second: RulesQuery ): boolean =>
@@ -121,15 +125,22 @@ const actions = {
 			dispatch.setQuery( query );
 			dispatch.setLoading( true );
 			const params = new URLSearchParams();
+			const requestKeys = [
+				'action',
+				'type',
+				'value',
+				'from',
+				'to',
+				'orderby',
+				'order',
+			] as const;
 			params.set( 'page', String( query.page ) );
 			params.set( 'per_page', String( query.perPage ) );
-			( [ 'action', 'type', 'value', 'from', 'to' ] as const ).forEach(
-				( key ) => {
-					if ( query[ key ] ) {
-						params.set( key, query[ key ] as string );
-					}
+			requestKeys.forEach( ( key ) => {
+				if ( query[ key ] ) {
+					params.set( key, query[ key ] as string );
 				}
-			);
+			} );
 			try {
 				const response = await apiFetch< {
 					data: Rule[];

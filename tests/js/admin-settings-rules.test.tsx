@@ -82,7 +82,7 @@ describe( 'RulesPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20',
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
 			} )
 		);
 		expect(
@@ -93,7 +93,7 @@ describe( 'RulesPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&action=block',
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&action=block&orderby=created_at&order=desc',
 			} )
 		);
 	} );
@@ -217,6 +217,7 @@ describe( 'RulesPage', () => {
 			type: 'table',
 			page: 3,
 			perPage: 50,
+			sort: { field: 'value', direction: 'asc' },
 			filters: [
 				{ field: 'action', operator: 'is', value: 'block' },
 				{ field: 'type', operator: 'is', value: 'ip' },
@@ -234,6 +235,8 @@ describe( 'RulesPage', () => {
 		expect( query ).toEqual( {
 			page: 3,
 			perPage: 50,
+			orderby: 'value',
+			order: 'asc',
 			action: 'block',
 			type: 'ip',
 			value: '198.51.100.1',
