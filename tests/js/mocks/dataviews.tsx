@@ -1,4 +1,10 @@
-import type { Field, View } from '@wordpress/dataviews';
+import type {
+	DataViewRenderFieldProps,
+	Field,
+	NormalizedField,
+	View,
+} from '@wordpress/dataviews';
+import type { ComponentType } from 'react';
 
 type Rule = {
 	id: number;
@@ -11,7 +17,9 @@ type Rule = {
 type DataViewsProps = {
 	data: Rule[];
 	children?: React.ReactNode;
+	empty?: React.ReactNode;
 	fields?: Field< Rule >[];
+	isLoading?: boolean;
 	view?: View;
 	onChangeView?: ( view: View ) => void;
 };
@@ -22,22 +30,46 @@ export const dataViews = {
 
 export function DataViews( props: DataViewsProps ) {
 	dataViews.props = props;
-	const { data, children } = props;
+	const { data, children, empty, fields = [] } = props;
 	return (
 		<>
 			{ children }
 			<table aria-label="Rules">
 				<tbody>
-					{ data.map( ( rule ) => (
-						<tr key={ rule.id }>
-							<td>{ rule.action }</td>
-							<td>{ rule.value }</td>
-							<td>{ rule.type }</td>
-							<td>{ rule.created_at }</td>
-						</tr>
-					) ) }
+					{ data.map( ( rule ) => {
+						return (
+							<tr key={ rule.id }>
+								{ fields.map( ( field ) => {
+									const FieldRenderer = field.render as
+										| ComponentType<
+												DataViewRenderFieldProps< Rule >
+										  >
+										| undefined;
+									return (
+										<td key={ field.id }>
+											{ FieldRenderer ? (
+												<FieldRenderer
+													item={ rule }
+													field={
+														field as NormalizedField< Rule >
+													}
+												/>
+											) : (
+												String(
+													rule[
+														field.id as keyof Rule
+													]
+												)
+											) }
+										</td>
+									);
+								} ) }
+							</tr>
+						);
+					} ) }
 				</tbody>
 			</table>
+			{ data.length === 0 && empty }
 		</>
 	);
 }

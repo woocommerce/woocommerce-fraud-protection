@@ -1,5 +1,6 @@
 import apiFetch from '@wordpress/api-fetch';
 import { createReduxStore, register } from '@wordpress/data';
+import { __ } from '@wordpress/i18n';
 
 export type Rule = {
 	id: number;
@@ -45,13 +46,13 @@ const DEFAULT_STATE: State = {
 	data: [],
 	totalItems: 0,
 	totalPages: 0,
-	isLoading: false,
+	isLoading: true,
 	error: null,
 	query: DEFAULT_QUERY,
 	requestId: 0,
 };
 
-const getErrorMessage = ( error: unknown ): string | null => {
+const getErrorMessage = ( error: unknown ): string => {
 	if (
 		typeof error === 'object' &&
 		error !== null &&
@@ -60,7 +61,10 @@ const getErrorMessage = ( error: unknown ): string | null => {
 	) {
 		return error.message;
 	}
-	return null;
+	return __(
+		'Could not get a valid response from the server.',
+		'woocommerce-fraud-protection'
+	);
 };
 
 const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
