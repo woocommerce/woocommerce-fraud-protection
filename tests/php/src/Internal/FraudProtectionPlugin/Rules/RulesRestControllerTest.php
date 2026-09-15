@@ -72,10 +72,10 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( 1, $response->get_data()['totalItems'] );
-		$this->assertSame( array( 'id', 'action', 'value', 'type', 'created_at' ), array_keys( $response->get_data()['data'][0] ) );
-		$this->assertSame( 'shopper@example.com', $response->get_data()['data'][0]['value'] );
-		$this->assertSame( '2026-09-14T12:00:00Z', $response->get_data()['data'][0]['created_at'] );
+		$this->assertSame( '1', $response->get_headers()['X-WP-Total'] );
+		$this->assertSame( array( 'id', 'action', 'value', 'type', 'created_at' ), array_keys( $response->get_data()[0] ) );
+		$this->assertSame( 'shopper@example.com', $response->get_data()[0]['value'] );
+		$this->assertSame( '2026-09-14T12:00:00Z', $response->get_data()[0]['created_at'] );
 	}
 
 	/**
@@ -130,9 +130,9 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( $request );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( 2, $response->get_data()['totalItems'] );
-		$this->assertSame( 2, $response->get_data()['totalPages'] );
-		$this->assertSame( '2026-09-16T02:59:59Z', $response->get_data()['data'][0]['created_at'] );
+		$this->assertSame( '2', $response->get_headers()['X-WP-Total'] );
+		$this->assertSame( '2', $response->get_headers()['X-WP-TotalPages'] );
+		$this->assertSame( '2026-09-16T02:59:59Z', $response->get_data()[0]['created_at'] );
 	}
 
 	/**
@@ -180,8 +180,8 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( $request );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( 1, $response->get_data()['totalItems'] );
-		$this->assertSame( 'block@example.com', $response->get_data()['data'][0]['value'] );
+		$this->assertSame( '1', $response->get_headers()['X-WP-Total'] );
+		$this->assertSame( 'block@example.com', $response->get_data()[0]['value'] );
 	}
 
 	/**
@@ -207,8 +207,8 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( $request );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( 1, $response->get_data()['totalItems'] );
-		$this->assertSame( 'buyer%20tag@example.com', $response->get_data()['data'][0]['value'] );
+		$this->assertSame( '1', $response->get_headers()['X-WP-Total'] );
+		$this->assertSame( 'buyer%20tag@example.com', $response->get_data()[0]['value'] );
 	}
 
 	/**
@@ -242,8 +242,63 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( $request );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( 'alpha@example.com', $response->get_data()['data'][0]['value'] );
-		$this->assertSame( 'zulu@example.com', $response->get_data()['data'][1]['value'] );
+		$this->assertSame( 'alpha@example.com', $response->get_data()[0]['value'] );
+		$this->assertSame( 'zulu@example.com', $response->get_data()[1]['value'] );
+	}
+
+	/**
+	 * @testdox The collection passes one sort field and direction separately from filters.
+	 */
+	public function test_get_rules_passes_sort_separately_from_filters(): void {
+		$rule_store = $this->createMock( RuleStore::class );
+		$rule_store->expects( $this->once() )
+			->method( 'get_active_rules_page' )
+			->with( array( 'action' => 'allow' ), 1, 20, 'type', 'asc' )
+			->willReturn(
+				array(
+					'items' => array(),
+					'total' => 0,
+					'pages' => 0,
+				)
+			);
+		$this->sut->init( $rule_store, $this->schema_manager );
+		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request->set_query_params(
+			array(
+				'action'  => 'allow',
+				'orderby' => 'type',
+				'order'   => 'asc',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array(), $response->get_data() );
+	}
+
+	/**
+	 * @testdox Collection sort arguments accept all supported values and reject other values.
+	 */
+	public function test_get_rules_validates_sort_arguments(): void {
+		$params = $this->sut->get_collection_params();
+
+		$this->assertSame( RuleStore::SORTABLE_COLUMNS, $params['orderby']['enum'] );
+		$this->assertSame( 'created_at', $params['orderby']['default'] );
+		$this->assertSame( array( 'asc', 'desc' ), $params['order']['enum'] );
+		$this->assertSame( 'desc', $params['order']['default'] );
+
+		foreach ( array( 'unknown', array( 'value' ) ) as $orderby ) {
+			$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+			$request->set_query_params( array( 'orderby' => $orderby ) );
+			$response = $this->server->dispatch( $request );
+			$this->assertSame( 'rest_invalid_param', $response->as_error()->get_error_code() );
+		}
+
+		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request->set_query_params( array( 'order' => 'sideways' ) );
+		$response = $this->server->dispatch( $request );
+		$this->assertSame( 'rest_invalid_param', $response->as_error()->get_error_code() );
 	}
 
 	/**

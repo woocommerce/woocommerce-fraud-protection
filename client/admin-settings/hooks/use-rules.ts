@@ -1,21 +1,40 @@
-import { useDispatch, useSelect } from '@wordpress/data';
+import { useSelect } from '@wordpress/data';
+import { useMemo } from '@wordpress/element';
 
-import { rulesStore } from '../data/rules-store';
+import {
+	getRulesErrorMessage,
+	normalizeRulesQuery,
+	rulesStore,
+	type RulesQuery,
+} from '../data/rules-store';
 
-export function useRules() {
-	const state = useSelect( ( select ) => {
-		const store = select( rulesStore );
+export function useRules( query: RulesQuery ) {
+	const normalizedQuery = useMemo(
+		() => normalizeRulesQuery( query ),
+		[ query ]
+	);
 
-		return {
-			error: store.getError(),
-			isLoading: store.isLoading(),
-			query: store.getQuery(),
-			rules: store.getRules(),
-			totalItems: store.getTotalItems(),
-			totalPages: store.getTotalPages(),
-		};
-	}, [] );
-	const { requestRules } = useDispatch( rulesStore );
+	return useSelect(
+		( select ) => {
+			const store = select( rulesStore );
+			const resolverArgs = [ normalizedQuery ];
+			const resolutionError = store.getResolutionError(
+				'getRules',
+				resolverArgs
+			);
 
-	return { ...state, requestRules };
+			return {
+				error: resolutionError
+					? getRulesErrorMessage( resolutionError )
+					: null,
+				isLoading:
+					store.isResolving( 'getRules', resolverArgs ) ||
+					! store.hasFinishedResolution( 'getRules', resolverArgs ),
+				rules: store.getRules( normalizedQuery ),
+				totalItems: store.getTotalItems( normalizedQuery ),
+				totalPages: store.getTotalPages( normalizedQuery ),
+			};
+		},
+		[ normalizedQuery ]
+	);
 }

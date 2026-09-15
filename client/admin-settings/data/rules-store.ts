@@ -22,40 +22,86 @@ export type RulesQuery = {
 	order?: 'asc' | 'desc';
 };
 
-type State = {
+type RulesResponse = {
 	data: Rule[];
 	totalItems: number;
 	totalPages: number;
-	isLoading: boolean;
-	error: string | null;
-	query: RulesQuery;
-	requestId: number;
 };
 
-type Action =
-	| { type: 'START_REQUEST'; query: RulesQuery; requestId: number }
-	| {
-			type: 'RECEIVE_RULES';
-			response: { data: Rule[]; totalItems: number; totalPages: number };
-			requestId: number;
-	  }
-	| { type: 'SET_ERROR'; error: string | null; requestId: number };
+type State = {
+	lists: Record< string, RulesResponse >;
+};
 
-const DEFAULT_QUERY: RulesQuery = { page: 1, perPage: 20 };
-const DEFAULT_STATE: State = {
+type Action = {
+	type: 'RECEIVE_RULES';
+	query: RulesQuery;
+	response: RulesResponse;
+};
+
+const DEFAULT_STATE: State = { lists: {} };
+
+const EMPTY_RULES_RESPONSE: RulesResponse = {
 	data: [],
 	totalItems: 0,
 	totalPages: 0,
-	isLoading: true,
-	error: null,
-	query: DEFAULT_QUERY,
-	requestId: 0,
 };
 
 const INVALID_RESPONSE_MESSAGE = __(
 	'Could not get a valid response from the server.',
 	'woocommerce-fraud-protection'
 );
+
+const OPTIONAL_QUERY_KEYS = [
+	'action',
+	'type',
+	'value',
+	'from',
+	'to',
+	'orderby',
+	'order',
+] as const;
+
+export const normalizeRulesQuery = (
+	query: Partial< RulesQuery > = {}
+): RulesQuery => {
+	const normalized: RulesQuery = {
+		page:
+			Number.isInteger( query.page ) && Number( query.page ) > 0
+				? Number( query.page )
+				: 1,
+		perPage:
+			Number.isInteger( query.perPage ) && Number( query.perPage ) > 0
+				? Number( query.perPage )
+				: 20,
+	};
+
+	OPTIONAL_QUERY_KEYS.forEach( ( key ) => {
+		const value = query[ key ];
+		if ( value !== undefined && value !== '' ) {
+			Object.assign( normalized, { [ key ]: value } );
+		}
+	} );
+
+	return normalized;
+};
+
+const getQueryKey = ( query: RulesQuery ): string =>
+	JSON.stringify( normalizeRulesQuery( query ) );
+
+const getRulesPath = ( query: RulesQuery ): string => {
+	const normalized = normalizeRulesQuery( query );
+	const params = new URLSearchParams();
+	params.set( 'page', String( normalized.page ) );
+	params.set( 'per_page', String( normalized.perPage ) );
+	OPTIONAL_QUERY_KEYS.forEach( ( key ) => {
+		const value = normalized[ key ];
+		if ( value !== undefined ) {
+			params.set( key, value );
+		}
+	} );
+
+	return `/wc-fraud-protection/v1/rules?${ params.toString() }`;
+};
 
 const isRule = ( value: unknown ): value is Rule => {
 	if ( typeof value !== 'object' || value === null ) {
@@ -72,30 +118,48 @@ const isRule = ( value: unknown ): value is Rule => {
 	);
 };
 
-const isRulesResponse = (
-	value: unknown
-): value is { data: Rule[]; totalItems: number; totalPages: number } => {
-	if ( typeof value !== 'object' || value === null ) {
-		return false;
+const parseTotalHeader = ( value: string | null ): number => {
+	if ( value === null || ! /^(0|[1-9]\d*)$/.test( value ) ) {
+		throw new Error( INVALID_RESPONSE_MESSAGE );
 	}
 
-	const response = value as Record< string, unknown >;
-	return (
-		Array.isArray( response.data ) &&
-		response.data.every( isRule ) &&
-		Number.isInteger( response.totalItems ) &&
-		( response.totalItems as number ) >= 0 &&
-		Number.isInteger( response.totalPages ) &&
-		( response.totalPages as number ) >= 0
-	);
+	const total = Number( value );
+	if ( ! Number.isSafeInteger( total ) ) {
+		throw new Error( INVALID_RESPONSE_MESSAGE );
+	}
+
+	return total;
 };
 
-const getErrorMessage = ( error: unknown ): string => {
+const parseRulesResponse = async (
+	response: Response
+): Promise< RulesResponse > => {
+	let data: unknown;
+	try {
+		data = await response.json();
+	} catch {
+		throw new Error( INVALID_RESPONSE_MESSAGE );
+	}
+	if ( ! Array.isArray( data ) || ! data.every( isRule ) ) {
+		throw new Error( INVALID_RESPONSE_MESSAGE );
+	}
+
+	return {
+		data,
+		totalItems: parseTotalHeader( response.headers.get( 'X-WP-Total' ) ),
+		totalPages: parseTotalHeader(
+			response.headers.get( 'X-WP-TotalPages' )
+		),
+	};
+};
+
+export const getRulesErrorMessage = ( error: unknown ): string => {
 	if (
 		typeof error === 'object' &&
 		error !== null &&
 		'message' in error &&
-		typeof error.message === 'string'
+		typeof error.message === 'string' &&
+		error.message.trim() !== ''
 	) {
 		return error.message;
 	}
@@ -104,126 +168,72 @@ const getErrorMessage = ( error: unknown ): string => {
 
 const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 	switch ( action.type ) {
-		case 'START_REQUEST':
-			return {
-				...state,
-				data: [],
-				totalItems: 0,
-				totalPages: 0,
-				query: action.query,
-				requestId: action.requestId,
-				isLoading: true,
-				error: null,
-			};
 		case 'RECEIVE_RULES':
-			if ( action.requestId !== state.requestId ) {
-				return state;
-			}
 			return {
 				...state,
-				...action.response,
-				isLoading: false,
-				error: null,
+				lists: {
+					...state.lists,
+					[ getQueryKey( action.query ) ]: action.response,
+				},
 			};
-		case 'SET_ERROR':
-			if ( action.requestId !== state.requestId ) {
-				return state;
-			}
-			return { ...state, isLoading: false, error: action.error };
 		default:
 			return state;
 	}
 };
 
 const actions = {
-	startRequest( query: RulesQuery, requestId: number ): Action {
-		return { type: 'START_REQUEST', query, requestId };
+	receiveRules( query: RulesQuery, response: RulesResponse ): Action {
+		return { type: 'RECEIVE_RULES', query, response };
 	},
-	receiveRules(
-		response: {
-			data: Rule[];
-			totalItems: number;
-			totalPages: number;
-		},
-		requestId: number
-	): Action {
-		return { type: 'RECEIVE_RULES', response, requestId };
-	},
-	setError( error: string | null, requestId: number ): Action {
-		return { type: 'SET_ERROR', error, requestId };
-	},
-	requestRules:
-		( query: RulesQuery ) =>
-		async ( {
-			dispatch,
-			select,
-		}: {
-			dispatch: typeof actions;
-			select: { getRequestId: () => number };
-		} ) => {
-			const requestId = select.getRequestId() + 1;
-			dispatch.startRequest( query, requestId );
-			const params = new URLSearchParams();
-			const requestKeys = [
-				'action',
-				'type',
-				'value',
-				'from',
-				'to',
-				'orderby',
-				'order',
-			] as const;
-			params.set( 'page', String( query.page ) );
-			params.set( 'per_page', String( query.perPage ) );
-			requestKeys.forEach( ( key ) => {
-				if ( query[ key ] ) {
-					params.set( key, query[ key ] as string );
-				}
-			} );
-			try {
-				const response = await apiFetch< unknown >( {
-					path: `/wc-fraud-protection/v1/rules?${ params.toString() }`,
-				} );
-				if ( ! isRulesResponse( response ) ) {
-					throw new Error( INVALID_RESPONSE_MESSAGE );
-				}
-				dispatch.receiveRules( response, requestId );
-				return response;
-			} catch ( error ) {
-				dispatch.setError( getErrorMessage( error ), requestId );
-				return null;
-			}
-		},
 };
 
+type RulesSelector = {
+	( state: State, query: RulesQuery ): Rule[];
+	__unstableNormalizeArgs?: ( args: [ RulesQuery ] ) => [ RulesQuery ];
+};
+
+const getRules: RulesSelector = ( state, query ) =>
+	state.lists[ getQueryKey( query ) ]?.data ?? EMPTY_RULES_RESPONSE.data;
+getRules.__unstableNormalizeArgs = ( [ query ] ) => [
+	normalizeRulesQuery( query ),
+];
+
 const selectors = {
-	getRules( state: State ): Rule[] {
-		return state.data;
+	getRules,
+	getTotalItems( state: State, query: RulesQuery ): number {
+		return (
+			state.lists[ getQueryKey( query ) ]?.totalItems ??
+			EMPTY_RULES_RESPONSE.totalItems
+		);
 	},
-	getTotalItems( state: State ): number {
-		return state.totalItems;
+	getTotalPages( state: State, query: RulesQuery ): number {
+		return (
+			state.lists[ getQueryKey( query ) ]?.totalPages ??
+			EMPTY_RULES_RESPONSE.totalPages
+		);
 	},
-	getTotalPages( state: State ): number {
-		return state.totalPages;
-	},
-	getQuery( state: State ): RulesQuery {
-		return state.query;
-	},
-	getRequestId( state: State ): number {
-		return state.requestId;
-	},
-	isLoading( state: State ): boolean {
-		return state.isLoading;
-	},
-	getError( state: State ): string | null {
-		return state.error;
-	},
+};
+
+const resolvers = {
+	getRules:
+		( query: RulesQuery ) =>
+		async ( { dispatch }: { dispatch: typeof actions } ) => {
+			const response = await apiFetch( {
+				path: getRulesPath( query ),
+				parse: false,
+			} );
+			dispatch.receiveRules(
+				query,
+				await parseRulesResponse( response )
+			);
+		},
 };
 
 export const rulesStore = createReduxStore( 'wc-fraud-protection/rules', {
 	reducer,
 	actions,
 	selectors,
+	resolvers,
 } );
 
 register( rulesStore );

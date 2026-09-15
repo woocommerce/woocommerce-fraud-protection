@@ -68,9 +68,9 @@ class RulesRestController extends \WP_REST_Controller {
 			array(
 				array(
 					'methods'             => \WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_rules' ),
+					'callback'            => array( $this, 'get_items' ),
 					'permission_callback' => array( $this, 'permissions_check' ),
-					'args'                => $this->get_request_args(),
+					'args'                => $this->get_collection_params(),
 				),
 				'schema' => array( $this, 'get_public_item_schema' ),
 			)
@@ -94,7 +94,7 @@ class RulesRestController extends \WP_REST_Controller {
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function get_rules( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+	public function get_items( $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
@@ -124,35 +124,39 @@ class RulesRestController extends \WP_REST_Controller {
 		}
 
 		$orderby = $request->get_param( 'orderby' );
+		$orderby = is_string( $orderby ) ? $orderby : 'created_at';
 		$order   = $request->get_param( 'order' );
-		if ( is_string( $orderby ) && '' !== $orderby ) {
-			$filters['orderby'] = $orderby;
-		}
-		if ( is_string( $order ) && '' !== $order ) {
-			$filters['order'] = $order;
-		}
+		$order   = is_string( $order ) ? $order : 'desc';
 
 		$page     = max( 1, (int) $request->get_param( 'page' ) );
 		$per_page = min( 100, max( 1, (int) $request->get_param( 'per_page' ) ) );
 
 		try {
-			$result = $this->rule_store->get_active_rules_page( $filters, $page, $per_page );
+			$result = $this->rule_store->get_active_rules_page(
+				filters: $filters,
+				page: $page,
+				per_page: $per_page,
+				orderby: $orderby,
+				order: $order
+			);
 		} catch ( \RuntimeException ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
-		$data     = array_map( array( $this, 'to_public_rule' ), $result['items'] );
-		$response = rest_ensure_response(
-			array(
-				'data'       => $data,
-				'totalItems' => $result['total'],
-				'totalPages' => $result['pages'],
-				'page'       => $page,
-				'perPage'    => $per_page,
-			)
-		);
-		$response->header( 'X-WP-Total', (string) $result['total'] );
-		$response->header( 'X-WP-TotalPages', (string) $result['pages'] );
+		return $this->collection_response( array_map( array( $this, 'to_public_rule' ), $result['items'] ), $result['total'], $result['pages'] );
+	}
+
+	/**
+	 * Build a collection response with pagination headers.
+	 *
+	 * @param array<array<string, mixed>> $data  Prepared rules.
+	 * @param int                         $total Total matching rules.
+	 * @param int                         $pages Total pages.
+	 */
+	private function collection_response( array $data, int $total, int $pages ): \WP_REST_Response {
+		$response = rest_ensure_response( $data );
+		$response->header( 'X-WP-Total', (string) $total );
+		$response->header( 'X-WP-TotalPages', (string) $pages );
 
 		return $response;
 	}
@@ -210,20 +214,18 @@ class RulesRestController extends \WP_REST_Controller {
 	 *
 	 * @return array<string, array<string, mixed>>
 	 */
-	private function get_request_args(): array {
+	public function get_collection_params(): array {
 		return array(
 			'page'     => array(
-				'type'              => 'integer',
-				'default'           => 1,
-				'minimum'           => 1,
-				'sanitize_callback' => 'absint',
+				'type'    => 'integer',
+				'default' => 1,
+				'minimum' => 1,
 			),
 			'per_page' => array(
-				'type'              => 'integer',
-				'default'           => 20,
-				'minimum'           => 1,
-				'maximum'           => 100,
-				'sanitize_callback' => 'absint',
+				'type'    => 'integer',
+				'default' => 20,
+				'minimum' => 1,
+				'maximum' => 100,
 			),
 			'action'   => array(
 				'type' => 'string',
@@ -244,7 +246,7 @@ class RulesRestController extends \WP_REST_Controller {
 			),
 			'orderby'  => array(
 				'type'    => 'string',
-				'enum'    => array( 'action', 'value', 'type', 'created_at' ),
+				'enum'    => RuleStore::SORTABLE_COLUMNS,
 				'default' => 'created_at',
 			),
 			'order'    => array(

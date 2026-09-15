@@ -40,6 +40,11 @@ defined( 'ABSPATH' ) || exit;
 class RuleStore {
 
 	/**
+	 * Fields supported by the merchant rules list sort.
+	 */
+	public const SORTABLE_COLUMNS = array( 'action', 'value', 'type', 'created_at' );
+
+	/**
 	 * Object cache group for rules data.
 	 */
 	private const CACHE_GROUP = 'wc_fraud_protection';
@@ -276,13 +281,15 @@ class RuleStore {
 	/**
 	 * Get a page of active rules for the merchant management view.
 	 *
-	 * @param array{action?: string, type?: string, value?: string, from?: string, to?: string, orderby?: string, order?: string} $filters  Filters in normalized or UTC form.
-	 * @param int                                                                                                                 $page     One-based page number.
-	 * @param int                                                                                                                 $per_page Items per page.
+	 * @param array{action?: string, type?: string, value?: string, from?: string, to?: string} $filters  Filters in normalized or UTC form.
+	 * @param int                                                                               $page     One-based page number.
+	 * @param int                                                                               $per_page Items per page.
+	 * @param string                                                                            $orderby  Sort field.
+	 * @param string                                                                            $order    Sort direction.
 	 * @return array{items: Rule[], total: int, pages: int}
 	 * @throws \RuntimeException When a query fails.
 	 */
-	public function get_active_rules_page( array $filters = array(), int $page = 1, int $per_page = 20 ): array {
+	public function get_active_rules_page( array $filters = array(), int $page = 1, int $per_page = 20, string $orderby = 'created_at', string $order = 'desc' ): array {
 		global $wpdb;
 
 		$page     = max( 1, $page );
@@ -295,10 +302,10 @@ class RuleStore {
 			$values[] = $filters['action'];
 		}
 
-		$type             = isset( $filters['type'] ) && is_string( $filters['type'] ) ? $filters['type'] : null;
+		$type             = isset( $filters['type'] ) && is_string( $filters['type'] ) && in_array( $filters['type'], array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) ? $filters['type'] : null;
 		$normalized_value = null;
 		if ( isset( $filters['value'] ) && is_string( $filters['value'] ) && '' !== $filters['value'] ) {
-			if ( is_string( $type ) && in_array( $type, array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) ) {
+			if ( is_string( $type ) ) {
 				$normalized_value = RuleConditions::normalize_value( $type, $filters['value'] );
 				if ( is_null( $normalized_value ) ) {
 					return array(
@@ -307,44 +314,22 @@ class RuleStore {
 						'pages' => 0,
 					);
 				}
-				$hash     = RuleConditions::hash(
-					array(
-						'field'    => $type,
-						'operator' => 'equals',
-						'value'    => $normalized_value,
-					)
-				);
-				$where[]  = 'condition_hash = %s';
-				$values[] = $hash;
 			} else {
-				$hashes = array();
+				$normalized_value = array();
 				foreach ( array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ) as $field ) {
 					$value = RuleConditions::normalize_value( $field, $filters['value'] );
 					if ( ! is_null( $value ) ) {
-						$hashes[] = RuleConditions::hash(
-							array(
-								'field'    => $field,
-								'operator' => 'equals',
-								'value'    => $value,
-							)
-						);
+						$normalized_value[ $field ] = $value;
 					}
 				}
-				if ( empty( $hashes ) ) {
+				if ( empty( $normalized_value ) ) {
 					return array(
 						'items' => array(),
 						'total' => 0,
 						'pages' => 0,
 					);
 				}
-				$where[] = 'condition_hash IN ( ' . implode( ', ', array_fill( 0, count( $hashes ), '%s' ) ) . ' )';
-				$values  = array_merge( $values, $hashes );
 			}
-		}
-
-		if ( is_string( $type ) && in_array( $type, array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) && is_null( $normalized_value ) && ! isset( $filters['value'] ) ) {
-			$where[]  = 'conditions LIKE %s';
-			$values[] = '%"field":"' . $wpdb->esc_like( $type ) . '"%';
 		}
 
 		foreach ( array(
@@ -359,29 +344,9 @@ class RuleStore {
 
 		$table     = $this->schema_manager->get_rules_table_name();
 		$where_sql = implode( ' AND ', $where );
-		$count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
+		$sql       = "SELECT * FROM {$table} WHERE {$where_sql}";
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
-		$total = $wpdb->get_var( $wpdb->prepare( $count_sql, $values ) );
-		if ( false === $total || is_null( $total ) ) {
-			throw new \RuntimeException( 'Active rule count query failed.' );
-		}
-
-		// RuleConditions writes a fixed field/operator/value JSON shape. Keep the sort expressions synchronized with that shape.
-		$offset           = ( $page - 1 ) * $per_page;
-		$orderby          = isset( $filters['orderby'] ) && in_array( $filters['orderby'], array( 'action', 'value', 'type', 'created_at' ), true )
-			? $filters['orderby']
-			: 'created_at';
-		$order            = isset( $filters['order'] ) && 'asc' === strtolower( (string) $filters['order'] ) ? 'ASC' : 'DESC';
-		$order_expression = match ( $orderby ) {
-			'action' => 'action',
-			'value'  => "LOWER(LEFT(SUBSTRING_INDEX(conditions, '\"value\":\"', -1), CHAR_LENGTH(SUBSTRING_INDEX(conditions, '\"value\":\"', -1)) - 2))",
-			'type'   => "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"field\":\"', -1), '\"', 1))",
-			default  => 'created_at',
-		};
-		$sql  = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$order_expression} {$order}, id {$order} LIMIT %d OFFSET %d";
-		$args = array_merge( $values, array( $per_page, $offset ) );
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
-		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $values ), ARRAY_A );
 		if ( ! is_array( $rows ) ) {
 			throw new \RuntimeException( 'Active rule list query failed.' );
 		}
@@ -389,14 +354,55 @@ class RuleStore {
 		$items = array();
 		foreach ( $rows as $row ) {
 			$rule = Rule::from_row( $row );
-			if ( ! is_null( $rule ) && RuleStatus::Active === $rule->status ) {
-				$items[] = $rule;
+			if ( is_null( $rule ) || RuleStatus::Active !== $rule->status ) {
+				continue;
 			}
+
+			$rule_type  = $rule->conditions['field'] ?? null;
+			$rule_value = $rule->conditions['value'] ?? null;
+			if ( ! is_null( $type ) && $type !== $rule_type ) {
+				continue;
+			}
+			if ( is_string( $normalized_value ) && $normalized_value !== $rule_value ) {
+				continue;
+			}
+			if ( is_array( $normalized_value ) && ( ! is_string( $rule_type ) || ! isset( $normalized_value[ $rule_type ] ) || $normalized_value[ $rule_type ] !== $rule_value ) ) {
+				continue;
+			}
+
+			$items[] = $rule;
 		}
 
-		$total = (int) $total;
+		$orderby   = in_array( $orderby, self::SORTABLE_COLUMNS, true ) ? $orderby : 'created_at';
+		$direction = 'asc' === strtolower( $order ) ? 1 : -1;
+		usort(
+			$items,
+			static function ( Rule $left, Rule $right ) use ( $orderby, $direction ): int {
+				$left_value = match ( $orderby ) {
+					'action' => $left->action->value,
+					'value'  => (string) ( $left->conditions['value'] ?? '' ),
+					'type'   => (string) ( $left->conditions['field'] ?? '' ),
+					default  => $left->created_at,
+				};
+				$right_value = match ( $orderby ) {
+					'action' => $right->action->value,
+					'value'  => (string) ( $right->conditions['value'] ?? '' ),
+					'type'   => (string) ( $right->conditions['field'] ?? '' ),
+					default  => $right->created_at,
+				};
+				$comparison = strcmp( $left_value, $right_value );
+				if ( 0 === $comparison ) {
+					$comparison = $left->id <=> $right->id;
+				}
+
+				return $comparison * $direction;
+			}
+		);
+
+		$total  = count( $items );
+		$offset = ( $page - 1 ) * $per_page;
 		return array(
-			'items' => $items,
+			'items' => array_slice( $items, $offset, $per_page ),
 			'total' => $total,
 			'pages' => $total > 0 ? (int) ceil( $total / $per_page ) : 0,
 		);
