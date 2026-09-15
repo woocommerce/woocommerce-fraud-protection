@@ -22,6 +22,7 @@ import {
 	type Performance,
 	settingsStore,
 } from '../../client/admin-settings/data/store';
+import { rulesStore } from '../../client/admin-settings/data/rules-store';
 
 const mockCreateSuccessNotice = jest.fn();
 const mockSettingsHistory = { block: jest.fn( () => jest.fn() ) };
@@ -97,6 +98,7 @@ const findVisibleText = async ( text: string ) => {
 const renderSettings = () => {
 	const registry = createRegistry();
 	registry.register( settingsStore );
+	registry.register( rulesStore );
 	registry.register( noticesStore );
 
 	return render(
@@ -114,6 +116,249 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockCreateSuccessNotice.mockReset();
 		mockSettingsHistory.block.mockClear();
 		window.history.replaceState( {}, '', '/' );
+	} );
+
+	it( 'shows the Rules card controls without a rule count', async () => {
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
+		renderSettings();
+
+		const rulesCard = (
+			await screen.findByRole( 'heading', { name: 'Rules' } )
+		).closest( 'section' );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
+		expect( rulesCard ).not.toBeNull();
+		expect( performanceCard ).not.toBeNull();
+		expect( rulesCard?.nextElementSibling ).toBe( performanceCard );
+		const rules = within( rulesCard as HTMLElement );
+
+		expect(
+			rules.getByText( /Create rules to always allow/ )
+		).toHaveTextContent(
+			'Create rules to always allow or block checkout attempts that match specific criteria. Rules take priority over automatic fraud prevention and allow rules override block rules. See our best practices.'
+		);
+		expect(
+			rules.getByRole( 'link', { name: 'best practices' } )
+		).toHaveAttribute(
+			'href',
+			'https://woocommerce.com/document/fraud-protection/'
+		);
+		expect(
+			rules.getByRole( 'button', { name: 'Create rule' } )
+		).toBeVisible();
+		expect(
+			rules.getByRole( 'link', { name: 'View rules' } )
+		).toBeVisible();
+		expect( rules.queryByText( /^\d+ rules?$/ ) ).not.toBeInTheDocument();
+	} );
+
+	it( 'creates a rule from the Rules card and refreshes with a success toast', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockResolvedValueOnce( {
+				id: 18,
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				created_at: '2026-09-15T12:00:00Z',
+				updated_at: null,
+			} )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'card@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+			).not.toBeInTheDocument()
+		);
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-fraud-protection/v1/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				origin: 'rules',
+			},
+		} );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20',
+		} );
+		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+			'Rule created successfully',
+			{ type: 'snackbar' }
+		);
+	} );
+
+	it( 'opens an existing duplicate rule in the Edit drawer', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow',
+			type: 'email',
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockResolvedValueOnce( duplicate );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		let drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await within( drawer ).findByRole( 'button', {
+				name: 'Edit existing rule',
+			} )
+		);
+
+		drawer = await screen.findByRole( 'dialog', { name: 'Edit rule' } );
+		expect( within( drawer ).getByLabelText( 'Value' ) ).toHaveValue(
+			duplicate.value
+		);
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules/17',
+		} );
+	} );
+
+	it( 'shows a failed duplicate detail request and clears it after the form changes', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow' as const,
+			type: 'email' as const,
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockRejectedValueOnce( new Error( 'Detail unavailable.' ) )
+			.mockResolvedValueOnce( duplicate );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		let drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await within( drawer ).findByRole( 'button', {
+				name: 'Edit existing rule',
+			} )
+		);
+
+		drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		expect(
+			await within( drawer ).findByText( 'The rule could not be loaded.' )
+		).toBeInTheDocument();
+		await userEvent.type( within( drawer ).getByLabelText( 'Value' ), 'x' );
+
+		expect(
+			within( drawer ).queryByText( 'The rule could not be loaded.' )
+		).not.toBeInTheDocument();
+	} );
+
+	it( 'does not reopen a closed drawer after a duplicate rule loads', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow',
+			type: 'email',
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
+		};
+		let resolveDetail: ( rule: typeof duplicate ) => void = () => undefined;
+		const detailRequest = new Promise< typeof duplicate >( ( resolve ) => {
+			resolveDetail = resolve;
+		} );
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockReturnValueOnce( detailRequest );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		const viewRule = await within( drawer ).findByRole( 'button', {
+			name: 'Edit existing rule',
+		} );
+		act( () => viewRule.click() );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules/17',
+		} );
+		act( () =>
+			within( drawer ).getByRole( 'button', { name: 'Close' } ).click()
+		);
+
+		await act( async () => {
+			resolveDetail( duplicate );
+			await detailRequest;
+		} );
+
+		expect( screen.queryByRole( 'dialog' ) ).not.toBeInTheDocument();
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {

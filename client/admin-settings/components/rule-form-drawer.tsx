@@ -67,7 +67,7 @@ type RuleFormDrawerProps = {
 	onSuccess?: () => void;
 	onViewRule?: ( id: number ) => void;
 	onFormChange?: () => void;
-	detailError?: string;
+	detailError?: string | null;
 	context?: RuleFormContext;
 	rule?: Rule;
 };
