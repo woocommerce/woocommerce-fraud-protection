@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
+import { store as noticesStore } from '@wordpress/notices';
 
 import { rulesStore } from '../../client/admin-settings/data/rules-store';
 import {
@@ -17,6 +18,7 @@ import {
 	getInitialRuleFormData,
 	getRuleValuePlaceholder,
 	isCompleteIp,
+	RuleFormDrawer,
 } from '../../client/admin-settings/components/rule-form-drawer';
 import { dataViews } from './mocks/dataviews';
 
@@ -62,6 +64,24 @@ const renderRules = () => {
 			</RegistryProvider>
 		</MemoryRouter>
 	);
+};
+
+const renderDrawer = ( onClose = jest.fn(), onSuccess = jest.fn() ) => {
+	const registry = createRegistry();
+	registry.register( rulesStore );
+	registry.register( noticesStore );
+	render(
+		<MemoryRouter>
+			<RegistryProvider value={ registry }>
+				<RuleFormDrawer
+					open
+					onClose={ onClose }
+					onSuccess={ onSuccess }
+				/>
+			</RegistryProvider>
+		</MemoryRouter>
+	);
+	return { onClose, onSuccess, registry };
 };
 
 describe( 'RulesPage', () => {
@@ -622,6 +642,87 @@ describe( 'RulesPage', () => {
 		expect(
 			await screen.findByRole( 'heading', { name: 'Create rule' } )
 		).toBeInTheDocument();
+	} );
+
+	it( 'submits the drawer, closes it, refreshes rules, and shows the success snackbar', async () => {
+		const onClose = jest.fn();
+		const onSuccess = jest.fn();
+		const { registry } = renderDrawer( onClose, onSuccess );
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				id: 9,
+				action: 'allow',
+				value: 'created@example.com',
+				type: 'email',
+				created_at: '2026-09-14T12:00:00Z',
+			} )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} );
+
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'created@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () => expect( onClose ).toHaveBeenCalledTimes( 1 ) );
+		expect( onSuccess ).toHaveBeenCalledTimes( 1 );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 1, {
+			path: '/wc-fraud-protection/v1/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'created@example.com',
+				origin: 'rules',
+			},
+		} );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20',
+		} );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual(
+			expect.arrayContaining( [
+				expect.objectContaining( {
+					content: 'Rule created successfully',
+					type: 'snackbar',
+				} ),
+			] )
+		);
+	} );
+
+	it( 'keeps a duplicate error in the drawer and clears it after a value change', async () => {
+		const onClose = jest.fn();
+		mockedApiFetch.mockRejectedValueOnce( {
+			code: 'woocommerce_fraud_protection_duplicate_rule',
+			message: 'This email is already allowed by a rule.',
+		} );
+		renderDrawer( onClose );
+
+		const value = screen.getByLabelText( 'Value' );
+		await userEvent.type( value, 'duplicate@example.com' );
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		expect(
+			await screen.findByText(
+				'This email is already allowed by a rule.'
+			)
+		).toBeInTheDocument();
+		expect( onClose ).not.toHaveBeenCalled();
+		expect(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
+
+		await userEvent.type( value, 'x' );
+		expect(
+			screen.queryByText( 'This email is already allowed by a rule.' )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'sends the exact create request through the rules store', async () => {
