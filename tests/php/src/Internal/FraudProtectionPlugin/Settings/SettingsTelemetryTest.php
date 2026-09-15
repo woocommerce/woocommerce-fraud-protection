@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Settings;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
@@ -550,6 +551,27 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 			array(
 				'state'  => 'opted_out',
 				'source' => 'settings',
+			),
+			$captured
+		);
+	}
+
+	/**
+	 * @testdox Rule changes use the exact event and bounded properties.
+	 */
+	public function test_rule_change_uses_exact_event_properties(): void {
+		$captured = $this->capture_tracks_event(
+			'wcadmin_fraud_protection_rule_changed',
+			fn() => $this->sut->record_rule_change( 'create', FraudDecision::Block, 'ip', 'checkout_attempts' )
+		);
+		unset( $captured['feature_email_improvements'] );
+
+		$this->assertSame(
+			array(
+				'operation' => 'create',
+				'action'    => 'block',
+				'type'      => 'ip',
+				'source'    => 'checkout_attempts',
 			),
 			$captured
 		);

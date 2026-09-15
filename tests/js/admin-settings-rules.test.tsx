@@ -749,6 +749,68 @@ describe( 'RulesPage', () => {
 		expect( screen.getByLabelText( /Value/ ) ).toHaveValue( '203.0.113.9' );
 	} );
 
+	it( 'submits contextual values and shows a duplicate on the disabled Value field', async () => {
+		mockedApiFetch.mockRejectedValueOnce( {
+			code: 'woocommerce_fraud_protection_duplicate_rule',
+			message: 'This email is already allowed by a rule.',
+		} );
+		renderDrawer( jest.fn(), jest.fn(), {
+			recordedAttemptId: 7,
+			type: 'email',
+			value: 'customer@example.com',
+			finalStatus: 'blocked',
+		} );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-fraud-protection/v1/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'customer@example.com',
+				recorded_attempt_id: 7,
+				origin: 'checkout_attempts',
+			},
+		} );
+		expect(
+			await screen.findByText(
+				'This email is already allowed by a rule.'
+			)
+		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Value' ) ).toBeDisabled();
+		expect(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
+	} );
+
+	it.each( [
+		[ 'email', 'incomplete', 'Enter a complete email address.' ],
+		[ 'ip', '203.0.113', 'Enter a complete IP address.' ],
+	] )(
+		'does not submit an invalid %s value',
+		async ( type, value, message ) => {
+			renderDrawer();
+			if ( type === 'ip' ) {
+				await userEvent.selectOptions(
+					screen.getByLabelText( 'Rule type' ),
+					'ip'
+				);
+			}
+			await userEvent.type( screen.getByLabelText( 'Value' ), value );
+			await userEvent.tab();
+
+			expect( await screen.findByText( message ) ).toBeInTheDocument();
+			expect(
+				screen.getByRole( 'button', { name: 'Create rule' } )
+			).toHaveAttribute( 'aria-disabled', 'true' );
+			expect( mockedApiFetch ).not.toHaveBeenCalled();
+		}
+	);
+
 	it( 'sends the exact create request through the rules store', async () => {
 		const registry = createRegistry();
 		registry.register( rulesStore );

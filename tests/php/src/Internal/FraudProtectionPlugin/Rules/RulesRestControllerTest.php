@@ -203,6 +203,23 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * Dispatch a create request.
+	 *
+	 * @param array<string, mixed> $params Request parameters.
+	 */
+	private function dispatch_create( array $params ): \WP_REST_Response {
+		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request->set_body_params( $params );
+
+		return $this->server->dispatch( $request );
+	}
+
+	/** Assert that no active rule was written. */
+	private function assert_no_active_rules(): void {
+		$this->assertSame( 0, $this->rule_store->get_active_rules_page()['total'] );
+	}
+
+	/**
 	 * @testdox An exact value and action filter uses the active rule set.
 	 */
 	public function test_get_rules_filters_exact_value(): void {
@@ -364,6 +381,41 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Manual creation rejects incomplete email and IP values without writing.
+	 *
+	 * @dataProvider invalid_manual_value_provider
+	 *
+	 * @param string $type  Rule condition type.
+	 * @param string $value Invalid rule value.
+	 */
+	public function test_manual_create_rejects_invalid_values( string $type, string $value ): void {
+		$response = $this->dispatch_create(
+			array(
+				'action' => 'allow',
+				'type'   => $type,
+				'value'  => $value,
+				'origin' => 'rules',
+			)
+		);
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_invalid_rule', $response->as_error()->get_error_code() );
+		$this->assert_no_active_rules();
+	}
+
+	/**
+	 * Provide invalid manual values.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function invalid_manual_value_provider(): array {
+		return array(
+			'invalid email' => array( 'email', 'customer.example.com' ),
+			'incomplete IP' => array( 'ip', '203.0.113' ),
+		);
+	}
+
+	/**
 	 * @testdox A manual create does not send contextual feedback and records its origin.
 	 */
 	public function test_manual_create_does_not_report_and_tracks_rules_origin(): void {
@@ -462,6 +514,39 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Contextual creation rejects missing and invalid recorded attempts without writing or reporting.
+	 */
+	public function test_contextual_create_rejects_unusable_recorded_attempts(): void {
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$this->sut->init(
+			$this->rule_store,
+			$this->schema_manager,
+			$this->event_store,
+			$api_client,
+			new SessionIdNormalizer(),
+			$this->createMock( SettingsTelemetry::class )
+		);
+		$params = array(
+			'action'              => 'allow',
+			'type'                => 'email',
+			'value'               => 'customer@example.com',
+			'recorded_attempt_id' => 999999,
+			'origin'              => 'checkout_attempts',
+		);
+
+		$missing                       = $this->dispatch_create( $params );
+		$params['recorded_attempt_id'] = $this->record_event( array( 'final_status' => 'challenge' ) );
+		$invalid                       = $this->dispatch_create( $params );
+
+		$this->assertSame( 404, $missing->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_recorded_attempt_not_found', $missing->as_error()->get_error_code() );
+		$this->assertSame( 400, $invalid->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_recorded_attempt_invalid', $invalid->as_error()->get_error_code() );
+		$this->assert_no_active_rules();
+	}
+
+	/**
 	 * @testdox A duplicate create returns the active rule ID and action.
 	 */
 	public function test_create_rule_duplicate_returns_existing_rule_details(): void {
@@ -495,14 +580,16 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox A contextual create uses the stored event and sends feedback after writing.
 	 */
 	public function test_create_rule_context_uses_stored_event(): void {
-		$api_client = $this->createMock( ApiClient::class );
+		$api_client       = $this->createMock( ApiClient::class );
+		$reported_payload = null;
 		$api_client->expects( $this->once() )
 			->method( 'report' )
 			->with(
 				'stored-session',
 				$this->callback(
-					static function ( array $payload ): bool {
-						return str_starts_with( (string) ( $payload['report_id'] ?? '' ), 'wc-fraud-protection-rule-' ) && 'good' === ( $payload['asserted_label'] ?? null );
+					static function ( array $payload ) use ( &$reported_payload ): bool {
+							$reported_payload = $payload;
+							return true;
 					}
 				)
 			)
@@ -553,6 +640,13 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$rule = $this->rule_store->get_rule( (int) $response->get_data()['id'] );
 		$this->assertSame( 'stored-session', $rule->source_session_id );
+		$this->assertSame(
+			array(
+				'report_id'      => 'wc-fraud-protection-rule-' . $response->get_data()['id'],
+				'asserted_label' => 'good',
+			),
+			$reported_payload
+		);
 	}
 
 	/**
@@ -600,16 +694,26 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Unauthenticated and unauthorized users cannot read rules.
+	 * @testdox Unauthenticated and unauthorized users cannot read or create rules.
 	 */
 	public function test_permissions_require_woocommerce_management(): void {
+		$params = array(
+			'action' => 'allow',
+			'type'   => 'email',
+			'value'  => 'customer@example.com',
+		);
 		wp_set_current_user( 0 );
-		$unauthenticated = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
-		$customer_id     = wc_create_new_customer( 'rules-customer@example.com', 'rules-customer', 'password' );
+		$unauthenticated        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$unauthenticated_create = $this->dispatch_create( $params );
+		$customer_id            = wc_create_new_customer( 'rules-customer@example.com', 'rules-customer', 'password' );
 		wp_set_current_user( $customer_id );
-		$unauthorized = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$unauthorized        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$unauthorized_create = $this->dispatch_create( $params );
 
 		$this->assertSame( 401, $unauthenticated->get_status() );
+		$this->assertSame( 401, $unauthenticated_create->get_status() );
 		$this->assertSame( 403, $unauthorized->get_status() );
+		$this->assertSame( 403, $unauthorized_create->get_status() );
+		$this->assert_no_active_rules();
 	}
 }

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { DataForm, useFormValidity } from '@wordpress/dataviews/wp';
 import type { DataFormControlProps, Field, Form } from '@wordpress/dataviews';
@@ -57,6 +63,7 @@ function RuleValueEditControl( {
 	hideLabelFromVision,
 	validity,
 }: DataFormControlProps< RuleFormData > ) {
+	const inputRef = useRef< HTMLInputElement >( null );
 	const value = field.getValue( { item: data } );
 	const onValueChange = useCallback(
 		( newValue: string ) =>
@@ -66,9 +73,26 @@ function RuleValueEditControl( {
 	const customValidity = data.valueError
 		? { type: 'invalid' as const, message: data.valueError }
 		: validity?.custom;
+	useEffect( () => {
+		if ( data.valueError ) {
+			window.queueMicrotask( () => {
+				const input = inputRef.current;
+				if ( ! input ) {
+					return;
+				}
+				const wasDisabled = input.disabled;
+				input.disabled = false;
+				input.dispatchEvent(
+					new Event( 'invalid', { bubbles: true, cancelable: true } )
+				);
+				input.disabled = wasDisabled;
+			} );
+		}
+	}, [ data.valueError ] );
 
 	return (
 		<ValidatedInputControl
+			ref={ inputRef }
 			required={ Boolean( field.isValid.required ) }
 			markWhenOptional={ true }
 			customValidity={ customValidity }
