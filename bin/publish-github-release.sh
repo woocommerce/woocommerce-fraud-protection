@@ -10,6 +10,9 @@ release_pr_url=${5:?Provide the release pull request URL.}
 repository=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required.}
 tag="v$version"
 asset_name=woocommerce-fraud-protection.zip
+translation_import_url="https://translate.wordpress.com/api/import-new-release/woocommerce/woocommerce-fraud-protection/$tag"
+translation_debug_url="https://translate.wordpress.com/-language-packs/debug/woocommerce/extensions/woocommerce-fraud-protection"
+translation_expected_version=${tag//./_}
 
 resolve_tag_commit() {
 	local object
@@ -117,9 +120,49 @@ if [[ $draft == true ]]; then
 	gh release edit "$tag" --repo "$repository" --draft=false
 fi
 
+translation_import_curl_status=0
+if translation_import_response=$(curl \
+	--connect-timeout 10 \
+	--fail-with-body \
+	--location \
+	--max-time 30 \
+	--request POST \
+	--silent \
+	--show-error \
+	"$translation_import_url"); then
+	translation_import_curl_status=0
+else
+	translation_import_curl_status=$?
+fi
+
+translation_import_response_preview=$(printf '%s' "$translation_import_response" | LC_ALL=C tr -d '\000-\037\177' | cut -c1-1000)
+translation_import_queued=false
+
+if (( 0 == translation_import_curl_status )) && jq -e '.success == true' <<< "$translation_import_response" >/dev/null; then
+	translation_import_queued=true
+	echo "Queued the translation import for the published release $tag."
+else
+	echo "The GitHub release is public, but its translation import was not confirmed." >&2
+	if [[ -n $translation_import_response_preview ]]; then
+		echo "Translation service response: $translation_import_response_preview" >&2
+	fi
+	if [[ ${GITHUB_ACTIONS:-} == true ]]; then
+		echo "::warning title=Translation import not confirmed::The GitHub release is public. Check GlotPress for the latest plugin version before retrying the POST request."
+	fi
+fi
+
 if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
-	echo "Release: $release_url" >> "$GITHUB_STEP_SUMMARY"
-	echo "Merge pull request $release_pr_url with a merge commit." >> "$GITHUB_STEP_SUMMARY"
+	{
+		echo "Release: $release_url"
+		if [[ $translation_import_queued == true ]]; then
+			echo "Translation import request: queued for $tag."
+		else
+			echo "Translation import request: not confirmed for $tag."
+			echo "Check $translation_debug_url and confirm whether $translation_expected_version appears as the Latest plugin version."
+			echo "If it is absent, retry the request once outside the release workflow: \`curl --request POST $translation_import_url\`"
+		fi
+		echo "Merge pull request $release_pr_url with a merge commit."
+	} >> "$GITHUB_STEP_SUMMARY"
 fi
 
 echo "$release_url"

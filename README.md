@@ -4,6 +4,7 @@
 - WooCommerce 9.8+
 - Node.js 24
 - Composer
+- WP-CLI 2.12.0 (required for `npm run build:release`)
 - Docker (for local development and isolated PHP tests)
 - MySQL (for direct PHP tests)
 
