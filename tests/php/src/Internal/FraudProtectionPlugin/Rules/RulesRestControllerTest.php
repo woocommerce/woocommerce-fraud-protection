@@ -829,6 +829,53 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox An update applied after the controller read is returned without duplicate telemetry.
+	 */
+	public function test_concurrent_matching_update_sends_no_telemetry(): void {
+		$rule      = $this->rule_store->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'same@example.com',
+			)
+		);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$table  = $this->schema_manager->get_rules_table_name();
+		$reads  = 0;
+		$filter = function ( string $query ) use ( $table, $rule, &$reads, &$filter ): string {
+			if ( ! str_contains( $query, "SELECT * FROM {$table} WHERE id = {$rule->id}" ) ) {
+				return $query;
+			}
+			++$reads;
+			if ( 2 === $reads ) {
+				remove_filter( 'query', $filter );
+				$this->rule_store->update_rule( $rule->id, FraudDecision::Allow );
+			}
+
+			return $query;
+		};
+		add_filter( 'query', $filter );
+		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request->set_body_params(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'value'  => 'same@example.com',
+				'origin' => 'rules',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+		remove_filter( 'query', $filter );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'allow', $response->get_data()['action'] );
+	}
+
+	/**
 	 * @testdox Delete soft-deletes once, sends no feedback, and tracks the deleted rule.
 	 */
 	public function test_delete_rule_tracks_success_only_without_feedback(): void {
@@ -887,6 +934,45 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 400, $response->get_status() );
 		$this->assertSame( FraudDecision::Allow, $stored->action );
 		$this->assertSame( 1, $stored->position );
+	}
+
+	/**
+	 * @testdox Update rejects incomplete email and IP values without changing the rule or tracking.
+	 *
+	 * @dataProvider invalid_manual_value_provider
+	 *
+	 * @param string $type  Rule condition type.
+	 * @param string $value Invalid rule value.
+	 */
+	public function test_update_rejects_invalid_values_without_writing_or_tracking( string $type, string $value ): void {
+		$rule      = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'same@example.com',
+			)
+		);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request->set_body_params(
+			array(
+				'action' => 'block',
+				'type'   => $type,
+				'value'  => $value,
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+		$stored   = $this->rule_store->get_rule( $rule->id );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( FraudDecision::Allow, $stored->action );
+		$this->assertSame( 'same@example.com', $stored->conditions['value'] );
+		$this->assertNull( $stored->updated_at );
+		$this->assertNull( $stored->updated_by );
 	}
 
 	/**

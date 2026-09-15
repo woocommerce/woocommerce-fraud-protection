@@ -1,8 +1,8 @@
 import {
 	useCallback,
 	useEffect,
-	useId,
 	useMemo,
+	useRef,
 	useState,
 } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
@@ -13,12 +13,10 @@ import { store as noticesStore } from '@wordpress/notices';
 import {
 	Button,
 	Drawer,
-	InputControl,
 	Notice,
 	Stack,
 	Text,
 	ValidatedInputControl,
-	ValidityIndicator,
 } from '@wordpress/ui';
 
 import type { CreateRuleRequest, Rule } from '../data/rules-store';
@@ -31,9 +29,7 @@ export type RuleFormContext = {
 	finalStatus: 'allowed' | 'blocked';
 };
 
-type RuleFormData = Pick< CreateRuleRequest, 'action' | 'type' | 'value' > & {
-	valueError?: string;
-};
+type RuleFormData = Pick< CreateRuleRequest, 'action' | 'type' | 'value' >;
 
 export const getInitialRuleFormData = (
 	context?: RuleFormContext
@@ -76,39 +72,16 @@ function RuleValueEditControl( {
 	hideLabelFromVision,
 	validity,
 }: DataFormControlProps< RuleFormData > ) {
-	const duplicateMessageId = useId();
+	const inputRef = useRef< HTMLInputElement >( null );
 	const value = field.getValue( { item: data } );
 	const onValueChange = useCallback(
 		( newValue: string ) =>
 			onChange( field.setValue( { item: data, value: newValue } ) ),
 		[ data, field, onChange ]
 	);
-
-	if ( data.valueError ) {
-		return (
-			<Stack direction="column" gap="xs">
-				<InputControl
-					aria-describedby={ duplicateMessageId }
-					aria-invalid="true"
-					required={ Boolean( field.isValid.required ) }
-					label={ field.label }
-					placeholder={ field.placeholder }
-					value={ value ?? '' }
-					onValueChange={ onValueChange }
-					hideLabelFromVision={ hideLabelFromVision }
-					disabled={ field.isDisabled( { item: data, field } ) }
-				/>
-				<ValidityIndicator
-					id={ duplicateMessageId }
-					type="invalid"
-					message={ data.valueError }
-				/>
-			</Stack>
-		);
-	}
-
 	return (
 		<ValidatedInputControl
+			ref={ inputRef }
 			required={ Boolean( field.isValid.required ) }
 			markWhenOptional={ true }
 			customValidity={ validity?.custom }
@@ -272,9 +245,6 @@ export function RuleFormDrawer( {
 				isValid: {
 					required: true,
 					custom: ( item ) => {
-						if ( item.valueError ) {
-							return item.valueError;
-						}
 						const value = item.value.trim();
 						if ( item.type === 'email' ) {
 							return isCompleteEmail( value )
@@ -297,7 +267,7 @@ export function RuleFormDrawer( {
 		[ context, data.type, isSaving, rule ]
 	);
 	const { validity, isValid } = useFormValidity( data, fields, form );
-	const hasDuplicateError = Boolean( data.valueError );
+	const hasDuplicateError = saveError?.code === DUPLICATE_RULE_ERROR;
 
 	const save = async () => {
 		if ( ! isValid || hasDuplicateError || isSaving ) {
@@ -363,12 +333,6 @@ export function RuleFormDrawer( {
 						: null,
 			};
 			setSaveError( error );
-			if ( error.code === DUPLICATE_RULE_ERROR ) {
-				setData( ( previous ) => ( {
-					...previous,
-					valueError: error.message,
-				} ) );
-			}
 		} finally {
 			setIsSaving( false );
 		}
@@ -411,10 +375,15 @@ export function RuleFormDrawer( {
 				<Drawer.Content>
 					<Stack direction="column" gap="lg">
 						<Text variant="body-md">
-							{ __(
-								'Create a rule to always allow or block checkout attempt based on an IP or email address.',
-								'woocommerce-fraud-protection'
-							) }{ ' ' }
+							{ rule
+								? __(
+										'Edit a rule to allow or block future transactions that match the same email address or IP address.',
+										'woocommerce-fraud-protection'
+								  )
+								: __(
+										'Create a rule to always allow or block checkout attempt based on an IP or email address.',
+										'woocommerce-fraud-protection'
+								  ) }{ ' ' }
 							{ __(
 								"If an attempt matches both an allow rule and a block rule, it's allowed.",
 								'woocommerce-fraud-protection'
@@ -443,25 +412,31 @@ export function RuleFormDrawer( {
 								setData( ( previous ) => ( {
 									...previous,
 									...changes,
-									valueError: undefined,
 								} ) );
 							} }
 						/>
-						{ saveError?.code === DUPLICATE_RULE_ERROR &&
-							saveError.ruleId &&
-							onViewRule && (
-								<Button
-									variant="minimal"
-									onClick={ () =>
-										onViewRule( saveError.ruleId as number )
-									}
-								>
-									{ __(
-										'View rule',
-										'woocommerce-fraud-protection'
+						{ saveError?.code === DUPLICATE_RULE_ERROR && (
+							<Notice.Root intent="error">
+								<Notice.Description>
+									{ saveError.message }{ ' ' }
+									{ saveError.ruleId && onViewRule && (
+										<Button
+											variant="minimal"
+											onClick={ () =>
+												onViewRule(
+													saveError.ruleId as number
+												)
+											}
+										>
+											{ __(
+												'View rule',
+												'woocommerce-fraud-protection'
+											) }
+										</Button>
 									) }
-								</Button>
-							) }
+								</Notice.Description>
+							</Notice.Root>
+						) }
 						{ saveError?.code !== DUPLICATE_RULE_ERROR &&
 							saveError?.message && (
 								<Notice.Root intent="error">

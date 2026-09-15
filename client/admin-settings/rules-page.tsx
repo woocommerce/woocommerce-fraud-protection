@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import { dateI18n } from '@wordpress/date';
 import {
-	AlertDialog,
 	Button,
+	Dialog,
 	EmptyState,
 	Icon,
 	Notice,
@@ -12,6 +18,7 @@ import {
 	Text,
 	VisuallyHidden,
 } from '@wordpress/ui';
+import { Button as ComponentsButton } from '@wordpress/components';
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { Action, Field, View } from '@wordpress/dataviews';
@@ -215,9 +222,13 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 };
 
 export function RulesPage() {
-	const [ isCreateOpen, setIsCreateOpen ] = useState( false );
+	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );
 	const [ editingRule, setEditingRule ] = useState< Rule | undefined >();
 	const [ deletingRule, setDeletingRule ] = useState< Rule | undefined >();
+	const [ detailError, setDetailError ] = useState< string | null >( null );
+	const [ deleteError, setDeleteError ] = useState< string | null >( null );
+	const [ isDeleting, setIsDeleting ] = useState( false );
+	const detailRequest = useRef( 0 );
 	const [ view, setView ] = useState< View >( {
 		type: 'table' as const,
 		page: 1,
@@ -259,10 +270,24 @@ export function RulesPage() {
 	const isInitialLoading = isLoading && rules.length === 0;
 	const openEditRule = useCallback(
 		async ( id: number ) => {
-			const rule = await requestRule( id );
-			if ( rule ) {
-				setIsCreateOpen( false );
+			const request = ++detailRequest.current;
+			setDetailError( null );
+			try {
+				const rule = await requestRule( id );
+				if ( request !== detailRequest.current ) {
+					return;
+				}
 				setEditingRule( rule );
+				setIsDrawerOpen( true );
+			} catch {
+				if ( request === detailRequest.current ) {
+					setDetailError(
+						__(
+							'The rule could not be loaded.',
+							'woocommerce-fraud-protection'
+						)
+					);
+				}
 			}
 		},
 		[ requestRule ]
@@ -283,7 +308,10 @@ export function RulesPage() {
 				id: 'delete',
 				label: __( 'Delete', 'woocommerce-fraud-protection' ),
 				supportsBulk: false,
-				callback: ( items ) => setDeletingRule( items[ 0 ] ),
+				callback: ( items ) => {
+					setDeleteError( null );
+					setDeletingRule( items[ 0 ] );
+				},
 			},
 		],
 		[ openEditRule ]
@@ -398,7 +426,10 @@ export function RulesPage() {
 							<Button
 								variant="solid"
 								size="compact"
-								onClick={ () => setIsCreateOpen( true ) }
+								onClick={ () => {
+									setEditingRule( undefined );
+									setIsDrawerOpen( true );
+								} }
 							>
 								{ __(
 									'Create rule',
@@ -486,7 +517,7 @@ export function RulesPage() {
 								<DataViews.ViewConfig />
 							</Stack>
 						</Stack>
-						{ loadErrorMessage && (
+						{ ( loadErrorMessage || detailError ) && (
 							<Stack
 								direction="column"
 								style={ {
@@ -497,7 +528,7 @@ export function RulesPage() {
 							>
 								<Notice.Root intent="error">
 									<Notice.Description>
-										{ loadErrorMessage }
+										{ detailError || loadErrorMessage }
 									</Notice.Description>
 								</Notice.Root>
 							</Stack>
@@ -533,70 +564,120 @@ export function RulesPage() {
 				</Stack>
 			</DataViews>
 			<RuleFormDrawer
-				open={ isCreateOpen }
-				onClose={ () => setIsCreateOpen( false ) }
-				onViewRule={ openEditRule }
-			/>
-			<RuleFormDrawer
-				open={ Boolean( editingRule ) }
+				open={ isDrawerOpen }
 				rule={ editingRule }
-				onClose={ () => setEditingRule( undefined ) }
+				onClose={ () => {
+					detailRequest.current++;
+					setIsDrawerOpen( false );
+					setEditingRule( undefined );
+				} }
 				onViewRule={ openEditRule }
 			/>
-			<AlertDialog.Root
+			<Dialog.Root
 				open={ Boolean( deletingRule ) }
-				onOpenChange={ ( open ) =>
-					! open && setDeletingRule( undefined )
-				}
-				onConfirm={ async () => {
-					if ( ! deletingRule ) {
-						return;
-					}
-					try {
-						await deleteRule( deletingRule.id, 'rules' );
-						noticesDispatch?.createSuccessNotice?.(
-							__(
-								'Rule deleted',
-								'woocommerce-fraud-protection'
-							),
-							{ type: 'snackbar' }
-						);
-					} catch ( caughtError ) {
-						const message =
-							typeof caughtError === 'object' &&
-							caughtError !== null &&
-							'message' in caughtError &&
-							typeof caughtError.message === 'string'
-								? caughtError.message
-								: __(
-										'The rule could not be deleted.',
-										'woocommerce-fraud-protection'
-								  );
-						return { close: false, error: message };
+				onOpenChange={ ( open ) => {
+					if ( ! open && ! isDeleting ) {
+						setDeletingRule( undefined );
+						setDeleteError( null );
 					}
 				} }
 			>
-				<AlertDialog.Popup
-					intent="irreversible"
-					title={ __(
-						'Delete rule',
-						'woocommerce-fraud-protection'
-					) }
-					description={ __(
-						'Are you sure you want to delete this rule? This action cannot be undone.',
-						'woocommerce-fraud-protection'
-					) }
-					confirmButtonText={ __(
-						'Delete',
-						'woocommerce-fraud-protection'
-					) }
+				<Dialog.Popup
+					size="small"
 					portal={
-						<AlertDialog.Portal
-							style={ { position: 'relative', zIndex: 1002 } }
+						<Dialog.Portal
+							style={
+								{
+									'--wp-ui-dialog-z-index': 100000,
+								} as React.CSSProperties
+							}
 						/>
 					}
-				/>
-			</AlertDialog.Root>
+				>
+					<Dialog.Header>
+						<Dialog.Title>
+							{ __(
+								'Delete rule',
+								'woocommerce-fraud-protection'
+							) }
+						</Dialog.Title>
+						<Dialog.CloseIcon
+							label={ __(
+								'Close',
+								'woocommerce-fraud-protection'
+							) }
+						/>
+					</Dialog.Header>
+					<Dialog.Content>
+						<Dialog.Description>
+							{ __(
+								'Are you sure you want to delete this rule? This action cannot be undone.',
+								'woocommerce-fraud-protection'
+							) }
+						</Dialog.Description>
+						{ deleteError && (
+							<Notice.Root intent="error">
+								<Notice.Description>
+									{ deleteError }
+								</Notice.Description>
+							</Notice.Root>
+						) }
+					</Dialog.Content>
+					<Dialog.Footer>
+						<ComponentsButton
+							variant="tertiary"
+							disabled={ isDeleting }
+							onClick={ () => setDeletingRule( undefined ) }
+						>
+							{ __( 'Cancel', 'woocommerce-fraud-protection' ) }
+						</ComponentsButton>
+						<ComponentsButton
+							variant="primary"
+							isDestructive
+							isBusy={ isDeleting }
+							disabled={ isDeleting }
+							onClick={ async () => {
+								if ( ! deletingRule ) {
+									return;
+								}
+								setDeleteError( null );
+								setIsDeleting( true );
+								try {
+									await deleteRule(
+										deletingRule.id,
+										'rules'
+									);
+									setDeletingRule( undefined );
+									noticesDispatch?.createSuccessNotice?.(
+										__(
+											'Rule deleted',
+											'woocommerce-fraud-protection'
+										),
+										{ type: 'snackbar' }
+									);
+								} catch ( caughtError ) {
+									setDeleteError(
+										typeof caughtError === 'object' &&
+											caughtError !== null &&
+											'message' in caughtError &&
+											typeof caughtError.message ===
+												'string'
+											? caughtError.message
+											: __(
+													'The rule could not be deleted.',
+													'woocommerce-fraud-protection'
+											  )
+									);
+								} finally {
+									setIsDeleting( false );
+								}
+							} }
+						>
+							{ __( 'Delete', 'woocommerce-fraud-protection' ) }
+						</ComponentsButton>
+					</Dialog.Footer>
+				</Dialog.Popup>
+			</Dialog.Root>
 		</Stack>
 	);
 }

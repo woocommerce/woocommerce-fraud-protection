@@ -775,34 +775,17 @@ describe( 'RulesPage', () => {
 		);
 
 		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
-		const error = await within( drawer ).findByText(
-			'This email is already allowed by a rule.'
-		);
-		const duplicateValue = within( drawer ).getByLabelText( 'Value' );
-		expect( error.tagName ).toBe( 'P' );
-		expect( error.querySelector( 'svg[height="16"]' ) ).toBeInTheDocument();
-		expect( error.previousElementSibling ).toContainElement(
-			duplicateValue
-		);
-		expect( duplicateValue ).toHaveAttribute( 'aria-invalid', 'true' );
-		expect( duplicateValue ).toHaveAttribute(
-			'aria-describedby',
-			error.id
-		);
-		expect( duplicateValue ).not.toHaveAttribute( 'data-validity-visible' );
 		expect(
-			within( drawer ).getAllByText(
-				'This email is already allowed by a rule.'
-			)
-		).toHaveLength( 1 );
+			within( drawer ).getByText( /This email is already allowed/ )
+		).toBeInTheDocument();
 		expect( onClose ).not.toHaveBeenCalled();
 		expect(
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		).toHaveAttribute( 'aria-disabled', 'true' );
 
-		await userEvent.type( duplicateValue, 'x' );
+		await userEvent.type( value, 'x' );
 		expect(
-			screen.queryByText( 'This email is already allowed by a rule.' )
+			within( drawer ).queryByText( /This email is already allowed/ )
 		).not.toBeInTheDocument();
 	} );
 
@@ -847,10 +830,9 @@ describe( 'RulesPage', () => {
 				origin: 'checkout_attempts',
 			},
 		} );
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
 		expect(
-			await screen.findByText(
-				'This email is already allowed by a rule.'
-			)
+			within( drawer ).getByText( /This email is already allowed/ )
 		).toBeInTheDocument();
 		expect( screen.getByLabelText( 'Value' ) ).toBeDisabled();
 		expect(
@@ -1094,6 +1076,42 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
+	it( 'keeps the edit drawer open and does not refresh or show success after an update failure', async () => {
+		const rule: Rule = {
+			id: 9,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		const { onClose, onSuccess, registry } = renderDrawer(
+			jest.fn(),
+			jest.fn(),
+			undefined,
+			rule
+		);
+		mockedApiFetch.mockRejectedValueOnce( {
+			message: 'The exact update error.',
+		} );
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'block'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+
+		const drawer = screen.getByRole( 'dialog', { name: 'Edit rule' } );
+		expect(
+			await within( drawer ).findByText( 'The exact update error.' )
+		).toBeInTheDocument();
+		expect( drawer ).toBeInTheDocument();
+		expect( onClose ).not.toHaveBeenCalled();
+		expect( onSuccess ).not.toHaveBeenCalled();
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
+	} );
+
 	it( 'offers View rule for a duplicate and opens that rule in edit state', async () => {
 		const onViewRule = jest.fn();
 		mockedApiFetch.mockRejectedValueOnce( {
@@ -1115,6 +1133,49 @@ describe( 'RulesPage', () => {
 		);
 
 		expect( onViewRule ).toHaveBeenCalledWith( 17 );
+	} );
+
+	it( 'opens the duplicate rule from the create drawer through RulesPage', async () => {
+		const duplicate: Rule = {
+			id: 17,
+			action: 'allow',
+			value: 'duplicate@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( { data: [], totalItems: 0, totalPages: 0 } )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: 17 },
+			} )
+			.mockResolvedValueOnce( duplicate );
+		renderRules();
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'View rule' } )
+		);
+
+		expect(
+			await screen.findByRole( 'heading', { name: 'Edit rule' } )
+		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue(
+			duplicate.value
+		);
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules/17',
+		} );
 	} );
 
 	it( 'shows Edit before Delete and opens active detail from the row action', async () => {
@@ -1150,6 +1211,73 @@ describe( 'RulesPage', () => {
 		} );
 	} );
 
+	it( 'shows a translated error when rule detail cannot be loaded', async () => {
+		const rule: Rule = {
+			id: 1,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				data: [ rule ],
+				totalItems: 1,
+				totalPages: 1,
+			} )
+			.mockRejectedValueOnce( new Error( 'request failed' ) );
+		renderRules();
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Edit' } )
+		);
+
+		expect(
+			await screen.findAllByText( 'The rule could not be loaded.' )
+		).not.toHaveLength( 0 );
+		expect(
+			screen.queryByRole( 'heading', { name: 'Edit rule' } )
+		).not.toBeInTheDocument();
+	} );
+
+	it( 'ignores an older rule detail response after a newer request begins', async () => {
+		const first: Rule = {
+			id: 1,
+			action: 'allow',
+			value: 'first@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		const second = { ...first, id: 2, value: 'second@example.com' };
+		let resolveFirst: ( rule: Rule ) => void = () => undefined;
+		let resolveSecond: ( rule: Rule ) => void = () => undefined;
+		const firstRequest = new Promise< Rule >( ( resolve ) => {
+			resolveFirst = resolve;
+		} );
+		const secondRequest = new Promise< Rule >( ( resolve ) => {
+			resolveSecond = resolve;
+		} );
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				data: [ first ],
+				totalItems: 1,
+				totalPages: 1,
+			} )
+			.mockReturnValueOnce( firstRequest )
+			.mockReturnValueOnce( secondRequest );
+		renderRules();
+		await waitFor( () => expect( dataViews.props?.actions ).toBeDefined() );
+		act( () => {
+			dataViews.props?.actions?.[ 0 ].callback( [ first ] );
+			dataViews.props?.actions?.[ 0 ].callback( [ second ] );
+		} );
+		await act( async () => resolveSecond( second ) );
+		expect( await screen.findByLabelText( 'Value' ) ).toHaveValue(
+			second.value
+		);
+		await act( async () => resolveFirst( first ) );
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( second.value );
+	} );
+
 	it( 'confirms a row deletion, refreshes rules, and shows the exact toast', async () => {
 		mockedApiFetch
 			.mockResolvedValueOnce( {
@@ -1176,7 +1304,7 @@ describe( 'RulesPage', () => {
 		await userEvent.click(
 			await screen.findByRole( 'button', { name: 'Delete' } )
 		);
-		const dialog = await screen.findByRole( 'alertdialog', {
+		const dialog = await screen.findByRole( 'dialog', {
 			name: 'Delete rule',
 		} );
 		expect( dialog ).toHaveTextContent(
@@ -1200,5 +1328,40 @@ describe( 'RulesPage', () => {
 				} ),
 			] )
 		);
+	} );
+
+	it( 'keeps the delete dialog open and does not refresh or show success after a delete failure', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				data: [
+					{
+						id: 1,
+						action: 'allow',
+						value: 'shopper@example.com',
+						type: 'email',
+						created_at: '2026-09-14T12:00:00Z',
+					},
+				],
+				totalItems: 1,
+				totalPages: 1,
+			} )
+			.mockRejectedValueOnce( { message: 'The exact delete error.' } );
+		const { registry } = renderRules();
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Delete' } )
+		);
+		const dialog = await screen.findByRole( 'dialog', {
+			name: 'Delete rule',
+		} );
+		await userEvent.click(
+			within( dialog ).getByRole( 'button', { name: 'Delete' } )
+		);
+
+		expect(
+			await within( dialog ).findByText( 'The exact delete error.' )
+		).toBeInTheDocument();
+		expect( dialog ).toBeInTheDocument();
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 2 );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
 	} );
 } );

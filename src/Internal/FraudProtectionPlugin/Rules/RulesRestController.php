@@ -403,7 +403,7 @@ class RulesRestController extends \WP_REST_Controller {
 		}
 
 		try {
-			$updated = $this->rule_store->update_rule( $id, $decision, $conditions );
+			$result = $this->rule_store->update_rule_with_result( $id, $decision, $conditions );
 		} catch ( DuplicateRuleException $error ) {
 			return $this->duplicate_rule_error( $error, $type );
 		} catch ( \InvalidArgumentException ) {
@@ -411,11 +411,14 @@ class RulesRestController extends \WP_REST_Controller {
 		} catch ( \RuntimeException ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rule_update_failed', __( 'The rule could not be updated.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
-		if ( ! $updated instanceof Rule ) {
+		if ( is_null( $result ) ) {
 			return $this->rule_not_found_error();
 		}
+		$updated = $result['rule'];
 
-		$this->telemetry->record_rule_change( 'update', $decision, $type, $this->get_origin( $request ) );
+		if ( $result['changed'] ) {
+			$this->telemetry->record_rule_change( 'update', $decision, $type, $this->get_origin( $request ) );
+		}
 		return rest_ensure_response( $this->to_public_rule( $updated ) );
 	}
 
