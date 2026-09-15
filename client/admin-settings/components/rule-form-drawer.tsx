@@ -340,7 +340,11 @@ export function RuleFormDrawer( {
 				size="medium"
 				portal={
 					<Drawer.Portal
-						style={ { position: 'relative', zIndex: 1002 } }
+						style={
+							{
+								'--wp-ui-drawer-z-index': 100000,
+							} as React.CSSProperties
+						}
 					/>
 				}
 			>
