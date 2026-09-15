@@ -17,6 +17,7 @@ import {
 import {
 	getInitialRuleFormData,
 	getRuleValuePlaceholder,
+	isCompleteEmail,
 	isCompleteIp,
 	RuleFormDrawer,
 } from '../../client/admin-settings/components/rule-form-drawer';
@@ -116,6 +117,16 @@ describe( 'RulesPage', () => {
 		expect( isCompleteIp( '203.0.113' ) ).toBe( false );
 		expect( isCompleteIp( ':::' ) ).toBe( false );
 		expect( isCompleteIp( '2001:db8:0:0:0:0:0:0:1' ) ).toBe( false );
+	} );
+
+	it( 'matches server email shape and length validation', () => {
+		expect( isCompleteEmail( 'buyer@internal' ) ).toBe( true );
+		expect( isCompleteEmail( `${ 'a'.repeat( 246 ) }@example` ) ).toBe(
+			true
+		);
+		expect( isCompleteEmail( `${ 'a'.repeat( 247 ) }@example` ) ).toBe(
+			false
+		);
 	} );
 
 	it( 'derives contextual action and keeps contextual fields fixed', () => {
@@ -670,7 +681,7 @@ describe( 'RulesPage', () => {
 			.mockResolvedValueOnce( {
 				id: 9,
 				action: 'allow',
-				value: 'created@example.com',
+				value: 'buyer@internal',
 				type: 'email',
 				created_at: '2026-09-14T12:00:00Z',
 			} )
@@ -682,7 +693,7 @@ describe( 'RulesPage', () => {
 
 		await userEvent.type(
 			screen.getByLabelText( /Value/ ),
-			'created@example.com'
+			'buyer@internal'
 		);
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Create rule' } )
@@ -696,7 +707,7 @@ describe( 'RulesPage', () => {
 			data: {
 				action: 'allow',
 				type: 'email',
-				value: 'created@example.com',
+				value: 'buyer@internal',
 				origin: 'rules',
 			},
 		} );
@@ -840,6 +851,11 @@ describe( 'RulesPage', () => {
 
 	it.each( [
 		[ 'email', 'incomplete', 'Enter a complete email address.' ],
+		[
+			'email',
+			`${ 'a'.repeat( 247 ) }@example`,
+			'Enter a complete email address.',
+		],
 		[ 'ip', '203.0.113', 'Enter a complete IP address.' ],
 	] )(
 		'does not submit an invalid %s value',

@@ -49,6 +49,13 @@ export const getInitialRuleFormData = (
 export const getRuleValuePlaceholder = ( type: Rule[ 'type' ] ): string =>
 	type === 'email' ? 'e.g. j.holland@gmail.com' : 'e.g. 111.111.111.111';
 
+export const isCompleteEmail = ( value: string ): boolean => {
+	const trimmedValue = value.trim();
+	return (
+		[ ...trimmedValue ].length <= 254 && /^\S+@\S+$/.test( trimmedValue )
+	);
+};
+
 type RuleFormDrawerProps = {
 	open: boolean;
 	onClose: () => void;
@@ -251,7 +258,7 @@ export function RuleFormDrawer( {
 						}
 						const value = item.value.trim();
 						if ( item.type === 'email' ) {
-							return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test( value )
+							return isCompleteEmail( value )
 								? null
 								: __(
 										'Enter a complete email address.',
