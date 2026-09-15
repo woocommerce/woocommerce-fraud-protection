@@ -504,4 +504,55 @@ describe( 'RulesPage', () => {
 			'Rules unavailable.'
 		);
 	} );
+
+	it( 'clears previous rows when a different query fails', async () => {
+		const registry = createRegistry();
+		registry.register( rulesStore );
+
+		await act( async () => {
+			await registry
+				.dispatch( rulesStore )
+				.requestRules( { page: 1, perPage: 20 } );
+		} );
+		expect( registry.select( rulesStore ).getRules() ).toHaveLength( 1 );
+
+		mockedApiFetch.mockRejectedValueOnce(
+			new Error( 'Rules unavailable.' )
+		);
+		await act( async () => {
+			await registry.dispatch( rulesStore ).requestRules( {
+				page: 1,
+				perPage: 20,
+				action: 'block',
+			} );
+		} );
+
+		expect( registry.select( rulesStore ).getRules() ).toEqual( [] );
+		expect( registry.select( rulesStore ).getTotalItems() ).toBe( 0 );
+		expect( registry.select( rulesStore ).getTotalPages() ).toBe( 0 );
+		expect( registry.select( rulesStore ).getError() ).toBe(
+			'Rules unavailable.'
+		);
+	} );
+
+	it( 'rejects an invalid successful response', async () => {
+		mockedApiFetch.mockResolvedValueOnce( {
+			data: null,
+			totalItems: 0,
+			totalPages: 0,
+		} );
+		const registry = createRegistry();
+		registry.register( rulesStore );
+
+		await act( async () => {
+			await registry
+				.dispatch( rulesStore )
+				.requestRules( { page: 1, perPage: 20 } );
+		} );
+
+		expect( registry.select( rulesStore ).getRules() ).toEqual( [] );
+		expect( registry.select( rulesStore ).getError() ).toBe(
+			'Could not get a valid response from the server.'
+		);
+	} );
 } );

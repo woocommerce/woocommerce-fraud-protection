@@ -52,6 +52,44 @@ const DEFAULT_STATE: State = {
 	requestId: 0,
 };
 
+const INVALID_RESPONSE_MESSAGE = __(
+	'Could not get a valid response from the server.',
+	'woocommerce-fraud-protection'
+);
+
+const isRule = ( value: unknown ): value is Rule => {
+	if ( typeof value !== 'object' || value === null ) {
+		return false;
+	}
+
+	const rule = value as Record< string, unknown >;
+	return (
+		Number.isInteger( rule.id ) &&
+		( rule.action === 'allow' || rule.action === 'block' ) &&
+		typeof rule.value === 'string' &&
+		( rule.type === 'email' || rule.type === 'ip' ) &&
+		typeof rule.created_at === 'string'
+	);
+};
+
+const isRulesResponse = (
+	value: unknown
+): value is { data: Rule[]; totalItems: number; totalPages: number } => {
+	if ( typeof value !== 'object' || value === null ) {
+		return false;
+	}
+
+	const response = value as Record< string, unknown >;
+	return (
+		Array.isArray( response.data ) &&
+		response.data.every( isRule ) &&
+		Number.isInteger( response.totalItems ) &&
+		( response.totalItems as number ) >= 0 &&
+		Number.isInteger( response.totalPages ) &&
+		( response.totalPages as number ) >= 0
+	);
+};
+
 const getErrorMessage = ( error: unknown ): string => {
 	if (
 		typeof error === 'object' &&
@@ -61,10 +99,7 @@ const getErrorMessage = ( error: unknown ): string => {
 	) {
 		return error.message;
 	}
-	return __(
-		'Could not get a valid response from the server.',
-		'woocommerce-fraud-protection'
-	);
+	return INVALID_RESPONSE_MESSAGE;
 };
 
 const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
@@ -72,6 +107,9 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 		case 'START_REQUEST':
 			return {
 				...state,
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
 				query: action.query,
 				requestId: action.requestId,
 				isLoading: true,
@@ -143,13 +181,12 @@ const actions = {
 				}
 			} );
 			try {
-				const response = await apiFetch< {
-					data: Rule[];
-					totalItems: number;
-					totalPages: number;
-				} >( {
+				const response = await apiFetch< unknown >( {
 					path: `/wc-fraud-protection/v1/rules?${ params.toString() }`,
 				} );
+				if ( ! isRulesResponse( response ) ) {
+					throw new Error( INVALID_RESPONSE_MESSAGE );
+				}
 				dispatch.receiveRules( response, requestId );
 				return response;
 			} catch ( error ) {

@@ -185,6 +185,33 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Exact value filters preserve supported email characters.
+	 */
+	public function test_get_rules_exact_value_filter_preserves_supported_email_characters(): void {
+		$this->rule_store->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'buyer%20tag@example.com',
+			)
+		);
+
+		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request->set_query_params(
+			array(
+				'type'  => 'email',
+				'value' => 'buyer%20tag@example.com',
+			)
+		);
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 1, $response->get_data()['totalItems'] );
+		$this->assertSame( 'buyer%20tag@example.com', $response->get_data()['data'][0]['value'] );
+	}
+
+	/**
 	 * @testdox The rules endpoint accepts the supported server sort fields and direction.
 	 */
 	public function test_get_rules_sorts_on_the_server(): void {

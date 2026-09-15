@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
-import { format } from '@wordpress/date';
+import { dateI18n } from '@wordpress/date';
 import {
 	EmptyState,
 	Icon,
@@ -20,6 +20,7 @@ import { useRules } from './hooks/use-rules';
 import { getFraudProtectionRoute } from './navigation';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
+const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const ruleActions = [
 	{ value: 'allow', label: __( 'Allow', 'woocommerce-fraud-protection' ) },
@@ -88,7 +89,8 @@ const fields: Field< Rule >[] = [
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
-		render: ( { item } ) => format( 'j M Y', item.created_at ),
+		render: ( { item } ) =>
+			dateI18n( 'j M Y', item.created_at, browserTimeZone ),
 	},
 ];
 
