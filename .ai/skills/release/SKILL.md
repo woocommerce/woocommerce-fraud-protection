@@ -14,7 +14,7 @@ Prepare a release pull request and use the protected GitHub Actions workflow to 
 
 ## Instructions
 
-1. Read the version from the `YYYY-xx-xx` block at the top of `changelog.txt`, the current package version, and the latest published release. Use the requested version when supplied. Otherwise, propose the placeholder version. Stop if the version is already published or the requested version does not match the placeholder. A matching draft release can be resumed.
+1. Read the version from the `YYYY-xx-xx` block at the top of `changelog.txt`, the current package version, and the latest published release. Use the requested version when supplied. Otherwise, propose the placeholder version. Stop if the version is already published or the requested version does not match the placeholder. A matching draft release can be resumed. If the user asks only to verify or recover the translation import for an exact matching public release, do not rebuild or republish it; follow step 11.
 
 2. Review commits and pull requests since the latest release. Confirm that every merchant-facing or developer-facing change has an accurate entry in the placeholder block. Do not add entries for tests, CI, documentation, internal refactoring, or a defect introduced and fixed within this release cycle.
 
@@ -49,7 +49,9 @@ Prepare a release pull request and use the protected GitHub Actions workflow to 
 
 10. The workflow validates the branch, target branch, version, changelog, pull request state, and required checks. It builds the release ZIP in CI and derives a QIT ZIP that adds only the dependency manifests needed for audits. QIT runs its activation and security tests against the QIT ZIP. The workflow then waits at the `release` environment before publication. Ask the user to download the release ZIP artifact and complete smoke tests on representative WoA test sites. Wait for confirmation that the smoke tests passed, then ask the user to approve the environment job. Do not create the tag or GitHub release locally.
 
-11. After the workflow completes, verify that the release is public, its tag targets the tested release commit, and `woocommerce-fraud-protection.zip` is attached. Ask the user to merge the release pull request with a merge commit. Do not use squash or rebase. Verify that the tag commit is an ancestor of the target branch, then report the release and pull request URLs.
+11. After the workflow completes, verify that the release is public, its tag targets the tested release commit, and `woocommerce-fraud-protection.zip` is attached. The release remains successful if the workflow warns that the translation import request was not confirmed. Because the import runs asynchronously, read `https://translate.wordpress.com/-language-packs/debug/woocommerce/extensions/woocommerce-fraud-protection` with bounded retries. Inspect the response directly and confirm that the release tag, with dots replaced by underscores, appears as the **Latest plugin version**. Do not use a fixed JSON or HTML parsing script. This confirms that the POT import completed; it does not confirm that language packs were generated.
+
+   If the expected version does not appear within the bounded wait, report that the release is published but its translation import is not confirmed. Tell the operator to inspect the response and, only when the version is absent, retry the POST request once outside the release workflow at `https://translate.wordpress.com/api/import-new-release/woocommerce/woocommerce-fraud-protection/<tag>`. Do not retry automatically. Recheck the latest plugin version after the operator retries. Ask the user to merge the release pull request with a merge commit regardless of the separate translation warning. Do not use squash or rebase. Verify that the tag commit is an ancestor of the target branch, then report the release and pull request URLs together with the translation import status.
 
 ## Requirements
 

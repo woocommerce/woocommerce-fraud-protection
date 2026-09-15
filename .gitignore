@@ -65,6 +65,7 @@ woocommerce-fraud-protection.zip
 woocommerce-fraud-protection-qit.zip
 release-notes.txt
 build/
+/languages/
 .DS_Store
 
 # Claude local config files
