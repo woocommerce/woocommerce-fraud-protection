@@ -753,7 +753,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox Active detail is public and a soft-deleted rule is absent from detail and list responses.
 	 */
 	public function test_detail_and_list_hide_deleted_rules(): void {
-		$rule   = $this->rule_store->create_rule(
+		$rule = $this->rule_store->create_rule(
 			FraudDecision::Allow,
 			array(
 				'field'    => 'email',
