@@ -1,11 +1,14 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-2026-xx-xx - version 0.2.4
+2026-xx-xx - version 0.2.5
 * Added - Checkout attempts list on the Fraud prevention settings page showing recent attempts and how each was handled, with filtering, sorting and search.
+
+2026-09-14 - version 0.2.4
 * Added - Inbox invitation to enable automatic protection during early access.
 * Added - Merchants can opt out before automatic protection is enabled automatically.
 * Updated - Performance summary now labels flagged checkout attempts and hides that metric when automatic protection is enabled.
 * Updated - Fraud Protection scripts now load on PayPal Payments pages that use PayPal JavaScript SDK v6.
+* Fixed - Fraud Protection scripts load for PayPal buttons on block-theme payment forms and classic mini-cart widgets.
 
 2026-09-10 - version 0.2.3
 * Added - Fraud prevention settings now show a 30-day summary of protected payment attempts.
