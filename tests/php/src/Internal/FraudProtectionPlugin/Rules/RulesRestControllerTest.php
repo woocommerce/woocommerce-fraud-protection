@@ -736,26 +736,204 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Unauthenticated and unauthorized users cannot read or create rules.
+	 * @testdox Active detail is public and a soft-deleted rule is absent from detail and list responses.
+	 */
+	public function test_detail_and_list_hide_deleted_rules(): void {
+		$rule   = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'active@example.com',
+			)
+		);
+		$path   = '/wc-fraud-protection/v1/rules/' . $rule->id;
+		$active = $this->server->dispatch( new \WP_REST_Request( 'GET', $path ) );
+
+		$this->assertSame( 200, $active->get_status() );
+		$this->assertSame( 'active@example.com', $active->get_data()['value'] );
+		$this->assertTrue( $this->rule_store->delete_rule( $rule->id ) );
+
+		$deleted = $this->server->dispatch( new \WP_REST_Request( 'GET', $path ) );
+		$list    = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$this->assertSame( 404, $deleted->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_rule_not_found', $deleted->as_error()->get_error_code() );
+		$this->assertSame( 0, $list->get_data()['totalItems'] );
+	}
+
+	/**
+	 * @testdox A changed update normalizes fields, sends no feedback, and tracks only approved values.
+	 */
+	public function test_update_rule_tracks_changed_write_without_feedback(): void {
+		$rule       = $this->rule_store->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'old@example.com',
+			)
+		);
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'update', FraudDecision::Allow, 'email', 'rules' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request->set_body_params(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'value'  => ' Updated@Example.com ',
+				'origin' => 'rules',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'allow', $response->get_data()['action'] );
+		$this->assertSame( 'updated@example.com', $response->get_data()['value'] );
+	}
+
+	/**
+	 * @testdox A normalized no-op update changes no audit data and sends no telemetry.
+	 */
+	public function test_no_op_update_preserves_audit_data_and_sends_no_telemetry(): void {
+		$rule      = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'same@example.com',
+			)
+		);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request->set_body_params(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'value'  => ' SAME@example.com ',
+				'origin' => 'rules',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+		$stored   = $this->rule_store->get_rule( $rule->id );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertNull( $stored->updated_at );
+		$this->assertNull( $stored->updated_by );
+	}
+
+	/**
+	 * @testdox Delete soft-deletes once, sends no feedback, and tracks the deleted rule.
+	 */
+	public function test_delete_rule_tracks_success_only_without_feedback(): void {
+		$rule       = $this->rule_store->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '203.0.113.12',
+			)
+		);
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'delete', FraudDecision::Block, 'ip', 'rules' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request->set_query_params( array( 'origin' => 'rules' ) );
+
+		$response = $this->server->dispatch( $request );
+		$missing  = $this->server->dispatch( $request );
+
+		$this->assertSame( 204, $response->get_status() );
+		$this->assertSame( 404, $missing->get_status() );
+	}
+
+	/**
+	 * @testdox Failed updates cannot change status or position and send no telemetry.
+	 */
+	public function test_update_rejects_management_fields_without_writing_or_tracking(): void {
+		$rule      = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'same@example.com',
+			)
+		);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request->set_body_params(
+			array(
+				'action'   => 'block',
+				'type'     => 'email',
+				'value'    => 'same@example.com',
+				'status'   => 'deleted',
+				'position' => 99,
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+		$stored   = $this->rule_store->get_rule( $rule->id );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( FraudDecision::Allow, $stored->action );
+		$this->assertSame( 1, $stored->position );
+	}
+
+	/**
+	 * @testdox Unauthenticated and unauthorized users cannot read or write rules.
 	 */
 	public function test_permissions_require_woocommerce_management(): void {
+		$rule   = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'existing@example.com',
+			)
+		);
 		$params = array(
 			'action' => 'allow',
 			'type'   => 'email',
 			'value'  => 'customer@example.com',
 		);
 		wp_set_current_user( 0 );
+		$unauthenticated_update_request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$unauthenticated_update_request->set_body_params( $params );
 		$unauthenticated        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
 		$unauthenticated_create = $this->dispatch_create( $params );
+		$unauthenticated_detail = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+		$unauthenticated_update = $this->server->dispatch( $unauthenticated_update_request );
+		$unauthenticated_delete = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
 		$customer_id            = wc_create_new_customer( 'rules-customer@example.com', 'rules-customer', 'password' );
 		wp_set_current_user( $customer_id );
+		$unauthorized_update_request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$unauthorized_update_request->set_body_params( $params );
 		$unauthorized        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
 		$unauthorized_create = $this->dispatch_create( $params );
+		$unauthorized_detail = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+		$unauthorized_update = $this->server->dispatch( $unauthorized_update_request );
+		$unauthorized_delete = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
 
 		$this->assertSame( 401, $unauthenticated->get_status() );
 		$this->assertSame( 401, $unauthenticated_create->get_status() );
+		$this->assertSame( 401, $unauthenticated_detail->get_status() );
+		$this->assertSame( 401, $unauthenticated_update->get_status() );
+		$this->assertSame( 401, $unauthenticated_delete->get_status() );
 		$this->assertSame( 403, $unauthorized->get_status() );
 		$this->assertSame( 403, $unauthorized_create->get_status() );
-		$this->assert_no_active_rules();
+		$this->assertSame( 403, $unauthorized_detail->get_status() );
+		$this->assertSame( 403, $unauthorized_update->get_status() );
+		$this->assertSame( 403, $unauthorized_delete->get_status() );
+		$this->assertSame( 1, $this->rule_store->get_active_rules_page()['total'] );
 	}
 }

@@ -624,6 +624,86 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Changing a Block rule to Allow moves it to the end of the Allow group.
+	 */
+	public function test_block_to_allow_moves_rule_to_end_of_allow_group(): void {
+		$allow   = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block_1 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-1@example.com' ) );
+		$block_2 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-2@example.com' ) );
+
+		$this->sut->update_rule( $block_2->id, FraudDecision::Allow );
+
+		$this->assertSame(
+			array( $allow->id, $block_2->id, $block_1->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
+	 * @testdox Changing an Allow rule to Block moves it after the last live rule.
+	 */
+	public function test_allow_to_block_moves_rule_after_last_live_rule(): void {
+		$allow_1 = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-1@example.com' ) );
+		$allow_2 = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-2@example.com' ) );
+		$block   = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
+
+		$this->sut->update_rule( $allow_1->id, FraudDecision::Block );
+
+		$this->assertSame(
+			array( $allow_2->id, $block->id, $allow_1->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
+	 * @testdox A failed action update does not move any rule.
+	 */
+	public function test_failed_action_update_preserves_rule_order(): void {
+		$allow   = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block_1 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-1@example.com' ) );
+		$block_2 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-2@example.com' ) );
+
+		try {
+			$this->sut->update_rule( $block_2->id, FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+			$this->fail( 'A DuplicateRuleException was expected' );
+		} catch ( DuplicateRuleException ) {
+			$this->assertSame(
+				array( $allow->id, $block_1->id, $block_2->id ),
+				array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+			);
+		}
+	}
+
+	/**
+	 * @testdox A rule deleted before its action update executes does not move other rules.
+	 */
+	public function test_concurrent_delete_prevents_action_group_move(): void {
+		global $wpdb;
+
+		$allow  = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
+		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = static function ( string $query ) use ( $wpdb, $table, $target, &$filter ): string {
+			if ( ! str_contains( $query, "UPDATE {$table} AS moving INNER JOIN" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET status = %s WHERE id = %d", RuleStatus::Deleted->value, $target->id ) );
+
+			return $query;
+		};
+		add_filter( 'query', $filter );
+
+		$this->assertNull( $this->sut->update_rule( $target->id, FraudDecision::Allow ) );
+		remove_filter( 'query', $filter );
+
+		$this->assertSame( 1, (int) $this->row_for( $allow->id )['position'] );
+		$this->assertSame( 2, (int) $this->row_for( $block->id )['position'] );
+	}
+
+	/**
 	 * @testdox Should reject an update whose conditions duplicate another live rule.
 	 */
 	public function test_update_rejects_duplicate_conditions(): void {

@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\RuleStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
 defined( 'ABSPATH' ) || exit;
@@ -125,6 +126,29 @@ class RulesRestController extends \WP_REST_Controller {
 					'callback'            => array( $this, 'create_rule' ),
 					'permission_callback' => array( $this, 'permissions_check' ),
 					'args'                => $this->get_create_request_args(),
+				),
+				'schema' => array( $this, 'get_public_item_schema' ),
+			)
+		);
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/' . $this->rest_base . '/(?P<id>[\d]+)',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_rule' ),
+					'permission_callback' => array( $this, 'permissions_check' ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::EDITABLE,
+					'callback'            => array( $this, 'update_rule' ),
+					'permission_callback' => array( $this, 'permissions_check' ),
+					'args'                => $this->get_update_request_args(),
+				),
+				array(
+					'methods'             => \WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'delete_rule' ),
+					'permission_callback' => array( $this, 'permissions_check' ),
 				),
 				'schema' => array( $this, 'get_public_item_schema' ),
 			)
@@ -284,17 +308,7 @@ class RulesRestController extends \WP_REST_Controller {
 		try {
 			$rule = $this->rule_store->create_rule( $decision, $conditions, $session_id, $source_meta );
 		} catch ( DuplicateRuleException $error ) {
-			$existing        = $this->rule_store->get_rule( $error->existing_rule_id );
-			$existing_action = $existing instanceof Rule ? $existing->action->value : null;
-			return new \WP_Error(
-				'woocommerce_fraud_protection_duplicate_rule',
-				$this->duplicate_rule_message( $type, $existing_action ),
-				array(
-					'status'  => 409,
-					'rule_id' => $error->existing_rule_id,
-					'action'  => $existing_action,
-				)
-			);
+			return $this->duplicate_rule_error( $error, $type );
 		} catch ( \InvalidArgumentException ) {
 			return $this->invalid_create_error();
 		} catch ( \RuntimeException ) {
@@ -327,12 +341,169 @@ class RulesRestController extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Return one active rule.
+	 *
+	 * @internal
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function get_rule( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		if ( ! $this->schema_manager->is_schema_installed() ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+		}
+
+		$rule = $this->get_active_rule( (int) $request->get_param( 'id' ) );
+		return $rule instanceof Rule ? rest_ensure_response( $this->to_public_rule( $rule ) ) : $this->rule_not_found_error();
+	}
+
+	/**
+	 * Update one active rule.
+	 *
+	 * @internal
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function update_rule( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		if ( ! $this->schema_manager->is_schema_installed() ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+		}
+		if ( $request->has_param( 'position' ) || $request->has_param( 'status' ) ) {
+			return $this->invalid_update_error();
+		}
+
+		$id       = (int) $request->get_param( 'id' );
+		$existing = $this->get_active_rule( $id );
+		if ( ! $existing instanceof Rule ) {
+			return $this->rule_not_found_error();
+		}
+
+		$action = $request->get_param( 'action' );
+		$type   = $request->get_param( 'type' );
+		$value  = $request->get_param( 'value' );
+		if ( ! is_string( $action ) || ! is_string( $type ) || ! is_string( $value ) ) {
+			return $this->invalid_update_error();
+		}
+		$decision   = FraudDecision::tryFrom( $action );
+		$conditions = RuleConditions::validate_and_normalize(
+			array(
+				'field'    => $type,
+				'operator' => 'equals',
+				'value'    => $value,
+			)
+		);
+		if ( ! $decision instanceof FraudDecision || ! in_array( $decision, FraudDecision::ACTIONABLE, true ) || is_null( $conditions ) ) {
+			return $this->invalid_update_error();
+		}
+
+		$changed = $decision !== $existing->action || $conditions !== $existing->conditions;
+		if ( ! $changed ) {
+			return rest_ensure_response( $this->to_public_rule( $existing ) );
+		}
+
+		try {
+			$updated = $this->rule_store->update_rule( $id, $decision, $conditions );
+		} catch ( DuplicateRuleException $error ) {
+			return $this->duplicate_rule_error( $error, $type );
+		} catch ( \InvalidArgumentException ) {
+			return $this->invalid_update_error();
+		} catch ( \RuntimeException ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_rule_update_failed', __( 'The rule could not be updated.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+		}
+		if ( ! $updated instanceof Rule ) {
+			return $this->rule_not_found_error();
+		}
+
+		$this->telemetry->record_rule_change( 'update', $decision, $type, $this->get_origin( $request ) );
+		return rest_ensure_response( $this->to_public_rule( $updated ) );
+	}
+
+	/**
+	 * Soft-delete one active rule.
+	 *
+	 * @internal
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function delete_rule( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		if ( ! $this->schema_manager->is_schema_installed() ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+		}
+
+		$id   = (int) $request->get_param( 'id' );
+		$rule = $this->get_active_rule( $id );
+		if ( ! $rule instanceof Rule ) {
+			return $this->rule_not_found_error();
+		}
+
+		try {
+			$deleted = $this->rule_store->delete_rule( $id );
+		} catch ( \RuntimeException ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_rule_delete_failed', __( 'The rule could not be deleted.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+		}
+		if ( ! $deleted ) {
+			return $this->rule_not_found_error();
+		}
+
+		$type = (string) ( $rule->conditions['field'] ?? '' );
+		$this->telemetry->record_rule_change( 'delete', $rule->action, $type, $this->get_origin( $request ) );
+		return new \WP_REST_Response( null, 204 );
+	}
+
+	/**
 	 * Return the common invalid create response.
 	 *
 	 * @return \WP_Error
 	 */
 	private function invalid_create_error(): \WP_Error {
 		return new \WP_Error( 'woocommerce_fraud_protection_invalid_rule', __( 'Enter a complete email address or IP address.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
+	}
+
+	/**
+	 * Return the common invalid update response.
+	 */
+	private function invalid_update_error(): \WP_Error {
+		return new \WP_Error( 'woocommerce_fraud_protection_invalid_rule', __( 'Enter a complete email address or IP address.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
+	}
+
+	/**
+	 * Return a missing active rule response.
+	 */
+	private function rule_not_found_error(): \WP_Error {
+		return new \WP_Error( 'woocommerce_fraud_protection_rule_not_found', __( 'The rule could not be found.', 'woocommerce-fraud-protection' ), array( 'status' => 404 ) );
+	}
+
+	/**
+	 * Read an active rule by ID.
+	 *
+	 * @param int $id Rule ID.
+	 */
+	private function get_active_rule( int $id ): ?Rule {
+		$rule = $id > 0 ? $this->rule_store->get_rule( $id ) : null;
+		return $rule instanceof Rule && RuleStatus::Active === $rule->status ? $rule : null;
+	}
+
+	/**
+	 * Return a duplicate response with the active rule ID.
+	 *
+	 * @param DuplicateRuleException $error Duplicate rule error.
+	 * @param string                 $type  Submitted rule type.
+	 */
+	private function duplicate_rule_error( DuplicateRuleException $error, string $type ): \WP_Error {
+		$existing        = $this->get_active_rule( $error->existing_rule_id );
+		$existing_action = $existing instanceof Rule ? $existing->action->value : null;
+
+		return new \WP_Error(
+			'woocommerce_fraud_protection_duplicate_rule',
+			$this->duplicate_rule_message( $type, $existing_action ),
+			array(
+				'status'  => 409,
+				'rule_id' => $existing instanceof Rule ? $existing->id : 0,
+				'action'  => $existing_action,
+			)
+		);
 	}
 
 	/**
@@ -353,6 +524,16 @@ class RulesRestController extends \WP_REST_Controller {
 		return $is_allow
 			? __( 'This IP is already allowed by a rule.', 'woocommerce-fraud-protection' )
 			: __( 'This IP is already blocked by a rule.', 'woocommerce-fraud-protection' );
+	}
+
+	/**
+	 * Return the accepted analytics origin.
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 */
+	private function get_origin( \WP_REST_Request $request ): string {
+		$origin = $request->get_param( 'origin' );
+		return in_array( $origin, array( 'rules', 'checkout_attempts' ), true ) ? $origin : 'api';
 	}
 
 	/**
@@ -482,6 +663,31 @@ class RulesRestController extends \WP_REST_Controller {
 			'origin'              => array(
 				'type' => 'string',
 			),
+		);
+	}
+
+	/**
+	 * REST argument definitions for updates.
+	 *
+	 * @return array<string, array<string, mixed>>
+	 */
+	private function get_update_request_args(): array {
+		return array(
+			'action' => array(
+				'required' => true,
+				'type'     => 'string',
+				'enum'     => array( FraudDecision::Allow->value, FraudDecision::Block->value ),
+			),
+			'type'   => array(
+				'required' => true,
+				'type'     => 'string',
+				'enum'     => array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ),
+			),
+			'value'  => array(
+				'required' => true,
+				'type'     => 'string',
+			),
+			'origin' => array( 'type' => 'string' ),
 		);
 	}
 

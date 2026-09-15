@@ -188,6 +188,9 @@ class RuleStore {
 
 		if ( ! is_null( $action ) ) {
 			$changes['action'] = $action->value;
+			if ( $action !== $rule->action ) {
+				$changes['position'] = $this->get_moved_position( $rule, $action );
+			}
 		}
 
 		if ( ! is_null( $status ) ) {
@@ -215,7 +218,10 @@ class RuleStore {
 			$changes['condition_hash'] = $new_hash;
 		}
 
-		if ( false === $this->run_write_query( $this->build_update_sql( $changes, $id ) ) ) {
+		$sql = isset( $changes['position'] ) && ! is_null( $action ) && $action !== $rule->action
+			? $this->build_action_move_sql( $changes, $rule )
+			: $this->build_update_sql( $changes, $id );
+		if ( false === $this->run_write_query( $sql ) ) {
 			// The unique hash key is the backstop for a concurrent write of the
 			// same conditions: re-check so a lost race reports as a duplicate,
 			// not a failure.
@@ -611,6 +617,78 @@ class RuleStore {
 		}
 
 		return is_null( $max_position ) ? 1 : (int) $max_position + 1;
+	}
+
+	/**
+	 * Get the position at the end of a rule's new action group.
+	 *
+	 * @param Rule          $rule   Existing rule.
+	 * @param FraudDecision $action New action.
+	 * @return int New position.
+	 */
+	private function get_moved_position( Rule $rule, FraudDecision $action ): int {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_rules_table_name();
+		if ( FraudDecision::Allow === $action ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$position = $wpdb->get_var( $wpdb->prepare( "SELECT MIN(position) FROM {$table} WHERE status != %s AND action = %s", RuleStatus::Deleted->value, FraudDecision::Block->value ) );
+
+			return is_null( $position ) ? $rule->position : (int) $position;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$position = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(position) FROM {$table} WHERE status != %s", RuleStatus::Deleted->value ) );
+
+		return is_null( $position ) ? $rule->position : (int) $position;
+	}
+
+	/**
+	 * Build one update that changes the action and moves the rule while keeping positions unique.
+	 *
+	 * @param array<string, mixed> $changes Target rule changes.
+	 * @param Rule                 $rule    Existing rule.
+	 * @return string Prepared SQL.
+	 */
+	private function build_action_move_sql( array $changes, Rule $rule ): string {
+		global $wpdb;
+
+		$new_position = (int) $changes['position'];
+		$assignments  = array();
+		$set_values   = array();
+		foreach ( $changes as $column => $value ) {
+			if ( 'position' === $column ) {
+				continue;
+			}
+			if ( is_null( $value ) ) {
+				$assignments[] = "moving.{$column} = IF(moving.id = %d, NULL, moving.{$column})";
+				$set_values[]  = $rule->id;
+			} else {
+				$placeholder   = is_int( $value ) ? '%d' : '%s';
+				$assignments[] = "moving.{$column} = IF(moving.id = %d, {$placeholder}, moving.{$column})";
+				$set_values[]  = $rule->id;
+				$set_values[]  = $value;
+			}
+		}
+
+		if ( $new_position < $rule->position ) {
+			$assignments[] = 'moving.position = CASE WHEN moving.id = %d THEN %d WHEN moving.position >= %d AND moving.position < %d THEN moving.position + 1 ELSE moving.position END';
+			$set_values    = array_merge( $set_values, array( $rule->id, $new_position, $new_position, $rule->position ) );
+			$range_sql     = 'moving.position >= %d AND moving.position < %d';
+			$range_values  = array( $new_position, $rule->position );
+		} else {
+			$assignments[] = 'moving.position = CASE WHEN moving.id = %d THEN %d WHEN moving.position > %d AND moving.position <= %d THEN moving.position - 1 ELSE moving.position END';
+			$set_values    = array_merge( $set_values, array( $rule->id, $new_position, $rule->position, $new_position ) );
+			$range_sql     = 'moving.position > %d AND moving.position <= %d';
+			$range_values  = array( $rule->position, $new_position );
+		}
+
+		$table  = $this->schema_manager->get_rules_table_name();
+		$values = array_merge( array( $rule->id, RuleStatus::Deleted->value ), $set_values, array( $rule->id ), $range_values, array( RuleStatus::Deleted->value ) );
+		$sql    = "UPDATE {$table} AS moving INNER JOIN {$table} AS target ON target.id = %d AND target.status != %s SET " . implode( ', ', $assignments ) . ' WHERE (moving.id = %d OR (' . $range_sql . ')) AND moving.status != %s';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return $wpdb->prepare( $sql, $values );
 	}
 
 	/**
