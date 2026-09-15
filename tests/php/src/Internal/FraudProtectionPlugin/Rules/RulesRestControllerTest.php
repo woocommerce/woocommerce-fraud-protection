@@ -223,6 +223,40 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox A missing rules schema returns a generic 503 error.
+	 */
+	public function test_get_rules_returns_503_when_schema_is_unavailable(): void {
+		update_option( SchemaManager::DB_VERSION_OPTION, 0 );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$error    = $response->as_error();
+
+		$this->assertSame( 503, $response->get_status() );
+		$this->assertInstanceOf( \WP_Error::class, $error );
+		$this->assertSame( 'woocommerce_fraud_protection_rules_not_loaded', $error->get_error_code() );
+		$this->assertSame( 'The fraud prevention rules could not be loaded.', $error->get_error_message() );
+		$this->assertSame( 503, $error->get_error_data()['status'] );
+	}
+
+	/**
+	 * @testdox A rules query failure returns a generic 500 error.
+	 */
+	public function test_get_rules_returns_500_when_query_fails(): void {
+		$rule_store = $this->createMock( RuleStore::class );
+		$rule_store->expects( $this->once() )->method( 'get_active_rules_page' )->willThrowException( new \RuntimeException( 'database details' ) );
+		$this->sut->init( $rule_store, $this->schema_manager );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$error    = $response->as_error();
+
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertInstanceOf( \WP_Error::class, $error );
+		$this->assertSame( 'woocommerce_fraud_protection_rules_not_loaded', $error->get_error_code() );
+		$this->assertSame( 'The fraud prevention rules could not be loaded.', $error->get_error_message() );
+		$this->assertSame( 500, $error->get_error_data()['status'] );
+	}
+
+	/**
 	 * @testdox Unauthenticated and unauthorized users cannot read rules.
 	 */
 	public function test_permissions_require_woocommerce_management(): void {
