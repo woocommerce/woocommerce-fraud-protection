@@ -1,12 +1,5 @@
 import '@testing-library/jest-dom';
-import {
-	act,
-	fireEvent,
-	render,
-	screen,
-	waitFor,
-	within,
-} from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -76,6 +69,9 @@ const settingsResponse = (
 ) => ( {
 	automatic_protection: automaticProtection,
 	automatic_protection_opted_out: optedOut,
+	automatic_protection_enabled_at: automaticProtection
+		? '2026-04-20T00:00:00'
+		: null,
 	performance,
 } );
 
@@ -137,7 +133,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.getByRole( 'presentation' ) ).toBeInTheDocument();
 		expect( screen.getAllByRole( 'status' ) ).toHaveLength( 2 );
 		expect(
-			screen.getByText( 'Loading automatic protection setting.' )
+			screen.getByText( 'Loading automatic fraud prevention setting.' )
 		).toBeInTheDocument();
 		expect(
 			screen.getByText( 'Loading performance results.' )
@@ -158,7 +154,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).not.toBeInTheDocument();
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
-			screen.getByRole( 'heading', { name: 'Automatic protection' } )
+			screen.getByRole( 'heading', { name: 'Fraud prevention' } )
 		).toBeInTheDocument();
 		expect(
 			screen.getByText(
@@ -207,7 +203,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'shows all four performance outcomes when automatic protection is disabled', async () => {
+	it( 'shows all four performance outcomes when automatic fraud prevention is disabled', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, {
 				flagged_by_fraud_prevention: 12,
@@ -251,7 +247,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toBeInTheDocument();
 		expect(
 			performance.getByRole( 'link', {
-				name: 'View checkout sessions',
+				name: 'View checkout attempts',
 			} )
 		).toHaveAttribute(
 			'href',
@@ -259,7 +255,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 	} );
 
-	it( 'hides flagged checkout attempts when automatic protection is enabled', async () => {
+	it( 'hides flagged checkout attempts when automatic fraud prevention is enabled', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( true, {
 				flagged_by_fraud_prevention: 12,
@@ -536,7 +532,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 	} );
 
-	it( 'shows the opt-out actions and dismisses the notice', async () => {
+	it( 'shows the opt-out actions and offers no dismiss on the opt-out notice', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, performanceWithFlagged( 12 ) )
 		);
@@ -554,14 +550,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 			'https://woocommerce.com/document/fraud-protection/'
 		);
 
-		fireEvent.click(
-			screen.getByRole( 'button', {
-				name: 'Dismiss automatic protection notice',
-			} )
-		);
+		// The opt-out notice presents a decision, so it cannot be dismissed.
 		expect(
 			screen.queryByRole( 'button', {
-				name: 'Opt out of automatic blocking',
+				name: 'Dismiss automatic fraud prevention notice',
 			} )
 		).not.toBeInTheDocument();
 	} );
@@ -576,7 +568,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			name: '12 checkout attempts',
 		} );
 		expect( countLink.parentElement ).toHaveTextContent(
-			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.'
+			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.'
 		);
 		expect(
 			screen.queryByRole( 'button', {
@@ -586,14 +578,22 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect(
 			screen.queryByRole( 'link', { name: 'Learn more' } )
 		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Dismiss automatic fraud prevention notice',
+			} )
+		).not.toBeInTheDocument();
 	} );
 
 	it.each( [
 		[
 			false,
-			'Automatic protection is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+			'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 		],
-		[ true, 'Automatic protection is off. We recommend turning it on.' ],
+		[
+			true,
+			'Automatic fraud prevention is off. We recommend turning it on.',
+		],
 	] )(
 		'shows count-free copy when opted-out is %s and no attempts were flagged',
 		async ( optedOut, copy ) => {
@@ -602,7 +602,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			);
 			renderSettings();
 
-			expect( await screen.findByText( copy ) ).toBeVisible();
+			expect( await findVisibleText( copy ) ).toBeVisible();
 			expect(
 				screen.queryByRole( 'link', { name: '0 checkout attempts' } )
 			).not.toBeInTheDocument();

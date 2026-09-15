@@ -184,7 +184,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->automatic_protection_set( array( $value ) );
 
-		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
+		$this->assertSame( array( 'The automatic fraud prevention setting was updated.' ), $this->wp_cli_successes );
 	}
 
 	/**
@@ -199,7 +199,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->automatic_protection_set( array( 'default' ) );
 
-		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
+		$this->assertSame( array( 'The automatic fraud prevention setting was updated.' ), $this->wp_cli_successes );
 	}
 
 	/**
@@ -230,7 +230,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
 
 		$this->expectException( WPCLIErrorException::class );
-		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->expectExceptionMessage( 'The automatic fraud prevention setting could not be saved.' );
 		$this->sut->automatic_protection_set( array( $value ) );
 	}
 
@@ -245,7 +245,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			->willReturn( false );
 
 		$this->expectException( WPCLIErrorException::class );
-		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->expectExceptionMessage( 'The automatic fraud prevention setting could not be saved.' );
 		$this->sut->automatic_protection_set( array( 'default' ) );
 	}
 
@@ -288,9 +288,9 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
 		$this->assertStringContainsString( 'Merchant-facing features status: default_disabled', $output );
-		$this->assertStringContainsString( 'Automatic protection status: default_disabled', $output );
-		$this->assertStringContainsString( 'Automatic protection source: none', $output );
-		$this->assertStringContainsString( 'Automatic protection opted out at: Not opted out', $output );
+		$this->assertStringContainsString( 'Automatic fraud prevention status: default_disabled', $output );
+		$this->assertStringContainsString( 'Automatic fraud prevention source: none', $output );
+		$this->assertStringContainsString( 'Automatic fraud prevention opted out at: Not opted out', $output );
 		$this->assertStringNotContainsString( 'code default', $output );
 		$this->assertStringNotContainsString( 'stored state', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
@@ -340,7 +340,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->status();
 
-		$this->assertContains( 'Automatic protection opted out at: 2026-09-11 12:00:00 UTC', $this->wp_cli_lines );
+		$this->assertContains( 'Automatic fraud prevention opted out at: 2026-09-11 12:00:00 UTC', $this->wp_cli_lines );
 	}
 
 	/**

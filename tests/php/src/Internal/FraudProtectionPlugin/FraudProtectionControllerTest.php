@@ -215,6 +215,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
 		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
+		$this->assertFalse( has_filter( 'woocommerce_admin_get_user_data_fields', array( $this->sut, 'add_user_data_fields' ) ) );
 	}
 
 	/**
@@ -231,9 +232,14 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
 		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'maybe_add_note' ) ) );
 		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+		$this->assertNotFalse( has_filter( 'woocommerce_admin_get_user_data_fields', array( $this->sut, 'add_user_data_fields' ) ) );
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );
 		$this->assertContains( $container->get( FraudProtectionSettingsPage::class ), $pages );
+		// The checkout-attempts banner preference is allow-listed so the client can persist it.
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		$fields = apply_filters( 'woocommerce_admin_get_user_data_fields', array() );
+		$this->assertContains( 'fraud_protection_checkout_attempts_banner_dismissed', $fields );
 	}
 
 	/**

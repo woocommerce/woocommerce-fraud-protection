@@ -145,7 +145,7 @@ export function PerformanceCard( {
 							render={ <Link to={ checkoutAttemptsHref } /> }
 						>
 							{ __(
-								'View checkout sessions',
+								'View checkout attempts',
 								'woocommerce-fraud-protection'
 							) }
 						</LinkButton>

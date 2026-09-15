@@ -129,12 +129,17 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	}
 
 	/**
-	 * Preload settings data on the settings route.
+	 * Preload the settings REST data on the routes that read it.
+	 *
+	 * Both the settings pane and the checkout attempts list read the
+	 * automatic-protection state from the settings store, so its initial GET is
+	 * preloaded on either route. Other routes do not, so the query does not run
+	 * where it is not needed.
 	 */
 	private function maybe_preload_settings_data(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The route only controls which read-only data is preloaded.
 		$route_path = isset( $_GET['path'] ) ? sanitize_text_field( wp_unslash( $_GET['path'] ) ) : null;
-		if ( null !== $route_path && '/' !== $route_path ) {
+		if ( null !== $route_path && '/' !== $route_path && '/checkout-attempts' !== $route_path ) {
 			return;
 		}
 

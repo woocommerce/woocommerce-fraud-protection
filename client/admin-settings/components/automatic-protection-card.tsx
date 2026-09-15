@@ -1,9 +1,10 @@
-import { createInterpolateElement, useState } from '@wordpress/element';
+import { createInterpolateElement } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { Card, Checkbox, Notice, Spinner, Stack, Text } from '@wordpress/ui';
+import { Card, Notice, Stack } from '@wordpress/ui';
 import { Link } from 'react-router-dom';
 
 import { getFraudProtectionRoute } from '../navigation';
+import { AutomaticProtectionControl } from './automatic-protection-control';
 
 type AutomaticProtectionCardProps = {
 	checked: boolean;
@@ -30,28 +31,24 @@ export function AutomaticProtectionCard( {
 	flaggedByFraudPreventionCount,
 	savedAutomaticProtection,
 }: AutomaticProtectionCardProps ) {
-	const [ isNoticeDismissed, setIsNoticeDismissed ] = useState( false );
-	const showNotice =
-		! isLoading &&
-		savedAutomaticProtection === false &&
-		! isNoticeDismissed;
+	const showNotice = ! isLoading && savedAutomaticProtection === false;
 	let noticeText: string;
 	if ( 0 === flaggedByFraudPreventionCount ) {
 		noticeText = optedOut
 			? __(
-					'Automatic protection is off. We recommend turning it on.',
+					'Automatic fraud prevention is off. We recommend turning it on.',
 					'woocommerce-fraud-protection'
 			  )
 			: __(
-					'Automatic protection is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+					'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 					'woocommerce-fraud-protection'
 			  );
 	} else if ( optedOut ) {
 		noticeText = sprintf(
 			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
 			_n(
-				'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
-				'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic protection is off. We recommend turning it on.',
+				'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.',
+				'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.',
 				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
@@ -61,8 +58,8 @@ export function AutomaticProtectionCard( {
 		noticeText = sprintf(
 			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
 			_n(
-				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
-				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
@@ -77,62 +74,18 @@ export function AutomaticProtectionCard( {
 		>
 			<Card.Header>
 				<Card.Title render={ <h2 /> }>
-					{ __(
-						'Automatic protection',
-						'woocommerce-fraud-protection'
-					) }
+					{ __( 'Fraud prevention', 'woocommerce-fraud-protection' ) }
 				</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<Stack direction="column" gap="xl">
-					<Text
-						className="wc-fraud-protection-settings__description"
-						variant="body-md"
-						render={ <p /> }
-					>
-						{ __(
-							'Fraud prevention scans checkout attempts for potentially automated or malicious shopper behavior. Flagged checkout attempts are recorded by default and are only blocked when automatic blocking is turned on.',
-							'woocommerce-fraud-protection'
-						) }
-					</Text>
-					<Stack
-						className="wc-fraud-protection-settings__control"
-						direction="row"
-						align="center"
-						gap="sm"
-					>
-						{ isLoading ? (
-							<>
-								<Spinner />
-								<span
-									className="screen-reader-text"
-									role="status"
-								>
-									{ __(
-										'Loading automatic protection setting.',
-										'woocommerce-fraud-protection'
-									) }
-								</span>
-							</>
-						) : (
-							<>
-								<Checkbox
-									id="automatic-protection-checkbox"
-									checked={ checked }
-									disabled={ controlsDisabled }
-									onCheckedChange={ onChange }
-								/>
-								<label htmlFor="automatic-protection-checkbox">
-									<Text variant="body-md">
-										{ __(
-											'Automatically block checkout attempts flagged by fraud prevention.',
-											'woocommerce-fraud-protection'
-										) }
-									</Text>
-								</label>
-							</>
-						) }
-					</Stack>
+					<AutomaticProtectionControl
+						id="automatic-protection-checkbox"
+						checked={ checked }
+						disabled={ controlsDisabled }
+						isLoading={ isLoading }
+						onChange={ onChange }
+					/>
 					{ showNotice && (
 						<Notice.Root
 							key={ optedOut ? 'opted-out' : 'opt-out' }
@@ -172,14 +125,6 @@ export function AutomaticProtectionCard( {
 									/>
 								</Notice.Actions>
 							) }
-							<Notice.CloseIcon
-								label={ __(
-									'Dismiss automatic protection notice',
-									'woocommerce-fraud-protection'
-								) }
-								disabled={ isOptingOut }
-								onClick={ () => setIsNoticeDismissed( true ) }
-							/>
 						</Notice.Root>
 					) }
 				</Stack>

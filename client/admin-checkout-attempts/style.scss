@@ -1,0 +1,266 @@
+@use '@wordpress/base-styles/colors' as *;
+@use '@wordpress/dataviews/build-style/style.css';
+
+.wc-fraud-protection-checkout-attempts__page {
+	// A single horizontal gutter for the whole page. The breadcrumb, description,
+	// tabs and the DataViews toolbar/table/footer all sit inside it, so they line
+	// up on one left edge and the breadcrumb no longer touches the admin sidebar.
+	// DataViews adds the same indent to its own toolbar, cells and footer, so
+	// that duplicate is removed below and this gutter is the single source.
+	// A single blank white canvas. The WooCommerce settings form (#mainform) is
+	// grey with 30px side padding, sitting on a white #wpbody-content; DataViews
+	// also paints itself white. So the page breaks out of that 30px form padding
+	// to cover the grey and reach the white body edges (no grey strips beside the
+	// list, like the Payments screen), then adds a generous 48px content gutter —
+	// the same the Payments screen uses. That gutter is wider than the settings
+	// tab bar's, so the content is intentionally not flush with it. The negative
+	// margin only cancels the form padding, so content never slides under the
+	// admin menu.
+	background: var(--wpds-color-background-surface-neutral-strong);
+	margin-inline: -30px;
+	padding-block: var(--wpds-dimension-padding-lg);
+	padding-inline: 48px;
+
+	.wc-fraud-protection-checkout-attempts__header {
+		margin-bottom: 16px;
+	}
+
+	.wc-fraud-protection-checkout-attempts__breadcrumb {
+		// Match the Payments screen's section heading: larger and semibold. The
+		// vertical margin is set in the higher-specificity rule below, which has
+		// to override WooCommerce's `#mainform nav` margin.
+		font-size: 16px;
+		font-weight: 600;
+		line-height: 24px;
+		color: $gray-900;
+
+		a {
+			text-decoration: none;
+		}
+
+		span[aria-hidden='true'] {
+			color: $gray-400;
+		}
+	}
+
+	.wc-fraud-protection-checkout-attempts__description {
+		margin: 4px 0 0;
+		color: $gray-700;
+	}
+
+	// The "automatic fraud prevention is off" info banner sits between the tabs and the
+	// list; give it room on both sides. The @wordpress/ui Notice supplies the
+	// info styling (light-blue surface, border, icon) and the dark action button.
+	.wc-fraud-protection-checkout-attempts__protection-banner {
+		margin-block: 16px;
+	}
+
+	// DataViews indents its toolbar (search/view actions and the filters bar),
+	// cells and footer by 24px of its own; the page gutter above now provides
+	// that, so remove the duplicate and let every row align with the breadcrumb,
+	// description and tabs.
+	.dataviews__view-actions,
+	.dataviews-filters__container,
+	.dataviews-footer {
+		padding-inline: 0;
+	}
+
+	// More horizontal breathing room between the data columns. The first
+	// (Provider) and last cells align to the page gutter so the provider content
+	// keeps its room and is never clipped. Uses logical properties so the
+	// alignment follows the writing direction in RTL.
+	.dataviews-view-table td,
+	.dataviews-view-table th {
+		padding-inline: var(--wpds-dimension-padding-lg);
+	}
+
+	.dataviews-view-table tr td:first-child,
+	.dataviews-view-table tr th:first-child {
+		padding-inline-start: 0;
+	}
+
+	.dataviews-view-table tr td:last-child,
+	.dataviews-view-table tr th:last-child {
+		padding-inline-end: 0;
+	}
+
+	.wc-fraud-protection-checkout-attempts__billing {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.wc-fraud-protection-checkout-attempts__billing-secondary {
+		color: $gray-700;
+		font-size: 12px;
+	}
+
+	// Rule chips: a coloured icon plus a neutral label, no pill. The icon carries
+	// the allow/block meaning by shape and colour; a tooltip adds the date.
+	.wc-fraud-protection-checkout-attempts__rule-chip {
+		// The chip is a button (a keyboard-reachable tooltip trigger), so strip
+		// the native button chrome and inherit the cell's typography.
+		appearance: none;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		background: none;
+		display: inline-flex;
+		flex-shrink: 0;
+		align-items: center;
+		gap: 4px;
+		font-family: inherit;
+		font-size: 12px;
+		line-height: 1.4;
+		color: $gray-700;
+		white-space: nowrap;
+		// It carries information rather than triggering an action, so keep the
+		// default arrow cursor instead of the pointer.
+		cursor: default;
+
+		.wc-fraud-protection-checkout-attempts__rule-chip-icon {
+			flex-shrink: 0;
+			width: 16px;
+			height: 16px;
+		}
+
+		&.is-allow .wc-fraud-protection-checkout-attempts__rule-chip-icon {
+			color: #00733f;
+		}
+
+		&.is-block .wc-fraud-protection-checkout-attempts__rule-chip-icon {
+			color: #cc1818;
+		}
+	}
+
+	// Compact density: only the icon shows; the label stays in the accessibility
+	// tree (visually hidden) so screen readers still announce the rule.
+	.wc-fraud-protection-checkout-attempts__rule-chip.is-icon-only {
+		gap: 0;
+
+		.wc-fraud-protection-checkout-attempts__rule-chip-label {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			margin: -1px;
+			padding: 0;
+			border: 0;
+			overflow: hidden;
+			clip: rect(0 0 0 0);
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+	}
+
+	// Outcome cell for a flagged-but-allowed attempt: the "Allowed" and "Flagged"
+	// badges and the info icon stay together on one line, so the icon sits to the
+	// right of the badges rather than wrapping below them.
+	.wc-fraud-protection-checkout-attempts__status {
+		display: inline-flex;
+		flex-wrap: nowrap;
+		align-items: center;
+		gap: 6px;
+	}
+
+	// The info icon that carries the flagged tooltip.
+	.wc-fraud-protection-checkout-attempts__flagged-info {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: $gray-700;
+		cursor: pointer;
+	}
+
+	.wc-fraud-protection-checkout-attempts__flagged-info-icon {
+		width: 24px;
+		height: 24px;
+	}
+
+	// Email and IP cells hold the value and, when a rule targets it, a chip. By
+	// default the chip's icon and label wrap below the value. In compact density
+	// the chip is icon-only and sits to the left of the value, which then
+	// truncates first when the column is narrow.
+	.wc-fraud-protection-checkout-attempts__value {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+		max-width: 100%;
+
+		&.is-compact {
+			flex-direction: row;
+			align-items: center;
+			gap: 6px;
+
+			.wc-fraud-protection-checkout-attempts__value-text {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+		}
+	}
+}
+
+// WooCommerce's settings CSS applies `margin: 0 -30px 24px -30px` to every
+// <nav> inside #mainform, to full-bleed its tab bar. Our breadcrumb is a <nav>
+// too and inherits that pull to the left, so reset the horizontal pull (the
+// page gutter places it) and give it the vertical rhythm of the Payments
+// section heading — more room above and below. This selector mirrors
+// WooCommerce's own (body class + #mainform) plus our class, so it reliably
+// outranks the core rule without !important.
+.woocommerce_page_wc-settings #mainform nav.wc-fraud-protection-checkout-attempts__breadcrumb {
+	margin: 12px 0 20px;
+}
+
+// WooCommerce leaves a 24px grey gap below the settings tab bar (the nav's
+// margin-bottom on the grey #mainform). On the checkout-attempts route, drop it
+// so the white content meets the tab bar's ruler like the Payments screen. The
+// nav sits outside our page wrapper, so this is scoped with :has() to the route
+// and only clears the bottom gap — the tab bar stays full-width.
+#mainform:has( .wc-fraud-protection-checkout-attempts__page ) nav.nav-tab-wrapper {
+	margin-bottom: 0;
+}
+
+// The "Turn on automatic fraud prevention" row action renders inside the
+// DataViews actions menu, which portals outside the page wrapper — so this rule
+// is intentionally unscoped. It reads as a regular (black) menu item rather than
+// a link, and opens the enable drawer when selected.
+.wc-fraud-protection-checkout-attempts__menu-link {
+	color: $gray-900;
+	font-weight: 500;
+}
+
+// The @wordpress/ui Drawer leaves its z-index as `initial` (which computes to
+// `auto`): each of its layers is `z-index: var(--wp-ui-drawer-z-index, initial)`,
+// expecting the host app to set that variable. Without it, WordPress admin chrome
+// paints over the drawer — the admin bar (z-index 99999/100000) covers the header
+// and the positioned content column (#wpcontent, z-index 1) covers the panel and
+// backdrop — so the open drawer looks unstyled and clipped. The drawer portals to
+// the document body, outside our page wrapper, so this can't be scoped through
+// `__page`; instead scope it to the portal that actually holds our drawer via
+// `:has()`, and let the variable inherit to the backdrop, viewport and popup.
+// 100001 clears the admin bar (and its 100000 submenus) so the drawer, like its
+// Figma design, covers the whole viewport.
+[data-base-ui-portal]:has(
+		.wc-fraud-protection-checkout-attempts__enable-drawer
+	) {
+	--wp-ui-drawer-z-index: 100001;
+}
+
+// The flagged-session explanation renders in the portaled Popover, which
+// already supplies a light surface with its own padding and border. Just cap its
+// width and, like the enable drawer, lift it above the WordPress admin chrome:
+// the popover's z-index defaults to `initial` (auto), so admin layers would
+// otherwise paint over it. Scoped through the portal that holds our popover.
+[data-base-ui-portal]:has(
+		.wc-fraud-protection-checkout-attempts__flagged-popover
+	) {
+	--wp-ui-popover-z-index: 100001;
+}
+
+.wc-fraud-protection-checkout-attempts__flagged-popover {
+	max-width: 320px;
+}

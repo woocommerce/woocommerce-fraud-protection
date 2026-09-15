@@ -10,6 +10,8 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionOutcome;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -166,6 +168,48 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Ordering by payment method follows the provided provider sequence (used to sort by display title).
+	 */
+	public function test_query_events_orders_by_provided_payment_method_sequence(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's-alpha',
+					'payment_method' => 'alpha',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's-beta',
+					'payment_method' => 'beta',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's-gamma',
+					'payment_method' => 'gamma',
+				)
+			)
+		);
+
+		$result = $this->sut->query_events(
+			array(
+				'orderby'              => 'payment_method',
+				'payment_method_order' => array( 'gamma', 'alpha', 'beta' ),
+			)
+		);
+
+		$this->assertSame(
+			array( 'gamma', 'alpha', 'beta' ),
+			array_column( $result['items'], 'payment_method' )
+		);
+	}
+
+	/**
 	 * @testdox Should insert a separate row for each event with the same session ID, preserving both decisions.
 	 */
 	public function test_repeated_session_ids_insert_separate_rows(): void {
@@ -298,7 +342,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should count matching outcomes from every gateway and source and exclude other events.
+	 * @testdox Should use the checkout-attempt outcome definitions for performance counts.
 	 */
 	public function test_performance_counts_map_all_supported_outcomes(): void {
 		$events = array(
@@ -367,7 +411,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'flagged_by_fraud_prevention' => 2,
+				'flagged_by_fraud_prevention' => 3,
 				'blocked_automatically'       => 2,
 				'allowed_by_rules'            => 1,
 				'blocked_by_rules'            => 1,
@@ -655,5 +699,382 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		} finally {
 			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
 		}
+	}
+
+	/**
+	 * Record an event with the columns that decide a given outcome.
+	 *
+	 * @param string $session_id   The session ID.
+	 * @param string $trigger_type The trigger_type column.
+	 * @param string $final_status The final_status column.
+	 * @param string $decision     The decision column.
+	 */
+	private function record_outcome( string $session_id, string $trigger_type, string $final_status, string $decision ): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'   => $session_id,
+					'trigger_type' => $trigger_type,
+					'final_status' => $final_status,
+					'decision'     => $decision,
+				)
+			)
+		);
+	}
+
+	/**
+	 * @testdox Should return matching rows newest first with the total and typed ids.
+	 */
+	public function test_query_events_orders_newest_first_and_paginates(): void {
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'old' ) ) );
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'mid' ) ) );
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'new' ) ) );
+		$this->set_recorded_at( 'old', gmdate( 'Y-m-d H:i:s', time() - 3000 ) );
+		$this->set_recorded_at( 'mid', gmdate( 'Y-m-d H:i:s', time() - 2000 ) );
+		$this->set_recorded_at( 'new', gmdate( 'Y-m-d H:i:s', time() - 1000 ) );
+
+		$result = $this->sut->query_events( array( 'per_page' => 2 ) );
+
+		$this->assertSame( 3, $result['total'] );
+		$this->assertCount( 2, $result['items'] );
+		$this->assertSame( array( 'new', 'mid' ), array_column( $result['items'], 'session_id' ) );
+		$this->assertIsInt( $result['items'][0]['id'] );
+		$this->assertIsInt( $result['items'][0]['order_id'] );
+
+		$page_two = $this->sut->query_events(
+			array(
+				'per_page' => 2,
+				'page'     => 2,
+			)
+		);
+		$this->assertSame( array( 'old' ), array_column( $page_two['items'], 'session_id' ) );
+	}
+
+	/**
+	 * @testdox Should not expose the risk score in the queried rows.
+	 */
+	public function test_query_events_omits_risk_score(): void {
+		$this->sut->record_event( $this->an_event() );
+
+		$result = $this->sut->query_events();
+
+		$this->assertArrayNotHasKey( 'risk_score', $result['items'][0] );
+	}
+
+	/**
+	 * @testdox Should filter by the enforced final status.
+	 */
+	public function test_query_events_filters_by_final_status(): void {
+		$this->record_outcome( 'allowed-1', 'blackbox', 'allowed', 'allow' );
+		$this->record_outcome( 'blocked-1', 'blackbox', 'blocked', 'block' );
+
+		$result = $this->sut->query_events( array( 'final_status' => SessionFinalStatus::Blocked ) );
+
+		$this->assertSame( array( 'blocked-1' ), array_column( $result['items'], 'session_id' ) );
+	}
+
+	/**
+	 * @testdox Should filter by the derived merchant outcome.
+	 */
+	public function test_query_events_filters_by_outcome(): void {
+		$this->record_outcome( 'recommended', 'blackbox', 'allowed', 'block' );
+		$this->record_outcome( 'auto-blocked', 'blackbox', 'blocked', 'block' );
+		$this->record_outcome( 'allowed', 'blackbox', 'allowed', 'allow' );
+
+		$result = $this->sut->query_events(
+			array(
+				'outcomes' => array(
+					SessionOutcome::FlaggedByFraudPrevention,
+					SessionOutcome::BlockedAutomatically,
+				),
+			)
+		);
+
+		$this->assertSame(
+			array( 'auto-blocked', 'recommended' ),
+			array_column( $result['items'], 'session_id' )
+		);
+	}
+
+	/**
+	 * @testdox Should filter by payment method id.
+	 */
+	public function test_query_events_filters_by_payment_method(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 'stripe-1',
+					'payment_method' => 'stripe',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 'ppcp-1',
+					'payment_method' => 'ppcp',
+				)
+			)
+		);
+
+		$result = $this->sut->query_events( array( 'payment_methods' => array( 'ppcp' ) ) );
+
+		$this->assertSame( array( 'ppcp-1' ), array_column( $result['items'], 'session_id' ) );
+	}
+
+	/**
+	 * @testdox Should search the email and IP columns.
+	 */
+	public function test_query_events_searches_email_and_ip(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'by-email',
+					'email'      => 'fraudster@example.com',
+					'ip'         => '198.51.100.1',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'by-ip',
+					'email'      => 'buyer@example.com',
+					'ip'         => '203.0.113.42',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'no-match',
+					'email'      => 'buyer@example.com',
+					'ip'         => '10.0.0.1',
+				)
+			)
+		);
+
+		$this->assertSame( array( 'by-email' ), array_column( $this->sut->query_events( array( 'search' => 'fraudster' ) )['items'], 'session_id' ) );
+		$this->assertSame( array( 'by-ip' ), array_column( $this->sut->query_events( array( 'search' => '203.0.113' ) )['items'], 'session_id' ) );
+	}
+
+	/**
+	 * The event set and rule values shared by the rule-filter tests.
+	 */
+	private function seed_rule_filter_events(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'ruled-email',
+					'email'      => 'Blocked@Example.com',
+					'ip'         => '203.0.113.1',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'ruled-ip',
+					'email'      => 'buyer@example.com',
+					'ip'         => '198.51.100.10',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'clean',
+					'email'      => 'clean@example.com',
+					'ip'         => '203.0.113.2',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'no-values',
+					'email'      => '',
+					'ip'         => '',
+				)
+			)
+		);
+	}
+
+	/**
+	 * @return array{email: string[], ip: string[]}
+	 */
+	private function rule_filter_values(): array {
+		return array(
+			// The email value is normalized (lowercased), matching a stored mixed-case address.
+			'email' => array( 'blocked@example.com' ),
+			'ip'    => array( '198.51.100.10' ),
+		);
+	}
+
+	/**
+	 * @testdox Should exclude attempts whose email or IP an active rule targets.
+	 */
+	public function test_query_events_filters_without_rules(): void {
+		$this->seed_rule_filter_events();
+
+		$result = $this->sut->query_events(
+			array(
+				'rules'       => 'without',
+				'rule_values' => $this->rule_filter_values(),
+			)
+		);
+
+		$sessions = array_column( $result['items'], 'session_id' );
+		sort( $sessions );
+		$this->assertSame( array( 'clean', 'no-values' ), $sessions );
+		$this->assertSame( 2, $result['total'] );
+	}
+
+	/**
+	 * @testdox Should keep only attempts whose email or IP an active rule targets.
+	 */
+	public function test_query_events_filters_with_rules(): void {
+		$this->seed_rule_filter_events();
+
+		$result = $this->sut->query_events(
+			array(
+				'rules'       => 'with',
+				'rule_values' => $this->rule_filter_values(),
+			)
+		);
+
+		$sessions = array_column( $result['items'], 'session_id' );
+		sort( $sessions );
+		$this->assertSame( array( 'ruled-email', 'ruled-ip' ), $sessions );
+		$this->assertSame( 2, $result['total'] );
+	}
+
+	/**
+	 * @testdox Should return every attempt for "without" when no rule values exist.
+	 */
+	public function test_query_events_without_rules_with_no_values_returns_all(): void {
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'a' ) ) );
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'b' ) ) );
+
+		$result = $this->sut->query_events(
+			array(
+				'rules'       => 'without',
+				'rule_values' => array(),
+			)
+		);
+
+		$this->assertSame( 2, $result['total'] );
+	}
+
+	/**
+	 * @testdox Should return no attempt for "with" when no rule values exist.
+	 */
+	public function test_query_events_with_rules_with_no_values_returns_none(): void {
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'a' ) ) );
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'b' ) ) );
+
+		$result = $this->sut->query_events(
+			array(
+				'rules'       => 'with',
+				'rule_values' => array(),
+			)
+		);
+
+		$this->assertSame( 0, $result['total'] );
+	}
+
+	/**
+	 * @testdox Should sort by an allowlisted column and direction.
+	 */
+	public function test_query_events_sorts_by_column(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'c',
+					'email'      => 'charlie@example.com',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'a',
+					'email'      => 'alice@example.com',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'b',
+					'email'      => 'bob@example.com',
+				)
+			)
+		);
+
+		$result = $this->sut->query_events(
+			array(
+				'orderby' => 'email',
+				'order'   => 'asc',
+			)
+		);
+
+		$this->assertSame(
+			array( 'alice@example.com', 'bob@example.com', 'charlie@example.com' ),
+			array_column( $result['items'], 'email' )
+		);
+	}
+
+	/**
+	 * @testdox Should only return rows within the retention window.
+	 */
+	public function test_query_events_respects_days_window(): void {
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'fresh' ) ) );
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'stale' ) ) );
+		$this->set_recorded_at( 'stale', gmdate( 'Y-m-d H:i:s', time() - ( 40 * DAY_IN_SECONDS ) ) );
+
+		$result = $this->sut->query_events( array( 'days' => 30 ) );
+
+		$this->assertSame( array( 'fresh' ), array_column( $result['items'], 'session_id' ) );
+	}
+
+	/**
+	 * @testdox Should list the distinct payment methods within the window, sorted.
+	 */
+	public function test_get_payment_methods_returns_distinct_sorted(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's1',
+					'payment_method' => 'stripe',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's2',
+					'payment_method' => 'ppcp',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's3',
+					'payment_method' => 'stripe',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id'     => 's4',
+					'payment_method' => '',
+				)
+			)
+		);
+
+		$this->assertSame( array( 'ppcp', 'stripe' ), $this->sut->get_payment_methods( 30 ) );
 	}
 }
