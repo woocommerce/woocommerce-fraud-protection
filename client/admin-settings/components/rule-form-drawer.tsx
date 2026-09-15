@@ -18,6 +18,20 @@ export type RuleFormContext = {
 
 type RuleFormData = Pick< CreateRuleRequest, 'action' | 'type' | 'value' >;
 
+export const getInitialRuleFormData = (
+	context?: RuleFormContext
+): RuleFormData => ( {
+	action:
+		context?.finalStatus === undefined || context.finalStatus === 'blocked'
+			? 'allow'
+			: 'block',
+	type: context?.type ?? 'email',
+	value: context?.value ?? '',
+} );
+
+export const getRuleValuePlaceholder = ( type: Rule[ 'type' ] ): string =>
+	type === 'email' ? 'e.g. j.holland@gmail.com' : 'e.g. 111.111.111.111';
+
 type RuleFormDrawerProps = {
 	open: boolean;
 	onClose: () => void;
@@ -86,15 +100,9 @@ export function RuleFormDrawer( {
 	context,
 }: RuleFormDrawerProps ) {
 	const { createRule } = useRules();
-	const [ data, setData ] = useState< RuleFormData >( {
-		action:
-			context?.finalStatus === undefined ||
-			context.finalStatus === 'blocked'
-				? 'allow'
-				: 'block',
-		type: context?.type ?? 'email',
-		value: context?.value ?? '',
-	} );
+	const [ data, setData ] = useState< RuleFormData >(
+		getInitialRuleFormData( context )
+	);
 	const [ error, setError ] = useState< string | null >( null );
 	const [ isSaving, setIsSaving ] = useState( false );
 	const noticesDispatch = useDispatch( noticesStore ) as {
@@ -103,20 +111,12 @@ export function RuleFormDrawer( {
 			options: { type: string }
 		) => void;
 	} | null;
-	const initialAction =
-		context?.finalStatus === undefined || context.finalStatus === 'blocked'
-			? 'allow'
-			: 'block';
 	useEffect( () => {
 		if ( open ) {
-			setData( {
-				action: initialAction,
-				type: context?.type ?? 'email',
-				value: context?.value ?? '',
-			} );
+			setData( getInitialRuleFormData( context ) );
 			setError( null );
 		}
-	}, [ open, context, initialAction ] );
+	}, [ open, context ] );
 
 	const fields = useMemo< Field< RuleFormData >[] >(
 		() => [
@@ -166,10 +166,7 @@ export function RuleFormDrawer( {
 				label: __( 'Value', 'woocommerce-fraud-protection' ),
 				type: 'text',
 				description: error ?? undefined,
-				placeholder:
-					data.type === 'email'
-						? 'e.g. j.holland@gmail.com'
-						: 'e.g. 111.111.111.111',
+				placeholder: getRuleValuePlaceholder( data.type ),
 				isDisabled: Boolean( context ),
 				isValid: {
 					required: true,

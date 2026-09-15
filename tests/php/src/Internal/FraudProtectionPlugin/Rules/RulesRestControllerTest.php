@@ -168,6 +168,41 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * Record a representative checkout attempt and return its row ID.
+	 *
+	 * @param array<string, mixed> $overrides Event values to replace.
+	 * @return int
+	 */
+	private function record_event( array $overrides = array() ): int {
+		$event = array_merge(
+			array(
+				'session_id'       => 'context-session',
+				'source'           => 'blocks_checkout',
+				'decision'         => 'block',
+				'final_status'     => 'blocked',
+				'trigger_type'     => 'blackbox',
+				'risk_score'       => 0.9,
+				'email'            => 'customer@example.com',
+				'ip'               => '203.0.113.9',
+				'ip_country'       => 'US',
+				'billing_country'  => 'US',
+				'billing_state'    => 'CA',
+				'billing_city'     => 'San Francisco',
+				'billing_postcode' => '94110',
+				'billing_name'     => 'Test shopper',
+				'order_id'         => 0,
+				'payment_method'   => 'card',
+			),
+			$overrides
+		);
+		$this->event_store->record_event( $event );
+
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		return (int) $wpdb->get_var( 'SELECT MAX(id) FROM ' . $this->schema_manager->get_sessions_table_name() );
+	}
+
+	/**
 	 * @testdox An exact value and action filter uses the active rule set.
 	 */
 	public function test_get_rules_filters_exact_value(): void {
@@ -329,6 +364,104 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox A manual create does not send contextual feedback and records its origin.
+	 */
+	public function test_manual_create_does_not_report_and_tracks_rules_origin(): void {
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'create', FraudDecision::Allow, 'email', 'rules' );
+		$this->sut->init(
+			$this->rule_store,
+			$this->schema_manager,
+			$this->event_store,
+			$api_client,
+			new SessionIdNormalizer(),
+			$telemetry
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request->set_body_params(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'value'  => 'manual@example.com',
+				'origin' => 'rules',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$rule = $this->rule_store->get_rule( (int) $response->get_data()['id'] );
+		$this->assertSame( 'rules', $rule->source_meta['origin'] );
+	}
+
+	/**
+	 * @testdox Contextual creation rejects an event without a stored session ID.
+	 */
+	public function test_contextual_create_requires_stored_session_id(): void {
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$this->sut->init(
+			$this->rule_store,
+			$this->schema_manager,
+			$this->event_store,
+			$api_client,
+			new SessionIdNormalizer(),
+			$this->createMock( SettingsTelemetry::class )
+		);
+		$event_id = $this->record_event( array( 'session_id' => '' ) );
+
+		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request->set_body_params(
+			array(
+				'action'              => 'allow',
+				'type'                => 'email',
+				'value'               => 'customer@example.com',
+				'recorded_attempt_id' => $event_id,
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_recorded_attempt_invalid', $response->as_error()->get_error_code() );
+	}
+
+	/**
+	 * @testdox Contextual creation rejects a value that does not match the stored event.
+	 */
+	public function test_contextual_create_requires_exact_event_value(): void {
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$this->sut->init(
+			$this->rule_store,
+			$this->schema_manager,
+			$this->event_store,
+			$api_client,
+			new SessionIdNormalizer(),
+			$this->createMock( SettingsTelemetry::class )
+		);
+		$event_id = $this->record_event();
+
+		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request->set_body_params(
+			array(
+				'action'              => 'allow',
+				'type'                => 'email',
+				'value'               => 'other@example.com',
+				'recorded_attempt_id' => $event_id,
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_recorded_attempt_mismatch', $response->as_error()->get_error_code() );
+	}
+
+	/**
 	 * @testdox A duplicate create returns the active rule ID and action.
 	 */
 	public function test_create_rule_duplicate_returns_existing_rule_details(): void {
@@ -420,6 +553,50 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$rule = $this->rule_store->get_rule( (int) $response->get_data()['id'] );
 		$this->assertSame( 'stored-session', $rule->source_session_id );
+	}
+
+	/**
+	 * @testdox An allowed contextual outcome suggests Block and sends bad feedback.
+	 */
+	public function test_create_rule_allowed_context_reports_bad_feedback(): void {
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->once() )
+			->method( 'report' )
+			->with(
+				'context-session',
+				$this->callback(
+					static function ( array $payload ): bool {
+						return 'bad' === ( $payload['asserted_label'] ?? null );
+					}
+				)
+			);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'create', FraudDecision::Block, 'ip', 'checkout_attempts' );
+		$this->sut->init(
+			$this->rule_store,
+			$this->schema_manager,
+			$this->event_store,
+			$api_client,
+			new SessionIdNormalizer(),
+			$telemetry
+		);
+		$event_id = $this->record_event( array( 'final_status' => 'allowed' ) );
+
+		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request->set_body_params(
+			array(
+				'action'              => 'block',
+				'type'                => 'ip',
+				'value'               => '203.0.113.9',
+				'recorded_attempt_id' => $event_id,
+				'origin'              => 'checkout_attempts',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'block', $response->get_data()['action'] );
 	}
 
 	/**

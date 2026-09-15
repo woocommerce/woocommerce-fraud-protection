@@ -13,7 +13,11 @@ import {
 	getUtcDateFilterBound,
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
-import { isCompleteIp } from '../../client/admin-settings/components/rule-form-drawer';
+import {
+	getInitialRuleFormData,
+	getRuleValuePlaceholder,
+	isCompleteIp,
+} from '../../client/admin-settings/components/rule-form-drawer';
 import { dataViews } from './mocks/dataviews';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
@@ -88,6 +92,32 @@ describe( 'RulesPage', () => {
 		expect( isCompleteIp( '2001:db8:0:0:0:0:0:0:1' ) ).toBe( false );
 	} );
 
+	it( 'derives contextual action and keeps contextual fields fixed', () => {
+		expect( getInitialRuleFormData() ).toEqual( {
+			action: 'allow',
+			type: 'email',
+			value: '',
+		} );
+		expect(
+			getInitialRuleFormData( {
+				recordedAttemptId: 7,
+				type: 'ip',
+				value: '203.0.113.9',
+				finalStatus: 'allowed',
+			} )
+		).toEqual( {
+			action: 'block',
+			type: 'ip',
+			value: '203.0.113.9',
+		} );
+		expect( getRuleValuePlaceholder( 'email' ) ).toBe(
+			'e.g. j.holland@gmail.com'
+		);
+		expect( getRuleValuePlaceholder( 'ip' ) ).toBe(
+			'e.g. 111.111.111.111'
+		);
+	} );
+
 	it( 'loads rules and maps the action tab to a single server filter', async () => {
 		renderRules();
 
@@ -107,6 +137,23 @@ describe( 'RulesPage', () => {
 				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&action=block&orderby=created_at&order=desc',
 			} )
 		);
+	} );
+
+	it( 'keeps all rule columns sortable with newest-created default order', async () => {
+		renderRules();
+
+		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
+
+		expect( dataViews.props?.view?.sort ).toEqual( {
+			field: 'created_at',
+			direction: 'desc',
+		} );
+		expect( dataViews.props?.fields ).toHaveLength( 4 );
+		expect(
+			dataViews.props?.fields?.every(
+				( field ) => field.enableSorting !== false
+			)
+		).toBe( true );
 	} );
 
 	it( 'links back to fraud prevention settings', async () => {
