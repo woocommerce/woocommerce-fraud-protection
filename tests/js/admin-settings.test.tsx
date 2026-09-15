@@ -249,6 +249,60 @@ describe( 'FraudProtectionSettingsPage', () => {
 		} );
 	} );
 
+	it( 'does not reopen a closed drawer after a duplicate rule loads', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow',
+			type: 'email',
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+		};
+		let resolveDetail: ( rule: typeof duplicate ) => void = () => undefined;
+		const detailRequest = new Promise< typeof duplicate >( ( resolve ) => {
+			resolveDetail = resolve;
+		} );
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockReturnValueOnce( detailRequest );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		const viewRule = await within( drawer ).findByRole( 'button', {
+			name: 'View rule',
+		} );
+		act( () => viewRule.click() );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules/17',
+		} );
+		act( () =>
+			within( drawer ).getByRole( 'button', { name: 'Close' } ).click()
+		);
+
+		await act( async () => {
+			resolveDetail( duplicate );
+			await detailRequest;
+		} );
+
+		expect( screen.queryByRole( 'dialog' ) ).not.toBeInTheDocument();
+	} );
+
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
 		let resolveLoad: (
 			response: ReturnType< typeof settingsResponse >
