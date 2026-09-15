@@ -654,6 +654,14 @@ describe( 'RulesPage', () => {
 		expect( screen.getByLabelText( 'Value' ) ).toBeInTheDocument();
 	} );
 
+	it( 'opens rule guidance in a new tab', () => {
+		renderDrawer();
+
+		const link = screen.getByRole( 'link', { name: 'Learn more' } );
+		expect( link ).toHaveAttribute( 'target', '_blank' );
+		expect( link ).toHaveAttribute( 'rel', 'noopener noreferrer' );
+	} );
+
 	it( 'submits the drawer, closes it, refreshes rules, and shows the success snackbar', async () => {
 		const onClose = jest.fn();
 		const onSuccess = jest.fn();

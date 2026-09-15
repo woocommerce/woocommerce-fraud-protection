@@ -356,7 +356,11 @@ export function RuleFormDrawer( {
 								"If an attempt matches both an allow rule and a block rule, it's allowed.",
 								'woocommerce-fraud-protection'
 							) }{ ' ' }
-							<a href="https://woocommerce.com/document/fraud-protection/">
+							<a
+								href="https://woocommerce.com/document/fraud-protection/"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
 								{ __(
 									'Learn more',
 									'woocommerce-fraud-protection'
