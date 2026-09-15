@@ -214,29 +214,12 @@ describe( 'RulesPage', () => {
 	} );
 
 	it( 'converts local filter dates to inclusive UTC bounds', () => {
-		const start = new Date(
-			getUtcDateFilterBound( '2026-09-15', false ) as string
+		expect( getUtcDateFilterBound( '2026-09-15', false ) ).toBe(
+			'2026-09-15T04:00:00Z'
 		);
-		const end = new Date(
-			getUtcDateFilterBound( '2026-09-15', true ) as string
+		expect( getUtcDateFilterBound( '2026-09-15', true ) ).toBe(
+			'2026-09-16T03:59:59Z'
 		);
-
-		expect( [
-			start.getFullYear(),
-			start.getMonth(),
-			start.getDate(),
-			start.getHours(),
-			start.getMinutes(),
-			start.getSeconds(),
-		] ).toEqual( [ 2026, 8, 15, 0, 0, 0 ] );
-		expect( [
-			end.getFullYear(),
-			end.getMonth(),
-			end.getDate(),
-			end.getHours(),
-			end.getMinutes(),
-			end.getSeconds(),
-		] ).toEqual( [ 2026, 8, 15, 23, 59, 59 ] );
 	} );
 
 	it( 'selects All when DataViews removes the action filter', async () => {
