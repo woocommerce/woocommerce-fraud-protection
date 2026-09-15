@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
-import { dateI18n } from '@wordpress/date';
 import {
 	EmptyState,
 	Icon,
@@ -18,10 +17,9 @@ import { Link } from 'react-router-dom';
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
 import { getFraudProtectionRoute } from './navigation';
+import { formatRuleDate, getUtcDateFilterBound } from './rule-date';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
-const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 const ruleActions = [
 	{ value: 'allow', label: __( 'Allow', 'woocommerce-fraud-protection' ) },
 	{ value: 'block', label: __( 'Block', 'woocommerce-fraud-protection' ) },
@@ -89,56 +87,9 @@ const fields: Field< Rule >[] = [
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
-		render: ( { item } ) =>
-			dateI18n( 'j M Y', item.created_at, browserTimeZone ),
+		render: ( { item } ) => formatRuleDate( item.created_at ),
 	},
 ];
-
-export const getUtcDateFilterBound = (
-	value: string,
-	endOfDay: boolean
-): string | undefined => {
-	const date = value.slice( 0, 10 );
-	if ( ! /^\d{4}-\d{2}-\d{2}$/.test( date ) ) {
-		return undefined;
-	}
-
-	const [ year, month, day ] = date.split( '-' ).map( Number );
-	const localBound = new Date(
-		year,
-		month - 1,
-		day,
-		endOfDay ? 23 : 0,
-		endOfDay ? 59 : 0,
-		endOfDay ? 59 : 0
-	);
-	if (
-		localBound.getFullYear() !== year ||
-		localBound.getMonth() !== month - 1 ||
-		localBound.getDate() !== day
-	) {
-		return undefined;
-	}
-
-	return localBound.toISOString().replace( '.000Z', 'Z' );
-};
-
-const getFields = ( sortField?: string ): Field< Rule >[] =>
-	fields.map( ( field ) => {
-		const header = field.header ?? field.label ?? field.id;
-
-		return {
-			...field,
-			header: (
-				<>
-					{ header }
-					{ field.id !== sortField && (
-						<span aria-hidden="true"> ↓</span>
-					) }
-				</>
-			),
-		};
-	} );
 
 export const getQueryFromView = ( view: View ): RulesQuery => {
 	const query: RulesQuery = {
@@ -209,9 +160,36 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 	);
 };
 
+function RulesEmptyState( {
+	hasActiveFilters,
+}: {
+	hasActiveFilters: boolean;
+} ) {
+	return (
+		<EmptyState.Root>
+			<EmptyState.Title>
+				{ hasActiveFilters
+					? __( 'No matching rules', 'woocommerce-fraud-protection' )
+					: __( 'No rules', 'woocommerce-fraud-protection' ) }
+			</EmptyState.Title>
+			<EmptyState.Description>
+				{ hasActiveFilters
+					? __(
+							'Try changing or removing your filters.',
+							'woocommerce-fraud-protection'
+					  )
+					: __(
+							'Any custom rules you create will appear here.',
+							'woocommerce-fraud-protection'
+					  ) }
+			</EmptyState.Description>
+		</EmptyState.Root>
+	);
+}
+
 export function RulesPage() {
 	const [ view, setView ] = useState< View >( {
-		type: 'table' as const,
+		type: 'table',
 		page: 1,
 		perPage: 20,
 		sort: { field: 'created_at', direction: 'desc' },
@@ -226,47 +204,33 @@ export function RulesPage() {
 			},
 		},
 	} );
-	const { error, isLoading, requestRules, rules, totalItems, totalPages } =
-		useRules();
-	const visibleFields = useMemo(
-		() => getFields( view.sort?.field ),
-		[ view.sort?.field ]
-	);
+	const query = useMemo( () => getQueryFromView( view ), [ view ] );
+	const { error, isLoading, rules, totalItems, totalPages } =
+		useRules( query );
 	const actionTab = getActionTab( view );
 	const hasActiveFilters = Boolean( view.filters?.length );
 	const isInitialLoading = isLoading && rules.length === 0;
-
-	useEffect( () => {
-		requestRules( getQueryFromView( view ) );
-	}, [ requestRules, view ] );
-
-	const empty = useMemo(
-		() => (
-			<EmptyState.Root className="wc-fraud-protection-rules__empty-state">
-				<EmptyState.Title>
-					{ hasActiveFilters
-						? __(
-								'No matching rules',
-								'woocommerce-fraud-protection'
-						  )
-						: __( 'No rules', 'woocommerce-fraud-protection' ) }
-				</EmptyState.Title>
-				<EmptyState.Description>
-					{ hasActiveFilters
-						? __(
-								'Try changing or removing your filters.',
-								'woocommerce-fraud-protection'
-						  )
-						: __(
-								'Any custom rules you create will appear here.',
-								'woocommerce-fraud-protection'
-						  ) }
-				</EmptyState.Description>
-			</EmptyState.Root>
-		),
-		[ hasActiveFilters ]
-	);
 	const loadErrorMessage = getLoadErrorMessage( error );
+	const listContent = (
+		<DataViews
+			data={ rules }
+			fields={ fields }
+			view={ view }
+			onChangeView={ setView }
+			isLoading={ isLoading }
+			paginationInfo={ { totalItems, totalPages } }
+			getItemId={ ( item ) => String( item.id ) }
+			defaultLayouts={ { table: {} } }
+			empty={
+				error ? null : (
+					<RulesEmptyState hasActiveFilters={ hasActiveFilters } />
+				)
+			}
+			search={ false }
+			config={ { perPageSizes: [ 20, 50, 100 ] } }
+		/>
+	);
+
 	return (
 		<Stack
 			className="wc-fraud-protection-rules"
@@ -278,190 +242,78 @@ export function RulesPage() {
 					{ __( 'Loading rules', 'woocommerce-fraud-protection' ) }
 				</VisuallyHidden>
 			) }
-			<DataViews
-				data={ rules }
-				fields={ visibleFields }
-				view={ view }
-				onChangeView={ setView }
-				isLoading={ isLoading }
-				paginationInfo={ { totalItems, totalPages } }
-				getItemId={ ( item ) => String( item.id ) }
-				defaultLayouts={ { table: {} } }
-				empty={ error ? null : empty }
-				search={ false }
-				config={ { perPageSizes: [ 20, 50, 100 ] } }
-			>
-				<Stack direction="column">
-					<Stack
-						className="wc-fraud-protection-rules__header"
-						direction="column"
-						gap="none"
-						style={ {
-							height: 84,
-							boxSizing: 'border-box',
-							padding: '12px 16px',
-						} }
-					>
-						<Text
-							className="wc-fraud-protection-rules__breadcrumb"
-							variant="heading-lg"
-							style={ {
-								display: 'flex',
-								alignItems: 'center',
-								gap: 8,
-								margin: '0 8px 8px',
-								height: 32,
-								fontWeight: 500,
-							} }
-							render={
-								<nav
-									aria-label={ __(
-										'Breadcrumb',
-										'woocommerce-fraud-protection'
-									) }
-								/>
-							}
-						>
-							<Link to={ rootSettingsHref }>
-								{ __(
-									'Fraud prevention',
-									'woocommerce-fraud-protection'
-								) }
-							</Link>
-							<span aria-hidden="true">/</span>
-							<span aria-current="page">
-								{ __(
-									'Rules',
-									'woocommerce-fraud-protection'
-								) }
-							</span>
-						</Text>
-						<Text
-							className="wc-fraud-protection-rules__description"
-							variant="body-md"
-							style={ {
-								color: 'var(--wpds-color-foreground-content-neutral-weak)',
-								marginInline: 8,
-							} }
-							render={ <p /> }
-						>
-							{ __(
-								'Rules that always let checkout attempts through or always block them, no matter what our fraud detection decides.',
-								'woocommerce-fraud-protection'
-							) }
-						</Text>
-					</Stack>
-					<Tabs.Root
-						value={ actionTab }
-						onValueChange={ ( value ) => {
-							const filters = ( view.filters ?? [] ).filter(
-								( filter ) => filter.field !== 'action'
-							);
-							if ( value !== 'all' ) {
-								filters.push( {
-									field: 'action',
-									operator: 'is',
-									value,
-								} );
-							}
-							setView( {
-								...view,
-								page: 1,
-								filters,
-							} );
-						} }
-					>
-						<Stack
-							className="wc-fraud-protection-rules__toolbar"
-							direction="row"
-							align="center"
-							justify="space-between"
-							style={ {
-								height: 40,
-								boxSizing: 'border-box',
-								padding: '0 24px',
-							} }
-						>
-							<Tabs.List
-								variant="minimal"
-								style={ { height: 40, gap: 12 } }
-							>
-								<Tabs.Tab value="all" style={ { height: 40 } }>
-									{ __(
-										'All',
-										'woocommerce-fraud-protection'
-									) }
-								</Tabs.Tab>
-								<Tabs.Tab
-									value="allow"
-									style={ { height: 40 } }
-								>
-									{ __(
-										'Allow',
-										'woocommerce-fraud-protection'
-									) }
-								</Tabs.Tab>
-								<Tabs.Tab
-									value="block"
-									style={ { height: 40 } }
-								>
-									{ __(
-										'Block',
-										'woocommerce-fraud-protection'
-									) }
-								</Tabs.Tab>
-							</Tabs.List>
-							<Stack direction="row" align="center" gap="sm">
-								<DataViews.FiltersToggle />
-								<DataViews.ViewConfig />
-							</Stack>
-						</Stack>
-						{ loadErrorMessage && (
-							<Stack
-								direction="column"
-								style={ {
-									marginBlock: 'var(--wpds-dimension-gap-lg)',
-									marginInline:
-										'var(--wpds-dimension-padding-2xl)',
-								} }
-							>
-								<Notice.Root intent="error">
-									<Notice.Description>
-										{ loadErrorMessage }
-									</Notice.Description>
-								</Notice.Root>
-							</Stack>
+			<header className="wc-fraud-protection-rules__header">
+				<nav
+					className="wc-fraud-protection-rules__breadcrumb"
+					aria-label={ __(
+						'Breadcrumb',
+						'woocommerce-fraud-protection'
+					) }
+				>
+					<Link to={ rootSettingsHref }>
+						{ __(
+							'Fraud prevention',
+							'woocommerce-fraud-protection'
 						) }
-						<Tabs.Panel value="all">
-							{ actionTab === 'all' && (
-								<>
-									<DataViews.FiltersToggled className="wc-fraud-protection-rules__filters" />
-									<DataViews.Layout />
-									<DataViews.Pagination />
-								</>
-							) }
-						</Tabs.Panel>
-						<Tabs.Panel value="allow">
-							{ actionTab === 'allow' && (
-								<>
-									<DataViews.FiltersToggled className="wc-fraud-protection-rules__filters" />
-									<DataViews.Layout />
-									<DataViews.Pagination />
-								</>
-							) }
-						</Tabs.Panel>
-						<Tabs.Panel value="block">
-							{ actionTab === 'block' && (
-								<>
-									<DataViews.FiltersToggled className="wc-fraud-protection-rules__filters" />
-									<DataViews.Layout />
-									<DataViews.Pagination />
-								</>
-							) }
-						</Tabs.Panel>
-					</Tabs.Root>
-				</Stack>
-			</DataViews>
+					</Link>
+					<span aria-hidden="true">/</span>
+					<span aria-current="page">
+						{ __( 'Rules', 'woocommerce-fraud-protection' ) }
+					</span>
+				</nav>
+				<p className="wc-fraud-protection-rules__description">
+					{ __(
+						'Rules that always let checkout attempts through or always block them, no matter what our fraud detection decides.',
+						'woocommerce-fraud-protection'
+					) }
+				</p>
+			</header>
+			{ loadErrorMessage && (
+				<div className="wc-fraud-protection-rules__error">
+					<Notice.Root intent="error">
+						<Notice.Description>
+							{ loadErrorMessage }
+						</Notice.Description>
+					</Notice.Root>
+				</div>
+			) }
+			<Tabs.Root
+				value={ actionTab }
+				onValueChange={ ( value ) => {
+					const filters = ( view.filters ?? [] ).filter(
+						( filter ) => filter.field !== 'action'
+					);
+					if ( value !== 'all' ) {
+						filters.push( {
+							field: 'action',
+							operator: 'is',
+							value,
+						} );
+					}
+					setView( { ...view, page: 1, filters } );
+				} }
+			>
+				<Tabs.List variant="minimal">
+					<Tabs.Tab value="all">
+						{ __( 'All', 'woocommerce-fraud-protection' ) }
+					</Tabs.Tab>
+					<Tabs.Tab value="allow">
+						{ __( 'Allow', 'woocommerce-fraud-protection' ) }
+					</Tabs.Tab>
+					<Tabs.Tab value="block">
+						{ __( 'Block', 'woocommerce-fraud-protection' ) }
+					</Tabs.Tab>
+				</Tabs.List>
+				<Tabs.Panel value="all">
+					{ actionTab === 'all' && listContent }
+				</Tabs.Panel>
+				<Tabs.Panel value="allow">
+					{ actionTab === 'allow' && listContent }
+				</Tabs.Panel>
+				<Tabs.Panel value="block">
+					{ actionTab === 'block' && listContent }
+				</Tabs.Panel>
+			</Tabs.Root>
 		</Stack>
 	);
 }

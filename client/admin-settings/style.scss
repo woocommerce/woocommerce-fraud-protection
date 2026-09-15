@@ -1,3 +1,4 @@
+@use '../settings-list-page' as settings-list-page;
 @import '@wordpress/components/build-style/style.css';
 @import '@wordpress/dataviews/build-style/style.css';
 
@@ -88,43 +89,34 @@
 }
 
 .wc-fraud-protection-rules {
-	margin: calc(-1 * var(--wpds-dimension-gap-xl)) -30px
-		calc(-1 * var(--wpds-dimension-gap-3xl));
-	padding: 0 var(--wpds-dimension-padding-md);
-	background: var(--wpds-color-background-surface-neutral);
+
+	@include settings-list-page.page;
+
+	--wp-dataviews-color-background: var(
+		--wpds-color-background-surface-neutral
+	);
+
+	&__header {
+
+		@include settings-list-page.header;
+	}
 
 	&__description {
-		color: var(--wpds-color-foreground-content-neutral-weak) !important;
+
+		@include settings-list-page.description;
 	}
 
 	&__breadcrumb {
-		color: var(--wpds-color-foreground-content-neutral) !important;
 
-		a {
-			color: inherit !important;
-		}
+		@include settings-list-page.breadcrumb;
 	}
 
-	&__toolbar {
-		border-bottom: var(--wpds-border-width-xs) solid
-			var(--wpds-color-stroke-surface-neutral-weak);
+	.woocommerce_page_wc-settings #mainform &__breadcrumb {
+		margin: 0;
 	}
 
-	&__filters {
+	&__error {
 		margin-block: var(--wpds-dimension-gap-lg);
-		margin-inline: var(--wpds-dimension-padding-2xl);
-	}
-
-	&__empty-state {
-		margin-block-start: calc(2 * var(--wpds-dimension-gap-3xl));
-	}
-
-	.dataviews-layout__container {
-		margin-block-end: var(--wpds-dimension-gap-xl);
-	}
-
-	.dataviews-view-table tr td:first-child {
-		padding-inline-start: var(--wpds-dimension-padding-md);
 	}
 
 	&__action--allow &__action-icon {
@@ -137,6 +129,6 @@
 
 	&__action,
 	&__value {
-		color: var(--wpds-color-foreground-content-neutral) !important;
+		color: var(--wpds-color-foreground-content-neutral);
 	}
 }

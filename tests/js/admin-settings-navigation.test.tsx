@@ -79,7 +79,11 @@ const SETTINGS_PATH = '/wc-fraud-protection/v1/settings';
 // real list page mounts without error while the routing is exercised.
 const apiFetchImplementation = ( options: unknown ) => {
 	const { path } = ( options ?? {} ) as { path?: string };
-	if ( path && path.startsWith( '/wc-fraud-protection/v1/sessions' ) ) {
+	if (
+		path &&
+		( path.startsWith( '/wc-fraud-protection/v1/sessions' ) ||
+			path.startsWith( '/wc-fraud-protection/v1/rules' ) )
+	) {
 		return Promise.resolve( {
 			json: () => Promise.resolve( [] ),
 			headers: { get: () => '0' },
@@ -177,13 +181,6 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 	} );
 
 	it( 'loads the rules page on the dedicated route', async () => {
-		mockedApiFetch.mockResolvedValue( {
-			data: [],
-			totalItems: 0,
-			totalPages: 0,
-			page: 1,
-			perPage: 20,
-		} );
 		renderApp( '/rules' );
 
 		expect(
@@ -192,6 +189,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( mockHistory.location.pathname ).toBe( '/rules' );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
 			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			parse: false,
 		} );
 	} );
 

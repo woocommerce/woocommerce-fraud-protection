@@ -1,51 +1,24 @@
 @use '@wordpress/base-styles/colors' as *;
 @use '@wordpress/dataviews/build-style/style.css';
+@use '../settings-list-page' as settings-list-page;
 
 .wc-fraud-protection-checkout-attempts__page {
-	// A single horizontal gutter for the whole page. The breadcrumb, description,
-	// tabs and the DataViews toolbar/table/footer all sit inside it, so they line
-	// up on one left edge and the breadcrumb no longer touches the admin sidebar.
-	// DataViews adds the same indent to its own toolbar, cells and footer, so
-	// that duplicate is removed below and this gutter is the single source.
-	// A single blank white canvas. The WooCommerce settings form (#mainform) is
-	// grey with 30px side padding, sitting on a white #wpbody-content; DataViews
-	// also paints itself white. So the page breaks out of that 30px form padding
-	// to cover the grey and reach the white body edges (no grey strips beside the
-	// list, like the Payments screen), then adds a generous 48px content gutter —
-	// the same the Payments screen uses. That gutter is wider than the settings
-	// tab bar's, so the content is intentionally not flush with it. The negative
-	// margin only cancels the form padding, so content never slides under the
-	// admin menu.
-	background: var(--wpds-color-background-surface-neutral-strong);
-	margin-inline: -30px;
-	padding-block: var(--wpds-dimension-padding-lg);
-	padding-inline: 48px;
+
+	@include settings-list-page.page;
 
 	.wc-fraud-protection-checkout-attempts__header {
-		margin-bottom: 16px;
+
+		@include settings-list-page.header;
 	}
 
 	.wc-fraud-protection-checkout-attempts__breadcrumb {
-		// Match the Payments screen's section heading: larger and semibold. The
-		// vertical margin is set in the higher-specificity rule below, which has
-		// to override WooCommerce's `#mainform nav` margin.
-		font-size: 16px;
-		font-weight: 600;
-		line-height: 24px;
-		color: $gray-900;
 
-		a {
-			text-decoration: none;
-		}
-
-		span[aria-hidden='true'] {
-			color: $gray-400;
-		}
+		@include settings-list-page.breadcrumb;
 	}
 
 	.wc-fraud-protection-checkout-attempts__description {
-		margin: 4px 0 0;
-		color: $gray-700;
+
+		@include settings-list-page.description;
 	}
 
 	// The "automatic fraud prevention is off" info banner sits between the tabs and the
@@ -204,15 +177,9 @@
 	}
 }
 
-// WooCommerce's settings CSS applies `margin: 0 -30px 24px -30px` to every
-// <nav> inside #mainform, to full-bleed its tab bar. Our breadcrumb is a <nav>
-// too and inherits that pull to the left, so reset the horizontal pull (the
-// page gutter places it) and give it the vertical rhythm of the Payments
-// section heading — more room above and below. This selector mirrors
-// WooCommerce's own (body class + #mainform) plus our class, so it reliably
-// outranks the core rule without !important.
+// WooCommerce applies the settings tab margin to every nav in the form.
 .woocommerce_page_wc-settings #mainform nav.wc-fraud-protection-checkout-attempts__breadcrumb {
-	margin: 12px 0 20px;
+	margin: 0;
 }
 
 // WooCommerce leaves a 24px grey gap below the settings tab bar (the nav's

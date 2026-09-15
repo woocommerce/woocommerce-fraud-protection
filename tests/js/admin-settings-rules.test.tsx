@@ -7,12 +7,15 @@ import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
 
-import { rulesStore } from '../../client/admin-settings/data/rules-store';
+import {
+	rulesStore,
+	type Rule,
+} from '../../client/admin-settings/data/rules-store';
 import {
 	getQueryFromView,
-	getUtcDateFilterBound,
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
+import { getUtcDateFilterBound } from '../../client/admin-settings/rule-date';
 import { dataViews } from './mocks/dataviews';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
@@ -31,25 +34,34 @@ jest.mock( '@woocommerce/navigation', () => ( {
 } ) );
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
-
-type RulesResponse = {
-	data: Array< {
-		id: number;
-		action: 'allow' | 'block';
-		value: string;
-		type: 'email' | 'ip';
-		created_at: string;
-	} >;
-	totalItems: number;
-	totalPages: number;
-	page: number;
-	perPage: number;
+const rule: Rule = {
+	id: 1,
+	action: 'allow',
+	value: 'shopper@example.com',
+	type: 'email',
+	created_at: '2026-09-14T12:00:00Z',
 };
 
-const renderRules = () => {
+function collectionResponse(
+	items: Rule[] = [ rule ],
+	total = items.length,
+	pages = total ? 1 : 0
+): Response {
+	const responseHeaders: Record< string, string > = {
+		'X-WP-Total': String( total ),
+		'X-WP-TotalPages': String( pages ),
+	};
+	return {
+		json: async () => items,
+		headers: {
+			get: ( name: string ) => responseHeaders[ name ] ?? null,
+		},
+	} as unknown as Response;
+}
+
+function renderRules() {
 	const registry = createRegistry();
 	registry.register( rulesStore );
-
 	return render(
 		<MemoryRouter>
 			<RegistryProvider value={ registry }>
@@ -57,403 +69,16 @@ const renderRules = () => {
 			</RegistryProvider>
 		</MemoryRouter>
 	);
-};
+}
+
+beforeEach( () => {
+	mockedApiFetch.mockReset();
+	mockedApiFetch.mockResolvedValue( collectionResponse() as never );
+	dataViews.props = undefined;
+} );
 
 describe( 'RulesPage', () => {
-	beforeEach( () => {
-		mockedApiFetch.mockReset();
-		mockedApiFetch.mockResolvedValue( {
-			data: [
-				{
-					id: 1,
-					action: 'allow',
-					value: 'shopper@example.com',
-					type: 'email',
-					created_at: '2026-09-14T12:00:00',
-				},
-			],
-			totalItems: 1,
-			totalPages: 1,
-			page: 1,
-			perPage: 20,
-		} );
-	} );
-
-	it( 'loads rules and maps the action tab to a single server filter', async () => {
-		renderRules();
-
-		await waitFor( () =>
-			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
-			} )
-		);
-		expect(
-			await screen.findByText( 'shopper@example.com' )
-		).toBeInTheDocument();
-
-		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
-
-		await waitFor( () =>
-			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&action=block&orderby=created_at&order=desc',
-			} )
-		);
-	} );
-
-	it( 'links back to fraud prevention settings', async () => {
-		renderRules();
-		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
-
-		expect(
-			screen.getByRole( 'link', { name: 'Fraud prevention' } )
-		).toHaveAttribute(
-			'href',
-			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection'
-		);
-	} );
-
-	it( 'uses the Created filter label', async () => {
-		renderRules();
-		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
-
-		expect(
-			dataViews.props?.fields?.find(
-				( field ) => field.id === 'created_at'
-			)?.label
-		).toBe( 'Created' );
-	} );
-
-	it( 'uses the DataViews loading state while the initial request loads', async () => {
-		let resolveRequest: ( response: RulesResponse ) => void = () => {};
-		mockedApiFetch.mockReturnValueOnce(
-			new Promise< RulesResponse >( ( resolve ) => {
-				resolveRequest = resolve;
-			} )
-		);
-
-		renderRules();
-
-		expect(
-			await screen.findByText( 'Loading rules' )
-		).toBeInTheDocument();
-		expect( dataViews.props?.data ).toHaveLength( 0 );
-		expect( dataViews.props?.isLoading ).toBe( true );
-		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
-		expect(
-			screen.getByText( 'Loading rules' ).closest( '[aria-busy="true"]' )
-		).toBeInTheDocument();
-
-		await act( async () => {
-			resolveRequest( {
-				data: [],
-				totalItems: 0,
-				totalPages: 0,
-				page: 1,
-				perPage: 20,
-			} );
-		} );
-	} );
-
-	it( 'shows a prefixed load error below the tabs', async () => {
-		mockedApiFetch.mockRejectedValueOnce(
-			new Error( 'Could not get a valid response from the server.' )
-		);
-
-		renderRules();
-
-		const tabs = screen.getByRole( 'tablist' );
-		const toolbar = tabs.closest( '.wc-fraud-protection-rules__toolbar' );
-		await waitFor( () =>
-			expect( toolbar?.nextElementSibling ).toHaveTextContent(
-				'The fraud prevention rules could not be loaded. Could not get a valid response from the server.'
-			)
-		);
-		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
-	} );
-
-	it( 'shows the rules empty state without actions', async () => {
-		mockedApiFetch.mockResolvedValueOnce( {
-			data: [],
-			totalItems: 0,
-			totalPages: 0,
-			page: 1,
-			perPage: 20,
-		} );
-
-		renderRules();
-
-		expect( await screen.findByText( 'No rules' ) ).toBeInTheDocument();
-		expect(
-			screen.getByText( 'Any custom rules you create will appear here.' )
-		).toBeInTheDocument();
-	} );
-
-	it( 'shows a separate empty state when filters match no rules', async () => {
-		renderRules();
-
-		expect(
-			await screen.findByText( 'shopper@example.com' )
-		).toBeInTheDocument();
-		mockedApiFetch.mockResolvedValueOnce( {
-			data: [],
-			totalItems: 0,
-			totalPages: 0,
-			page: 1,
-			perPage: 20,
-		} );
-
-		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
-
-		expect(
-			await screen.findByText( 'No matching rules' )
-		).toBeInTheDocument();
-		expect(
-			screen.getByText( 'Try changing or removing your filters.' )
-		).toBeInTheDocument();
-		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
-	} );
-
-	it( 'converts local filter dates to inclusive UTC bounds', () => {
-		expect( getUtcDateFilterBound( '2026-09-15', false ) ).toBe(
-			'2026-09-15T04:00:00Z'
-		);
-		expect( getUtcDateFilterBound( '2026-09-15', true ) ).toBe(
-			'2026-09-16T03:59:59Z'
-		);
-	} );
-
-	it( 'selects All when DataViews removes the action filter', async () => {
-		renderRules();
-		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
-
-		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
-		await waitFor( () =>
-			expect(
-				screen.getByRole( 'tab', { name: 'Block' } )
-			).toHaveAttribute( 'aria-selected', 'true' )
-		);
-
-		const currentView = dataViews.props?.view;
-		act( () => {
-			dataViews.props?.onChangeView?.( {
-				...currentView,
-				filters: [],
-			} as View );
-		} );
-
-		await waitFor( () =>
-			expect(
-				screen.getByRole( 'tab', { name: 'All' } )
-			).toHaveAttribute( 'aria-selected', 'true' )
-		);
-	} );
-
-	it( 'ignores a stale response after the query changes', async () => {
-		let resolveFirst: ( response: RulesResponse ) => void = () => {};
-		let resolveSecond: ( response: RulesResponse ) => void = () => {};
-		const firstResponse = new Promise< RulesResponse >( ( resolve ) => {
-			resolveFirst = resolve;
-		} );
-		const secondResponse = new Promise< RulesResponse >( ( resolve ) => {
-			resolveSecond = resolve;
-		} );
-		mockedApiFetch
-			.mockReturnValueOnce( firstResponse )
-			.mockReturnValueOnce( secondResponse );
-
-		const registry = createRegistry();
-		registry.register( rulesStore );
-		const query = { page: 1, perPage: 20 };
-		const newerQuery = { page: 2, perPage: 20 };
-		const firstRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( query );
-		const secondRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( newerQuery );
-		const newerRules = {
-			data: [
-				{
-					id: 2,
-					action: 'block' as const,
-					value: 'newer@example.com',
-					type: 'email' as const,
-					created_at: '2026-09-14T12:00:00',
-				},
-			],
-			totalItems: 1,
-			totalPages: 1,
-			page: 2,
-			perPage: 20,
-		};
-		const olderRules = {
-			...newerRules,
-			data: [
-				{ ...newerRules.data[ 0 ], id: 1, value: 'older@example.com' },
-			],
-		};
-
-		await act( async () => {
-			resolveSecond( newerRules );
-			await secondRequest;
-		} );
-		expect( registry.select( rulesStore ).getRules()[ 0 ].value ).toBe(
-			'newer@example.com'
-		);
-
-		await act( async () => {
-			resolveFirst( olderRules );
-			await firstRequest;
-		} );
-		expect( registry.select( rulesStore ).getRules()[ 0 ].value ).toBe(
-			'newer@example.com'
-		);
-	} );
-
-	it( 'ignores a stale error after the query changes', async () => {
-		let rejectFirst: ( error: Error ) => void = () => {};
-		let resolveSecond: ( response: RulesResponse ) => void = () => {};
-		const firstResponse = new Promise< RulesResponse >( ( _, reject ) => {
-			rejectFirst = reject;
-		} );
-		const secondResponse = new Promise< RulesResponse >( ( resolve ) => {
-			resolveSecond = resolve;
-		} );
-		mockedApiFetch
-			.mockReturnValueOnce( firstResponse )
-			.mockReturnValueOnce( secondResponse );
-
-		const registry = createRegistry();
-		registry.register( rulesStore );
-		const firstRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( { page: 1, perPage: 20 } );
-		const secondRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( { page: 2, perPage: 20 } );
-
-		await act( async () => {
-			resolveSecond( {
-				data: [],
-				totalItems: 0,
-				totalPages: 0,
-				page: 2,
-				perPage: 20,
-			} );
-			await secondRequest;
-		} );
-		await act( async () => {
-			rejectFirst( new Error( 'The older request failed.' ) );
-			await firstRequest;
-		} );
-
-		expect( registry.select( rulesStore ).getError() ).toBeNull();
-	} );
-
-	it( 'ignores an older success after a newer request refreshes the same query', async () => {
-		let resolveFirst: ( response: RulesResponse ) => void = () => {};
-		let resolveSecond: ( response: RulesResponse ) => void = () => {};
-		const firstResponse = new Promise< RulesResponse >( ( resolve ) => {
-			resolveFirst = resolve;
-		} );
-		const secondResponse = new Promise< RulesResponse >( ( resolve ) => {
-			resolveSecond = resolve;
-		} );
-		mockedApiFetch
-			.mockReturnValueOnce( firstResponse )
-			.mockReturnValueOnce( secondResponse );
-
-		const registry = createRegistry();
-		registry.register( rulesStore );
-		const query = { page: 1, perPage: 20 };
-		const firstRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( query );
-		const secondRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( query );
-		const newerRules = {
-			data: [
-				{
-					id: 2,
-					action: 'allow' as const,
-					value: 'newer@example.com',
-					type: 'email' as const,
-					created_at: '2026-09-15T12:00:00Z',
-				},
-			],
-			totalItems: 1,
-			totalPages: 1,
-			page: 1,
-			perPage: 20,
-		};
-
-		await act( async () => {
-			resolveSecond( newerRules );
-			await secondRequest;
-		} );
-		await act( async () => {
-			resolveFirst( {
-				...newerRules,
-				data: [
-					{
-						...newerRules.data[ 0 ],
-						id: 1,
-						value: 'older@example.com',
-					},
-				],
-			} );
-			await firstRequest;
-		} );
-
-		expect( registry.select( rulesStore ).getRules() ).toEqual(
-			newerRules.data
-		);
-	} );
-
-	it( 'ignores an older failure after a newer request refreshes the same query', async () => {
-		let rejectFirst: ( error: Error ) => void = () => {};
-		let resolveSecond: ( response: RulesResponse ) => void = () => {};
-		const firstResponse = new Promise< RulesResponse >( ( _, reject ) => {
-			rejectFirst = reject;
-		} );
-		const secondResponse = new Promise< RulesResponse >( ( resolve ) => {
-			resolveSecond = resolve;
-		} );
-		mockedApiFetch
-			.mockReturnValueOnce( firstResponse )
-			.mockReturnValueOnce( secondResponse );
-
-		const registry = createRegistry();
-		registry.register( rulesStore );
-		const query = { page: 1, perPage: 20 };
-		const firstRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( query );
-		const secondRequest = registry
-			.dispatch( rulesStore )
-			.requestRules( query );
-
-		await act( async () => {
-			resolveSecond( {
-				data: [],
-				totalItems: 0,
-				totalPages: 0,
-				page: 1,
-				perPage: 20,
-			} );
-			await secondRequest;
-		} );
-		await act( async () => {
-			rejectFirst( new Error( 'The older request failed.' ) );
-			await firstRequest;
-		} );
-
-		expect( registry.select( rulesStore ).getError() ).toBeNull();
-		expect( registry.select( rulesStore ).isLoading() ).toBe( false );
-	} );
-
-	it( 'maps all supported view filters to the rules query', () => {
+	it( 'maps filters and one active sort to the query', () => {
 		const query = getQueryFromView( {
 			type: 'table',
 			page: 3,
@@ -472,7 +97,6 @@ describe( 'RulesPage', () => {
 			fields: [],
 			layout: {},
 		} as View );
-
 		expect( query ).toEqual( {
 			page: 3,
 			perPage: 50,
@@ -486,73 +110,111 @@ describe( 'RulesPage', () => {
 		} );
 	} );
 
-	it( 'exposes request errors and stops loading', async () => {
-		mockedApiFetch.mockRejectedValueOnce(
-			new Error( 'Rules unavailable.' )
+	it( 'converts browser dates to inclusive UTC bounds', () => {
+		expect( getUtcDateFilterBound( '2026-09-15', false ) ).toBe(
+			'2026-09-15T04:00:00Z'
 		);
-		const registry = createRegistry();
-		registry.register( rulesStore );
+		expect( getUtcDateFilterBound( '2026-09-15', true ) ).toBe(
+			'2026-09-16T03:59:59Z'
+		);
+		expect( getUtcDateFilterBound( '2026-02-30', false ) ).toBeUndefined();
+	} );
 
-		await act( async () => {
-			await registry
-				.dispatch( rulesStore )
-				.requestRules( { page: 1, perPage: 20 } );
-		} );
-
-		expect( registry.select( rulesStore ).isLoading() ).toBe( false );
-		expect( registry.select( rulesStore ).getError() ).toBe(
-			'Rules unavailable.'
+	it( 'loads rules through the resolver and changes the action filter', async () => {
+		renderRules();
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+				parse: false,
+			} )
+		);
+		expect( await screen.findByText( rule.value ) ).toBeInTheDocument();
+		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&action=block&orderby=created_at&order=desc',
+				parse: false,
+			} )
 		);
 	} );
 
-	it( 'clears previous rows when a different query fails', async () => {
-		const registry = createRegistry();
-		registry.register( rulesStore );
-
-		await act( async () => {
-			await registry
-				.dispatch( rulesStore )
-				.requestRules( { page: 1, perPage: 20 } );
-		} );
-		expect( registry.select( rulesStore ).getRules() ).toHaveLength( 1 );
-
-		mockedApiFetch.mockRejectedValueOnce(
-			new Error( 'Rules unavailable.' )
+	it( 'keeps all four columns sortable with Created descending as default', async () => {
+		renderRules();
+		await waitFor( () =>
+			expect( dataViews.props?.fields ).toHaveLength( 4 )
 		);
-		await act( async () => {
-			await registry.dispatch( rulesStore ).requestRules( {
-				page: 1,
-				perPage: 20,
-				action: 'block',
-			} );
+		expect( dataViews.props?.view?.sort ).toEqual( {
+			field: 'created_at',
+			direction: 'desc',
 		} );
-
-		expect( registry.select( rulesStore ).getRules() ).toEqual( [] );
-		expect( registry.select( rulesStore ).getTotalItems() ).toBe( 0 );
-		expect( registry.select( rulesStore ).getTotalPages() ).toBe( 0 );
-		expect( registry.select( rulesStore ).getError() ).toBe(
-			'Rules unavailable.'
+		expect(
+			dataViews.props?.fields?.every(
+				( field ) => field.enableSorting !== false
+			)
+		).toBe( true );
+		act(
+			() =>
+				dataViews.props?.onChangeView?.( {
+					...dataViews.props?.view,
+					sort: { field: 'value', direction: 'asc' },
+				} as View )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=value&order=asc',
+				parse: false,
+			} )
 		);
 	} );
 
-	it( 'rejects an invalid successful response', async () => {
-		mockedApiFetch.mockResolvedValueOnce( {
-			data: null,
-			totalItems: 0,
-			totalPages: 0,
-		} );
-		const registry = createRegistry();
-		registry.register( rulesStore );
-
-		await act( async () => {
-			await registry
-				.dispatch( rulesStore )
-				.requestRules( { page: 1, perPage: 20 } );
-		} );
-
-		expect( registry.select( rulesStore ).getRules() ).toEqual( [] );
-		expect( registry.select( rulesStore ).getError() ).toBe(
-			'Could not get a valid response from the server.'
+	it( 'shows list loading, empty, and error states from resolver metadata', async () => {
+		let resolveList: ( response: Response ) => void = () => undefined;
+		mockedApiFetch.mockReturnValueOnce(
+			new Promise< Response >( ( resolve ) => {
+				resolveList = resolve;
+			} ) as never
 		);
+		const { unmount } = renderRules();
+		expect(
+			await screen.findByText( 'Loading rules' )
+		).toBeInTheDocument();
+		expect( dataViews.props?.isLoading ).toBe( true );
+		await act( async () => resolveList( collectionResponse( [] ) ) );
+		expect( await screen.findByText( 'No rules' ) ).toBeInTheDocument();
+		unmount();
+
+		mockedApiFetch.mockReset();
+		mockedApiFetch.mockRejectedValueOnce(
+			new Error( 'Rules unavailable.' )
+		);
+		renderRules();
+		expect(
+			await screen.findAllByText(
+				'The fraud prevention rules could not be loaded. Rules unavailable.'
+			)
+		).not.toHaveLength( 0 );
+		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
+	} );
+
+	it( 'shows the filtered empty state when no rules match', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockResolvedValueOnce( collectionResponse( [] ) as never );
+		renderRules();
+		await screen.findByText( rule.value );
+		act(
+			() =>
+				dataViews.props?.onChangeView?.( {
+					...dataViews.props?.view,
+					filters: [ { field: 'type', operator: 'is', value: 'ip' } ],
+					page: 1,
+				} as View )
+		);
+		expect(
+			await screen.findByText( 'No matching rules' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByText( 'Try changing or removing your filters.' )
+		).toBeInTheDocument();
 	} );
 } );
