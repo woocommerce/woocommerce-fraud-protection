@@ -52,8 +52,14 @@ export const dataViews = {
 
 export function DataViews( props: DataViewsProps ) {
 	dataViews.props = props;
-	const { actions = [], data, children, empty, fields = [], isLoading } =
-		props;
+	const {
+		actions = [],
+		data,
+		children,
+		empty,
+		fields = [],
+		isLoading,
+	} = props;
 	return (
 		<>
 			{ children }
