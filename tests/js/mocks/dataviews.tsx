@@ -16,6 +16,11 @@ type Rule = {
 
 type DataViewsProps = {
 	data: Rule[];
+	actions?: Array< {
+		id: string;
+		label: string | ( ( items: Rule[] ) => string );
+		callback: ( items: Rule[] ) => void;
+	} >;
 	children?: React.ReactNode;
 	empty?: React.ReactNode;
 	fields?: Field< Rule >[];
@@ -46,7 +51,8 @@ export const dataViews = {
 
 export function DataViews( props: DataViewsProps ) {
 	dataViews.props = props;
-	const { data, children, empty, fields = [], isLoading } = props;
+	const { actions = [], data, children, empty, fields = [], isLoading } =
+		props;
 	return (
 		<>
 			{ children }
@@ -80,6 +86,21 @@ export function DataViews( props: DataViewsProps ) {
 										</td>
 									);
 								} ) }
+								<td>
+									{ actions.map( ( action ) => (
+										<button
+											key={ action.id }
+											type="button"
+											onClick={ () =>
+												action.callback( [ rule ] )
+											}
+										>
+											{ typeof action.label === 'function'
+												? action.label( [ rule ] )
+												: action.label }
+										</button>
+									) ) }
+								</td>
 							</tr>
 						);
 					} ) }

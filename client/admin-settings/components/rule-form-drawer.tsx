@@ -62,7 +62,9 @@ type RuleFormDrawerProps = {
 	open: boolean;
 	onClose: () => void;
 	onSuccess?: () => void;
+	onViewRule?: ( id: number ) => void;
 	context?: RuleFormContext;
+	rule?: Rule;
 };
 
 const DUPLICATE_RULE_ERROR = 'woocommerce_fraud_protection_duplicate_rule';
@@ -179,15 +181,20 @@ export function RuleFormDrawer( {
 	open,
 	onClose,
 	onSuccess,
+	onViewRule,
 	context,
+	rule,
 }: RuleFormDrawerProps ) {
-	const { createRule } = useRules();
+	const { createRule, updateRule } = useRules();
 	const [ data, setData ] = useState< RuleFormData >(
-		getInitialRuleFormData( context )
+		rule
+			? { action: rule.action, type: rule.type, value: rule.value }
+			: getInitialRuleFormData( context )
 	);
-	const [ createError, setCreateError ] = useState< {
+	const [ saveError, setSaveError ] = useState< {
 		code: string | null;
 		message: string;
+		ruleId: number | null;
 	} | null >( null );
 	const [ isSaving, setIsSaving ] = useState( false );
 	const noticesDispatch = useDispatch( noticesStore ) as {
@@ -198,10 +205,18 @@ export function RuleFormDrawer( {
 	} | null;
 	useEffect( () => {
 		if ( open ) {
-			setData( getInitialRuleFormData( context ) );
-			setCreateError( null );
+			setData(
+				rule
+					? {
+							action: rule.action,
+							type: rule.type,
+							value: rule.value,
+					  }
+					: getInitialRuleFormData( context )
+			);
+			setSaveError( null );
 		}
-	}, [ open, context ] );
+	}, [ open, context, rule ] );
 
 	const fields = useMemo< Field< RuleFormData >[] >(
 		() => [
@@ -244,7 +259,7 @@ export function RuleFormDrawer( {
 						),
 					},
 				],
-				isDisabled: isSaving || Boolean( context ),
+				isDisabled: isSaving || ( Boolean( context ) && ! rule ),
 				isValid: { elements: true },
 			},
 			{
@@ -253,7 +268,7 @@ export function RuleFormDrawer( {
 				type: 'text',
 				Edit: RuleValueEditControl,
 				placeholder: getRuleValuePlaceholder( data.type ),
-				isDisabled: isSaving || Boolean( context ),
+				isDisabled: isSaving || ( Boolean( context ) && ! rule ),
 				isValid: {
 					required: true,
 					custom: ( item ) => {
@@ -279,7 +294,7 @@ export function RuleFormDrawer( {
 				},
 			},
 		],
-		[ context, data.type, isSaving ]
+		[ context, data.type, isSaving, rule ]
 	);
 	const { validity, isValid } = useFormValidity( data, fields, form );
 	const hasDuplicateError = Boolean( data.valueError );
@@ -288,41 +303,66 @@ export function RuleFormDrawer( {
 		if ( ! isValid || hasDuplicateError || isSaving ) {
 			return;
 		}
-		setCreateError( null );
+		setSaveError( null );
 		setIsSaving( true );
 		try {
-			await createRule( {
-				action: data.action,
-				type: data.type,
-				value: data.value,
-				recorded_attempt_id: context?.recordedAttemptId,
-				origin: context ? 'checkout_attempts' : 'rules',
-			} );
+			if ( rule ) {
+				await updateRule( rule.id, {
+					action: data.action,
+					type: data.type,
+					value: data.value,
+					origin: 'rules',
+				} );
+			} else {
+				await createRule( {
+					action: data.action,
+					type: data.type,
+					value: data.value,
+					recorded_attempt_id: context?.recordedAttemptId,
+					origin: context ? 'checkout_attempts' : 'rules',
+				} );
+			}
 			onClose();
 			onSuccess?.();
 			noticesDispatch?.createSuccessNotice?.(
-				__(
-					'Rule created successfully',
-					'woocommerce-fraud-protection'
-				),
+				rule
+					? __(
+							'Rule updated successfully',
+							'woocommerce-fraud-protection'
+					  )
+					: __(
+							'Rule created successfully',
+							'woocommerce-fraud-protection'
+					  ),
 				{ type: 'snackbar' }
 			);
 		} catch ( caughtError ) {
 			const apiError = caughtError as {
 				code?: unknown;
 				message?: unknown;
+				data?: { rule_id?: unknown };
 			};
+			const fallbackMessage = rule
+				? __(
+						'The rule could not be updated.',
+						'woocommerce-fraud-protection'
+				  )
+				: __(
+						'The rule could not be created.',
+						'woocommerce-fraud-protection'
+				  );
 			const error = {
 				code: typeof apiError.code === 'string' ? apiError.code : null,
 				message:
 					typeof apiError.message === 'string'
 						? apiError.message
-						: __(
-								'The rule could not be created.',
-								'woocommerce-fraud-protection'
-						  ),
+						: fallbackMessage,
+				ruleId:
+					typeof apiError.data?.rule_id === 'number'
+						? apiError.data.rule_id
+						: null,
 			};
-			setCreateError( error );
+			setSaveError( error );
 			if ( error.code === DUPLICATE_RULE_ERROR ) {
 				setData( ( previous ) => ( {
 					...previous,
@@ -356,7 +396,12 @@ export function RuleFormDrawer( {
 			>
 				<Drawer.Header>
 					<Drawer.Title>
-						{ __( 'Create rule', 'woocommerce-fraud-protection' ) }
+						{ rule
+							? __( 'Edit rule', 'woocommerce-fraud-protection' )
+							: __(
+									'Create rule',
+									'woocommerce-fraud-protection'
+							  ) }
 					</Drawer.Title>
 					<Drawer.CloseIcon
 						label={ __( 'Close', 'woocommerce-fraud-protection' ) }
@@ -394,7 +439,7 @@ export function RuleFormDrawer( {
 								if ( isSaving ) {
 									return;
 								}
-								setCreateError( null );
+								setSaveError( null );
 								setData( ( previous ) => ( {
 									...previous,
 									...changes,
@@ -402,11 +447,26 @@ export function RuleFormDrawer( {
 								} ) );
 							} }
 						/>
-						{ createError?.code !== DUPLICATE_RULE_ERROR &&
-							createError?.message && (
+						{ saveError?.code === DUPLICATE_RULE_ERROR &&
+							saveError.ruleId &&
+							onViewRule && (
+								<Button
+									variant="minimal"
+									onClick={ () =>
+										onViewRule( saveError.ruleId as number )
+									}
+								>
+									{ __(
+										'View rule',
+										'woocommerce-fraud-protection'
+									) }
+								</Button>
+							) }
+						{ saveError?.code !== DUPLICATE_RULE_ERROR &&
+							saveError?.message && (
 								<Notice.Root intent="error">
 									<Notice.Description>
-										{ createError.message }
+										{ saveError.message }
 									</Notice.Description>
 								</Notice.Root>
 							) }
@@ -419,7 +479,15 @@ export function RuleFormDrawer( {
 						loading={ isSaving }
 						disabled={ ! isValid || hasDuplicateError || isSaving }
 					>
-						{ __( 'Create rule', 'woocommerce-fraud-protection' ) }
+						{ rule
+							? __(
+									'Save changes',
+									'woocommerce-fraud-protection'
+							  )
+							: __(
+									'Create rule',
+									'woocommerce-fraud-protection'
+							  ) }
 					</Button>
 				</Drawer.Footer>
 			</Drawer.Popup>

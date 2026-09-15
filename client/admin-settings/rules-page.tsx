@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import { dateI18n } from '@wordpress/date';
 import {
+	AlertDialog,
 	Button,
 	EmptyState,
 	Icon,
@@ -13,7 +14,9 @@ import {
 } from '@wordpress/ui';
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
-import type { Field, View } from '@wordpress/dataviews';
+import type { Action, Field, View } from '@wordpress/dataviews';
+import { useDispatch } from '@wordpress/data';
+import { store as noticesStore } from '@wordpress/notices';
 import { Link } from 'react-router-dom';
 
 import type { Rule, RulesQuery } from './data/rules-store';
@@ -213,6 +216,8 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 
 export function RulesPage() {
 	const [ isCreateOpen, setIsCreateOpen ] = useState( false );
+	const [ editingRule, setEditingRule ] = useState< Rule | undefined >();
+	const [ deletingRule, setDeletingRule ] = useState< Rule | undefined >();
 	const [ view, setView ] = useState< View >( {
 		type: 'table' as const,
 		page: 1,
@@ -229,8 +234,22 @@ export function RulesPage() {
 			},
 		},
 	} );
-	const { error, isLoading, requestRules, rules, totalItems, totalPages } =
-		useRules();
+	const {
+		deleteRule,
+		error,
+		isLoading,
+		requestRule,
+		requestRules,
+		rules,
+		totalItems,
+		totalPages,
+	} = useRules();
+	const noticesDispatch = useDispatch( noticesStore ) as {
+		createSuccessNotice?: (
+			message: string,
+			options: { type: string }
+		) => void;
+	} | null;
 	const visibleFields = useMemo(
 		() => getFields( view.sort?.field ),
 		[ view.sort?.field ]
@@ -238,6 +257,37 @@ export function RulesPage() {
 	const actionTab = getActionTab( view );
 	const hasActiveFilters = Boolean( view.filters?.length );
 	const isInitialLoading = isLoading && rules.length === 0;
+	const openEditRule = useCallback(
+		async ( id: number ) => {
+			const rule = await requestRule( id );
+			if ( rule ) {
+				setIsCreateOpen( false );
+				setEditingRule( rule );
+			}
+		},
+		[ requestRule ]
+	);
+	const actions = useMemo< Action< Rule >[] >(
+		() => [
+			{
+				id: 'edit',
+				label: __( 'Edit', 'woocommerce-fraud-protection' ),
+				supportsBulk: false,
+				callback: ( items ) => {
+					if ( items[ 0 ] ) {
+						void openEditRule( items[ 0 ].id );
+					}
+				},
+			},
+			{
+				id: 'delete',
+				label: __( 'Delete', 'woocommerce-fraud-protection' ),
+				supportsBulk: false,
+				callback: ( items ) => setDeletingRule( items[ 0 ] ),
+			},
+		],
+		[ openEditRule ]
+	);
 
 	useEffect( () => {
 		requestRules( getQueryFromView( view ) );
@@ -283,6 +333,7 @@ export function RulesPage() {
 			) }
 			<DataViews
 				data={ rules }
+				actions={ isInitialLoading ? [] : actions }
 				fields={ visibleFields }
 				view={ view }
 				onChangeView={ setView }
@@ -484,7 +535,68 @@ export function RulesPage() {
 			<RuleFormDrawer
 				open={ isCreateOpen }
 				onClose={ () => setIsCreateOpen( false ) }
+				onViewRule={ openEditRule }
 			/>
+			<RuleFormDrawer
+				open={ Boolean( editingRule ) }
+				rule={ editingRule }
+				onClose={ () => setEditingRule( undefined ) }
+				onViewRule={ openEditRule }
+			/>
+			<AlertDialog.Root
+				open={ Boolean( deletingRule ) }
+				onOpenChange={ ( open ) =>
+					! open && setDeletingRule( undefined )
+				}
+				onConfirm={ async () => {
+					if ( ! deletingRule ) {
+						return;
+					}
+					try {
+						await deleteRule( deletingRule.id, 'rules' );
+						noticesDispatch?.createSuccessNotice?.(
+							__(
+								'Rule deleted',
+								'woocommerce-fraud-protection'
+							),
+							{ type: 'snackbar' }
+						);
+					} catch ( caughtError ) {
+						const message =
+							typeof caughtError === 'object' &&
+							caughtError !== null &&
+							'message' in caughtError &&
+							typeof caughtError.message === 'string'
+								? caughtError.message
+								: __(
+										'The rule could not be deleted.',
+										'woocommerce-fraud-protection'
+								  );
+						return { close: false, error: message };
+					}
+				} }
+			>
+				<AlertDialog.Popup
+					intent="irreversible"
+					title={ __(
+						'Delete rule',
+						'woocommerce-fraud-protection'
+					) }
+					description={ __(
+						'Are you sure you want to delete this rule? This action cannot be undone.',
+						'woocommerce-fraud-protection'
+					) }
+					confirmButtonText={ __(
+						'Delete',
+						'woocommerce-fraud-protection'
+					) }
+					portal={
+						<AlertDialog.Portal
+							style={ { position: 'relative', zIndex: 1002 } }
+						/>
+					}
+				/>
+			</AlertDialog.Root>
 		</Stack>
 	);
 }

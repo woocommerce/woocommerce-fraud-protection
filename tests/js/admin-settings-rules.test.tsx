@@ -8,7 +8,10 @@ import { createRegistry, RegistryProvider } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
 import { store as noticesStore } from '@wordpress/notices';
 
-import { rulesStore } from '../../client/admin-settings/data/rules-store';
+import {
+	rulesStore,
+	type Rule,
+} from '../../client/admin-settings/data/rules-store';
 import {
 	getQueryFromView,
 	getUtcDateFilterBound,
@@ -58,20 +61,24 @@ type RulesResponse = {
 const renderRules = () => {
 	const registry = createRegistry();
 	registry.register( rulesStore );
+	registry.register( noticesStore );
 
-	return render(
+	const result = render(
 		<MemoryRouter>
 			<RegistryProvider value={ registry }>
 				<RulesPage />
 			</RegistryProvider>
 		</MemoryRouter>
 	);
+	return { ...result, registry };
 };
 
 const renderDrawer = (
 	onClose = jest.fn(),
 	onSuccess = jest.fn(),
-	context?: RuleFormContext
+	context?: RuleFormContext,
+	rule?: Rule,
+	onViewRule = jest.fn()
 ) => {
 	const registry = createRegistry();
 	registry.register( rulesStore );
@@ -84,11 +91,13 @@ const renderDrawer = (
 					onClose={ onClose }
 					onSuccess={ onSuccess }
 					context={ context }
+					rule={ rule }
+					onViewRule={ onViewRule }
 				/>
 			</RegistryProvider>
 		</MemoryRouter>
 	);
-	return { onClose, onSuccess, registry };
+	return { onClose, onSuccess, onViewRule, registry };
 };
 
 describe( 'RulesPage', () => {
@@ -967,5 +976,229 @@ describe( 'RulesPage', () => {
 				origin: 'rules',
 			},
 		} );
+	} );
+
+	it( 'loads active rule detail and refreshes the saved query after update and delete', async () => {
+		const registry = createRegistry();
+		registry.register( rulesStore );
+		const rule: Rule = {
+			id: 9,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( rule )
+			.mockResolvedValueOnce( { ...rule, action: 'block' } )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} )
+			.mockResolvedValueOnce( undefined )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} );
+
+		expect(
+			await registry.dispatch( rulesStore ).requestRule( rule.id )
+		).toEqual( rule );
+		await registry.dispatch( rulesStore ).updateRule( rule.id, {
+			action: 'block',
+			type: 'email',
+			value: rule.value,
+			origin: 'rules',
+		} );
+		await registry.dispatch( rulesStore ).deleteRule( rule.id, 'rules' );
+
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 1, {
+			path: '/wc-fraud-protection/v1/rules/9',
+		} );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-fraud-protection/v1/rules/9',
+			method: 'PUT',
+			data: {
+				action: 'block',
+				type: 'email',
+				value: rule.value,
+				origin: 'rules',
+			},
+		} );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 4, {
+			path: '/wc-fraud-protection/v1/rules/9?origin=rules',
+			method: 'DELETE',
+		} );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20',
+		} );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 5, {
+			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20',
+		} );
+	} );
+
+	it( 'opens edit state, saves changes, and shows the exact success toast', async () => {
+		const rule: Rule = {
+			id: 9,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		const { onClose, registry } = renderDrawer(
+			jest.fn(),
+			jest.fn(),
+			undefined,
+			rule
+		);
+		mockedApiFetch
+			.mockResolvedValueOnce( { ...rule, action: 'block' } )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} );
+
+		expect(
+			screen.getByRole( 'heading', { name: 'Edit rule' } )
+		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( rule.value );
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'block'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+
+		await waitFor( () => expect( onClose ).toHaveBeenCalledTimes( 1 ) );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 1, {
+			path: '/wc-fraud-protection/v1/rules/9',
+			method: 'PUT',
+			data: {
+				action: 'block',
+				type: 'email',
+				value: rule.value,
+				origin: 'rules',
+			},
+		} );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual(
+			expect.arrayContaining( [
+				expect.objectContaining( {
+					content: 'Rule updated successfully',
+					type: 'snackbar',
+				} ),
+			] )
+		);
+	} );
+
+	it( 'offers View rule for a duplicate and opens that rule in edit state', async () => {
+		const onViewRule = jest.fn();
+		mockedApiFetch.mockRejectedValueOnce( {
+			code: 'woocommerce_fraud_protection_duplicate_rule',
+			message: 'This email is already allowed by a rule.',
+			data: { rule_id: 17 },
+		} );
+		renderDrawer( jest.fn(), jest.fn(), undefined, undefined, onViewRule );
+
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'duplicate@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'View rule' } )
+		);
+
+		expect( onViewRule ).toHaveBeenCalledWith( 17 );
+	} );
+
+	it( 'shows Edit before Delete and opens active detail from the row action', async () => {
+		const rule: Rule = {
+			id: 1,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				data: [ rule ],
+				totalItems: 1,
+				totalPages: 1,
+			} )
+			.mockResolvedValueOnce( rule );
+		renderRules();
+
+		await waitFor( () =>
+			expect( dataViews.props?.data ).toEqual( [ rule ] )
+		);
+		expect(
+			dataViews.props?.actions?.map( ( action ) => action.label )
+		).toEqual( [ 'Edit', 'Delete' ] );
+		await userEvent.click( screen.getByRole( 'button', { name: 'Edit' } ) );
+
+		expect(
+			await screen.findByRole( 'heading', { name: 'Edit rule' } )
+		).toBeInTheDocument();
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-fraud-protection/v1/rules/1',
+		} );
+	} );
+
+	it( 'confirms a row deletion, refreshes rules, and shows the exact toast', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( {
+				data: [
+					{
+						id: 1,
+						action: 'allow',
+						value: 'shopper@example.com',
+						type: 'email',
+						created_at: '2026-09-14T12:00:00Z',
+					},
+				],
+				totalItems: 1,
+				totalPages: 1,
+			} )
+			.mockResolvedValueOnce( undefined )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} );
+		const { registry } = renderRules();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Delete' } )
+		);
+		const dialog = await screen.findByRole( 'alertdialog', {
+			name: 'Delete rule',
+		} );
+		expect( dialog ).toHaveTextContent(
+			'Are you sure you want to delete this rule? This action cannot be undone.'
+		);
+		await userEvent.click(
+			within( dialog ).getByRole( 'button', { name: 'Delete' } )
+		);
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules/1?origin=rules',
+				method: 'DELETE',
+			} )
+		);
+		expect( registry.select( noticesStore ).getNotices() ).toEqual(
+			expect.arrayContaining( [
+				expect.objectContaining( {
+					content: 'Rule deleted',
+					type: 'snackbar',
+				} ),
+			] )
+		);
 	} );
 } );

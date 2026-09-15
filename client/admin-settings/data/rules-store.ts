@@ -49,6 +49,11 @@ export type CreateRuleRequest = {
 	origin?: 'rules' | 'checkout_attempts' | 'api';
 };
 
+export type UpdateRuleRequest = Pick<
+	CreateRuleRequest,
+	'action' | 'type' | 'value' | 'origin'
+>;
+
 const DEFAULT_QUERY: RulesQuery = { page: 1, perPage: 20 };
 const DEFAULT_STATE: State = {
 	data: [],
@@ -218,6 +223,42 @@ const actions = {
 			} );
 			await dispatch.requestRules( select.getQuery() );
 			return response;
+		},
+	requestRule: ( id: number ) => async () =>
+		apiFetch< Rule >( {
+			path: `/wc-fraud-protection/v1/rules/${ id }`,
+		} ),
+	updateRule:
+		( id: number, request: UpdateRuleRequest ) =>
+		async ( {
+			dispatch,
+			select,
+		}: {
+			dispatch: typeof actions;
+			select: { getQuery: () => RulesQuery };
+		} ) => {
+			const response = await apiFetch< Rule >( {
+				path: `/wc-fraud-protection/v1/rules/${ id }`,
+				method: 'PUT',
+				data: request,
+			} );
+			await dispatch.requestRules( select.getQuery() );
+			return response;
+		},
+	deleteRule:
+		( id: number, origin: UpdateRuleRequest[ 'origin' ] = 'api' ) =>
+		async ( {
+			dispatch,
+			select,
+		}: {
+			dispatch: typeof actions;
+			select: { getQuery: () => RulesQuery };
+		} ) => {
+			await apiFetch( {
+				path: `/wc-fraud-protection/v1/rules/${ id }?origin=${ origin }`,
+				method: 'DELETE',
+			} );
+			await dispatch.requestRules( select.getQuery() );
 		},
 };
 
