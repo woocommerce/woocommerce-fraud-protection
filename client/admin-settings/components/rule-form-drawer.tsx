@@ -104,7 +104,7 @@ function RuleValueEditControl( {
 					hideLabelFromVision={ hideLabelFromVision }
 					disabled={ field.isDisabled( { item: data, field } ) }
 				/>
-				<Stack direction="row" align="center" gap="none">
+				<Stack direction="row" align="center" gap="xs">
 					<ValidityIndicator
 						id={ duplicateMessageId }
 						type="invalid"
