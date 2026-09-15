@@ -51,6 +51,7 @@ type RulesResponse = {
 		value: string;
 		type: 'email' | 'ip';
 		created_at: string;
+		updated_at: string | null;
 	} >;
 	totalItems: number;
 	totalPages: number;
@@ -111,6 +112,7 @@ describe( 'RulesPage', () => {
 					value: 'shopper@example.com',
 					type: 'email',
 					created_at: '2026-09-14T12:00:00',
+					updated_at: null,
 				},
 			],
 			totalItems: 1,
@@ -381,6 +383,7 @@ describe( 'RulesPage', () => {
 					value: 'newer@example.com',
 					type: 'email' as const,
 					created_at: '2026-09-14T12:00:00',
+					updated_at: null,
 				},
 			],
 			totalItems: 1,
@@ -482,6 +485,7 @@ describe( 'RulesPage', () => {
 					value: 'newer@example.com',
 					type: 'email' as const,
 					created_at: '2026-09-15T12:00:00Z',
+					updated_at: null,
 				},
 			],
 			totalItems: 1,
@@ -693,6 +697,7 @@ describe( 'RulesPage', () => {
 				value: 'buyer@internal',
 				type: 'email',
 				created_at: '2026-09-14T12:00:00Z',
+				updated_at: null,
 			} )
 			.mockResolvedValueOnce( {
 				data: [],
@@ -930,6 +935,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email' as const,
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		mockedApiFetch
 			.mockResolvedValueOnce( createdRule )
@@ -971,6 +977,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		mockedApiFetch
 			.mockResolvedValueOnce( rule )
@@ -1030,6 +1037,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: '2026-09-15T12:00:00Z',
 		};
 		const { onClose, registry } = renderDrawer(
 			jest.fn(),
@@ -1057,6 +1065,11 @@ describe( 'RulesPage', () => {
 		expect( screen.getByLabelText( 'Rule type' ) ).toBeEnabled();
 		expect( screen.getByLabelText( 'Value' ) ).toBeEnabled();
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( rule.value );
+		expect(
+			screen.getByText(
+				'This rule created on 14 Sep 2026 and last updated on 15 Sep 2026'
+			)
+		).toBeInTheDocument();
 		await userEvent.selectOptions(
 			screen.getByLabelText( 'Action' ),
 			'block'
@@ -1086,6 +1099,23 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
+	it( 'uses the creation date when an edited rule has not changed', () => {
+		renderDrawer( jest.fn(), jest.fn(), undefined, {
+			id: 9,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
+		} );
+
+		expect(
+			screen.getByText(
+				'This rule created on 14 Sep 2026 and last updated on 14 Sep 2026'
+			)
+		).toBeInTheDocument();
+	} );
+
 	it( 'keeps the edit drawer open and does not refresh or show success after an update failure', async () => {
 		const rule: Rule = {
 			id: 9,
@@ -1093,6 +1123,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		const { onClose, onSuccess, registry } = renderDrawer(
 			jest.fn(),
@@ -1129,6 +1160,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		const context: RuleFormContext = {
 			recordedAttemptId: 7,
@@ -1198,6 +1230,7 @@ describe( 'RulesPage', () => {
 			value: 'duplicate@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		mockedApiFetch
 			.mockResolvedValueOnce( { data: [], totalItems: 0, totalPages: 0 } )
@@ -1264,6 +1297,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		mockedApiFetch
 			.mockResolvedValueOnce( {
@@ -1297,6 +1331,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		mockedApiFetch
 			.mockResolvedValueOnce( {
@@ -1325,6 +1360,7 @@ describe( 'RulesPage', () => {
 			value: 'first@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		const second = { ...first, id: 2, value: 'second@example.com' };
 		let resolveFirst: ( rule: Rule ) => void = () => undefined;
@@ -1364,6 +1400,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		let resolveDetail: ( rule: Rule ) => void = () => undefined;
 		const detailRequest = new Promise< Rule >( ( resolve ) => {
@@ -1405,6 +1442,7 @@ describe( 'RulesPage', () => {
 			value: 'shopper@example.com',
 			type: 'email',
 			created_at: '2026-09-14T12:00:00Z',
+			updated_at: null,
 		};
 		let resolveDetail: ( rule: Rule ) => void = () => undefined;
 		const detailRequest = new Promise< Rule >( ( resolve ) => {
@@ -1449,6 +1487,7 @@ describe( 'RulesPage', () => {
 						value: 'shopper@example.com',
 						type: 'email',
 						created_at: '2026-09-14T12:00:00Z',
+						updated_at: null,
 					},
 				],
 				totalItems: 1,
@@ -1513,6 +1552,7 @@ describe( 'RulesPage', () => {
 						value: 'shopper@example.com',
 						type: 'email',
 						created_at: '2026-09-14T12:00:00Z',
+						updated_at: null,
 					},
 				],
 				totalItems: 1,

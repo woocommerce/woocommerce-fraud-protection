@@ -5,7 +5,8 @@ import {
 	useMemo,
 	useState,
 } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { format } from '@wordpress/date';
+import { __, sprintf } from '@wordpress/i18n';
 import { DataForm, useFormValidity } from '@wordpress/dataviews/wp';
 import type { DataFormControlProps, Field, Form } from '@wordpress/dataviews';
 import { useDispatch } from '@wordpress/data';
@@ -504,6 +505,27 @@ export function RuleFormDrawer( {
 								} ) );
 							} }
 						/>
+						{ rule && (
+							<Text
+								variant="body-md"
+								style={ {
+									color: 'var(--wpds-color-foreground-content-neutral-weak)',
+								} }
+							>
+								{ sprintf(
+									/* translators: 1: Rule creation date. 2: Rule last update date. */
+									__(
+										'This rule created on %1$s and last updated on %2$s',
+										'woocommerce-fraud-protection'
+									),
+									format( 'j M Y', rule.created_at ),
+									format(
+										'j M Y',
+										rule.updated_at ?? rule.created_at
+									)
+								) }
+							</Text>
+						) }
 						{ saveError?.code !== DUPLICATE_RULE_ERROR &&
 							saveError?.message && (
 								<Notice.Root intent="error">

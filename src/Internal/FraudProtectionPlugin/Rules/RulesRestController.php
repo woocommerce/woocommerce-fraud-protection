@@ -543,7 +543,7 @@ class RulesRestController extends \WP_REST_Controller {
 	 * Convert a rule to the fields used by DataViews.
 	 *
 	 * @param Rule $rule Active rule.
-	 * @return array{id: int, action: string, value: string, type: string, created_at: string}
+	 * @return array{id: int, action: string, value: string, type: string, created_at: string, updated_at: ?string}
 	 */
 	private function to_public_rule( Rule $rule ): array {
 		return array(
@@ -551,20 +551,21 @@ class RulesRestController extends \WP_REST_Controller {
 			'action'     => $rule->action->value,
 			'value'      => (string) ( $rule->conditions['value'] ?? '' ),
 			'type'       => (string) ( $rule->conditions['field'] ?? '' ),
-			'created_at' => $this->format_created_at( $rule->created_at ),
+			'created_at' => $this->format_timestamp( $rule->created_at ),
+			'updated_at' => is_null( $rule->updated_at ) ? null : $this->format_timestamp( $rule->updated_at ),
 		);
 	}
 
 	/**
 	 * Format a UTC database timestamp as an explicit UTC date-time.
 	 *
-	 * @param string $created_at UTC MySQL timestamp.
+	 * @param string $timestamp UTC MySQL timestamp.
 	 * @return string RFC3339 timestamp.
 	 */
-	private function format_created_at( string $created_at ): string {
-		$parsed = \DateTimeImmutable::createFromFormat( '!Y-m-d H:i:s', $created_at, new \DateTimeZone( 'UTC' ) );
+	private function format_timestamp( string $timestamp ): string {
+		$parsed = \DateTimeImmutable::createFromFormat( '!Y-m-d H:i:s', $timestamp, new \DateTimeZone( 'UTC' ) );
 		if ( false === $parsed ) {
-			return $created_at . '+00:00';
+			return $timestamp . '+00:00';
 		}
 
 		return $parsed->format( 'Y-m-d\\TH:i:s\\Z' );
@@ -725,6 +726,11 @@ class RulesRestController extends \WP_REST_Controller {
 				),
 				'created_at' => array(
 					'type'     => 'string',
+					'format'   => 'date-time',
+					'readonly' => true,
+				),
+				'updated_at' => array(
+					'type'     => array( 'string', 'null' ),
 					'format'   => 'date-time',
 					'readonly' => true,
 				),

@@ -12,6 +12,7 @@ type Rule = {
 	value: string;
 	type: string;
 	created_at: string;
+	updated_at: string | null;
 };
 
 type DataViewsProps = {

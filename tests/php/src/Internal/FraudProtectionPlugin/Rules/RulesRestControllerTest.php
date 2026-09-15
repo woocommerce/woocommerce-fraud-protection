@@ -92,9 +92,10 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( 1, $response->get_data()['totalItems'] );
-		$this->assertSame( array( 'id', 'action', 'value', 'type', 'created_at' ), array_keys( $response->get_data()['data'][0] ) );
+		$this->assertSame( array( 'id', 'action', 'value', 'type', 'created_at', 'updated_at' ), array_keys( $response->get_data()['data'][0] ) );
 		$this->assertSame( 'shopper@example.com', $response->get_data()['data'][0]['value'] );
 		$this->assertSame( '2026-09-14T12:00:00Z', $response->get_data()['data'][0]['created_at'] );
+		$this->assertNull( $response->get_data()['data'][0]['updated_at'] );
 	}
 
 	/**
@@ -165,6 +166,19 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$table = $this->schema_manager->get_rules_table_name();
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET created_at = %s WHERE id = %d", $created_at, $id ) );
+	}
+
+	/**
+	 * Set the update time for a stored rule.
+	 *
+	 * @param int    $id         Rule ID.
+	 * @param string $updated_at UTC timestamp.
+	 */
+	private function set_updated_at( int $id, string $updated_at ): void {
+		global $wpdb;
+		$table = $this->schema_manager->get_rules_table_name();
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET updated_at = %s WHERE id = %d", $updated_at, $id ) );
 	}
 
 	/**
@@ -747,11 +761,13 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 				'value'    => 'active@example.com',
 			)
 		);
+		$this->set_updated_at( $rule->id, '2026-09-15 13:30:00' );
 		$path   = '/wc-fraud-protection/v1/rules/' . $rule->id;
 		$active = $this->server->dispatch( new \WP_REST_Request( 'GET', $path ) );
 
 		$this->assertSame( 200, $active->get_status() );
 		$this->assertSame( 'active@example.com', $active->get_data()['value'] );
+		$this->assertSame( '2026-09-15T13:30:00Z', $active->get_data()['updated_at'] );
 		$this->assertTrue( $this->rule_store->delete_rule( $rule->id ) );
 
 		$deleted = $this->server->dispatch( new \WP_REST_Request( 'GET', $path ) );
@@ -793,6 +809,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( 'allow', $response->get_data()['action'] );
 		$this->assertSame( 'updated@example.com', $response->get_data()['value'] );
+		$this->assertNotNull( $response->get_data()['updated_at'] );
 	}
 
 	/**

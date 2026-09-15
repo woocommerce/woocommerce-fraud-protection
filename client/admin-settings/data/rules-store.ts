@@ -8,6 +8,7 @@ export type Rule = {
 	value: string;
 	type: 'email' | 'ip';
 	created_at: string;
+	updated_at: string | null;
 };
 
 export type RulesQuery = {
