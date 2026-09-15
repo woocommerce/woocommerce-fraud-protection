@@ -47,7 +47,9 @@ export const getInitialRuleFormData = (
 } );
 
 export const getRuleValuePlaceholder = ( type: Rule[ 'type' ] ): string =>
-	type === 'email' ? 'e.g. j.holland@gmail.com' : 'e.g. 111.111.111.111';
+	type === 'email'
+		? __( 'e.g. j.holland@gmail.com', 'woocommerce-fraud-protection' )
+		: __( 'e.g. 111.111.111.111', 'woocommerce-fraud-protection' );
 
 export const isCompleteEmail = ( value: string ): boolean => {
 	const trimmedValue = value.trim();
@@ -125,6 +127,7 @@ export const isCompleteIp = ( value: string ): boolean => {
 		ipv4.every(
 			( part ) =>
 				/^\d{1,3}$/.test( part ) &&
+				( part.length === 1 || part[ 0 ] !== '0' ) &&
 				Number( part ) >= 0 &&
 				Number( part ) <= 255
 		);
@@ -217,6 +220,7 @@ export function RuleFormDrawer( {
 						label: __( 'Block', 'woocommerce-fraud-protection' ),
 					},
 				],
+				isDisabled: isSaving,
 				isValid: { elements: true },
 			},
 			{
@@ -240,7 +244,7 @@ export function RuleFormDrawer( {
 						),
 					},
 				],
-				isDisabled: Boolean( context ),
+				isDisabled: isSaving || Boolean( context ),
 				isValid: { elements: true },
 			},
 			{
@@ -249,7 +253,7 @@ export function RuleFormDrawer( {
 				type: 'text',
 				Edit: RuleValueEditControl,
 				placeholder: getRuleValuePlaceholder( data.type ),
-				isDisabled: Boolean( context ),
+				isDisabled: isSaving || Boolean( context ),
 				isValid: {
 					required: true,
 					custom: ( item ) => {
@@ -275,7 +279,7 @@ export function RuleFormDrawer( {
 				},
 			},
 		],
-		[ context, data.type ]
+		[ context, data.type, isSaving ]
 	);
 	const { validity, isValid } = useFormValidity( data, fields, form );
 	const hasDuplicateError = Boolean( data.valueError );
@@ -333,7 +337,9 @@ export function RuleFormDrawer( {
 	return (
 		<Drawer.Root
 			open={ open }
-			onOpenChange={ ( nextOpen ) => ! nextOpen && onClose() }
+			onOpenChange={ ( nextOpen ) =>
+				! nextOpen && ! isSaving && onClose()
+			}
 			swipeDirection="right"
 		>
 			<Drawer.Popup
@@ -354,6 +360,7 @@ export function RuleFormDrawer( {
 					</Drawer.Title>
 					<Drawer.CloseIcon
 						label={ __( 'Close', 'woocommerce-fraud-protection' ) }
+						disabled={ isSaving }
 					/>
 				</Drawer.Header>
 				<Drawer.Content>
@@ -384,6 +391,9 @@ export function RuleFormDrawer( {
 							form={ form }
 							validity={ validity }
 							onChange={ ( changes ) => {
+								if ( isSaving ) {
+									return;
+								}
 								setCreateError( null );
 								setData( ( previous ) => ( {
 									...previous,

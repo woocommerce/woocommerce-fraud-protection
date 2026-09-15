@@ -613,6 +613,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 
 		$this->assertSame( 409, $response->get_status() );
 		$this->assertSame( 'woocommerce_fraud_protection_duplicate_rule', $error->get_error_code() );
+		$this->assertSame( 'This IP is already blocked by a rule.', $error->get_error_message() );
 		$this->assertSame( $existing->id, $error->get_error_data()['rule_id'] );
 		$this->assertSame( 'block', $error->get_error_data()['action'] );
 	}

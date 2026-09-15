@@ -857,6 +857,7 @@ describe( 'RulesPage', () => {
 			'Enter a complete email address.',
 		],
 		[ 'ip', '203.0.113', 'Enter a complete IP address.' ],
+		[ 'ip', '01.2.3.4', 'Enter a complete IP address.' ],
 	] )(
 		'does not submit an invalid %s value',
 		async ( type, value, message ) => {
@@ -877,6 +878,55 @@ describe( 'RulesPage', () => {
 			expect( mockedApiFetch ).not.toHaveBeenCalled();
 		}
 	);
+
+	it( 'keeps the form and drawer locked while a rule is saved', async () => {
+		let resolveCreate: (
+			rule: RulesResponse[ 'data' ][ number ]
+		) => void = () => {};
+		const createRequest = new Promise< RulesResponse[ 'data' ][ number ] >(
+			( resolve ) => {
+				resolveCreate = resolve;
+			}
+		);
+		mockedApiFetch
+			.mockReturnValueOnce( createRequest )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} );
+		const onClose = jest.fn();
+		renderDrawer( onClose );
+
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'saving@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		expect( screen.getByLabelText( 'Action' ) ).toBeDisabled();
+		expect( screen.getByLabelText( 'Rule type' ) ).toBeDisabled();
+		expect( screen.getByLabelText( 'Value' ) ).toBeDisabled();
+		expect(
+			screen.getByRole( 'button', { name: 'Close' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
+		await userEvent.keyboard( '{Escape}' );
+		expect( onClose ).not.toHaveBeenCalled();
+
+		await act( async () => {
+			resolveCreate( {
+				id: 9,
+				action: 'allow',
+				value: 'saving@example.com',
+				type: 'email',
+				created_at: '2026-09-15T12:00:00Z',
+			} );
+			await createRequest;
+		} );
+		await waitFor( () => expect( onClose ).toHaveBeenCalledTimes( 1 ) );
+	} );
 
 	it( 'sends the exact create request through the rules store', async () => {
 		const registry = createRegistry();

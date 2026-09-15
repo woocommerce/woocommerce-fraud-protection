@@ -286,16 +286,9 @@ class RulesRestController extends \WP_REST_Controller {
 		} catch ( DuplicateRuleException $error ) {
 			$existing        = $this->rule_store->get_rule( $error->existing_rule_id );
 			$existing_action = $existing instanceof Rule ? $existing->action->value : null;
-			$display_type    = RuleConditions::FIELD_EMAIL === $type ? 'email' : 'IP';
-			$display_action  = FraudDecision::Allow->value === $existing_action ? 'allowed' : 'blocked';
 			return new \WP_Error(
 				'woocommerce_fraud_protection_duplicate_rule',
-				sprintf(
-					/* translators: 1: rule type, 2: existing rule action. */
-					__( 'This %1$s is already %2$s by a rule.', 'woocommerce-fraud-protection' ),
-					$display_type,
-					$display_action
-				),
+				$this->duplicate_rule_message( $type, $existing_action ),
 				array(
 					'status'  => 409,
 					'rule_id' => $error->existing_rule_id,
@@ -340,6 +333,26 @@ class RulesRestController extends \WP_REST_Controller {
 	 */
 	private function invalid_create_error(): \WP_Error {
 		return new \WP_Error( 'woocommerce_fraud_protection_invalid_rule', __( 'Enter a complete email address or IP address.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
+	}
+
+	/**
+	 * Return the duplicate rule message for a rule type and action.
+	 *
+	 * @param string  $type            Rule condition type.
+	 * @param ?string $existing_action Existing rule action, when available.
+	 * @return string
+	 */
+	private function duplicate_rule_message( string $type, ?string $existing_action ): string {
+		$is_allow = FraudDecision::Allow->value === $existing_action;
+		if ( RuleConditions::FIELD_EMAIL === $type ) {
+			return $is_allow
+				? __( 'This email is already allowed by a rule.', 'woocommerce-fraud-protection' )
+				: __( 'This email is already blocked by a rule.', 'woocommerce-fraud-protection' );
+		}
+
+		return $is_allow
+			? __( 'This IP is already allowed by a rule.', 'woocommerce-fraud-protection' )
+			: __( 'This IP is already blocked by a rule.', 'woocommerce-fraud-protection' );
 	}
 
 	/**
