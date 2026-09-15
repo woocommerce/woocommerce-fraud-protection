@@ -13,6 +13,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectio
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RulesRestController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\RuleStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
@@ -179,6 +181,26 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$table = $this->schema_manager->get_rules_table_name();
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET updated_at = %s WHERE id = %d", $updated_at, $id ) );
+	}
+
+	/**
+	 * Replace the next rule detail query with an invalid statement.
+	 *
+	 * @return \Closure The filter to remove during cleanup.
+	 */
+	private function fail_next_rule_read_query(): \Closure {
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_starts_with( $query, "SELECT * FROM {$table} WHERE id =" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID RULE READ QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		return $filter;
 	}
 
 	/**
@@ -778,6 +800,60 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox A rule database read failure returns the endpoint's server error without changing the rule.
+	 *
+	 * @dataProvider rule_read_failure_provider
+	 *
+	 * @param string $method        REST method.
+	 * @param string $expected_code Expected error code.
+	 */
+	public function test_rule_read_query_failure_returns_server_error( string $method, string $expected_code ): void {
+		$rule    = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'read-error@example.com',
+			)
+		);
+		$request = new \WP_REST_Request( $method, '/wc-fraud-protection/v1/rules/' . $rule->id );
+		if ( 'PUT' === $method ) {
+			$request->set_body_params(
+				array(
+					'action' => 'block',
+					'type'   => 'email',
+					'value'  => 'updated@example.com',
+				)
+			);
+		}
+		$filter = $this->fail_next_rule_read_query();
+
+		try {
+			$response = $this->server->dispatch( $request );
+		} finally {
+			remove_filter( 'query', $filter );
+		}
+
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertSame( $expected_code, $response->as_error()->get_error_code() );
+		$this->assertSame( RuleStatus::Active, $this->rule_store->get_rule( $rule->id )->status );
+		$this->assertSame( FraudDecision::Allow, $this->rule_store->get_rule( $rule->id )->action );
+	}
+
+	/**
+	 * Cases for rule read failures.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function rule_read_failure_provider(): array {
+		return array(
+			'detail' => array( 'GET', 'woocommerce_fraud_protection_rule_load_failed' ),
+			'update' => array( 'PUT', 'woocommerce_fraud_protection_rule_update_failed' ),
+			'delete' => array( 'DELETE', 'woocommerce_fraud_protection_rule_delete_failed' ),
+		);
+	}
+
+	/**
 	 * @testdox A changed update normalizes fields, sends no feedback, and tracks only approved values.
 	 */
 	public function test_update_rule_tracks_changed_write_without_feedback(): void {
@@ -960,6 +1036,39 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 
 		$this->assertSame( 204, $response->get_status() );
 		$this->assertSame( 404, $missing->get_status() );
+	}
+
+	/**
+	 * @testdox Delete telemetry uses the rule snapshot protected by the store write lock.
+	 */
+	public function test_delete_rule_tracks_the_locked_rule_snapshot(): void {
+		$deleted_rule = Rule::from_row(
+			array(
+				'id'          => 42,
+				'action'      => 'allow',
+				'status'      => 'active',
+				'position'    => 1,
+				'conditions'  => '{"field":"email","operator":"equals","value":"locked@example.com"}',
+				'created_at'  => '2026-09-15 12:00:00',
+				'created_by'  => 1,
+				'updated_at'  => null,
+				'updated_by'  => null,
+				'action_meta' => null,
+				'source_meta' => null,
+			)
+		);
+		$this->assertNotNull( $deleted_rule );
+		$rule_store = $this->createMock( RuleStore::class );
+		$rule_store->expects( $this->once() )->method( 'delete_rule_with_result' )->with( 42 )->willReturn( $deleted_rule );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Allow, 'email', 'rules' );
+		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/42' );
+		$request->set_query_params( array( 'origin' => 'rules' ) );
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 204, $response->get_status() );
 	}
 
 	/**

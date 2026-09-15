@@ -353,7 +353,11 @@ class RulesRestController extends \WP_REST_Controller {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
 
-		$rule = $this->get_active_rule( (int) $request->get_param( 'id' ) );
+		try {
+			$rule = $this->get_active_rule( (int) $request->get_param( 'id' ) );
+		} catch ( \RuntimeException ) {
+			return $this->rule_load_failed_error();
+		}
 		return $rule instanceof Rule ? rest_ensure_response( $this->to_public_rule( $rule ) ) : $this->rule_not_found_error();
 	}
 
@@ -373,8 +377,12 @@ class RulesRestController extends \WP_REST_Controller {
 			return $this->invalid_update_error();
 		}
 
-		$id       = (int) $request->get_param( 'id' );
-		$existing = $this->get_active_rule( $id );
+		$id = (int) $request->get_param( 'id' );
+		try {
+			$existing = $this->get_active_rule( $id );
+		} catch ( \RuntimeException ) {
+			return new \WP_Error( 'woocommerce_fraud_protection_rule_update_failed', __( 'The rule could not be updated.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+		}
 		if ( ! $existing instanceof Rule ) {
 			return $this->rule_not_found_error();
 		}
@@ -435,23 +443,18 @@ class RulesRestController extends \WP_REST_Controller {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
 
-		$id   = (int) $request->get_param( 'id' );
-		$rule = $this->get_active_rule( $id );
-		if ( ! $rule instanceof Rule ) {
-			return $this->rule_not_found_error();
-		}
-
+		$id = (int) $request->get_param( 'id' );
 		try {
-			$deleted = $this->rule_store->delete_rule( $id );
+			$deleted_rule = $this->rule_store->delete_rule_with_result( $id );
 		} catch ( \RuntimeException ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rule_delete_failed', __( 'The rule could not be deleted.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
-		if ( ! $deleted ) {
+		if ( ! $deleted_rule instanceof Rule ) {
 			return $this->rule_not_found_error();
 		}
 
-		$type = (string) ( $rule->conditions['field'] ?? '' );
-		$this->telemetry->record_rule_change( 'deleted', $rule->action, $type, $this->get_origin( $request ) );
+		$type = (string) ( $deleted_rule->conditions['field'] ?? '' );
+		$this->telemetry->record_rule_change( 'deleted', $deleted_rule->action, $type, $this->get_origin( $request ) );
 		return new \WP_REST_Response( null, 204 );
 	}
 
@@ -479,9 +482,17 @@ class RulesRestController extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Return a failed active rule read response.
+	 */
+	private function rule_load_failed_error(): \WP_Error {
+		return new \WP_Error( 'woocommerce_fraud_protection_rule_load_failed', __( 'The rule could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+	}
+
+	/**
 	 * Read an active rule by ID.
 	 *
 	 * @param int $id Rule ID.
+	 * @throws \RuntimeException When the rule query fails.
 	 */
 	private function get_active_rule( int $id ): ?Rule {
 		$rule = $id > 0 ? $this->rule_store->get_rule( $id ) : null;
@@ -495,7 +506,11 @@ class RulesRestController extends \WP_REST_Controller {
 	 * @param string                 $type  Submitted rule type.
 	 */
 	private function duplicate_rule_error( DuplicateRuleException $error, string $type ): \WP_Error {
-		$existing        = $this->get_active_rule( $error->existing_rule_id );
+		try {
+			$existing = $this->get_active_rule( $error->existing_rule_id );
+		} catch ( \RuntimeException ) {
+			return $this->rule_load_failed_error();
+		}
 		$existing_action = $existing instanceof Rule ? $existing->action->value : null;
 
 		return new \WP_Error(

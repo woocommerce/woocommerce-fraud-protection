@@ -605,6 +605,44 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A failed rule read query throws instead of reporting a missing rule.
+	 */
+	public function test_get_rule_query_failure_throws(): void {
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_starts_with( $query, "SELECT * FROM {$table} WHERE id =" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID RULE READ QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		$this->expectException( \RuntimeException::class );
+		try {
+			$this->sut->get_rule( 1 );
+		} finally {
+			remove_filter( 'query', $filter );
+		}
+	}
+
+	/**
+	 * @testdox A delete result preserves the rule state read under the write lock.
+	 */
+	public function test_delete_rule_with_result_returns_the_deleted_rule_snapshot(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'snapshot@example.com' ) );
+
+		$deleted_rule = $this->sut->delete_rule_with_result( $rule->id );
+
+		$this->assertNotNull( $deleted_rule );
+		$this->assertSame( $rule->id, $deleted_rule->id );
+		$this->assertSame( FraudDecision::Block, $deleted_rule->action );
+		$this->assertSame( 'email', $deleted_rule->conditions['field'] );
+		$this->assertSame( RuleStatus::Deleted, $this->sut->get_rule( $rule->id )->status );
+	}
+
+	/**
 	 * @testdox Should allow re-creating the conditions of a soft-deleted rule.
 	 */
 	public function test_deleted_rule_conditions_can_be_recreated(): void {

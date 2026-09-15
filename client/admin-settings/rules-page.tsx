@@ -6,7 +6,6 @@ import {
 	useState,
 } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
-import { dateI18n } from '@wordpress/date';
 import {
 	Button,
 	Dialog,
@@ -29,6 +28,7 @@ import { Link } from 'react-router-dom';
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
 import { getFraudProtectionRoute } from './navigation';
+import { formatRuleDate } from './rule-date';
 import {
 	getRuleFormFields,
 	ruleForm,
@@ -37,8 +37,6 @@ import {
 import type { RuleFormData } from './components/rule-form-drawer';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
-const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 const ruleActions = [
 	{ value: 'allow', label: __( 'Allow', 'woocommerce-fraud-protection' ) },
 	{ value: 'block', label: __( 'Block', 'woocommerce-fraud-protection' ) },
@@ -106,8 +104,7 @@ const fields: Field< Rule >[] = [
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
-		render: ( { item } ) =>
-			dateI18n( 'j M Y', item.created_at, browserTimeZone ),
+		render: ( { item } ) => formatRuleDate( item.created_at ),
 	},
 ];
 
@@ -553,7 +550,8 @@ export function RulesPage() {
 								<DataViews.ViewConfig />
 							</Stack>
 						</Stack>
-						{ ( loadErrorMessage || detailError ) && (
+						{ ( loadErrorMessage ||
+							( detailError && ! isDrawerOpen ) ) && (
 							<Stack
 								direction="column"
 								style={ {
@@ -564,7 +562,8 @@ export function RulesPage() {
 							>
 								<Notice.Root intent="error">
 									<Notice.Description>
-										{ detailError || loadErrorMessage }
+										{ ( ! isDrawerOpen && detailError ) ||
+											loadErrorMessage }
 									</Notice.Description>
 								</Notice.Root>
 							</Stack>
@@ -602,6 +601,8 @@ export function RulesPage() {
 			<RuleFormDrawer
 				open={ isDrawerOpen }
 				rule={ editingRule }
+				detailError={ detailError ?? undefined }
+				onFormChange={ () => setDetailError( null ) }
 				onClose={ () => {
 					detailRequest.current++;
 					setIsDrawerOpen( false );

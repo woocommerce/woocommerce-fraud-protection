@@ -920,6 +920,7 @@ describe( 'RulesPage', () => {
 				value: 'saving@example.com',
 				type: 'email',
 				created_at: '2026-09-15T12:00:00Z',
+				updated_at: null,
 			} );
 			await createRequest;
 		} );
@@ -1288,6 +1289,43 @@ describe( 'RulesPage', () => {
 		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
 			path: '/wc-fraud-protection/v1/rules/17',
 		} );
+	} );
+
+	it( 'shows a duplicate detail failure in the drawer until the form changes', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( { data: [], totalItems: 0, totalPages: 0 } )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: 17 },
+			} )
+			.mockRejectedValueOnce( new Error( 'request failed' ) );
+		renderRules();
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'duplicate@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', {
+				name: 'Edit existing rule',
+			} )
+		);
+
+		expect(
+			await within( drawer ).findByText( 'The rule could not be loaded.' )
+		).toBeInTheDocument();
+		await userEvent.type( within( drawer ).getByLabelText( 'Value' ), 'x' );
+		expect(
+			within( drawer ).queryByText( 'The rule could not be loaded.' )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'shows Edit before Delete and opens active detail from the row action', async () => {

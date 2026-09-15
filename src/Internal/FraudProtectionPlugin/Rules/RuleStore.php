@@ -287,6 +287,17 @@ class RuleStore {
 	 * @throws \RuntimeException When the delete or write lock fails.
 	 */
 	public function delete_rule( int $id ): bool {
+		return ! is_null( $this->delete_rule_with_result( $id ) );
+	}
+
+	/**
+	 * Delete a rule and return the rule state protected by the write lock.
+	 *
+	 * @param int $id The rule id.
+	 * @return ?Rule The deleted rule snapshot, or null when no live rule has the given id.
+	 * @throws \RuntimeException When the read, delete, or write lock fails.
+	 */
+	public function delete_rule_with_result( int $id ): ?Rule {
 		global $wpdb;
 
 		$user_id = get_current_user_id();
@@ -297,12 +308,12 @@ class RuleStore {
 			'updated_by'     => $user_id > 0 ? $user_id : null,
 		);
 
-		// No read-then-write: the write predicate only matches live rules, and
-		// deleting a live rule always changes its status, so the affected-rows
-		// count alone reports whether a live rule existed — concurrent double
-		// deletes cannot both report success.
 		$write_lock_name = $this->acquire_write_lock();
 		try {
+			$rule = $this->get_rule( $id );
+			if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status ) {
+				return null;
+			}
 			$affected = $this->run_write_query( $this->build_update_sql( $changes, $id ) );
 		} finally {
 			$this->release_write_lock( $write_lock_name );
@@ -311,7 +322,7 @@ class RuleStore {
 			throw new \RuntimeException( 'Failed to delete the rule: ' . esc_html( $wpdb->last_error ) );
 		}
 
-		return $affected > 0;
+		return $affected > 0 ? $rule : null;
 	}
 
 	/**
@@ -320,6 +331,7 @@ class RuleStore {
 	 *
 	 * @param int $id The rule id.
 	 * @return ?Rule The rule, or null when the id does not exist (or the row is not interpretable).
+	 * @throws \RuntimeException When the query fails.
 	 */
 	public function get_rule( int $id ): ?Rule {
 		global $wpdb;
@@ -328,6 +340,9 @@ class RuleStore {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A );
+		if ( '' !== $wpdb->last_error ) {
+			throw new \RuntimeException( 'Failed to get the rule: ' . esc_html( $wpdb->last_error ) );
+		}
 
 		return is_array( $row ) ? Rule::from_row( $row ) : null;
 	}

@@ -5,7 +5,6 @@ import {
 	useMemo,
 	useState,
 } from '@wordpress/element';
-import { format } from '@wordpress/date';
 import { __, sprintf } from '@wordpress/i18n';
 import { DataForm, useFormValidity } from '@wordpress/dataviews/wp';
 import type { DataFormControlProps, Field, Form } from '@wordpress/dataviews';
@@ -25,6 +24,7 @@ import {
 
 import type { CreateRuleRequest, Rule } from '../data/rules-store';
 import { useRules } from '../hooks/use-rules';
+import { formatRuleDate } from '../rule-date';
 
 export type RuleFormContext = {
 	recordedAttemptId: number;
@@ -66,6 +66,8 @@ type RuleFormDrawerProps = {
 	onClose: () => void;
 	onSuccess?: () => void;
 	onViewRule?: ( id: number ) => void;
+	onFormChange?: () => void;
+	detailError?: string;
 	context?: RuleFormContext;
 	rule?: Rule;
 };
@@ -295,6 +297,8 @@ export function RuleFormDrawer( {
 	onClose,
 	onSuccess,
 	onViewRule,
+	onFormChange,
+	detailError,
 	context,
 	rule,
 }: RuleFormDrawerProps ) {
@@ -499,12 +503,20 @@ export function RuleFormDrawer( {
 									return;
 								}
 								setSaveError( null );
+								onFormChange?.();
 								setData( ( previous ) => ( {
 									...previous,
 									...changes,
 								} ) );
 							} }
 						/>
+						{ detailError && (
+							<Notice.Root intent="error">
+								<Notice.Description>
+									{ detailError }
+								</Notice.Description>
+							</Notice.Root>
+						) }
 						{ rule && (
 							<Text
 								variant="body-md"
@@ -518,9 +530,8 @@ export function RuleFormDrawer( {
 										'This rule created on %1$s and last updated on %2$s.',
 										'woocommerce-fraud-protection'
 									),
-									format( 'j M Y', rule.created_at ),
-									format(
-										'j M Y',
+									formatRuleDate( rule.created_at ),
+									formatRuleDate(
 										rule.updated_at ?? rule.created_at
 									)
 								) }
