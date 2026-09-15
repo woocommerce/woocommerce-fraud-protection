@@ -30,8 +30,12 @@ const fields: Field< Rule >[] = [
 		elements: ruleActions,
 		filterBy: { operators: [ 'is' ] },
 		render: ( { item } ) => (
-			<span
+			<Stack
 				className={ `wc-fraud-protection-rules__action wc-fraud-protection-rules__action--${ item.action }` }
+				direction="row"
+				align="center"
+				gap="xs"
+				render={ <span /> }
 			>
 				<Icon
 					className="wc-fraud-protection-rules__action-icon"
@@ -42,7 +46,7 @@ const fields: Field< Rule >[] = [
 				{ item.action === 'allow'
 					? __( 'Allow', 'woocommerce-fraud-protection' )
 					: __( 'Block', 'woocommerce-fraud-protection' ) }
-			</span>
+			</Stack>
 		),
 	},
 	{
@@ -72,7 +76,7 @@ const fields: Field< Rule >[] = [
 	},
 	{
 		id: 'created_at',
-		label: __( 'Created/Date', 'woocommerce-fraud-protection' ),
+		label: __( 'Created date', 'woocommerce-fraud-protection' ),
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
@@ -182,10 +186,13 @@ export function RulesPage() {
 	);
 	return (
 		<Stack
+			className="wc-fraud-protection-rules"
 			direction="column"
 			style={ {
 				width: 'calc(100% + 40px)',
 				marginInline: '-20px',
+				minHeight:
+					'calc(100vh - var(--wp-admin--admin-bar--height, 32px) - 125px)',
 			} }
 		>
 			<DataViews
@@ -201,7 +208,7 @@ export function RulesPage() {
 				search={ false }
 				config={ { perPageSizes: [ 20, 50, 100 ] } }
 			>
-				<Stack className="wc-fraud-protection-rules" direction="column">
+				<Stack direction="column">
 					<Stack
 						className="wc-fraud-protection-rules__header"
 						direction="column"

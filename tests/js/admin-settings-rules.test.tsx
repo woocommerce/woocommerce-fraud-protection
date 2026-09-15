@@ -111,6 +111,17 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
+	it( 'uses the Created date filter label', async () => {
+		renderRules();
+		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
+
+		expect(
+			dataViews.props?.fields?.find(
+				( field ) => field.id === 'created_at'
+			)?.label
+		).toBe( 'Created date' );
+	} );
+
 	it( 'selects All when DataViews removes the action filter', async () => {
 		renderRules();
 		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
