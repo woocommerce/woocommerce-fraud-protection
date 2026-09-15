@@ -79,11 +79,9 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Date filters use the site timezone and include both date boundaries.
+	 * @testdox Date filters accept UTC user-date bounds and include both boundaries.
 	 */
-	public function test_get_rules_date_filters_are_site_local_and_inclusive(): void {
-		$original_timezone = get_option( 'timezone_string' );
-		update_option( 'timezone_string', 'America/Sao_Paulo' );
+	public function test_get_rules_date_filters_are_utc_and_inclusive(): void {
 		$before       = $this->rule_store->create_rule(
 			FraudDecision::Allow,
 			array(
@@ -116,16 +114,16 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 				'value'    => 'after@example.com',
 			)
 		);
-		$this->set_created_at( $before->id, '2026-09-13 02:59:59' );
-		$this->set_created_at( $inside_start->id, '2026-09-13 03:00:00' );
-		$this->set_created_at( $inside_end->id, '2026-09-14 02:59:59' );
-		$this->set_created_at( $after->id, '2026-09-14 03:00:00' );
+		$this->set_created_at( $before->id, '2026-09-15 02:59:59' );
+		$this->set_created_at( $inside_start->id, '2026-09-15 03:00:00' );
+		$this->set_created_at( $inside_end->id, '2026-09-16 02:59:59' );
+		$this->set_created_at( $after->id, '2026-09-16 03:00:00' );
 
 		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
 		$request->set_query_params(
 			array(
-				'from'     => '2026-09-13',
-				'to'       => '2026-09-13',
+				'from'     => '2026-09-15T03:00:00Z',
+				'to'       => '2026-09-16T02:59:59Z',
 				'per_page' => 1,
 			)
 		);
@@ -134,8 +132,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( 2, $response->get_data()['totalItems'] );
 		$this->assertSame( 2, $response->get_data()['totalPages'] );
-		$this->assertSame( '2026-09-14T02:59:59Z', $response->get_data()['data'][0]['created_at'] );
-		update_option( 'timezone_string', $original_timezone );
+		$this->assertSame( '2026-09-16T02:59:59Z', $response->get_data()['data'][0]['created_at'] );
 	}
 
 	/**

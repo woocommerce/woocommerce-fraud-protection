@@ -110,7 +110,7 @@ class RulesRestController extends \WP_REST_Controller {
 		foreach ( array( 'from', 'to' ) as $key ) {
 			$value = $request->get_param( $key );
 			if ( is_string( $value ) && '' !== $value ) {
-				$utc = $this->date_bound_to_utc( $value, 'to' === $key );
+				$utc = $this->parse_utc_date_bound( $value );
 				if ( is_null( $utc ) ) {
 					return new \WP_Error( 'woocommerce_fraud_protection_invalid_date', __( 'The rule date filter is invalid.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
 				}
@@ -184,24 +184,20 @@ class RulesRestController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Convert a site-local date to a UTC database boundary.
+	 * Convert an RFC3339 UTC boundary to a database timestamp.
 	 *
-	 * @param string $date End-user date in YYYY-MM-DD form.
-	 * @param bool   $end  Whether this is an inclusive end-of-day bound.
+	 * @param string $date UTC boundary in YYYY-MM-DDTHH:MM:SSZ form.
 	 * @return ?string UTC MySQL timestamp.
 	 */
-	private function date_bound_to_utc( string $date, bool $end ): ?string {
-		$parsed = \DateTimeImmutable::createFromFormat( '!Y-m-d', $date, wp_timezone() );
+	private function parse_utc_date_bound( string $date ): ?string {
+		$format = '!Y-m-d\TH:i:s\Z';
+		$parsed = \DateTimeImmutable::createFromFormat( $format, $date, new \DateTimeZone( 'UTC' ) );
 		$errors = \DateTimeImmutable::getLastErrors();
-		if ( false === $parsed || ( is_array( $errors ) && ( $errors['warning_count'] > 0 || $errors['error_count'] > 0 ) ) || $parsed->format( 'Y-m-d' ) !== $date ) {
+		if ( false === $parsed || ( is_array( $errors ) && ( $errors['warning_count'] > 0 || $errors['error_count'] > 0 ) ) || $parsed->format( 'Y-m-d\TH:i:s\Z' ) !== $date ) {
 			return null;
 		}
 
-		if ( $end ) {
-			$parsed = $parsed->setTime( 23, 59, 59 );
-		}
-
-		return $parsed->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
+		return $parsed->format( 'Y-m-d H:i:s' );
 	}
 
 	/**
@@ -235,11 +231,11 @@ class RulesRestController extends \WP_REST_Controller {
 			'value'    => array( 'type' => 'string' ),
 			'from'     => array(
 				'type'    => 'string',
-				'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+				'pattern' => '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$',
 			),
 			'to'       => array(
 				'type'    => 'string',
-				'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+				'pattern' => '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$',
 			),
 			'orderby'  => array(
 				'type'    => 'string',

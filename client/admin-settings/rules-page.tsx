@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { dateI18n } from '@wordpress/date';
+import { format } from '@wordpress/date';
 import { Icon, Notice, Stack, Tabs, Text } from '@wordpress/ui';
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
@@ -21,9 +21,6 @@ const ruleTypes = [
 	{ value: 'email', label: __( 'Email', 'woocommerce-fraud-protection' ) },
 	{ value: 'ip', label: __( 'IP', 'woocommerce-fraud-protection' ) },
 ];
-
-export const formatRuleCreatedDate = ( createdAt: string ): string =>
-	dateI18n( 'j M Y', createdAt );
 
 const fields: Field< Rule >[] = [
 	{
@@ -83,9 +80,38 @@ const fields: Field< Rule >[] = [
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
-		render: ( { item } ) => formatRuleCreatedDate( item.created_at ),
+		render: ( { item } ) => format( 'j M Y', item.created_at ),
 	},
 ];
+
+export const getUtcDateFilterBound = (
+	value: string,
+	endOfDay: boolean
+): string | undefined => {
+	const date = value.slice( 0, 10 );
+	if ( ! /^\d{4}-\d{2}-\d{2}$/.test( date ) ) {
+		return undefined;
+	}
+
+	const [ year, month, day ] = date.split( '-' ).map( Number );
+	const localBound = new Date(
+		year,
+		month - 1,
+		day,
+		endOfDay ? 23 : 0,
+		endOfDay ? 59 : 0,
+		endOfDay ? 59 : 0
+	);
+	if (
+		localBound.getFullYear() !== year ||
+		localBound.getMonth() !== month - 1 ||
+		localBound.getDate() !== day
+	) {
+		return undefined;
+	}
+
+	return localBound.toISOString().replace( '.000Z', 'Z' );
+};
 
 const getFields = ( sortField?: string ): Field< Rule >[] =>
 	fields.map( ( field ) => {
@@ -128,11 +154,11 @@ export const getQueryFromView = ( view: View ): RulesQuery => {
 		if ( filter.field === 'created_at' && Array.isArray( filter.value ) ) {
 			query.from =
 				typeof filter.value[ 0 ] === 'string'
-					? filter.value[ 0 ].slice( 0, 10 )
+					? getUtcDateFilterBound( filter.value[ 0 ], false )
 					: undefined;
 			query.to =
 				typeof filter.value[ 1 ] === 'string'
-					? filter.value[ 1 ].slice( 0, 10 )
+					? getUtcDateFilterBound( filter.value[ 1 ], true )
 					: undefined;
 		}
 	} );
