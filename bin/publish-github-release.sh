@@ -119,8 +119,10 @@ if [[ $draft == true ]]; then
 fi
 
 translation_import_response=$(curl \
+	--connect-timeout 10 \
 	--fail-with-body \
 	--location \
+	--max-time 30 \
 	--request POST \
 	--retry 3 \
 	--retry-delay 2 \
@@ -128,12 +130,18 @@ translation_import_response=$(curl \
 	--silent \
 	--show-error \
 	"$translation_import_url") || {
-	echo "Failed to import translations for the published release $tag at $translation_import_url." >&2
+	translation_import_response_preview=$(printf '%s' "$translation_import_response" | LC_ALL=C tr -d '\000-\037\177' | cut -c1-1000)
+	if [[ -n $translation_import_response_preview ]]; then
+		echo "Failed to import translations for the published release $tag at $translation_import_url. Response: $translation_import_response_preview" >&2
+	else
+		echo "Failed to import translations for the published release $tag at $translation_import_url." >&2
+	fi
 	exit 1
 }
 
 if ! jq -e '.success == true' <<< "$translation_import_response" >/dev/null; then
-	echo "Translation import failed for the published release $tag at $translation_import_url: $translation_import_response" >&2
+	translation_import_response_preview=$(printf '%s' "$translation_import_response" | LC_ALL=C tr -d '\000-\037\177' | cut -c1-1000)
+	echo "Translation import failed for the published release $tag at $translation_import_url. Response: $translation_import_response_preview" >&2
 	exit 1
 fi
 
