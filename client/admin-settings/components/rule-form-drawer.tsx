@@ -221,7 +221,7 @@ export function RuleFormDrawer( {
 					{
 						value: 'email',
 						label: __(
-							'email address',
+							'Email address',
 							'woocommerce-fraud-protection'
 						),
 					},

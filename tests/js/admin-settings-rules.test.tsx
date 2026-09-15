@@ -649,7 +649,7 @@ describe( 'RulesPage', () => {
 			await screen.findByRole( 'heading', { name: 'Create rule' } )
 		).toBeInTheDocument();
 		expect( screen.getByLabelText( 'Rule type' ) ).toHaveDisplayValue(
-			'email address'
+			'Email address'
 		);
 		expect( screen.getByLabelText( 'Value' ) ).toBeInTheDocument();
 	} );
