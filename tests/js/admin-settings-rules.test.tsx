@@ -705,6 +705,33 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
+	it( 'keeps the drawer open without refresh or success after a create failure', async () => {
+		const onClose = jest.fn();
+		const onSuccess = jest.fn();
+		const { registry } = renderDrawer( onClose, onSuccess );
+		mockedApiFetch.mockRejectedValueOnce( {
+			message: 'The exact create error.',
+		} );
+
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'failed@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		expect(
+			await within( drawer ).findByText( 'The exact create error.' )
+		).toBeInTheDocument();
+		expect( drawer ).toBeInTheDocument();
+		expect( onClose ).not.toHaveBeenCalled();
+		expect( onSuccess ).not.toHaveBeenCalled();
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
+	} );
+
 	it( 'keeps a duplicate error in the drawer and clears it after a value change', async () => {
 		const onClose = jest.fn();
 		mockedApiFetch.mockRejectedValueOnce( {

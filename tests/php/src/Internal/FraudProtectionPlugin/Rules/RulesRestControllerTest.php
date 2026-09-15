@@ -392,6 +392,34 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox A create storage failure returns a generic error without feedback or telemetry.
+	 */
+	public function test_create_rule_storage_failure_returns_generic_error(): void {
+		$rule_store = $this->createMock( RuleStore::class );
+		$rule_store->expects( $this->once() )->method( 'create_rule' )->willThrowException( new \RuntimeException( 'database details' ) );
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request->set_body_params(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'value'  => 'shopper@example.com',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+		$error    = $response->as_error();
+
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_rule_create_failed', $error->get_error_code() );
+		$this->assertSame( 'The rule could not be created.', $error->get_error_message() );
+	}
+
+	/**
 	 * @testdox Manual creation rejects incomplete email and IP values without writing.
 	 *
 	 * @dataProvider invalid_manual_value_provider

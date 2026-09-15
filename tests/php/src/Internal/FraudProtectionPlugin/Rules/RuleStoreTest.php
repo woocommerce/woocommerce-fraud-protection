@@ -79,6 +79,105 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The write lock is scoped to its database and site table and releases the acquired name.
+	 */
+	public function test_write_lock_name_is_scoped_and_reused_for_release(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$lock_names    = array();
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolate lock naming from MySQL.
+		$wpdb = $this->getMockBuilder( \wpdb::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'prepare', 'get_var' ) )
+			->getMock();
+		$wpdb->method( 'prepare' )->willReturnCallback(
+			static function ( string $query, ...$args ) use ( &$lock_names ): string {
+				$lock_names[] = (string) $args[0];
+
+				return $query;
+			}
+		);
+		$wpdb->method( 'get_var' )->willReturn( '1' );
+
+		$acquire = new \ReflectionMethod( RuleStore::class, 'acquire_write_lock' );
+		$release = new \ReflectionMethod( RuleStore::class, 'release_write_lock' );
+		$dbname  = new \ReflectionProperty( \wpdb::class, 'dbname' );
+		$acquire->setAccessible( true );
+		$release->setAccessible( true );
+		$dbname->setAccessible( true );
+
+		$run_lock_cycle = function ( string $database, string $table ) use ( &$wpdb, $acquire, $release, $dbname ): string {
+			$dbname->setValue( $wpdb, $database );
+			$schema = $this->createMock( SchemaManager::class );
+			$schema->method( 'get_rules_table_name' )->willReturn( $table );
+			$store = new RuleStore();
+			$store->init( $schema );
+
+			$lock_name = $acquire->invoke( $store );
+			$this->assertIsString( $lock_name );
+			$release->invoke( $store, $lock_name );
+
+			return $lock_name;
+		};
+
+		try {
+			$first          = $run_lock_cycle( 'database_one', 'wp_wc_fraud_protection_rules' );
+			$different_site = $run_lock_cycle( 'database_one', 'wp_2_wc_fraud_protection_rules' );
+			$different_db   = $run_lock_cycle( 'database_two', 'wp_wc_fraud_protection_rules' );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+
+		$this->assertSame( 'wcfp_rules_' . substr( hash( 'sha256', "database_one\0wp_wc_fraud_protection_rules" ), 0, 48 ), $first );
+		$this->assertLessThanOrEqual( 64, strlen( $first ) );
+		$this->assertNotSame( $first, $different_site );
+		$this->assertNotSame( $first, $different_db );
+		$this->assertSame(
+			array( $first, $first, $different_site, $different_site, $different_db, $different_db ),
+			$lock_names
+		);
+	}
+
+	/**
+	 * @testdox A second create selects its position only after the first create inserts and releases its lock.
+	 */
+	public function test_create_serializes_position_selection_and_insert(): void {
+		$table  = $this->schema_manager->get_rules_table_name();
+		$events = array();
+		$filter = static function ( string $query ) use ( $table, &$events ): string {
+			if ( str_contains( $query, 'GET_LOCK(' ) ) {
+				$events[] = 'acquire';
+			} elseif ( str_contains( $query, "SELECT MAX(position) FROM {$table}" ) || str_contains( $query, "SELECT MIN(position) FROM {$table}" ) ) {
+				$events[] = 'position';
+			} elseif ( str_starts_with( $query, "INSERT INTO {$table}" ) ) {
+				$events[] = 'insert';
+			} elseif ( str_contains( $query, 'RELEASE_LOCK(' ) ) {
+				$events[] = 'release';
+			}
+
+			return $query;
+		};
+		add_filter( 'query', $filter );
+
+		try {
+			$block = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
+			$allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		} finally {
+			remove_filter( 'query', $filter );
+		}
+
+		$this->assertSame(
+			array( 'acquire', 'position', 'insert', 'release', 'acquire', 'position', 'insert', 'release' ),
+			$events
+		);
+		$this->assertSame(
+			array( $allow->id, $block->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
 	 * @testdox The merchant rules page filters by action, type, exact value and dates, and orders newest first.
 	 */
 	public function test_active_rules_page_filters_and_paginates(): void {
