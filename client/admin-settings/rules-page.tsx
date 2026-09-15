@@ -214,16 +214,7 @@ export function RulesPage() {
 		[]
 	);
 	return (
-		<Stack
-			className="wc-fraud-protection-rules"
-			direction="column"
-			style={ {
-				width: 'calc(100% + 40px)',
-				marginInline: '-20px',
-				minHeight:
-					'calc(100vh - var(--wp-admin--admin-bar--height, 32px) - 125px)',
-			} }
-		>
+		<Stack className="wc-fraud-protection-rules" direction="column">
 			<DataViews
 				data={ rules }
 				fields={ visibleFields }
