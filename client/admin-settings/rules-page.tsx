@@ -29,7 +29,6 @@ const fields: Field< Rule >[] = [
 		type: 'text',
 		elements: ruleActions,
 		filterBy: { operators: [ 'is' ] },
-		enableSorting: false,
 		render: ( { item } ) => (
 			<span
 				className={ `wc-fraud-protection-rules__action wc-fraud-protection-rules__action--${ item.action }` }
@@ -51,7 +50,6 @@ const fields: Field< Rule >[] = [
 		label: __( 'Value', 'woocommerce-fraud-protection' ),
 		type: 'text',
 		filterBy: { operators: [ 'is' ] },
-		enableSorting: false,
 		render: ( { item } ) => (
 			<Text
 				className="wc-fraud-protection-rules__value"
@@ -67,7 +65,6 @@ const fields: Field< Rule >[] = [
 		type: 'text',
 		elements: ruleTypes,
 		filterBy: { operators: [ 'is' ] },
-		enableSorting: false,
 		render: ( { item } ) =>
 			item.type === 'email'
 				? __( 'Email', 'woocommerce-fraud-protection' )
@@ -79,7 +76,6 @@ const fields: Field< Rule >[] = [
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
-		enableSorting: false,
 		render: ( { item } ) => format( 'j M Y', item.created_at ),
 	},
 ];
@@ -88,6 +84,8 @@ export const getQueryFromView = ( view: View ): RulesQuery => {
 	const query: RulesQuery = {
 		page: view.page ?? 1,
 		perPage: view.perPage ?? 20,
+		orderby: view.sort?.field ?? 'created_at',
+		order: view.sort?.direction ?? 'desc',
 	};
 	( view.filters ?? [] ).forEach( ( filter ) => {
 		if ( filter.field === 'action' ) {
@@ -123,6 +121,7 @@ export function RulesPage() {
 		type: 'table' as const,
 		page: 1,
 		perPage: 20,
+		sort: { field: 'created_at', direction: 'desc' },
 		filters: [],
 		fields: [ 'action', 'value', 'type', 'created_at' ],
 		layout: {
@@ -150,174 +149,187 @@ export function RulesPage() {
 		[]
 	);
 	return (
-		<DataViews
-			data={ rules }
-			fields={ fields }
-			view={ view }
-			onChangeView={ setView }
-			isLoading={ isLoading }
-			paginationInfo={ { totalItems, totalPages } }
-			getItemId={ ( item ) => String( item.id ) }
-			defaultLayouts={ { table: {} } }
-			empty={ empty }
-			search={ false }
-			config={ { perPageSizes: [ 20, 50, 100 ] } }
+		<Stack
+			direction="column"
+			style={ {
+				width: 'calc(100% + 40px)',
+				marginInline: '-20px',
+			} }
 		>
-			<Stack
-				className="wc-fraud-protection-rules"
-				direction="column"
-				style={ {
-					width: 'calc(100% + 40px)',
-					marginInline: '-20px',
-				} }
+			<DataViews
+				data={ rules }
+				fields={ fields }
+				view={ view }
+				onChangeView={ setView }
+				isLoading={ isLoading }
+				paginationInfo={ { totalItems, totalPages } }
+				getItemId={ ( item ) => String( item.id ) }
+				defaultLayouts={ { table: {} } }
+				empty={ empty }
+				search={ false }
+				config={ { perPageSizes: [ 20, 50, 100 ] } }
 			>
-				<Stack
-					className="wc-fraud-protection-rules__header"
-					direction="column"
-					gap="none"
-					style={ {
-						height: 84,
-						boxSizing: 'border-box',
-						padding: '12px 16px',
-					} }
-				>
-					<Text
-						className="wc-fraud-protection-rules__breadcrumb"
-						variant="heading-lg"
+				<Stack className="wc-fraud-protection-rules" direction="column">
+					<Stack
+						className="wc-fraud-protection-rules__header"
+						direction="column"
+						gap="none"
 						style={ {
-							display: 'flex',
-							alignItems: 'center',
-							gap: 8,
-							margin: '0 8px 8px',
-							height: 32,
-							fontWeight: 500,
+							height: 84,
+							boxSizing: 'border-box',
+							padding: '12px 16px',
 						} }
-						render={
-							<nav
-								aria-label={ __(
-									'Breadcrumb',
+					>
+						<Text
+							className="wc-fraud-protection-rules__breadcrumb"
+							variant="heading-lg"
+							style={ {
+								display: 'flex',
+								alignItems: 'center',
+								gap: 8,
+								margin: '0 8px 8px',
+								height: 32,
+								fontWeight: 500,
+							} }
+							render={
+								<nav
+									aria-label={ __(
+										'Breadcrumb',
+										'woocommerce-fraud-protection'
+									) }
+								/>
+							}
+						>
+							<Link to={ rootSettingsHref }>
+								{ __(
+									'Fraud prevention',
 									'woocommerce-fraud-protection'
 								) }
-							/>
-						}
-					>
-						<Link to={ rootSettingsHref }>
+							</Link>
+							<span aria-hidden="true">/</span>
+							<span aria-current="page">
+								{ __(
+									'Rules',
+									'woocommerce-fraud-protection'
+								) }
+							</span>
+						</Text>
+						<Text
+							className="wc-fraud-protection-rules__description"
+							variant="body-md"
+							style={ {
+								color: 'var(--wpds-color-foreground-content-neutral-weak)',
+								marginInline: 8,
+							} }
+							render={ <p /> }
+						>
 							{ __(
-								'Fraud prevention',
+								'Rules that always let checkout attempts through or always block them, no matter what our fraud detection decides.',
 								'woocommerce-fraud-protection'
 							) }
-						</Link>
-						<span aria-hidden="true">/</span>
-						<span aria-current="page">
-							{ __( 'Rules', 'woocommerce-fraud-protection' ) }
-						</span>
-					</Text>
-					<Text
-						className="wc-fraud-protection-rules__description"
-						variant="body-md"
-						style={ {
-							color: 'var(--wpds-color-foreground-content-neutral-weak)',
-							marginInline: 8,
-						} }
-						render={ <p /> }
-					>
-						{ __(
-							'Rules that always let checkout attempts through or always block them, no matter what our fraud detection decides.',
-							'woocommerce-fraud-protection'
-						) }
-					</Text>
-				</Stack>
-				{ error && (
-					<Notice.Root intent="error">
-						<Notice.Description>{ error }</Notice.Description>
-					</Notice.Root>
-				) }
-				<Tabs.Root
-					value={ actionTab }
-					onValueChange={ ( value ) => {
-						setActionTab( value );
-						const filters = ( view.filters ?? [] ).filter(
-							( filter ) => filter.field !== 'action'
-						);
-						if ( value !== 'all' ) {
-							filters.push( {
-								field: 'action',
-								operator: 'is',
-								value,
-							} );
-						}
-						setView( {
-							...view,
-							page: 1,
-							filters,
-						} );
-					} }
-				>
-					<Stack
-						className="wc-fraud-protection-rules__toolbar"
-						direction="row"
-						align="center"
-						justify="space-between"
-						style={ {
-							height: 40,
-							boxSizing: 'border-box',
-							padding: '0 24px',
-						} }
-					>
-						<Tabs.List
-							variant="minimal"
-							style={ { height: 40, gap: 12 } }
-						>
-							<Tabs.Tab value="all" style={ { height: 40 } }>
-								{ __( 'All', 'woocommerce-fraud-protection' ) }
-							</Tabs.Tab>
-							<Tabs.Tab value="allow" style={ { height: 40 } }>
-								{ __(
-									'Allow',
-									'woocommerce-fraud-protection'
-								) }
-							</Tabs.Tab>
-							<Tabs.Tab value="block" style={ { height: 40 } }>
-								{ __(
-									'Block',
-									'woocommerce-fraud-protection'
-								) }
-							</Tabs.Tab>
-						</Tabs.List>
-						<Stack direction="row" align="center" gap="sm">
-							<DataViews.FiltersToggle />
-							<DataViews.ViewConfig />
-						</Stack>
+						</Text>
 					</Stack>
-					<Tabs.Panel value="all">
-						{ actionTab === 'all' && (
-							<>
-								<DataViews.FiltersToggled />
-								<DataViews.Layout />
-								<DataViews.Pagination />
-							</>
-						) }
-					</Tabs.Panel>
-					<Tabs.Panel value="allow">
-						{ actionTab === 'allow' && (
-							<>
-								<DataViews.FiltersToggled />
-								<DataViews.Layout />
-								<DataViews.Pagination />
-							</>
-						) }
-					</Tabs.Panel>
-					<Tabs.Panel value="block">
-						{ actionTab === 'block' && (
-							<>
-								<DataViews.FiltersToggled />
-								<DataViews.Layout />
-								<DataViews.Pagination />
-							</>
-						) }
-					</Tabs.Panel>
-				</Tabs.Root>
-			</Stack>
-		</DataViews>
+					{ error && (
+						<Notice.Root intent="error">
+							<Notice.Description>{ error }</Notice.Description>
+						</Notice.Root>
+					) }
+					<Tabs.Root
+						value={ actionTab }
+						onValueChange={ ( value ) => {
+							setActionTab( value );
+							const filters = ( view.filters ?? [] ).filter(
+								( filter ) => filter.field !== 'action'
+							);
+							if ( value !== 'all' ) {
+								filters.push( {
+									field: 'action',
+									operator: 'is',
+									value,
+								} );
+							}
+							setView( {
+								...view,
+								page: 1,
+								filters,
+							} );
+						} }
+					>
+						<Stack
+							className="wc-fraud-protection-rules__toolbar"
+							direction="row"
+							align="center"
+							justify="space-between"
+							style={ {
+								height: 40,
+								boxSizing: 'border-box',
+								padding: '0 24px',
+							} }
+						>
+							<Tabs.List
+								variant="minimal"
+								style={ { height: 40, gap: 12 } }
+							>
+								<Tabs.Tab value="all" style={ { height: 40 } }>
+									{ __(
+										'All',
+										'woocommerce-fraud-protection'
+									) }
+								</Tabs.Tab>
+								<Tabs.Tab
+									value="allow"
+									style={ { height: 40 } }
+								>
+									{ __(
+										'Allow',
+										'woocommerce-fraud-protection'
+									) }
+								</Tabs.Tab>
+								<Tabs.Tab
+									value="block"
+									style={ { height: 40 } }
+								>
+									{ __(
+										'Block',
+										'woocommerce-fraud-protection'
+									) }
+								</Tabs.Tab>
+							</Tabs.List>
+							<Stack direction="row" align="center" gap="sm">
+								<DataViews.FiltersToggle />
+								<DataViews.ViewConfig />
+							</Stack>
+						</Stack>
+						<Tabs.Panel value="all">
+							{ actionTab === 'all' && (
+								<>
+									<DataViews.FiltersToggled />
+									<DataViews.Layout />
+									<DataViews.Pagination />
+								</>
+							) }
+						</Tabs.Panel>
+						<Tabs.Panel value="allow">
+							{ actionTab === 'allow' && (
+								<>
+									<DataViews.FiltersToggled />
+									<DataViews.Layout />
+									<DataViews.Pagination />
+								</>
+							) }
+						</Tabs.Panel>
+						<Tabs.Panel value="block">
+							{ actionTab === 'block' && (
+								<>
+									<DataViews.FiltersToggled />
+									<DataViews.Layout />
+									<DataViews.Pagination />
+								</>
+							) }
+						</Tabs.Panel>
+					</Tabs.Root>
+				</Stack>
+			</DataViews>
+		</Stack>
 	);
 }

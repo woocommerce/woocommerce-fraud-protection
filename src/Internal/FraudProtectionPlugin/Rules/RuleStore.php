@@ -276,9 +276,9 @@ class RuleStore {
 	/**
 	 * Get a page of active rules for the merchant management view.
 	 *
-	 * @param array{action?: string, type?: string, value?: string, from?: string, to?: string} $filters Filters in normalized or UTC form.
-	 * @param int                                                                               $page    One-based page number.
-	 * @param int                                                                               $per_page Items per page.
+	 * @param array{action?: string, type?: string, value?: string, from?: string, to?: string, orderby?: string, order?: string} $filters  Filters in normalized or UTC form.
+	 * @param int                                                                                                                 $page     One-based page number.
+	 * @param int                                                                                                                 $per_page Items per page.
 	 * @return array{items: Rule[], total: int, pages: int}
 	 * @throws \RuntimeException When a query fails.
 	 */
@@ -366,9 +366,19 @@ class RuleStore {
 			throw new \RuntimeException( 'Active rule count query failed.' );
 		}
 
-		$offset = ( $page - 1 ) * $per_page;
-		$sql    = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC, id DESC LIMIT %d OFFSET %d";
-		$args   = array_merge( $values, array( $per_page, $offset ) );
+		$offset           = ( $page - 1 ) * $per_page;
+		$orderby          = isset( $filters['orderby'] ) && in_array( $filters['orderby'], array( 'action', 'value', 'type', 'created_at' ), true )
+			? $filters['orderby']
+			: 'created_at';
+		$order            = isset( $filters['order'] ) && 'asc' === strtolower( (string) $filters['order'] ) ? 'ASC' : 'DESC';
+		$order_expression = match ( $orderby ) {
+			'action' => 'action',
+			'value'  => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(conditions, '$.value')))",
+			'type'   => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(conditions, '$.field')))",
+			default  => 'created_at',
+		};
+		$sql  = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$order_expression} {$order}, id {$order} LIMIT %d OFFSET %d";
+		$args = array_merge( $values, array( $per_page, $offset ) );
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
 		if ( ! is_array( $rows ) ) {

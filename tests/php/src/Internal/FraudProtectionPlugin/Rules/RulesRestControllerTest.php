@@ -188,6 +188,41 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox The rules endpoint accepts the supported server sort fields and direction.
+	 */
+	public function test_get_rules_sorts_on_the_server(): void {
+		$this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'zulu@example.com',
+			)
+		);
+		$this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'alpha@example.com',
+			)
+		);
+
+		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request->set_query_params(
+			array(
+				'orderby' => 'value',
+				'order'   => 'asc',
+			)
+		);
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'alpha@example.com', $response->get_data()['data'][0]['value'] );
+		$this->assertSame( 'zulu@example.com', $response->get_data()['data'][1]['value'] );
+	}
+
+	/**
 	 * @testdox Unauthenticated and unauthorized users cannot read rules.
 	 */
 	public function test_permissions_require_woocommerce_management(): void {
