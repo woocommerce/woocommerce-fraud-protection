@@ -12,6 +12,7 @@ import {
 	getQueryFromView,
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
+import { dataViews } from './mocks/dataviews';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
@@ -107,6 +108,32 @@ describe( 'RulesPage', () => {
 		).toHaveAttribute(
 			'href',
 			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection'
+		);
+	} );
+
+	it( 'selects All when DataViews removes the action filter', async () => {
+		renderRules();
+		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
+
+		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
+		await waitFor( () =>
+			expect(
+				screen.getByRole( 'tab', { name: 'Block' } )
+			).toHaveAttribute( 'aria-selected', 'true' )
+		);
+
+		const currentView = dataViews.props?.view;
+		act( () => {
+			dataViews.props?.onChangeView?.( {
+				...currentView,
+				filters: [],
+			} as View );
+		} );
+
+		await waitFor( () =>
+			expect(
+				screen.getByRole( 'tab', { name: 'All' } )
+			).toHaveAttribute( 'aria-selected', 'true' )
 		);
 	} );
 

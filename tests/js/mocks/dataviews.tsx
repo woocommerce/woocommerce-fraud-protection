@@ -1,3 +1,5 @@
+import type { View } from '@wordpress/dataviews';
+
 type Rule = {
 	id: number;
 	action: string;
@@ -9,9 +11,17 @@ type Rule = {
 type DataViewsProps = {
 	data: Rule[];
 	children?: React.ReactNode;
+	view?: View;
+	onChangeView?: ( view: View ) => void;
 };
 
-export function DataViews( { data, children }: DataViewsProps ) {
+export const dataViews = {
+	props: undefined as DataViewsProps | undefined,
+};
+
+export function DataViews( props: DataViewsProps ) {
+	dataViews.props = props;
+	const { data, children } = props;
 	return (
 		<>
 			{ children }
