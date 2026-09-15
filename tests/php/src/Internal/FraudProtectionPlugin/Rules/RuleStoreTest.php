@@ -485,6 +485,68 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A failed delete query throws instead of reporting a missing rule.
+	 */
+	public function test_delete_query_failure_throws(): void {
+		$rule   = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'fraudster@example.com' ) );
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_starts_with( $query, "UPDATE {$table} SET status = 'deleted'" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID DELETE QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		$this->expectException( \RuntimeException::class );
+		try {
+			$this->sut->delete_rule( $rule->id );
+		} finally {
+			remove_filter( 'query', $filter );
+		}
+	}
+
+	/**
+	 * @testdox A failed rule read query throws instead of reporting a missing rule.
+	 */
+	public function test_get_rule_query_failure_throws(): void {
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_starts_with( $query, "SELECT * FROM {$table} WHERE id =" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID RULE READ QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		$this->expectException( \RuntimeException::class );
+		try {
+			$this->sut->get_rule( 1 );
+		} finally {
+			remove_filter( 'query', $filter );
+		}
+	}
+
+	/**
+	 * @testdox A delete result preserves the rule state read under the write lock.
+	 */
+	public function test_delete_rule_with_result_returns_the_deleted_rule_snapshot(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'snapshot@example.com' ) );
+
+		$deleted_rule = $this->sut->delete_rule_with_result( $rule->id );
+
+		$this->assertNotNull( $deleted_rule );
+		$this->assertSame( $rule->id, $deleted_rule->id );
+		$this->assertSame( FraudDecision::Block, $deleted_rule->action );
+		$this->assertSame( 'email', $deleted_rule->conditions['field'] );
+		$this->assertSame( RuleStatus::Deleted, $this->sut->get_rule( $rule->id )->status );
+	}
+
+	/**
 	 * @testdox Should allow re-creating the conditions of a soft-deleted rule.
 	 */
 	public function test_deleted_rule_conditions_can_be_recreated(): void {
@@ -525,6 +587,140 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		$updated = $this->sut->update_rule( $rule->id, FraudDecision::Allow, $this->email_condition( 'someone@example.com' ) );
 
 		$this->assertSame( FraudDecision::Allow, $updated->action );
+	}
+
+	/**
+	 * @testdox Changing a Block rule to Allow moves it to the end of the Allow group.
+	 */
+	public function test_block_to_allow_moves_rule_to_end_of_allow_group(): void {
+		$allow   = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block_1 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-1@example.com' ) );
+		$block_2 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-2@example.com' ) );
+
+		$this->sut->update_rule( $block_2->id, FraudDecision::Allow );
+
+		$this->assertSame(
+			array( $allow->id, $block_2->id, $block_1->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
+	 * @testdox Changing an Allow rule to Block moves it after the last live rule.
+	 */
+	public function test_allow_to_block_moves_rule_after_last_live_rule(): void {
+		$allow_1 = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-1@example.com' ) );
+		$allow_2 = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-2@example.com' ) );
+		$block   = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
+
+		$this->sut->update_rule( $allow_1->id, FraudDecision::Block );
+
+		$this->assertSame(
+			array( $allow_2->id, $block->id, $allow_1->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
+	 * @testdox A failed action update does not move any rule.
+	 */
+	public function test_failed_action_update_preserves_rule_order(): void {
+		$allow   = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block_1 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-1@example.com' ) );
+		$block_2 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-2@example.com' ) );
+
+		try {
+			$this->sut->update_rule( $block_2->id, FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+			$this->fail( 'A DuplicateRuleException was expected' );
+		} catch ( DuplicateRuleException ) {
+			$this->assertSame(
+				array( $allow->id, $block_1->id, $block_2->id ),
+				array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+			);
+		}
+	}
+
+	/**
+	 * @testdox A rule deleted before its action update executes does not move other rules.
+	 */
+	public function test_concurrent_delete_prevents_action_group_move(): void {
+		global $wpdb;
+
+		$allow  = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
+		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = static function ( string $query ) use ( $wpdb, $table, $target, &$filter ): string {
+			if ( ! str_contains( $query, "UPDATE {$table} AS moving INNER JOIN" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET status = %s WHERE id = %d", RuleStatus::Deleted->value, $target->id ) );
+
+			return $query;
+		};
+		add_filter( 'query', $filter );
+
+		$this->assertNull( $this->sut->update_rule( $target->id, FraudDecision::Allow ) );
+		remove_filter( 'query', $filter );
+
+		$this->assertSame( 1, (int) $this->row_for( $allow->id )['position'] );
+		$this->assertSame( 2, (int) $this->row_for( $block->id )['position'] );
+	}
+
+	/**
+	 * @testdox A request that waits for the same update reports a true no-op and preserves the valid group order.
+	 */
+	public function test_concurrent_matching_update_is_a_no_op(): void {
+		$allow  = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
+		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = function ( string $query ) use ( $table, $target, &$filter ): string {
+			if ( ! str_contains( $query, "SELECT MIN(position) FROM {$table}" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+			$this->sut->update_rule( $target->id, FraudDecision::Allow );
+
+			return $query;
+		};
+		add_filter( 'query', $filter );
+
+		$result = $this->sut->update_rule_with_result( $target->id, FraudDecision::Allow );
+		remove_filter( 'query', $filter );
+
+		$this->assertFalse( $result['changed'] );
+		$this->assertSame(
+			array( $allow->id, $target->id, $block->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
+	 * @testdox A failed action-group boundary query aborts the update without changing the rule.
+	 */
+	public function test_action_move_boundary_query_failure_throws(): void {
+		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+		$table  = $this->schema_manager->get_rules_table_name();
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_contains( $query, "SELECT MIN(position) FROM {$table}" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID BOUNDARY QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		$this->expectException( \RuntimeException::class );
+		try {
+			$this->sut->update_rule( $target->id, FraudDecision::Allow );
+		} finally {
+			remove_filter( 'query', $filter );
+			$this->assertSame( FraudDecision::Block, $this->sut->get_rule( $target->id )->action );
+		}
 	}
 
 	/**

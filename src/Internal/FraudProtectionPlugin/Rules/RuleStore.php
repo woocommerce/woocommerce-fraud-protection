@@ -158,12 +158,27 @@ class RuleStore {
 	 * @throws \RuntimeException When the update fails.
 	 */
 	public function update_rule( int $id, ?FraudDecision $action = null, ?array $conditions = null, ?RuleStatus $status = null, ?int $position = null ): ?Rule {
-		global $wpdb;
+		$result = $this->update_rule_with_result( $id, $action, $conditions, $status, $position );
 
-		$rule = $this->get_rule( $id );
-		if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status ) {
-			return null;
-		}
+		return is_null( $result ) ? null : $result['rule'];
+	}
+
+	/**
+	 * Update a rule and report whether this request changed it.
+	 *
+	 * @param int            $id         The rule id.
+	 * @param ?FraudDecision $action     New action, if changing.
+	 * @param ?array         $conditions New condition document, if changing; validated and normalized.
+	 * @param ?RuleStatus    $status     New status, if changing.
+	 * @param ?int           $position   New evaluation position, if changing.
+	 * @param ?RuleStatus    $required_status Status that the rule must have before updating, or null for any live status.
+	 * @return ?array{rule: Rule, changed: bool} The current rule and change result, or null when no live rule has the given id.
+	 * @throws \InvalidArgumentException When a given value is invalid.
+	 * @throws DuplicateRuleException When the new conditions duplicate another live rule.
+	 * @throws \RuntimeException When the update or write lock fails.
+	 */
+	public function update_rule_with_result( int $id, ?FraudDecision $action = null, ?array $conditions = null, ?RuleStatus $status = null, ?int $position = null, ?RuleStatus $required_status = null ): ?array {
+		global $wpdb;
 
 		if ( ! is_null( $action ) && ! in_array( $action, FraudDecision::ACTIONABLE, true ) ) {
 			throw new \InvalidArgumentException( sprintf( 'Rule action must be actionable, "%s" given.', esc_html( $action->value ) ) );
@@ -173,61 +188,85 @@ class RuleStore {
 			throw new \InvalidArgumentException( 'Rules are deleted through delete_rule(), not by updating the status.' );
 		}
 
-		$user_id = get_current_user_id();
-		$changes = array(
-			'updated_at' => gmdate( 'Y-m-d H:i:s' ),
-			'updated_by' => $user_id > 0 ? $user_id : null,
-		);
-
-		if ( ! is_null( $action ) ) {
-			$changes['action'] = $action->value;
-		}
-
-		if ( ! is_null( $status ) ) {
-			$changes['status'] = $status->value;
-		}
-
-		if ( ! is_null( $position ) ) {
-			$changes['position'] = $position;
-		}
-
-		$new_hash = null;
+		$normalized = null;
+		$new_hash   = null;
 		if ( ! is_null( $conditions ) ) {
 			$normalized = RuleConditions::validate_and_normalize( $conditions );
 			if ( is_null( $normalized ) ) {
 				throw new \InvalidArgumentException( 'Invalid rule conditions.' );
 			}
-
-			$new_hash    = RuleConditions::hash( $normalized );
-			$existing_id = $this->find_rule_id_by_hash( $new_hash );
-			if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
-				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
-			}
-
-			$changes['conditions']     = (string) wp_json_encode( $normalized );
-			$changes['condition_hash'] = $new_hash;
+			$new_hash = RuleConditions::hash( $normalized );
 		}
 
-		if ( false === $this->run_write_query( $this->build_update_sql( $changes, $id ) ) ) {
-			// The unique hash key is the backstop for a concurrent write of the
-			// same conditions: re-check so a lost race reports as a duplicate,
-			// not a failure.
-			if ( ! is_null( $new_hash ) ) {
-				$existing_id = $this->find_rule_id_by_hash( $new_hash );
-				if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
-					throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
+		$write_lock_name = $this->acquire_write_lock();
+		try {
+			for ( $attempt = 0; $attempt < 3; $attempt++ ) {
+				$rule = $this->get_rule( $id );
+				if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status || ( ! is_null( $required_status ) && $required_status !== $rule->status ) ) {
+					return null;
+				}
+
+				if ( ( is_null( $action ) || $action === $rule->action ) && ( is_null( $normalized ) || $normalized === $rule->conditions ) && ( is_null( $status ) || $status === $rule->status ) && ( is_null( $position ) || $position === $rule->position ) ) {
+					return array(
+						'rule'    => $rule,
+						'changed' => false,
+					);
+				}
+
+				if ( ! is_null( $new_hash ) ) {
+					$existing_id = $this->find_rule_id_by_hash( $new_hash );
+					if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
+						throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
+					}
+				}
+
+				$user_id = get_current_user_id();
+				$changes = array(
+					'updated_at' => gmdate( 'Y-m-d H:i:s' ),
+					'updated_by' => $user_id > 0 ? $user_id : null,
+				);
+				if ( ! is_null( $action ) ) {
+					$changes['action'] = $action->value;
+					if ( $action !== $rule->action ) {
+						$changes['position'] = $this->get_moved_position( $rule, $action );
+					}
+				}
+				if ( ! is_null( $status ) ) {
+					$changes['status'] = $status->value;
+				}
+				if ( ! is_null( $position ) ) {
+					$changes['position'] = $position;
+				}
+				if ( ! is_null( $normalized ) ) {
+					$changes['conditions']     = (string) wp_json_encode( $normalized );
+					$changes['condition_hash'] = $new_hash;
+				}
+
+				$moving   = isset( $changes['position'] ) && ! is_null( $action ) && $action !== $rule->action;
+				$sql      = $moving ? $this->build_action_move_sql( $changes, $rule ) : $this->build_guarded_update_sql( $changes, $rule );
+				$affected = $this->run_write_query( $sql );
+				if ( false === $affected ) {
+					if ( ! is_null( $new_hash ) ) {
+						$existing_id = $this->find_rule_id_by_hash( $new_hash );
+						if ( ! is_null( $existing_id ) && $existing_id !== $id ) {
+							throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
+						}
+					}
+					throw new \RuntimeException( 'Failed to update the rule: ' . esc_html( $wpdb->last_error ) );
+				}
+				if ( $affected > 0 ) {
+					$updated = $this->get_rule( $id );
+					return ! is_null( $updated ) && RuleStatus::Deleted !== $updated->status ? array(
+						'rule'    => $updated,
+						'changed' => true,
+					) : null;
 				}
 			}
-			throw new \RuntimeException( 'Failed to update the rule: ' . esc_html( $wpdb->last_error ) );
+
+			throw new \RuntimeException( 'The rule changed while it was being updated.' );
+		} finally {
+			$this->release_write_lock( $write_lock_name );
 		}
-
-		// The write predicate excludes rows soft-deleted after the read above,
-		// but its affected-rows count cannot distinguish that from a no-op
-		// update (mysqli reports rows changed, not rows matched), so the row's
-		// current status is what tells whether the update applied.
-		$rule = $this->get_rule( $id );
-
-		return ! is_null( $rule ) && RuleStatus::Deleted !== $rule->status ? $rule : null;
 	}
 
 	/**
@@ -239,8 +278,23 @@ class RuleStore {
 	 *
 	 * @param int $id The rule id.
 	 * @return bool True when the rule was deleted, false when no live rule has the given id.
+	 * @throws \RuntimeException When the delete or write lock fails.
 	 */
 	public function delete_rule( int $id ): bool {
+		return ! is_null( $this->delete_rule_with_result( $id ) );
+	}
+
+	/**
+	 * Delete a rule and return the rule state protected by the write lock.
+	 *
+	 * @param int         $id              The rule id.
+	 * @param ?RuleStatus $required_status Status that the rule must have before deletion, or null for any live status.
+	 * @return ?Rule The deleted rule snapshot, or null when no live rule has the given id.
+	 * @throws \RuntimeException When the read, delete, or write lock fails.
+	 */
+	public function delete_rule_with_result( int $id, ?RuleStatus $required_status = null ): ?Rule {
+		global $wpdb;
+
 		$user_id = get_current_user_id();
 		$changes = array(
 			'status'         => RuleStatus::Deleted->value,
@@ -249,13 +303,21 @@ class RuleStore {
 			'updated_by'     => $user_id > 0 ? $user_id : null,
 		);
 
-		// No read-then-write: the write predicate only matches live rules, and
-		// deleting a live rule always changes its status, so the affected-rows
-		// count alone reports whether a live rule existed — concurrent double
-		// deletes cannot both report success.
-		$affected = $this->run_write_query( $this->build_update_sql( $changes, $id ) );
+		$write_lock_name = $this->acquire_write_lock();
+		try {
+			$rule = $this->get_rule( $id );
+			if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status || ( ! is_null( $required_status ) && $required_status !== $rule->status ) ) {
+				return null;
+			}
+			$affected = $this->run_write_query( $this->build_update_sql( $changes, $id ) );
+		} finally {
+			$this->release_write_lock( $write_lock_name );
+		}
+		if ( false === $affected ) {
+			throw new \RuntimeException( 'Failed to delete the rule: ' . esc_html( $wpdb->last_error ) );
+		}
 
-		return false !== $affected && $affected > 0;
+		return $affected > 0 ? $rule : null;
 	}
 
 	/**
@@ -264,6 +326,7 @@ class RuleStore {
 	 *
 	 * @param int $id The rule id.
 	 * @return ?Rule The rule, or null when the id does not exist (or the row is not interpretable).
+	 * @throws \RuntimeException When the query fails.
 	 */
 	public function get_rule( int $id ): ?Rule {
 		global $wpdb;
@@ -272,6 +335,9 @@ class RuleStore {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A );
+		if ( '' !== $wpdb->last_error ) {
+			throw new \RuntimeException( 'Failed to get the rule: ' . esc_html( $wpdb->last_error ) );
+		}
 
 		return is_array( $row ) ? Rule::from_row( $row ) : null;
 	}
@@ -605,6 +671,117 @@ class RuleStore {
 		}
 
 		return is_null( $max_position ) ? 1 : (int) $max_position + 1;
+	}
+
+	/**
+	 * Get the position at the end of a rule's new action group.
+	 *
+	 * @param Rule          $rule   Existing rule.
+	 * @param FraudDecision $action New action.
+	 * @return int New position.
+	 * @throws \RuntimeException When the boundary query fails.
+	 */
+	private function get_moved_position( Rule $rule, FraudDecision $action ): int {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_rules_table_name();
+		if ( FraudDecision::Allow === $action ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$position = $wpdb->get_var( $wpdb->prepare( "SELECT MIN(position) FROM {$table} WHERE status != %s AND action = %s", RuleStatus::Deleted->value, FraudDecision::Block->value ) );
+			if ( '' !== $wpdb->last_error ) {
+				throw new \RuntimeException( 'Failed to find the rule group boundary: ' . esc_html( $wpdb->last_error ) );
+			}
+			if ( ! is_null( $position ) ) {
+				return (int) $position;
+			}
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$position = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(position) FROM {$table} WHERE status != %s", RuleStatus::Deleted->value ) );
+		if ( '' !== $wpdb->last_error || is_null( $position ) ) {
+			throw new \RuntimeException( 'Failed to find the rule group boundary: ' . esc_html( $wpdb->last_error ) );
+		}
+
+		return (int) $position;
+	}
+
+	/**
+	 * Build one update that changes the action and moves the rule while keeping positions unique.
+	 *
+	 * @param array<string, mixed> $changes Target rule changes.
+	 * @param Rule                 $rule    Existing rule.
+	 * @return string Prepared SQL.
+	 */
+	private function build_action_move_sql( array $changes, Rule $rule ): string {
+		global $wpdb;
+
+		$new_position = (int) $changes['position'];
+		$assignments  = array();
+		$set_values   = array();
+		foreach ( $changes as $column => $value ) {
+			if ( 'position' === $column ) {
+				continue;
+			}
+			if ( is_null( $value ) ) {
+				$assignments[] = "moving.{$column} = IF(moving.id = %d, NULL, moving.{$column})";
+				$set_values[]  = $rule->id;
+			} else {
+				$placeholder   = is_int( $value ) ? '%d' : '%s';
+				$assignments[] = "moving.{$column} = IF(moving.id = %d, {$placeholder}, moving.{$column})";
+				$set_values[]  = $rule->id;
+				$set_values[]  = $value;
+			}
+		}
+
+		if ( $new_position < $rule->position ) {
+			$assignments[] = 'moving.position = CASE WHEN moving.id = %d THEN %d WHEN moving.position >= %d AND moving.position < %d THEN moving.position + 1 ELSE moving.position END';
+			$set_values    = array_merge( $set_values, array( $rule->id, $new_position, $new_position, $rule->position ) );
+			$range_sql     = 'moving.position >= %d AND moving.position < %d';
+			$range_values  = array( $new_position, $rule->position );
+		} else {
+			$assignments[] = 'moving.position = CASE WHEN moving.id = %d THEN %d WHEN moving.position > %d AND moving.position <= %d THEN moving.position - 1 ELSE moving.position END';
+			$set_values    = array_merge( $set_values, array( $rule->id, $new_position, $rule->position, $new_position ) );
+			$range_sql     = 'moving.position > %d AND moving.position <= %d';
+			$range_values  = array( $rule->position, $new_position );
+		}
+
+		$table  = $this->schema_manager->get_rules_table_name();
+		$values = array_merge( array( $rule->id, RuleStatus::Deleted->value, $rule->action->value, $rule->position ), $set_values, array( $rule->id ), $range_values, array( RuleStatus::Deleted->value ) );
+		$sql    = "UPDATE {$table} AS moving INNER JOIN {$table} AS target ON target.id = %d AND target.status != %s AND target.action = %s AND target.position = %d SET " . implode( ', ', $assignments ) . ' WHERE (moving.id = %d OR (' . $range_sql . ')) AND moving.status != %s';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return $wpdb->prepare( $sql, $values );
+	}
+
+	/**
+	 * Build an update guarded by the target rule snapshot.
+	 *
+	 * @param array<string, mixed> $changes Target rule changes.
+	 * @param Rule                 $rule    Existing rule.
+	 * @return string Prepared SQL.
+	 */
+	private function build_guarded_update_sql( array $changes, Rule $rule ): string {
+		global $wpdb;
+
+		$assignments = array();
+		$values      = array();
+		foreach ( $changes as $column => $value ) {
+			if ( is_null( $value ) ) {
+				$assignments[] = $column . ' = NULL';
+			} elseif ( is_int( $value ) ) {
+				$assignments[] = $column . ' = %d';
+				$values[]      = $value;
+			} else {
+				$assignments[] = $column . ' = %s';
+				$values[]      = $value;
+			}
+		}
+
+		$values = array_merge( $values, array( $rule->id, RuleStatus::Deleted->value, $rule->action->value, $rule->position, RuleConditions::hash( $rule->conditions ) ) );
+		$sql    = 'UPDATE ' . $this->schema_manager->get_rules_table_name() . ' SET ' . implode( ', ', $assignments ) . ' WHERE id = %d AND status != %s AND action = %s AND position = %d AND condition_hash = %s';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return $wpdb->prepare( $sql, $values );
 	}
 
 	/**
