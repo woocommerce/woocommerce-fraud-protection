@@ -10,6 +10,7 @@ release_pr_url=${5:?Provide the release pull request URL.}
 repository=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required.}
 tag="v$version"
 asset_name=woocommerce-fraud-protection.zip
+translation_import_url="https://translate.wordpress.com/api/import-new-release/woocommerce/woocommerce-fraud-protection/$tag"
 
 resolve_tag_commit() {
 	local object
@@ -116,6 +117,27 @@ fi
 if [[ $draft == true ]]; then
 	gh release edit "$tag" --repo "$repository" --draft=false
 fi
+
+translation_import_response=$(curl \
+	--fail-with-body \
+	--location \
+	--request POST \
+	--retry 3 \
+	--retry-delay 2 \
+	--retry-connrefused \
+	--silent \
+	--show-error \
+	"$translation_import_url") || {
+	echo "Failed to import translations for the published release $tag at $translation_import_url." >&2
+	exit 1
+}
+
+if ! jq -e '.success == true' <<< "$translation_import_response" >/dev/null; then
+	echo "Translation import failed for the published release $tag at $translation_import_url: $translation_import_response" >&2
+	exit 1
+fi
+
+echo "Imported translations for the published release $tag."
 
 if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
 	echo "Release: $release_url" >> "$GITHUB_STEP_SUMMARY"

@@ -7,6 +7,7 @@
  * Requires Plugins: woocommerce
  * Requires PHP: 8.1
  * WC requires at least: 9.8.0
+ * Text Domain: woocommerce-fraud-protection
  *
  * @package WooCommerce\FraudProtection
  */

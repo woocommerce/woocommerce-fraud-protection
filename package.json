@@ -7,6 +7,7 @@
 	"files": [
 		"assets",
 		"build",
+		"languages",
 		"src",
 		"vendor",
 		"changelog.txt",
@@ -16,7 +17,8 @@
 	"scripts": {
 		"build": "wp-scripts build",
 		"build:qit": "npm run build:release && bin/package-qit-zip.sh woocommerce-fraud-protection.zip woocommerce-fraud-protection-qit.zip",
-		"build:release": "wp-scripts build --mode=production && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip woocommerce-fraud-protection/package.json woocommerce-fraud-protection/README.md",
+		"build:release": "wp-scripts build --mode=production && npm run makepot && wp-scripts plugin-zip && zip -d woocommerce-fraud-protection.zip woocommerce-fraud-protection/package.json woocommerce-fraud-protection/README.md",
+		"makepot": "wp i18n make-pot . languages/woocommerce-fraud-protection.pot --slug=woocommerce-fraud-protection --domain=woocommerce-fraud-protection --include=woocommerce-fraud-protection.php,woocommerce-fraud-protection-loader.php,assets,build,src --headers='{\"Report-Msgid-Bugs-To\":\"https://github.com/woocommerce/woocommerce-fraud-protection/issues\",\"POT-Creation-Date\":\"\"}'",
 		"start": "wp-scripts start",
 		"env": "wp-env",
 		"env:start": "wp-env start",
