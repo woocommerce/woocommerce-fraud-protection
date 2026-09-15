@@ -112,7 +112,7 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
-	it( 'uses the Created date filter label', async () => {
+	it( 'uses the Created filter label', async () => {
 		renderRules();
 		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
 
@@ -120,7 +120,74 @@ describe( 'RulesPage', () => {
 			dataViews.props?.fields?.find(
 				( field ) => field.id === 'created_at'
 			)?.label
-		).toBe( 'Created date' );
+		).toBe( 'Created' );
+	} );
+
+	it( 'shows table skeletons while the initial rules request loads', async () => {
+		let resolveRequest: ( response: RulesResponse ) => void = () => {};
+		mockedApiFetch.mockReturnValueOnce(
+			new Promise< RulesResponse >( ( resolve ) => {
+				resolveRequest = resolve;
+			} )
+		);
+
+		renderRules();
+
+		expect(
+			await screen.findByText( 'Loading rules' )
+		).toBeInTheDocument();
+		expect( dataViews.props?.data ).toHaveLength( 5 );
+		expect( dataViews.props?.data.every( ( rule ) => rule.id < 0 ) ).toBe(
+			true
+		);
+		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
+		expect(
+			screen.getByText( 'Loading rules' ).closest( '[aria-busy="true"]' )
+		).toBeInTheDocument();
+
+		await act( async () => {
+			resolveRequest( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+				page: 1,
+				perPage: 20,
+			} );
+		} );
+	} );
+
+	it( 'shows a prefixed load error below the tabs', async () => {
+		mockedApiFetch.mockRejectedValueOnce(
+			new Error( 'Could not get a valid response from the server.' )
+		);
+
+		renderRules();
+
+		const tabs = screen.getByRole( 'tablist' );
+		const toolbar = tabs.closest( '.wc-fraud-protection-rules__toolbar' );
+		await waitFor( () =>
+			expect( toolbar?.nextElementSibling ).toHaveTextContent(
+				'The fraud prevention rules could not be loaded. Could not get a valid response from the server.'
+			)
+		);
+		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
+	} );
+
+	it( 'shows the rules empty state without actions', async () => {
+		mockedApiFetch.mockResolvedValueOnce( {
+			data: [],
+			totalItems: 0,
+			totalPages: 0,
+			page: 1,
+			perPage: 20,
+		} );
+
+		renderRules();
+
+		expect( await screen.findByText( 'No rules' ) ).toBeInTheDocument();
+		expect(
+			screen.getByText( 'Any custom rules you create will appear here.' )
+		).toBeInTheDocument();
 	} );
 
 	it( 'converts local filter dates to inclusive UTC bounds', () => {
