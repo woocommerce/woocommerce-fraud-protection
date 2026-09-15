@@ -231,6 +231,7 @@ export function RulesPage() {
 		[ view.sort?.field ]
 	);
 	const actionTab = getActionTab( view );
+	const hasActiveFilters = Boolean( view.filters?.length );
 	const isInitialLoading = isLoading && rules.length === 0;
 
 	useEffect( () => {
@@ -241,17 +242,27 @@ export function RulesPage() {
 		() => (
 			<EmptyState.Root className="wc-fraud-protection-rules__empty-state">
 				<EmptyState.Title>
-					{ __( 'No rules', 'woocommerce-fraud-protection' ) }
+					{ hasActiveFilters
+						? __(
+								'No matching rules',
+								'woocommerce-fraud-protection'
+						  )
+						: __( 'No rules', 'woocommerce-fraud-protection' ) }
 				</EmptyState.Title>
 				<EmptyState.Description>
-					{ __(
-						'Any custom rules you create will appear here.',
-						'woocommerce-fraud-protection'
-					) }
+					{ hasActiveFilters
+						? __(
+								'Try changing or removing your filters.',
+								'woocommerce-fraud-protection'
+						  )
+						: __(
+								'Any custom rules you create will appear here.',
+								'woocommerce-fraud-protection'
+						  ) }
 				</EmptyState.Description>
 			</EmptyState.Root>
 		),
-		[]
+		[ hasActiveFilters ]
 	);
 	const loadErrorMessage = getLoadErrorMessage( error );
 	return (

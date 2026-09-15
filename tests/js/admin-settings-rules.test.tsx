@@ -188,6 +188,31 @@ describe( 'RulesPage', () => {
 		).toBeInTheDocument();
 	} );
 
+	it( 'shows a separate empty state when filters match no rules', async () => {
+		renderRules();
+
+		expect(
+			await screen.findByText( 'shopper@example.com' )
+		).toBeInTheDocument();
+		mockedApiFetch.mockResolvedValueOnce( {
+			data: [],
+			totalItems: 0,
+			totalPages: 0,
+			page: 1,
+			perPage: 20,
+		} );
+
+		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
+
+		expect(
+			await screen.findByText( 'No matching rules' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByText( 'Try changing or removing your filters.' )
+		).toBeInTheDocument();
+		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
+	} );
+
 	it( 'converts local filter dates to inclusive UTC bounds', () => {
 		const runtimeProcess = (
 			globalThis as typeof globalThis & {
