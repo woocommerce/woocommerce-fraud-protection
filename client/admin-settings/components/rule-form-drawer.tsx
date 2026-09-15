@@ -279,7 +279,7 @@ export function RuleFormDrawer( {
 						),
 					},
 				],
-				isDisabled: isSaving || ( Boolean( context ) && ! rule ),
+				isDisabled: isSaving || Boolean( context ),
 				isValid: { elements: true },
 			},
 			{
@@ -297,7 +297,7 @@ export function RuleFormDrawer( {
 					/>
 				),
 				placeholder: getRuleValuePlaceholder( data.type ),
-				isDisabled: isSaving || ( Boolean( context ) && ! rule ),
+				isDisabled: isSaving || Boolean( context ),
 				isValid: {
 					required: true,
 					custom: ( item ) => {
@@ -326,7 +326,6 @@ export function RuleFormDrawer( {
 			hasDuplicateError,
 			isSaving,
 			onViewRule,
-			rule,
 			saveError,
 		]
 	);
@@ -344,7 +343,7 @@ export function RuleFormDrawer( {
 					action: data.action,
 					type: data.type,
 					value: data.value,
-					origin: 'rules',
+					origin: context ? 'checkout_attempts' : 'rules',
 				} );
 			} else {
 				await createRule( {

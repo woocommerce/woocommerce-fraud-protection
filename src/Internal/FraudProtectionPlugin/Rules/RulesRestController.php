@@ -417,7 +417,7 @@ class RulesRestController extends \WP_REST_Controller {
 		$updated = $result['rule'];
 
 		if ( $result['changed'] ) {
-			$this->telemetry->record_rule_change( 'update', $decision, $type, $this->get_origin( $request ) );
+			$this->telemetry->record_rule_change( 'updated', $decision, $type, $this->get_origin( $request ) );
 		}
 		return rest_ensure_response( $this->to_public_rule( $updated ) );
 	}
@@ -451,7 +451,7 @@ class RulesRestController extends \WP_REST_Controller {
 		}
 
 		$type = (string) ( $rule->conditions['field'] ?? '' );
-		$this->telemetry->record_rule_change( 'delete', $rule->action, $type, $this->get_origin( $request ) );
+		$this->telemetry->record_rule_change( 'deleted', $rule->action, $type, $this->get_origin( $request ) );
 		return new \WP_REST_Response( null, 204 );
 	}
 

@@ -776,7 +776,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$api_client = $this->createMock( ApiClient::class );
 		$api_client->expects( $this->never() )->method( 'report' );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
-		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'update', FraudDecision::Allow, 'email', 'rules' );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'updated', FraudDecision::Allow, 'email', 'rules' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
 		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
 		$request->set_body_params(
@@ -793,6 +793,49 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( 'allow', $response->get_data()['action'] );
 		$this->assertSame( 'updated@example.com', $response->get_data()['value'] );
+	}
+
+	/**
+	 * @testdox An update to another active rule's normalized value returns its details without writing or tracking.
+	 */
+	public function test_update_rule_duplicate_returns_existing_rule_details_without_writing(): void {
+		$existing  = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'existing@example.com',
+			)
+		);
+		$target    = $this->rule_store->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'target@example.com',
+			)
+		);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $target->id );
+		$request->set_body_params(
+			array(
+				'action' => 'block',
+				'type'   => 'email',
+				'value'  => ' Existing@Example.com ',
+				'origin' => 'rules',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+		$error    = $response->as_error();
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( $existing->id, $error->get_error_data()['rule_id'] );
+		$this->assertSame( 'allow', $error->get_error_data()['action'] );
+		$this->assertEquals( $existing, $this->rule_store->get_rule( $existing->id ) );
+		$this->assertEquals( $target, $this->rule_store->get_rule( $target->id ) );
 	}
 
 	/**
@@ -890,7 +933,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$api_client = $this->createMock( ApiClient::class );
 		$api_client->expects( $this->never() )->method( 'report' );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
-		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'delete', FraudDecision::Block, 'ip', 'rules' );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Block, 'ip', 'rules' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
 		$request = new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id );
 		$request->set_query_params( array( 'origin' => 'rules' ) );

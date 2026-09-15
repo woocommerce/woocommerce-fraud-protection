@@ -1054,6 +1054,8 @@ describe( 'RulesPage', () => {
 				{ exact: true }
 			)
 		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Rule type' ) ).toBeEnabled();
+		expect( screen.getByLabelText( 'Value' ) ).toBeEnabled();
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( rule.value );
 		await userEvent.selectOptions(
 			screen.getByLabelText( 'Action' ),
@@ -1120,23 +1122,40 @@ describe( 'RulesPage', () => {
 		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
 	} );
 
-	it( 'offers View rule for a duplicate and opens that rule in edit state', async () => {
+	it( 'offers View rule for a contextual edit duplicate', async () => {
+		const rule: Rule = {
+			id: 9,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		const context: RuleFormContext = {
+			recordedAttemptId: 7,
+			type: 'email',
+			value: rule.value,
+			finalStatus: 'allowed',
+		};
 		const onViewRule = jest.fn();
 		mockedApiFetch.mockRejectedValueOnce( {
 			code: 'woocommerce_fraud_protection_duplicate_rule',
 			message: 'This email is already allowed by a rule.',
 			data: { rule_id: 17 },
 		} );
-		renderDrawer( jest.fn(), jest.fn(), undefined, undefined, onViewRule );
+		renderDrawer( jest.fn(), jest.fn(), context, rule, onViewRule );
 
-		await userEvent.type(
-			screen.getByLabelText( 'Value' ),
-			'duplicate@example.com'
+		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'allow' );
+		expect( screen.getByLabelText( 'Rule type' ) ).toBeDisabled();
+		expect( screen.getByLabelText( 'Value' ) ).toBeDisabled();
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( rule.value );
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'block'
 		);
 		await userEvent.click(
-			screen.getByRole( 'button', { name: 'Create rule' } )
+			screen.getByRole( 'button', { name: 'Save changes' } )
 		);
-		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		const drawer = screen.getByRole( 'dialog', { name: 'Edit rule' } );
 		const error = within( drawer ).getByText(
 			'This email is already allowed by a rule.'
 		);
@@ -1157,6 +1176,16 @@ describe( 'RulesPage', () => {
 				'This email is already allowed by a rule.'
 			)
 		).toHaveLength( 1 );
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-fraud-protection/v1/rules/9',
+			method: 'PUT',
+			data: {
+				action: 'block',
+				type: 'email',
+				value: rule.value,
+				origin: 'checkout_attempts',
+			},
+		} );
 		await userEvent.click( viewRule );
 
 		expect( onViewRule ).toHaveBeenCalledWith( 17 );
