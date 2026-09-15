@@ -1,5 +1,5 @@
-import { useSelect } from '@wordpress/data';
-import { useMemo } from '@wordpress/element';
+import { useDispatch, useSelect } from '@wordpress/data';
+import { useCallback, useMemo } from '@wordpress/element';
 
 import {
 	getRulesErrorMessage,
@@ -37,4 +37,44 @@ export function useRules( query: RulesQuery ) {
 		},
 		[ normalizedQuery ]
 	);
+}
+
+export function useRule( id?: number ) {
+	const state = useSelect(
+		( select ) => {
+			if ( id === undefined ) {
+				return {
+					error: null,
+					isLoading: false,
+					rule: undefined,
+				};
+			}
+
+			const store = select( rulesStore );
+			const resolverArgs = [ id ];
+			const resolutionError = store.getResolutionError(
+				'getRule',
+				resolverArgs
+			);
+
+			return {
+				error: resolutionError
+					? getRulesErrorMessage( resolutionError )
+					: null,
+				isLoading:
+					store.isResolving( 'getRule', resolverArgs ) ||
+					! store.hasFinishedResolution( 'getRule', resolverArgs ),
+				rule: store.getRule( id ),
+			};
+		},
+		[ id ]
+	);
+	const { invalidateResolution } = useDispatch( rulesStore );
+	const retry = useCallback( () => {
+		if ( id !== undefined ) {
+			void invalidateResolution( 'getRule', [ id ] );
+		}
+	}, [ id, invalidateResolution ] );
+
+	return { ...state, retry };
 }

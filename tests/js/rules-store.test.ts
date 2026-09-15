@@ -21,6 +21,7 @@ const rule: Rule = {
 	value: 'shopper@example.com',
 	type: 'email',
 	created_at: '2026-09-14T12:00:00Z',
+	updated_at: null,
 };
 
 const collectionResponse = (
@@ -166,6 +167,24 @@ describe( 'rulesStore', () => {
 		).rejects.toThrow( 'Could not get a valid response from the server.' );
 	} );
 
+	it( 'caches rule details by ID and rejects invalid details', async () => {
+		const registry = setupRegistry();
+		mockedApiFetch.mockResolvedValueOnce( rule );
+
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( rule.id )
+		).resolves.toEqual( rule );
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( rule.id )
+		).resolves.toEqual( rule );
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+
+		mockedApiFetch.mockResolvedValueOnce( { ...rule, updated_at: 12 } );
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( 10 )
+		).rejects.toThrow( 'Could not get a valid response from the server.' );
+	} );
+
 	it( 'invalidates every list resolution after create', async () => {
 		const registry = setupRegistry();
 		const firstQuery = { page: 1, perPage: 20 };
@@ -193,6 +212,72 @@ describe( 'rulesStore', () => {
 			registry
 				.select( rulesStore )
 				.hasStartedResolution( 'getRules', [ secondQuery ] )
+		).toBe( false );
+	} );
+
+	it( 'updates detail cache and invalidates list resolutions', async () => {
+		const registry = setupRegistry();
+		const query = { page: 1, perPage: 20 };
+		const updatedRule = { ...rule, action: 'block' as const };
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() )
+			.mockResolvedValueOnce( rule );
+		await registry.resolveSelect( rulesStore ).getRules( query );
+		await registry.resolveSelect( rulesStore ).getRule( rule.id );
+
+		mockedApiFetch.mockResolvedValueOnce( updatedRule );
+		await registry.dispatch( rulesStore ).updateRule( rule.id, {
+			action: 'block',
+			type: rule.type,
+			value: rule.value,
+			origin: 'rules',
+		} );
+
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ query ] )
+		).toBe( false );
+		expect(
+			registry
+				.select( rulesStore )
+				.hasFinishedResolution( 'getRule', [ rule.id ] )
+		).toBe( true );
+		expect( registry.select( rulesStore ).getRule( rule.id ) ).toEqual(
+			updatedRule
+		);
+		await registry.resolveSelect( rulesStore ).getRule( rule.id );
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 3 );
+	} );
+
+	it( 'removes cached detail and invalidates resolutions after delete', async () => {
+		const registry = setupRegistry();
+		const query = { page: 1, perPage: 20 };
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() )
+			.mockResolvedValueOnce( rule );
+		await registry.resolveSelect( rulesStore ).getRules( query );
+		await registry.resolveSelect( rulesStore ).getRule( rule.id );
+
+		mockedApiFetch.mockResolvedValueOnce( undefined );
+		await registry.dispatch( rulesStore ).deleteRule( rule.id, 'rules' );
+
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRule', [ rule.id ] )
+		).toBe( false );
+		mockedApiFetch.mockRejectedValueOnce( new Error( 'Rule not found.' ) );
+		expect(
+			registry.select( rulesStore ).getRule( rule.id )
+		).toBeUndefined();
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( rule.id )
+		).rejects.toThrow( 'Rule not found.' );
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ query ] )
 		).toBe( false );
 	} );
 } );

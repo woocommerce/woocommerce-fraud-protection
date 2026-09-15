@@ -5,23 +5,29 @@ import {
 	useMemo,
 	useState,
 } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { DataForm, useFormValidity } from '@wordpress/dataviews/wp';
 import type { DataFormControlProps, Field, Form } from '@wordpress/dataviews';
 import {
 	Button,
 	Drawer,
 	InputControl,
+	Notice,
 	Stack,
+	Spinner,
+	Text,
 	ValidatedInputControl,
 	ValidityIndicator,
+	VisuallyHidden,
 } from '@wordpress/ui';
 
 import type { CreateRuleRequest, Rule } from '../data/rules-store';
+import { useRule } from '../hooks/use-rules';
 import {
 	DUPLICATE_RULE_ERROR,
 	useRuleMutation,
 } from '../hooks/use-rule-mutation';
+import { formatRuleDate } from '../rule-date';
 
 export type RuleFormContext = {
 	recordedAttemptId: number;
@@ -56,6 +62,7 @@ type RuleFormDrawerProps = {
 	onClose: () => void;
 	onViewRule?: ( id: number ) => void;
 	context?: RuleFormContext;
+	ruleId?: number;
 };
 
 function RuleValueEditControl( {
@@ -277,16 +284,25 @@ export const getRuleFormFields = ( {
 
 type RuleMutation = ReturnType< typeof useRuleMutation >;
 
-function RuleFormDescription() {
+function RuleFormDescription( { isEdit }: { isEdit: boolean } ) {
 	return (
 		<Drawer.Description>
-			{ __(
-				'Create a rule to always allow or block checkout attempt based on an IP or email address.',
-				'woocommerce-fraud-protection'
-			) }{ ' ' }
-			{ __(
-				"If an attempt matches both an allow rule and a block rule, it's allowed.",
-				'woocommerce-fraud-protection'
+			{ isEdit ? (
+				__(
+					'Edit a rule to always allow or block checkout attempt based on an IP or email address. If a session matches both, it will always be allowed.',
+					'woocommerce-fraud-protection'
+				)
+			) : (
+				<>
+					{ __(
+						'Create a rule to always allow or block checkout attempt based on an IP or email address.',
+						'woocommerce-fraud-protection'
+					) }{ ' ' }
+					{ __(
+						"If an attempt matches both an allow rule and a block rule, it's allowed.",
+						'woocommerce-fraud-protection'
+					) }
+				</>
 			) }{ ' ' }
 			<a
 				href="https://woocommerce.com/document/fraud-protection/"
@@ -304,15 +320,19 @@ function RuleForm( {
 	mutation,
 	onClose,
 	onViewRule,
+	rule,
 }: {
 	context?: RuleFormContext;
 	mutation: RuleMutation;
 	onClose: () => void;
 	onViewRule?: ( id: number ) => void;
+	rule?: Rule;
 } ) {
 	const { clearSaveError, isSaving, saveError, saveRule } = mutation;
 	const [ data, setData ] = useState< RuleFormData >( () =>
-		getInitialRuleFormData( context )
+		rule
+			? { action: rule.action, type: rule.type, value: rule.value }
+			: getInitialRuleFormData( context )
 	);
 
 	useEffect( () => clearSaveError(), [ clearSaveError ] );
@@ -345,12 +365,16 @@ function RuleForm( {
 		if ( ! isValid || hasDuplicateError || isSaving ) {
 			return;
 		}
-		const result = await saveRule( {
+		const result = await saveRule( rule?.id, {
 			action: data.action,
 			type: data.type,
 			value: data.value,
-			recorded_attempt_id: context?.recordedAttemptId,
-			origin: context ? 'checkout_attempts' : 'rules',
+			...( rule
+				? { origin: context ? 'checkout_attempts' : 'rules' }
+				: {
+						recorded_attempt_id: context?.recordedAttemptId,
+						origin: context ? 'checkout_attempts' : 'rules',
+				  } ),
 		} );
 		if ( result ) {
 			onClose();
@@ -361,7 +385,7 @@ function RuleForm( {
 		<>
 			<Drawer.Content>
 				<Stack direction="column" gap="lg">
-					<RuleFormDescription />
+					<RuleFormDescription isEdit={ Boolean( rule ) } />
 					<DataForm< RuleFormData >
 						data={ data }
 						fields={ fields }
@@ -378,6 +402,24 @@ function RuleForm( {
 							} ) );
 						} }
 					/>
+					{ rule && (
+						<Text
+							variant="body-md"
+							className="wc-fraud-protection-rule-form__metadata"
+						>
+							{ sprintf(
+								/* translators: 1: Rule creation date. 2: Rule last update date. */
+								__(
+									'This rule created on %1$s and last updated on %2$s.',
+									'woocommerce-fraud-protection'
+								),
+								formatRuleDate( rule.created_at ),
+								formatRuleDate(
+									rule.updated_at ?? rule.created_at
+								)
+							) }
+						</Text>
+					) }
 				</Stack>
 			</Drawer.Content>
 			<Drawer.Footer>
@@ -388,7 +430,9 @@ function RuleForm( {
 					loading={ isSaving }
 					disabled={ ! isValid || hasDuplicateError || isSaving }
 				>
-					{ __( 'Create rule', 'woocommerce-fraud-protection' ) }
+					{ rule
+						? __( 'Save changes', 'woocommerce-fraud-protection' )
+						: __( 'Create rule', 'woocommerce-fraud-protection' ) }
 				</Button>
 			</Drawer.Footer>
 		</>
@@ -400,11 +444,18 @@ export function RuleFormDrawer( {
 	onClose,
 	onViewRule,
 	context,
+	ruleId,
 }: RuleFormDrawerProps ) {
+	const isEdit = ruleId !== undefined;
+	const { rule, isLoading, error: detailError, retry } = useRule( ruleId );
 	const mutation = useRuleMutation();
-	const formIdentity = context
-		? `context-${ context.recordedAttemptId }`
-		: 'create';
+	const canRenderForm = ! isEdit || ( ! isLoading && Boolean( rule ) );
+	let formIdentity = 'create';
+	if ( rule ) {
+		formIdentity = `edit-${ rule.id }`;
+	} else if ( context ) {
+		formIdentity = `context-${ context.recordedAttemptId }`;
+	}
 	const formKey = `${ open ? 'open' : 'closed' }-${ formIdentity }`;
 
 	return (
@@ -428,20 +479,60 @@ export function RuleFormDrawer( {
 			>
 				<Drawer.Header>
 					<Drawer.Title>
-						{ __( 'Create rule', 'woocommerce-fraud-protection' ) }
+						{ isEdit
+							? __( 'Edit rule', 'woocommerce-fraud-protection' )
+							: __(
+									'Create rule',
+									'woocommerce-fraud-protection'
+							  ) }
 					</Drawer.Title>
 					<Drawer.CloseIcon
 						label={ __( 'Close', 'woocommerce-fraud-protection' ) }
 						disabled={ mutation.isSaving }
 					/>
 				</Drawer.Header>
-				<RuleForm
-					key={ formKey }
-					context={ context }
-					mutation={ mutation }
-					onClose={ onClose }
-					onViewRule={ onViewRule }
-				/>
+				{ canRenderForm ? (
+					<RuleForm
+						key={ formKey }
+						context={ context }
+						mutation={ mutation }
+						onClose={ onClose }
+						onViewRule={ onViewRule }
+						rule={ isEdit ? rule : undefined }
+					/>
+				) : (
+					<Drawer.Content>
+						<Stack direction="column" gap="lg">
+							<RuleFormDescription isEdit />
+							{ isLoading && (
+								<Stack className="wc-fraud-protection-rule-form__loading">
+									<Spinner />
+									<VisuallyHidden>
+										{ __(
+											'Loading rule',
+											'woocommerce-fraud-protection'
+										) }
+									</VisuallyHidden>
+								</Stack>
+							) }
+							{ ! isLoading && detailError && (
+								<Notice.Root intent="error">
+									<Notice.Description>
+										{ detailError }
+									</Notice.Description>
+									<Notice.Actions>
+										<Notice.ActionButton onClick={ retry }>
+											{ __(
+												'Retry',
+												'woocommerce-fraud-protection'
+											) }
+										</Notice.ActionButton>
+									</Notice.Actions>
+								</Notice.Root>
+							) }
+						</Stack>
+					</Drawer.Content>
+				) }
 			</Drawer.Popup>
 		</Drawer.Root>
 	);

@@ -35,7 +35,6 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
 	default: jest.fn(),
 } ) );
-
 jest.mock( '@woocommerce/navigation', () => ( {
 	getNewPath: ( query: Record< string, string >, path: string ) => {
 		const route = new URLSearchParams( query );
@@ -53,6 +52,7 @@ const rule: Rule = {
 	value: 'shopper@example.com',
 	type: 'email',
 	created_at: '2026-09-14T12:00:00Z',
+	updated_at: null,
 };
 
 function collectionResponse(
@@ -76,13 +76,14 @@ function renderRules() {
 	const registry = createRegistry();
 	registry.register( rulesStore );
 	registry.register( noticesStore );
-	return render(
+	const result = render(
 		<MemoryRouter>
 			<RegistryProvider value={ registry }>
 				<RulesPage />
 			</RegistryProvider>
 		</MemoryRouter>
 	);
+	return { ...result, registry };
 }
 
 function renderDrawer(
@@ -100,6 +101,19 @@ function renderDrawer(
 		</MemoryRouter>
 	);
 	return { ...result, registry, onClose };
+}
+
+async function chooseRuleAction( value: string, action: string ) {
+	const row = screen.getByText( value ).closest( 'tr' );
+	if ( ! row ) {
+		throw new Error( `Rule row not found for ${ value }.` );
+	}
+	fireEvent.mouseDown(
+		within( row ).getByRole( 'button', { name: 'Actions' } )
+	);
+	await userEvent.click(
+		await screen.findByRole( 'menuitem', { name: action } )
+	);
 }
 
 beforeEach( () => {
@@ -269,20 +283,162 @@ describe( 'RulesPage', () => {
 		).toBeInTheDocument();
 	} );
 
-	it( 'opens the create rule drawer from the rules page', async () => {
+	it( 'opens edit immediately and shows detail loading', async () => {
+		let resolveDetail: ( response: Rule ) => void = () => undefined;
+		const detailRequest = new Promise< Rule >( ( resolve ) => {
+			resolveDetail = resolve;
+		} );
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockReturnValueOnce( detailRequest as never );
 		renderRules();
 		await screen.findByText( rule.value );
-
-		await userEvent.click(
-			screen.getByRole( 'button', { name: 'Create rule' } )
-		);
-
+		await chooseRuleAction( rule.value, 'Edit' );
 		expect(
-			await screen.findByRole( 'dialog', { name: 'Create rule' } )
+			screen.getByRole( 'heading', { name: 'Edit rule' } )
 		).toBeInTheDocument();
-		expect( screen.getByLabelText( 'Rule type' ) ).toHaveDisplayValue(
-			'Email address'
+		expect( screen.getByText( 'Loading rule' ) ).toBeInTheDocument();
+		expect( screen.queryByLabelText( 'Value' ) ).not.toBeInTheDocument();
+		await act( async () => resolveDetail( rule ) );
+		expect( await screen.findByLabelText( 'Value' ) ).toHaveValue(
+			rule.value
 		);
+	} );
+
+	it( 'shows and retries a detail request failure', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockRejectedValueOnce( new Error( 'request failed' ) )
+			.mockResolvedValueOnce( rule as never );
+		renderRules();
+		await screen.findByText( rule.value );
+		await chooseRuleAction( rule.value, 'Edit' );
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Retry' } )
+		);
+		expect( await screen.findByLabelText( 'Value' ) ).toHaveValue(
+			rule.value
+		);
+	} );
+
+	it( 'keeps the selected edit rule when an older detail request finishes', async () => {
+		const secondRule: Rule = {
+			...rule,
+			id: 2,
+			value: 'second@example.com',
+		};
+		let resolveFirst: ( response: Rule ) => void = () => undefined;
+		let resolveSecond: ( response: Rule ) => void = () => undefined;
+		mockedApiFetch
+			.mockResolvedValueOnce(
+				collectionResponse( [ rule, secondRule ] ) as never
+			)
+			.mockReturnValueOnce(
+				new Promise< Rule >( ( resolve ) => {
+					resolveFirst = resolve;
+				} ) as never
+			)
+			.mockReturnValueOnce(
+				new Promise< Rule >( ( resolve ) => {
+					resolveSecond = resolve;
+				} ) as never
+			);
+		renderRules();
+		await screen.findByText( secondRule.value );
+		await chooseRuleAction( rule.value, 'Edit' );
+		expect( await screen.findByText( 'Loading rule' ) ).toBeInTheDocument();
+		await chooseRuleAction( secondRule.value, 'Edit' );
+		await act( async () => resolveFirst( rule ) );
+		expect(
+			screen.queryByDisplayValue( rule.value )
+		).not.toBeInTheDocument();
+		expect( screen.getByText( 'Loading rule' ) ).toBeInTheDocument();
+		await act( async () => resolveSecond( secondRule ) );
+		expect(
+			await screen.findByDisplayValue( secondRule.value )
+		).toBeVisible();
+	} );
+
+	it( 'keeps Create open when an older edit request finishes', async () => {
+		let resolveDetail: ( response: Rule ) => void = () => undefined;
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockReturnValueOnce(
+				new Promise< Rule >( ( resolve ) => {
+					resolveDetail = resolve;
+				} ) as never
+			);
+		renderRules();
+		await screen.findByText( rule.value );
+		await chooseRuleAction( rule.value, 'Edit' );
+		expect( screen.getByText( 'Loading rule' ) ).toBeInTheDocument();
+		fireEvent.click(
+			screen.getByRole( 'button', {
+				name: 'Create rule',
+				hidden: true,
+			} )
+		);
+		expect(
+			screen.getByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( '' );
+		await act( async () => resolveDetail( rule ) );
+		expect(
+			screen.getByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( '' );
+	} );
+
+	it( 'keeps Delete open when an older edit request finishes', async () => {
+		let resolveDetail: ( response: Rule ) => void = () => undefined;
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockReturnValueOnce(
+				new Promise< Rule >( ( resolve ) => {
+					resolveDetail = resolve;
+				} ) as never
+			);
+		renderRules();
+		await screen.findByText( rule.value );
+		await chooseRuleAction( rule.value, 'Edit' );
+		await chooseRuleAction( rule.value, 'Delete' );
+		expect(
+			screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole( 'dialog', { name: 'Delete rule' } )
+		).toBeInTheDocument();
+		await act( async () => resolveDetail( rule ) );
+		expect(
+			screen.getByRole( 'dialog', { name: 'Delete rule' } )
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+		).not.toBeInTheDocument();
+	} );
+
+	it( 'stays closed when an edit request finishes after close', async () => {
+		let resolveDetail: ( response: Rule ) => void = () => undefined;
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockReturnValueOnce(
+				new Promise< Rule >( ( resolve ) => {
+					resolveDetail = resolve;
+				} ) as never
+			);
+		renderRules();
+		await screen.findByText( rule.value );
+		await chooseRuleAction( rule.value, 'Edit' );
+		fireEvent.click( screen.getByRole( 'button', { name: 'Close' } ) );
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+			).not.toBeInTheDocument()
+		);
+		await act( async () => resolveDetail( rule ) );
+		expect(
+			screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'rejects invalid and overlong email values through DataForm', async () => {
@@ -318,21 +474,11 @@ describe( 'RulesPage', () => {
 		expect( valueInput ).toHaveAttribute( 'type', 'email' );
 		expect( valueInput ).toHaveAttribute( 'maxlength', '254' );
 		await userEvent.type( valueInput, 'buyer@internal' );
+		expect( valueInput ).toBeValid();
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		);
 		await waitFor( () => expect( onClose ).toHaveBeenCalled() );
-		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/rules',
-			method: 'POST',
-			data: {
-				action: 'allow',
-				type: 'email',
-				value: 'buyer@internal',
-				recorded_attempt_id: undefined,
-				origin: 'rules',
-			},
-		} );
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
 			expect.arrayContaining( [
 				expect.objectContaining( {
@@ -438,7 +584,7 @@ describe( 'RulesPage', () => {
 			message: 'This email is already allowed by a rule.',
 			data: { rule_id: 17 },
 		} );
-		const { registry } = renderDrawer( { onViewRule } );
+		renderDrawer( { onViewRule } );
 		await userEvent.type(
 			screen.getByLabelText( 'Value' ),
 			'duplicate@example.com'
@@ -453,6 +599,88 @@ describe( 'RulesPage', () => {
 			} )
 		);
 		expect( onViewRule ).toHaveBeenCalledWith( 17 );
-		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
+	} );
+
+	it( 'updates a loaded rule and shows the update snackbar', async () => {
+		const updatedRule: Rule = { ...rule, action: 'block' };
+		mockedApiFetch
+			.mockResolvedValueOnce( rule as never )
+			.mockResolvedValueOnce( updatedRule as never );
+		const { onClose, registry } = renderDrawer( { ruleId: rule.id } );
+		await screen.findByDisplayValue( rule.value );
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'block'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+		await waitFor( () => expect( onClose ).toHaveBeenCalled() );
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: `/wc-fraud-protection/v1/rules/${ rule.id }`,
+			method: 'PUT',
+			data: {
+				action: 'block',
+				type: 'email',
+				value: rule.value,
+				origin: 'rules',
+			},
+		} );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual(
+			expect.arrayContaining( [
+				expect.objectContaining( {
+					content: 'Rule updated successfully',
+					type: 'snackbar',
+				} ),
+			] )
+		);
+	} );
+
+	it( 'keeps the delete dialog open after a delete failure', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockRejectedValueOnce( { message: 'The exact delete error.' } );
+		renderRules();
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Delete' } )
+		);
+		const dialog = await screen.findByRole( 'dialog', {
+			name: 'Delete rule',
+		} );
+		await userEvent.click(
+			within( dialog ).getByRole( 'button', { name: 'Delete' } )
+		);
+		expect(
+			await within( dialog ).findByText( 'The exact delete error.' )
+		).toBeInTheDocument();
+	} );
+
+	it( 'deletes a rule and shows the delete snackbar', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockResolvedValueOnce( undefined as never );
+		const { registry } = renderRules();
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Delete' } )
+		);
+		const dialog = await screen.findByRole( 'dialog', {
+			name: 'Delete rule',
+		} );
+		await userEvent.click(
+			within( dialog ).getByRole( 'button', { name: 'Delete' } )
+		);
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Delete rule' } )
+			).toBeNull()
+		);
+		expect( registry.select( noticesStore ).getNotices() ).toEqual(
+			expect.arrayContaining( [
+				expect.objectContaining( {
+					content: 'Rule deleted',
+					type: 'snackbar',
+				} ),
+			] )
+		);
 	} );
 } );

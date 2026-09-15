@@ -153,6 +153,20 @@
 	margin-bottom: 0;
 }
 
+.wc-fraud-protection-rule-form__metadata {
+	color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+.wc-fraud-protection-rule-form__loading {
+	align-items: center;
+	justify-content: center;
+	padding-block: var(--wpds-dimension-padding-3xl);
+}
+
 .wc-fraud-protection-rule-form__drawer-portal {
 	--wp-ui-drawer-z-index: #{z-index('.components-modal__screen-overlay')};
+}
+
+.wc-fraud-protection-rules__dialog-portal {
+	--wp-ui-dialog-z-index: #{z-index('.components-modal__screen-overlay')};
 }

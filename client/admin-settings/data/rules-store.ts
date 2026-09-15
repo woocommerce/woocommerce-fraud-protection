@@ -8,6 +8,7 @@ export type Rule = {
 	value: string;
 	type: 'email' | 'ip';
 	created_at: string;
+	updated_at: string | null;
 };
 
 export type RulesQuery = {
@@ -30,13 +31,17 @@ type RulesResponse = {
 
 type State = {
 	lists: Record< string, RulesResponse >;
+	rules: Record< number, Rule >;
 };
 
-type Action = {
-	type: 'RECEIVE_RULES';
-	query: RulesQuery;
-	response: RulesResponse;
-};
+type Action =
+	| {
+			type: 'RECEIVE_RULES';
+			query: RulesQuery;
+			response: RulesResponse;
+	  }
+	| { type: 'RECEIVE_RULE'; rule: Rule }
+	| { type: 'REMOVE_RULE'; id: number };
 
 export type CreateRuleRequest = {
 	action: Rule[ 'action' ];
@@ -46,7 +51,15 @@ export type CreateRuleRequest = {
 	origin?: 'rules' | 'checkout_attempts' | 'api';
 };
 
-const DEFAULT_STATE: State = { lists: {} };
+export type UpdateRuleRequest = Pick<
+	CreateRuleRequest,
+	'action' | 'type' | 'value' | 'origin'
+>;
+
+const DEFAULT_STATE: State = {
+	lists: {},
+	rules: {},
+};
 
 const EMPTY_RULES_RESPONSE: RulesResponse = {
 	data: [],
@@ -122,7 +135,8 @@ const isRule = ( value: unknown ): value is Rule => {
 		( rule.action === 'allow' || rule.action === 'block' ) &&
 		typeof rule.value === 'string' &&
 		( rule.type === 'email' || rule.type === 'ip' ) &&
-		typeof rule.created_at === 'string'
+		typeof rule.created_at === 'string' &&
+		( rule.updated_at === null || typeof rule.updated_at === 'string' )
 	);
 };
 
@@ -184,6 +198,16 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 					[ getQueryKey( action.query ) ]: action.response,
 				},
 			};
+		case 'RECEIVE_RULE':
+			return {
+				...state,
+				rules: { ...state.rules, [ action.rule.id ]: action.rule },
+			};
+		case 'REMOVE_RULE': {
+			const rules = { ...state.rules };
+			delete rules[ action.id ];
+			return { ...state, rules };
+		}
 		default:
 			return state;
 	}
@@ -192,6 +216,12 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 const actions = {
 	receiveRules( query: RulesQuery, response: RulesResponse ): Action {
 		return { type: 'RECEIVE_RULES', query, response };
+	},
+	receiveRule( rule: Rule ): Action {
+		return { type: 'RECEIVE_RULE', rule };
+	},
+	removeRule( id: number ): Action {
+		return { type: 'REMOVE_RULE', id };
 	},
 	createRule:
 		( request: CreateRuleRequest ) =>
@@ -205,8 +235,36 @@ const actions = {
 				throw new Error( INVALID_RESPONSE_MESSAGE );
 			}
 
+			dispatch.receiveRule( response );
 			await dispatch.invalidateResolutionForStoreSelector( 'getRules' );
 			return response;
+		},
+	updateRule:
+		( id: number, request: UpdateRuleRequest ) =>
+		async ( { dispatch }: StoreCallback ) => {
+			const response = await apiFetch< unknown >( {
+				path: `/wc-fraud-protection/v1/rules/${ id }`,
+				method: 'PUT',
+				data: request,
+			} );
+			if ( ! isRule( response ) ) {
+				throw new Error( INVALID_RESPONSE_MESSAGE );
+			}
+
+			dispatch.receiveRule( response );
+			await dispatch.invalidateResolutionForStoreSelector( 'getRules' );
+			return response;
+		},
+	deleteRule:
+		( id: number, origin: UpdateRuleRequest[ 'origin' ] = 'api' ) =>
+		async ( { dispatch }: StoreCallback ) => {
+			await apiFetch( {
+				path: `/wc-fraud-protection/v1/rules/${ id }?origin=${ origin }`,
+				method: 'DELETE',
+			} );
+			dispatch.removeRule( id );
+			await dispatch.invalidateResolutionForStoreSelector( 'getRules' );
+			await dispatch.invalidateResolution( 'getRule', [ id ] );
 		},
 };
 
@@ -235,11 +293,18 @@ const selectors = {
 			EMPTY_RULES_RESPONSE.totalPages
 		);
 	},
+	getRule( state: State, id: number ): Rule | undefined {
+		return state.rules[ id ];
+	},
 };
 
 type StoreActions = typeof actions & {
+	invalidateResolution: (
+		selectorName: 'getRules' | 'getRule',
+		args: unknown[]
+	) => Promise< void >;
 	invalidateResolutionForStoreSelector: (
-		selectorName: 'getRules'
+		selectorName: 'getRules' | 'getRule'
 	) => Promise< void >;
 };
 
@@ -259,6 +324,17 @@ const resolvers = {
 				query,
 				await parseRulesResponse( response )
 			);
+		},
+	getRule:
+		( id: number ) =>
+		async ( { dispatch }: StoreCallback ) => {
+			const response = await apiFetch< unknown >( {
+				path: `/wc-fraud-protection/v1/rules/${ id }`,
+			} );
+			if ( ! isRule( response ) ) {
+				throw new Error( INVALID_RESPONSE_MESSAGE );
+			}
+			dispatch.receiveRule( response );
 		},
 };
 
