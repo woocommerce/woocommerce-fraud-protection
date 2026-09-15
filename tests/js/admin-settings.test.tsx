@@ -22,6 +22,7 @@ import {
 	type Performance,
 	settingsStore,
 } from '../../client/admin-settings/data/store';
+import { rulesStore } from '../../client/admin-settings/data/rules-store';
 
 const mockCreateSuccessNotice = jest.fn();
 const mockSettingsHistory = { block: jest.fn( () => jest.fn() ) };
@@ -97,6 +98,7 @@ const findVisibleText = async ( text: string ) => {
 const renderSettings = () => {
 	const registry = createRegistry();
 	registry.register( settingsStore );
+	registry.register( rulesStore );
 	registry.register( noticesStore );
 
 	return render(
@@ -114,6 +116,91 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockCreateSuccessNotice.mockReset();
 		mockSettingsHistory.block.mockClear();
 		window.history.replaceState( {}, '', '/' );
+	} );
+
+	it( 'shows the Rules card controls without a rule count', async () => {
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
+		renderSettings();
+
+		const rulesCard = (
+			await screen.findByRole( 'heading', { name: 'Rules' } )
+		).closest( 'section' );
+		expect( rulesCard ).not.toBeNull();
+		const rules = within( rulesCard as HTMLElement );
+
+		expect(
+			rules.getByText( /Create rules to always allow/ )
+		).toHaveTextContent(
+			'Create rules to always allow or block checkout attempts that match specific criteria. Rules take priority over automatic fraud prevention and allow rules override block rules. See our best practices.'
+		);
+		expect(
+			rules.getByRole( 'link', { name: 'best practices' } )
+		).toHaveAttribute(
+			'href',
+			'https://woocommerce.com/document/fraud-protection/'
+		);
+		expect(
+			rules.getByRole( 'button', { name: 'Create rule' } )
+		).toBeVisible();
+		expect(
+			rules.getByRole( 'link', { name: 'View rules' } )
+		).toBeVisible();
+		expect( rules.queryByText( /^\d+ rules?$/ ) ).not.toBeInTheDocument();
+	} );
+
+	it( 'creates a rule from the Rules card and refreshes with a success toast', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockResolvedValueOnce( {
+				id: 18,
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				created_at: '2026-09-15T12:00:00Z',
+			} )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+			} );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'card@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+			).not.toBeInTheDocument()
+		);
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-fraud-protection/v1/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				origin: 'rules',
+			},
+		} );
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20',
+		} );
+		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+			'Rule created successfully',
+			{ type: 'snackbar' }
+		);
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {

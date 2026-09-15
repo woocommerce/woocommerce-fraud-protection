@@ -4,6 +4,7 @@
 * Added - Merchants can view their active allow and block rules with filters and paging.
 * Added - Merchants can create exact email and IP allow or block rules.
 * Added - Merchants can edit or delete active allow and block rules.
+* Added - Fraud prevention settings now link to rule creation and management.
 
 2026-09-14 - version 0.2.4
 * Added - Inbox invitation to enable automatic protection during early access.

@@ -3,6 +3,7 @@ import { __ } from '@wordpress/i18n';
 
 import { AutomaticProtectionCard } from './components/automatic-protection-card';
 import { PerformanceCard } from './components/performance-card';
+import { RulesCard } from './components/rules-card';
 import { useFraudProtectionSettings } from './hooks/use-fraud-protection-settings';
 import { useUnsavedChangesGuard } from './hooks/use-unsaved-changes-guard';
 
@@ -82,6 +83,7 @@ export function FraudProtectionSettingsPage() {
 				isLoading={ isLoading }
 				performance={ performance }
 			/>
+			<RulesCard />
 			<Stack direction="row">
 				<Button
 					variant="solid"

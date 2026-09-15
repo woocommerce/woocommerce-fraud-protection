@@ -141,6 +141,31 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		} );
 	} );
 
+	it( 'navigates from the settings card to the distinct rules route', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+				page: 1,
+				perPage: 20,
+			} );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'link', { name: 'View rules' } )
+		);
+
+		expect( mockHistory.location.pathname ).toBe( '/rules' );
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+		} );
+	} );
+
 	it( 'keeps settings open when checkout-attempt navigation is cancelled', async () => {
 		const confirm = jest
 			.spyOn( window, 'confirm' )
