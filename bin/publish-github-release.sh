@@ -145,7 +145,7 @@ if ! jq -e '.success == true' <<< "$translation_import_response" >/dev/null; the
 	exit 1
 fi
 
-echo "Imported translations for the published release $tag."
+echo "Queued the translation import for the published release $tag."
 
 if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
 	echo "Release: $release_url" >> "$GITHUB_STEP_SUMMARY"
