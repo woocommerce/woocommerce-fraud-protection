@@ -1,13 +1,6 @@
 @import '@wordpress/components/build-style/style.css';
 @import '@wordpress/dataviews/build-style/style.css';
 
-#wc-fraud-protection-settings {
-	margin: calc(-1 * var(--wpds-dimension-gap-xl)) -30px
-		calc(-1 * var(--wpds-dimension-gap-3xl));
-	padding: 0 var(--wpds-dimension-padding-md);
-	background: var(--wpds-color-background-surface-neutral);
-}
-
 .wc-fraud-protection-settings__content {
 	max-width: 720px;
 	margin: 0 auto;
@@ -95,6 +88,9 @@
 }
 
 .wc-fraud-protection-rules {
+	margin: calc(-1 * var(--wpds-dimension-gap-xl)) -30px
+		calc(-1 * var(--wpds-dimension-gap-3xl));
+	padding: 0 var(--wpds-dimension-padding-md);
 	background: var(--wpds-color-background-surface-neutral);
 
 	&__description {
