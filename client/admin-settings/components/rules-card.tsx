@@ -18,20 +18,28 @@ const rulesHref = getFraudProtectionRoute( '/rules' );
 export function RulesCard() {
 	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );
 	const [ editingRule, setEditingRule ] = useState< Rule | undefined >();
+	const [ detailError, setDetailError ] = useState< string | null >( null );
 	const detailRequest = useRef( 0 );
 	const { requestRule } = useRules();
 	const openEditRule = useCallback(
 		async ( id: number ) => {
 			const request = ++detailRequest.current;
+			setDetailError( null );
 			try {
 				const rule = await requestRule( id );
 				if ( request === detailRequest.current ) {
+					setDetailError( null );
 					setEditingRule( rule );
 					setIsDrawerOpen( true );
 				}
 			} catch {
 				if ( request === detailRequest.current ) {
-					setEditingRule( undefined );
+					setDetailError(
+						__(
+							'The rule could not be loaded.',
+							'woocommerce-fraud-protection'
+						)
+					);
 				}
 			}
 		},
@@ -78,6 +86,7 @@ export function RulesCard() {
 							variant="solid"
 							size="compact"
 							onClick={ () => {
+								setDetailError( null );
 								setEditingRule( undefined );
 								setIsDrawerOpen( true );
 							} }
@@ -103,8 +112,11 @@ export function RulesCard() {
 			<RuleFormDrawer
 				open={ isDrawerOpen }
 				rule={ editingRule }
+				detailError={ detailError }
+				onFormChange={ () => setDetailError( null ) }
 				onClose={ () => {
 					detailRequest.current++;
+					setDetailError( null );
 					setIsDrawerOpen( false );
 					setEditingRule( undefined );
 				} }

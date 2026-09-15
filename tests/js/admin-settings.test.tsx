@@ -254,6 +254,56 @@ describe( 'FraudProtectionSettingsPage', () => {
 		} );
 	} );
 
+	it( 'shows a failed duplicate detail request and clears it after the form changes', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow' as const,
+			type: 'email' as const,
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockRejectedValueOnce( new Error( 'Detail unavailable.' ) )
+			.mockResolvedValueOnce( duplicate );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		let drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await within( drawer ).findByRole( 'button', {
+				name: 'Edit existing rule',
+			} )
+		);
+
+		drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		expect(
+			await within( drawer ).findByText( 'The rule could not be loaded.' )
+		).toBeInTheDocument();
+		await userEvent.type( within( drawer ).getByLabelText( 'Value' ), 'x' );
+
+		expect(
+			within( drawer ).queryByText( 'The rule could not be loaded.' )
+		).not.toBeInTheDocument();
+	} );
+
 	it( 'does not reopen a closed drawer after a duplicate rule loads', async () => {
 		const duplicate = {
 			id: 17,
