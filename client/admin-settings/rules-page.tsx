@@ -285,7 +285,7 @@ export function RulesPage() {
 		() =>
 			deletingRuleData
 				? getRuleFormFields( {
-						data: deletingRuleData,
+						type: deletingRuleData.type,
 						disabled: true,
 				  } )
 				: [],

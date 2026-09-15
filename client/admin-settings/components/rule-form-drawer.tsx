@@ -200,7 +200,7 @@ export const ruleForm: Form = {
 };
 
 type RuleFormFieldsOptions = {
-	data: RuleFormData;
+	type: RuleFormData[ 'type' ];
 	disabled?: boolean;
 	matchFieldsDisabled?: boolean;
 	duplicateError?: string;
@@ -209,7 +209,7 @@ type RuleFormFieldsOptions = {
 };
 
 export const getRuleFormFields = ( {
-	data,
+	type,
 	disabled = false,
 	matchFieldsDisabled = false,
 	duplicateError,
@@ -264,7 +264,7 @@ export const getRuleFormFields = ( {
 				onViewRule={ onViewRule }
 			/>
 		),
-		placeholder: getRuleValuePlaceholder( data.type ),
+		placeholder: getRuleValuePlaceholder( type ),
 		isDisabled: disabled || matchFieldsDisabled,
 		isValid: {
 			required: true,
@@ -334,7 +334,7 @@ export function RuleFormDrawer( {
 	const fields = useMemo< Field< RuleFormData >[] >(
 		() =>
 			getRuleFormFields( {
-				data,
+				type: data.type,
 				disabled: isSaving,
 				matchFieldsDisabled: Boolean( context ),
 				duplicateError: hasDuplicateError
@@ -345,7 +345,7 @@ export function RuleFormDrawer( {
 			} ),
 		[
 			context,
-			data,
+			data.type,
 			hasDuplicateError,
 			isSaving,
 			onViewRule,
