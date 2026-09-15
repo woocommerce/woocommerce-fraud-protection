@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 class AutomaticProtectionSetting {
 
 	private const OPTION_NAME              = 'woocommerce_fraud_protection_automatic_protection';
-	private const OPT_OUT_INFO_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_info';
+	private const OPT_OUT_DATE_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_at';
 	private const ENABLED_AT_OPTION_NAME   = 'woocommerce_fraud_protection_automatic_protection_enabled_at';
 
 	/**
@@ -55,7 +55,7 @@ class AutomaticProtectionSetting {
 	 * Check whether automatic enrollment was declined.
 	 */
 	public function is_opted_out(): bool {
-		return null !== get_option( self::OPT_OUT_INFO_OPTION_NAME, null );
+		return null !== get_option( self::OPT_OUT_DATE_OPTION_NAME, null );
 	}
 
 	/**
@@ -64,41 +64,9 @@ class AutomaticProtectionSetting {
 	 * @return string|null The UTC date, or null when unavailable.
 	 */
 	public function get_opted_out_at(): ?string {
-		$date = $this->get_opt_out_record()['date'] ?? null;
+		$value = get_option( self::OPT_OUT_DATE_OPTION_NAME, null );
 
-		return is_string( $date ) && '' !== $date ? $date : null;
-	}
-
-	/**
-	 * Get the id of the user who opted out, when known.
-	 *
-	 * @return int|null The user id, or null when unknown.
-	 */
-	public function get_opted_out_by(): ?int {
-		$user_id = $this->get_opt_out_record()['user_id'] ?? null;
-
-		return is_int( $user_id ) && $user_id > 0 ? $user_id : null;
-	}
-
-	/**
-	 * Decode the stored opt-out record.
-	 *
-	 * The opt-out is stored as a JSON object with the opt-out date and the id of
-	 * the user who made it.
-	 *
-	 * @return array{date?: ?string, user_id?: ?int}
-	 */
-	private function get_opt_out_record(): array {
-		$value   = get_option( self::OPT_OUT_INFO_OPTION_NAME, null );
-		$decoded = is_string( $value ) ? json_decode( $value, true ) : null;
-		if ( ! is_array( $decoded ) ) {
-			return array();
-		}
-
-		return array(
-			'date'    => isset( $decoded['date'] ) && is_string( $decoded['date'] ) ? $decoded['date'] : null,
-			'user_id' => isset( $decoded['user_id'] ) ? (int) $decoded['user_id'] : null,
-		);
+		return is_string( $value ) && '' !== $value ? $value : null;
 	}
 
 	/**
@@ -161,20 +129,10 @@ class AutomaticProtectionSetting {
 	 * @return bool|null True when created, false when already stored, or null on failure.
 	 */
 	public function set_opted_out(): ?bool {
-		// Store the opt-out date together with the user who made it.
-		$record = wp_json_encode(
-			array(
-				'date'    => gmdate( 'Y-m-d H:i:s' ),
-				'user_id' => get_current_user_id(),
-			)
-		);
-		if ( ! is_string( $record ) ) {
-			return null;
-		}
-
-		$created = add_option( self::OPT_OUT_INFO_OPTION_NAME, $record, '', false );
+		$opted_out_at = gmdate( 'Y-m-d H:i:s' );
+		$created      = add_option( self::OPT_OUT_DATE_OPTION_NAME, $opted_out_at, '', false );
 		if ( $created ) {
-			return get_option( self::OPT_OUT_INFO_OPTION_NAME, null ) === $record ? true : null;
+			return get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) === $opted_out_at ? true : null;
 		}
 
 		return $this->is_opted_out() ? false : null;
@@ -187,11 +145,11 @@ class AutomaticProtectionSetting {
 	 */
 	public function reset(): bool {
 		delete_option( self::OPTION_NAME );
-		delete_option( self::OPT_OUT_INFO_OPTION_NAME );
+		delete_option( self::OPT_OUT_DATE_OPTION_NAME );
 		delete_option( self::ENABLED_AT_OPTION_NAME );
 
 		return null === get_option( self::OPTION_NAME, null )
-			&& null === get_option( self::OPT_OUT_INFO_OPTION_NAME, null )
+			&& null === get_option( self::OPT_OUT_DATE_OPTION_NAME, null )
 			&& null === get_option( self::ENABLED_AT_OPTION_NAME, null );
 	}
 }
