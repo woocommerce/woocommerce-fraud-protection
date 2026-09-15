@@ -10,6 +10,7 @@ import { useSelect } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { View } from '@wordpress/dataviews';
+import { getHistory, getNewPath } from '@woocommerce/navigation';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { buildActions } from './actions';
@@ -17,7 +18,6 @@ import { EnableFraudPreventionDrawer } from './enable-fraud-prevention-drawer';
 import { getFields } from './fields';
 import { ProtectionOffBanner } from './protection-off-banner';
 import { loadPrefs, savePrefs } from './persisted-state';
-import { getConfig } from './types';
 import { useCheckoutAttempts } from './use-checkout-attempts';
 import { usePaymentMethodOptions } from './use-payment-method-options';
 import { getFraudProtectionRoute } from '../admin-settings/navigation';
@@ -26,6 +26,8 @@ import type { DisplayPrefs, StatusTab } from './persisted-state';
 import type { FinalStatus } from './types';
 import './style.scss';
 
+// The settings pane URL: the breadcrumb links to it, and the flagged-attempt
+// tooltip opens it in a new tab.
 const settingsRoute = getFraudProtectionRoute( '/' );
 
 const TABS: StatusTab[] = [ 'all', 'allowed', 'blocked' ];
@@ -129,19 +131,6 @@ function setParam(
 	}
 }
 
-// The query args this list owns. Everything else in the URL (WooCommerce's own
-// page/tab/path) is preserved when the list writes its state.
-const NAV_PARAM_KEYS = [
-	'search',
-	'paged',
-	'orderby',
-	'order',
-	'outcome',
-	'provider',
-	'rules',
-	'status',
-];
-
 // Build the list's own query args from the current view and tab.
 function navParams( view: View, tab: StatusTab ): URLSearchParams {
 	const params = new URLSearchParams();
@@ -195,12 +184,26 @@ function urlNav( params: URLSearchParams ): string {
 	return serializeNav( viewFromParams( params, {} ), getTab( params ) );
 }
 
+// The full WooCommerce admin URL for the list in a given view and tab. Writing
+// this (rather than the router's `/checkout-attempts` pathname) keeps the browser
+// on `admin.php` with the route in the `path` query arg, so a reload resolves.
+function listAdminPath( view: View, tab: StatusTab ): string {
+	const query: Record< string, string > = {
+		page: 'wc-settings',
+		tab: 'woocommerce_fraud_protection',
+	};
+	navParams( view, tab ).forEach( ( value, key ) => {
+		query[ key ] = value;
+	} );
+
+	return getNewPath( query, '/checkout-attempts', {} );
+}
+
 export function CheckoutAttemptsPage() {
-	const config = useMemo( getConfig, [] );
 	const paymentMethods = usePaymentMethodOptions();
 
 	const pageRef = useRef< HTMLDivElement >( null );
-	const [ searchParams, setSearchParams ] = useSearchParams();
+	const [ searchParams ] = useSearchParams();
 
 	// The DataViews view and the status tab are local state, so the list keeps
 	// full control of its own interactions — including a filter that has been
@@ -214,27 +217,29 @@ export function CheckoutAttemptsPage() {
 		getTab( searchParams )
 	);
 
-	// Automatic fraud prevention state: start from the value injected at page
-	// load so the banner does not flash, but prefer the settings store, which the
-	// resolver refreshes from the REST API (so a change made on the settings page
-	// is reflected here without a reload) and the enable drawer updates in place.
-	const savedProtection = useSelect(
-		( select ) =>
-			select( settingsStore ).getSettings()?.automatic_protection,
-		[]
-	);
-	const protectionOn = savedProtection ?? config.automaticProtection;
+	// Automatic fraud prevention state comes from the shared settings store (its
+	// initial GET is preloaded for this route). Until that resolution finishes,
+	// treat protection as on so protection-off controls — the banner and the
+	// "enable" row action — do not appear or fire before the real state is known.
+	const protectionOn = useSelect( ( select ) => {
+		const store = select( settingsStore );
+		const settings = store.getSettings();
+		return store.hasFinishedResolution( 'getSettings' )
+			? settings?.automatic_protection === true
+			: true;
+	}, [] );
 
 	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );
 	const openDrawer = useCallback( () => setIsDrawerOpen( true ), [] );
 
 	const effectiveConfig = useMemo(
 		() => ( {
-			...config,
 			automaticProtection: protectionOn,
+			automaticProtectionEnabledAt: null,
+			settingsUrl: settingsRoute,
 			paymentMethods,
 		} ),
-		[ config, protectionOn, paymentMethods ]
+		[ protectionOn, paymentMethods ]
 	);
 
 	const isCompact = 'compact' === view.layout?.density;
@@ -247,23 +252,31 @@ export function CheckoutAttemptsPage() {
 		[ effectiveConfig, openDrawer ]
 	);
 
-	// Mirror the current view and tab to the URL, preserving the query args the
-	// WooCommerce settings framework owns (page, tab, path). `replace` avoids a
-	// history entry for automatic corrections.
+	// Mirror the current view and tab to the URL by pushing a full admin URL
+	// through the WooCommerce history. `replace` avoids a history entry for
+	// automatic corrections (and search typing); user navigation pushes so Back
+	// restores the previous list state.
 	const commitToUrl = useCallback(
 		( nextView: View, nextTab: StatusTab, replace = false ) => {
-			const next = new URLSearchParams( searchParams );
-			NAV_PARAM_KEYS.forEach( ( key ) => next.delete( key ) );
-			navParams( nextView, nextTab ).forEach( ( value, key ) =>
-				next.set( key, value )
-			);
-			setSearchParams( next, { replace } );
+			const path = listAdminPath( nextView, nextTab );
+			const history = getHistory();
+			if ( replace ) {
+				history.replace( path );
+			} else {
+				history.push( path );
+			}
 		},
-		[ searchParams, setSearchParams ]
+		[]
 	);
 
 	const onChangeView = useCallback(
 		( nextView: View ) => {
+			// A change to the search text alone replaces the URL so typing does
+			// not create a history entry per keystroke; any other change pushes.
+			const searchOnly =
+				serializeNav( { ...nextView, search: '' }, tab ) ===
+				serializeNav( { ...view, search: '' }, tab );
+
 			setView( nextView );
 			// Column visibility, density and page size are display preferences.
 			savePrefs( {
@@ -271,9 +284,9 @@ export function CheckoutAttemptsPage() {
 				perPage: nextView.perPage,
 				layout: nextView.layout,
 			} );
-			commitToUrl( nextView, tab );
+			commitToUrl( nextView, tab, searchOnly );
 		},
-		[ commitToUrl, tab ]
+		[ commitToUrl, tab, view ]
 	);
 
 	const onTabChange = useCallback(

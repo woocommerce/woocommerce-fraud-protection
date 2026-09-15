@@ -28,13 +28,6 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	private FraudProtectionLogger $logger;
 
 	/**
-	 * Automatic protection setting.
-	 *
-	 * @var AutomaticProtectionSetting
-	 */
-	private AutomaticProtectionSetting $automatic_protection;
-
-	/**
 	 * Whether the settings asset metadata failed to load.
 	 *
 	 * @var bool
@@ -56,12 +49,10 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	 *
 	 * @internal
 	 *
-	 * @param FraudProtectionLogger      $logger               Logger instance.
-	 * @param AutomaticProtectionSetting $automatic_protection Automatic protection setting.
+	 * @param FraudProtectionLogger $logger Logger instance.
 	 */
-	final public function init( FraudProtectionLogger $logger, AutomaticProtectionSetting $automatic_protection ): void {
-		$this->logger               = $logger;
-		$this->automatic_protection = $automatic_protection;
+	final public function init( FraudProtectionLogger $logger ): void {
+		$this->logger = $logger;
 	}
 
 	/**
@@ -135,7 +126,6 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 		);
 		wp_set_script_translations( self::SCRIPT_HANDLE, 'woocommerce-fraud-protection', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages' );
 		$this->inject_settings_config();
-		$this->inject_checkout_attempts_config();
 		$this->maybe_preload_settings_data();
 	}
 
@@ -170,36 +160,17 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	}
 
 	/**
-	 * Expose the checkout attempts list configuration to its React route.
+	 * Preload the settings REST data on the routes that read it.
 	 *
-	 * The list route lives inside this single-page settings app, so the config is
-	 * injected on every route: the automatic-protection state (a page-load
-	 * fallback the list then refreshes from the settings REST API) and the
-	 * settings page URL used by the flagged-attempt link. The provider filter
-	 * options are loaded on demand by the list itself, so the query that scans
-	 * retained attempts does not run on every settings-page load.
-	 */
-	private function inject_checkout_attempts_config(): void {
-		$config = array(
-			'automaticProtection'          => $this->automatic_protection->is_enabled(),
-			'automaticProtectionEnabledAt' => null,
-			'settingsUrl'                  => admin_url( 'admin.php?page=wc-settings&tab=' . self::PAGE_ID ),
-		);
-
-		wp_add_inline_script(
-			self::SCRIPT_HANDLE,
-			'window.wcFraudProtectionCheckoutAttempts = ' . wp_json_encode( $config, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';',
-			'before'
-		);
-	}
-
-	/**
-	 * Preload settings data on the settings route.
+	 * Both the settings pane and the checkout attempts list read the
+	 * automatic-protection state from the settings store, so its initial GET is
+	 * preloaded on either route. Other routes do not, so the query does not run
+	 * where it is not needed.
 	 */
 	private function maybe_preload_settings_data(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The route only controls which read-only data is preloaded.
 		$route_path = isset( $_GET['path'] ) ? sanitize_text_field( wp_unslash( $_GET['path'] ) ) : null;
-		if ( null !== $route_path && '/' !== $route_path ) {
+		if ( null !== $route_path && '/' !== $route_path && '/checkout-attempts' !== $route_path ) {
 			return;
 		}
 

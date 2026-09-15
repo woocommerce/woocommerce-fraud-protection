@@ -9,7 +9,8 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType, ReactNode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { unstable_HistoryRouter as HistoryRouter } from 'react-router-dom';
+import { createMemoryHistory } from 'history';
 
 import apiFetch from '@wordpress/api-fetch';
 import { dispatch as dataDispatch } from '@wordpress/data';
@@ -38,13 +39,30 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 	default: jest.fn(),
 } ) );
 
-// The list lives inside the settings single-page app: its breadcrumb builds an
-// in-app route, so the navigation helper is mocked and renders are wrapped in a
-// router.
+// The list lives inside the settings single-page app. `getHistory()` and the
+// router share one in-memory history (reset per test in renderPage) so a
+// `getHistory().push()` is what `useSearchParams()` reads back. `getNewPath()`
+// mirrors WooCommerce's builder: `admin.php` with a `path` query arg.
+let mockHistory: ReturnType< typeof createMemoryHistory >;
+
 jest.mock( '@woocommerce/navigation', () => ( {
 	__esModule: true,
-	getNewPath: () =>
-		'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection',
+	getHistory: () => mockHistory,
+	getNewPath: (
+		query: Record< string, string >,
+		path: string,
+		currentQuery: Record< string, string > = {}
+	) => {
+		const params = new URLSearchParams( {
+			page: 'wc-admin',
+			...currentQuery,
+			...query,
+		} );
+		if ( path && path !== '/' ) {
+			params.set( 'path', path );
+		}
+		return `admin.php?${ params.toString() }`;
+	},
 } ) );
 
 // DataViews is bundled and heavy; the page's own wiring is what these tests
@@ -139,16 +157,6 @@ const BASE_VIEW: View = {
 	sort: { field: 'recorded_at', direction: 'desc' },
 	search: '',
 	filters: [],
-};
-
-const setConfig = ( config: Partial< CheckoutAttemptsConfig > = {} ) => {
-	window.wcFraudProtectionCheckoutAttempts = {
-		automaticProtection: false,
-		automaticProtectionEnabledAt: null,
-		settingsUrl: 'https://example.test/wp-admin/settings',
-		paymentMethods: [ { id: 'stripe', title: 'Stripe' } ],
-		...config,
-	};
 };
 
 describe( 'checkout attempts outcomes', () => {
@@ -778,14 +786,19 @@ const mockApi = ( {
 	);
 };
 
-// The list's navigation state lives in the URL, so render inside a router seeded
-// with the query string under test.
-const renderPage = ( url = '/' ) =>
-	render( <CheckoutAttemptsPage />, {
+// The list's navigation state lives in the URL. Seed the shared history with the
+// admin URL (an optional query string under test) and render inside a router
+// bound to that same history.
+const renderPage = ( search = '' ) => {
+	mockHistory = createMemoryHistory( {
+		initialEntries: [ `/wp-admin/admin.php?${ search }` ],
+	} );
+	return render( <CheckoutAttemptsPage />, {
 		wrapper: ( { children }: { children: ReactNode } ) => (
-			<MemoryRouter initialEntries={ [ url ] }>{ children }</MemoryRouter>
+			<HistoryRouter history={ mockHistory }>{ children }</HistoryRouter>
 		),
 	} );
+};
 
 // Only the paginated list requests (which carry query args), not the
 // provider-options request at /sessions/payment-methods.
@@ -816,13 +829,11 @@ describe( 'CheckoutAttemptsPage', () => {
 		mockedApiFetch.mockReset();
 		mockedDataViews.mockClear();
 		window.localStorage.clear();
-		setConfig();
 		seedProtection( false );
 		mockApi();
 	} );
 
 	afterEach( () => {
-		delete window.wcFraudProtectionCheckoutAttempts;
 		delete window.wcFraudProtectionSettings;
 	} );
 
@@ -876,10 +887,32 @@ describe( 'CheckoutAttemptsPage', () => {
 		} );
 	} );
 
+	it( 'keeps the browser on admin.php with the route in the path query', async () => {
+		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
+
+		renderPage();
+		await waitFor( () => {
+			expect( lastDataViewsProps().data ).toHaveLength( 1 );
+		} );
+
+		await userEvent.click( screen.getByRole( 'tab', { name: 'Blocked' } ) );
+
+		await waitFor( () => {
+			const query = new URLSearchParams( mockHistory.location.search );
+			expect( query.get( 'status' ) ).toBe( 'blocked' );
+			// The route stays a `path` query arg on admin.php, not the pathname
+			// (which would 404 on reload).
+			expect( query.get( 'path' ) ).toBe( '/checkout-attempts' );
+			expect( mockHistory.location.pathname ).not.toContain(
+				'checkout-attempts'
+			);
+		} );
+	} );
+
 	it( 'starts on the page named in the URL', async () => {
 		mockApi( { sessions: listResponse( [ aSession() ], 40, 2 ) } );
 
-		renderPage( '/?paged=2' );
+		renderPage( 'paged=2' );
 
 		await waitFor( () => {
 			expect( lastDataViewsProps().data ).toHaveLength( 1 );
@@ -900,7 +933,7 @@ describe( 'CheckoutAttemptsPage', () => {
 					: listResponse( [ aSession() ], 30, 2 ),
 		} );
 
-		renderPage( '/?paged=5' );
+		renderPage( 'paged=5' );
 
 		// The page is corrected to the last existing one, in the view and the fetch.
 		await waitFor( () => {
@@ -914,7 +947,7 @@ describe( 'CheckoutAttemptsPage', () => {
 	it( 'resets to page 1 when there are no results', async () => {
 		mockApi( { sessions: listResponse( [], 0, 0 ) } );
 
-		renderPage( '/?paged=3' );
+		renderPage( 'paged=3' );
 
 		await waitFor( () => {
 			expect( lastDataViewsProps().view.page ).toBe( 1 );
@@ -924,7 +957,7 @@ describe( 'CheckoutAttemptsPage', () => {
 	it( 'selects the tab named in the URL and filters by it', async () => {
 		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
 
-		renderPage( '/?status=blocked' );
+		renderPage( 'status=blocked' );
 
 		await waitFor( () => {
 			expect(
@@ -968,15 +1001,15 @@ describe( 'CheckoutAttemptsPage', () => {
 	it( 'prevents the enclosing settings form from submitting', async () => {
 		mockApi();
 
+		mockHistory = createMemoryHistory( {
+			initialEntries: [ '/wp-admin/admin.php' ],
+		} );
 		const { container } = render(
-			<form>
-				<CheckoutAttemptsPage />
-			</form>,
-			{
-				wrapper: ( { children }: { children: ReactNode } ) => (
-					<MemoryRouter>{ children }</MemoryRouter>
-				),
-			}
+			<HistoryRouter history={ mockHistory }>
+				<form>
+					<CheckoutAttemptsPage />
+				</form>
+			</HistoryRouter>
 		);
 		await waitFor( () => expect( lastDataViewsProps() ).toBeDefined() );
 
@@ -1014,7 +1047,7 @@ describe( 'CheckoutAttemptsPage', () => {
 			sessions: () => Promise.reject( new Error( 'Nope.' ) ),
 		} );
 
-		renderPage( '/?paged=3' );
+		renderPage( 'paged=3' );
 
 		await waitFor( () =>
 			expect( screen.getAllByText( 'Nope.' ).length ).toBeGreaterThan( 0 )

@@ -91,10 +91,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->reset_asset_registrations();
 		$this->automatic_protection = wc_get_container()->get( AutomaticProtectionSetting::class );
 		$this->sut                  = new FraudProtectionSettingsPage();
-		$this->sut->init(
-			$this->spy_on_controller_logging(),
-			$this->automatic_protection
-		);
+		$this->sut->init( $this->spy_on_controller_logging() );
 		$this->automatic_protection->reset();
 	}
 
@@ -225,8 +222,6 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
 		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
-		// The checkout attempts config is exposed on every route of the app.
-		$this->assertStringContainsString( 'window.wcFraudProtectionCheckoutAttempts', $before_script );
 		// Per-user settings state (the notice and banner dismissals) is exposed too.
 		$this->assertStringContainsString( 'window.wcFraudProtectionSettings', $before_script );
 		$this->assertStringContainsString( '"automaticProtectionNoticeDismissed":false', $before_script );
@@ -234,9 +229,9 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The checkout attempts route exposes the list config but does not preload settings data.
+	 * @testdox The checkout attempts route preloads the settings data it reads.
 	 */
-	public function test_checkout_attempts_route_does_not_preload_settings(): void {
+	public function test_checkout_attempts_route_preloads_settings(): void {
 		$this->write_asset_fixture( array( 'wp-api-fetch' ), 'settings-test-version' );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
 		$_GET['path']           = '/checkout-attempts';
@@ -253,16 +248,15 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
 		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
-		$this->assertSame( 0, $rest_requests );
+		// The list reads protection state from the settings store, so its GET is
+		// preloaded on this route too.
+		$this->assertSame( 1, $rest_requests );
 
-		// The route still receives the checkout attempts config global, so a
-		// client-side navigation into it has the data it needs, but never the
-		// settings data preload.
 		$before = wp_scripts()->get_data( self::ASSET_HANDLE, 'before' );
 		$this->assertIsArray( $before );
 		$before_script = implode( "\n", $before );
-		$this->assertStringContainsString( 'window.wcFraudProtectionCheckoutAttempts', $before_script );
-		$this->assertStringNotContainsString( 'createPreloadingMiddleware', $before_script );
+		$this->assertStringContainsString( 'createPreloadingMiddleware', $before_script );
+		$this->assertStringContainsString( 'window.wcFraudProtectionSettings', $before_script );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 	}
 
