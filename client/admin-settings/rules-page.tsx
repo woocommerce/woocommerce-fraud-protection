@@ -132,8 +132,18 @@ export const getQueryFromView = ( view: View ): RulesQuery => {
 	return query;
 };
 
+const getActionTab = ( view: View ): 'all' | 'allow' | 'block' => {
+	const actionFilter = ( view.filters ?? [] ).find(
+		( filter ) => filter.field === 'action'
+	);
+	const value = Array.isArray( actionFilter?.value )
+		? actionFilter?.value[ 0 ]
+		: actionFilter?.value;
+
+	return value === 'allow' || value === 'block' ? value : 'all';
+};
+
 export function RulesPage() {
-	const [ actionTab, setActionTab ] = useState( 'all' );
 	const [ view, setView ] = useState< View >( {
 		type: 'table' as const,
 		page: 1,
@@ -156,6 +166,7 @@ export function RulesPage() {
 		() => getFields( view.sort?.field ),
 		[ view.sort?.field ]
 	);
+	const actionTab = getActionTab( view );
 
 	useEffect( () => {
 		requestRules( getQueryFromView( view ) );
@@ -258,7 +269,6 @@ export function RulesPage() {
 					<Tabs.Root
 						value={ actionTab }
 						onValueChange={ ( value ) => {
-							setActionTab( value );
 							const filters = ( view.filters ?? [] ).filter(
 								( filter ) => filter.field !== 'action'
 							);
