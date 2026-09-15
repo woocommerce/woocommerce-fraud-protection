@@ -165,4 +165,34 @@ describe( 'rulesStore', () => {
 			registry.resolveSelect( rulesStore ).getRules( query )
 		).rejects.toThrow( 'Could not get a valid response from the server.' );
 	} );
+
+	it( 'invalidates every list resolution after create', async () => {
+		const registry = setupRegistry();
+		const firstQuery = { page: 1, perPage: 20 };
+		const secondQuery = { page: 2, perPage: 20 };
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() )
+			.mockResolvedValueOnce( collectionResponse() );
+		await registry.resolveSelect( rulesStore ).getRules( firstQuery );
+		await registry.resolveSelect( rulesStore ).getRules( secondQuery );
+
+		mockedApiFetch.mockResolvedValueOnce( rule );
+		await registry.dispatch( rulesStore ).createRule( {
+			action: rule.action,
+			type: rule.type,
+			value: rule.value,
+			origin: 'rules',
+		} );
+
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ firstQuery ] )
+		).toBe( false );
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ secondQuery ] )
+		).toBe( false );
+	} );
 } );

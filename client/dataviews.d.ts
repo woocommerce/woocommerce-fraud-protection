@@ -1,3 +1,3 @@
 declare module '@wordpress/dataviews/wp' {
-	export { DataViews } from '@wordpress/dataviews';
+	export { DataForm, DataViews, useFormValidity } from '@wordpress/dataviews';
 }

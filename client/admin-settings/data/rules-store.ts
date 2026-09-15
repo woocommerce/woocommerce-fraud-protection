@@ -38,6 +38,14 @@ type Action = {
 	response: RulesResponse;
 };
 
+export type CreateRuleRequest = {
+	action: Rule[ 'action' ];
+	type: Rule[ 'type' ];
+	value: string;
+	recorded_attempt_id?: number;
+	origin?: 'rules' | 'checkout_attempts' | 'api';
+};
+
 const DEFAULT_STATE: State = { lists: {} };
 
 const EMPTY_RULES_RESPONSE: RulesResponse = {
@@ -185,6 +193,21 @@ const actions = {
 	receiveRules( query: RulesQuery, response: RulesResponse ): Action {
 		return { type: 'RECEIVE_RULES', query, response };
 	},
+	createRule:
+		( request: CreateRuleRequest ) =>
+		async ( { dispatch }: StoreCallback ) => {
+			const response = await apiFetch< unknown >( {
+				path: '/wc-fraud-protection/v1/rules',
+				method: 'POST',
+				data: request,
+			} );
+			if ( ! isRule( response ) ) {
+				throw new Error( INVALID_RESPONSE_MESSAGE );
+			}
+
+			await dispatch.invalidateResolutionForStoreSelector( 'getRules' );
+			return response;
+		},
 };
 
 type RulesSelector = {
@@ -214,10 +237,20 @@ const selectors = {
 	},
 };
 
+type StoreActions = typeof actions & {
+	invalidateResolutionForStoreSelector: (
+		selectorName: 'getRules'
+	) => Promise< void >;
+};
+
+type StoreCallback = {
+	dispatch: StoreActions;
+};
+
 const resolvers = {
 	getRules:
 		( query: RulesQuery ) =>
-		async ( { dispatch }: { dispatch: typeof actions } ) => {
+		async ( { dispatch }: StoreCallback ) => {
 			const response = await apiFetch( {
 				path: getRulesPath( query ),
 				parse: false,

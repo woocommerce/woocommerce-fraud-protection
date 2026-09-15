@@ -1,6 +1,7 @@
 import { useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import {
+	Button,
 	EmptyState,
 	Icon,
 	Notice,
@@ -18,6 +19,7 @@ import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
 import { getFraudProtectionRoute } from './navigation';
 import { formatRuleDate, getUtcDateFilterBound } from './rule-date';
+import { RuleFormDrawer } from './components/rule-form-drawer';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
 const ruleActions = [
@@ -188,6 +190,7 @@ function RulesEmptyState( {
 }
 
 export function RulesPage() {
+	const [ isCreateOpen, setIsCreateOpen ] = useState( false );
 	const [ view, setView ] = useState< View >( {
 		type: 'table',
 		page: 1,
@@ -223,24 +226,33 @@ export function RulesPage() {
 				</VisuallyHidden>
 			) }
 			<header className="wc-fraud-protection-rules__header">
-				<nav
-					className="wc-fraud-protection-rules__breadcrumb"
-					aria-label={ __(
-						'Breadcrumb',
-						'woocommerce-fraud-protection'
-					) }
-				>
-					<Link to={ rootSettingsHref }>
-						{ __(
-							'Fraud prevention',
+				<Stack direction="row" justify="space-between" align="start">
+					<nav
+						className="wc-fraud-protection-rules__breadcrumb"
+						aria-label={ __(
+							'Breadcrumb',
 							'woocommerce-fraud-protection'
 						) }
-					</Link>
-					<span aria-hidden="true">/</span>
-					<span aria-current="page">
-						{ __( 'Rules', 'woocommerce-fraud-protection' ) }
-					</span>
-				</nav>
+					>
+						<Link to={ rootSettingsHref }>
+							{ __(
+								'Fraud prevention',
+								'woocommerce-fraud-protection'
+							) }
+						</Link>
+						<span aria-hidden="true">/</span>
+						<span aria-current="page">
+							{ __( 'Rules', 'woocommerce-fraud-protection' ) }
+						</span>
+					</nav>
+					<Button
+						variant="solid"
+						size="compact"
+						onClick={ () => setIsCreateOpen( true ) }
+					>
+						{ __( 'Create rule', 'woocommerce-fraud-protection' ) }
+					</Button>
+				</Stack>
 				<p className="wc-fraud-protection-rules__description">
 					{ __(
 						'Rules that always let checkout attempts through or always block them, no matter what our fraud detection decides.',
@@ -339,6 +351,10 @@ export function RulesPage() {
 					<DataViews.Footer />
 				</Tabs.Root>
 			</DataViews>
+			<RuleFormDrawer
+				open={ isCreateOpen }
+				onClose={ () => setIsCreateOpen( false ) }
+			/>
 		</Stack>
 	);
 }
