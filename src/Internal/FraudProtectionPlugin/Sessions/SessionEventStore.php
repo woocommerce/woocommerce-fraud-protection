@@ -186,31 +186,21 @@ class SessionEventStore {
 
 		$table  = $this->schema_manager->get_sessions_table_name();
 		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
+		$flagged_condition               = SessionOutcome::FlaggedByFraudPrevention->sql_condition();
+		$blocked_automatically_condition = SessionOutcome::BlockedAutomatically->sql_condition();
+		$allowed_by_rules_condition      = SessionOutcome::AllowedByRules->sql_condition();
+		$blocked_by_rules_condition      = SessionOutcome::BlockedByRules->sql_condition();
 
 		$sql = "SELECT
-			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS flagged_by_fraud_prevention,
-			SUM( CASE WHEN trigger_type IN ( %s, %s ) AND decision = %s AND final_status = %s THEN 1 ELSE 0 END ) AS blocked_automatically,
-			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS allowed_by_rules,
-			SUM( CASE WHEN trigger_type = %s THEN 1 ELSE 0 END ) AS blocked_by_rules
+			SUM( CASE WHEN {$flagged_condition} THEN 1 ELSE 0 END ) AS flagged_by_fraud_prevention,
+			SUM( CASE WHEN {$blocked_automatically_condition} THEN 1 ELSE 0 END ) AS blocked_automatically,
+			SUM( CASE WHEN {$allowed_by_rules_condition} THEN 1 ELSE 0 END ) AS allowed_by_rules,
+			SUM( CASE WHEN {$blocked_by_rules_condition} THEN 1 ELSE 0 END ) AS blocked_by_rules
 			FROM {$table}
 			WHERE recorded_at >= %s";
 
-		$values = array(
-			SessionTrigger::Blackbox->value,
-			SessionTrigger::RequestRejected->value,
-			FraudDecision::Block->value,
-			SessionFinalStatus::Allowed->value,
-			SessionTrigger::Blackbox->value,
-			SessionTrigger::RequestRejected->value,
-			FraudDecision::Block->value,
-			SessionFinalStatus::Blocked->value,
-			SessionTrigger::AllowRule->value,
-			SessionTrigger::BlockRule->value,
-			$cutoff,
-		);
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- The table name comes from SchemaManager and results are cached in a transient.
-		$counts = $wpdb->get_row( $wpdb->prepare( $sql, $values ), ARRAY_A );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- The table name comes from SchemaManager, the outcome conditions contain enum values only, and results are cached in a transient.
+		$counts = $wpdb->get_row( $wpdb->prepare( $sql, $cutoff ), ARRAY_A );
 
 		if ( ! is_array( $counts ) ) {
 			throw new \RuntimeException( 'Session event performance query failed.' );

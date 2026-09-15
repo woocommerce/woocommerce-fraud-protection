@@ -342,7 +342,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should count matching outcomes from every gateway and source and exclude other events.
+	 * @testdox Should use the checkout-attempt outcome definitions for performance counts.
 	 */
 	public function test_performance_counts_map_all_supported_outcomes(): void {
 		$events = array(
@@ -411,7 +411,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'flagged_by_fraud_prevention' => 2,
+				'flagged_by_fraud_prevention' => 3,
 				'blocked_automatically'       => 2,
 				'allowed_by_rules'            => 1,
 				'blocked_by_rules'            => 1,
