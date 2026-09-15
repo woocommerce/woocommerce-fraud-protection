@@ -236,6 +236,34 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Opt-out requires a supported string source.
+	 * @dataProvider invalid_opt_out_source_provider
+	 *
+	 * @param mixed  $source        Request source.
+	 * @param string $expected_code REST error code.
+	 */
+	public function test_opt_out_rejects_invalid_source( $source, string $expected_code ): void {
+		$response = $this->server->dispatch( $this->opt_out_request( $source ) );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( $expected_code, $response->as_error()->get_error_code() );
+		$this->assertNull( get_option( self::OPTION_NAME, null ) );
+	}
+
+	/**
+	 * Invalid opt-out sources.
+	 *
+	 * @return array<string, array{mixed, string}>
+	 */
+	public function invalid_opt_out_source_provider(): array {
+		return array(
+			'missing source' => array( null, 'rest_missing_callback_param' ),
+			'unknown source' => array( 'unknown', 'rest_invalid_param' ),
+			'array source'   => array( array( 'inbox' ), 'rest_invalid_param' ),
+		);
+	}
+
+	/**
 	 * @testdox Unauthenticated and unauthorized users cannot read or update settings.
 	 */
 	public function test_permissions_require_woocommerce_management(): void {

@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
@@ -195,6 +196,26 @@ class SettingsTelemetry {
 			array(
 				'state'  => 'opted_out',
 				'source' => 'inbox' === $source ? 'inbox' : 'settings',
+			)
+		);
+	}
+
+	/**
+	 * Record a successful merchant rule change.
+	 *
+	 * @param string        $operation Rule operation.
+	 * @param FraudDecision $action    Rule action.
+	 * @param string        $type      Rule condition type.
+	 * @param string        $source    UI or API source.
+	 */
+	public function record_rule_change( string $operation, FraudDecision $action, string $type, string $source ): void {
+		$this->record_tracks_event(
+			'fraud_protection_rule_changed',
+			array(
+				'operation' => $operation,
+				'action'    => $action->value,
+				'type'      => $type,
+				'source'    => $source,
 			)
 		);
 	}

@@ -210,6 +210,28 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should read only the contextual fields for a recorded event ID.
+	 */
+	public function test_get_event_returns_contextual_fields_by_id(): void {
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'context-session' ) ) );
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$event_id = (int) $wpdb->get_var( 'SELECT MAX(id) FROM ' . $this->schema_manager->get_sessions_table_name() );
+
+		$this->assertSame(
+			array(
+				'id'           => $event_id,
+				'session_id'   => 'context-session',
+				'final_status' => 'allowed',
+				'email'        => 'customer@example.com',
+				'ip'           => '203.0.113.9',
+			),
+			$this->sut->get_event( $event_id )
+		);
+		$this->assertNull( $this->sut->get_event( $event_id + 1 ) );
+	}
+
+	/**
 	 * @testdox Should insert a separate row for each event with the same session ID, preserving both decisions.
 	 */
 	public function test_repeated_session_ids_insert_separate_rows(): void {

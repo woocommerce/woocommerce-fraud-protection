@@ -38,6 +38,40 @@ class RuleConditionsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Email validation matches the DataForm email field syntax.
+	 * @dataProvider dataform_email_data
+	 *
+	 * @param string $email Email value.
+	 * @param bool   $valid Whether the value is valid.
+	 */
+	public function test_email_validation_matches_dataform( string $email, bool $valid ): void {
+		$result = RuleConditions::normalize_value( RuleConditions::FIELD_EMAIL, $email );
+
+		if ( $valid ) {
+			$this->assertSame( strtolower( $email ), $result );
+		} else {
+			$this->assertNull( $result );
+		}
+	}
+
+	/**
+	 * DataForm email syntax cases.
+	 *
+	 * @return array<string, array{string, bool}>
+	 */
+	public function dataform_email_data(): array {
+		return array(
+			'internal host'       => array( 'buyer@internal', true ),
+			'supported symbols'   => array( "buyer+tag!#$%&'*=?^_`{|}~@example.com", true ),
+			'multiple at symbols' => array( 'buyer@@example.com', false ),
+			'quoted local part'   => array( '"buyer"@example.com', false ),
+			'leading host hyphen' => array( 'buyer@-example.com', false ),
+			'trailing host dot'   => array( 'buyer@example.com.', false ),
+			'unicode local part'  => array( 'büyer@example.com', false ),
+		);
+	}
+
+	/**
 	 * @testdox Should normalize a valid IP condition to its canonical text form.
 	 * @dataProvider ip_normalization_data
 	 *
@@ -103,6 +137,7 @@ class RuleConditionsTest extends FraudProtectionUnitTestCase {
 			'empty value'          => array( array_merge( $valid, array( 'value' => '  ' ) ) ),
 			'email without at'     => array( array_merge( $valid, array( 'value' => 'not-an-email' ) ) ),
 			'email with spaces'    => array( array_merge( $valid, array( 'value' => 'some one@example.com' ) ) ),
+			'email with two ats'   => array( array_merge( $valid, array( 'value' => 'some@@example.com' ) ) ),
 			'overlong email'       => array( array_merge( $valid, array( 'value' => str_repeat( 'a', 250 ) . '@example.com' ) ) ),
 			'invalid IP'           => array(
 				array(
