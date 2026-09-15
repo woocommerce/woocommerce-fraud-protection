@@ -80,6 +80,23 @@ const fields: Field< Rule >[] = [
 	},
 ];
 
+const getFields = ( sortField?: string ): Field< Rule >[] =>
+	fields.map( ( field ) => {
+		const header = field.header ?? field.label ?? field.id;
+
+		return {
+			...field,
+			header: (
+				<>
+					{ header }
+					{ field.id !== sortField && (
+						<span aria-hidden="true"> ↓</span>
+					) }
+				</>
+			),
+		};
+	} );
+
 export const getQueryFromView = ( view: View ): RulesQuery => {
 	const query: RulesQuery = {
 		page: view.page ?? 1,
@@ -135,6 +152,10 @@ export function RulesPage() {
 	} );
 	const { error, isLoading, requestRules, rules, totalItems, totalPages } =
 		useRules();
+	const visibleFields = useMemo(
+		() => getFields( view.sort?.field ),
+		[ view.sort?.field ]
+	);
 
 	useEffect( () => {
 		requestRules( getQueryFromView( view ) );
@@ -158,7 +179,7 @@ export function RulesPage() {
 		>
 			<DataViews
 				data={ rules }
-				fields={ fields }
+				fields={ visibleFields }
 				view={ view }
 				onChangeView={ setView }
 				isLoading={ isLoading }
