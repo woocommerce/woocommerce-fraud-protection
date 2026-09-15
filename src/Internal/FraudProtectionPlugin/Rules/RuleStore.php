@@ -366,6 +366,7 @@ class RuleStore {
 			throw new \RuntimeException( 'Active rule count query failed.' );
 		}
 
+		// RuleConditions writes a fixed field/operator/value JSON shape. Keep the sort expressions synchronized with that shape.
 		$offset           = ( $page - 1 ) * $per_page;
 		$orderby          = isset( $filters['orderby'] ) && in_array( $filters['orderby'], array( 'action', 'value', 'type', 'created_at' ), true )
 			? $filters['orderby']
