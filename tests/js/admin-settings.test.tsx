@@ -203,6 +203,52 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 	} );
 
+	it( 'opens an existing duplicate rule in the Edit drawer', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow',
+			type: 'email',
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockResolvedValueOnce( duplicate );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		let drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await within( drawer ).findByRole( 'button', {
+				name: 'View rule',
+			} )
+		);
+
+		drawer = await screen.findByRole( 'dialog', { name: 'Edit rule' } );
+		expect( within( drawer ).getByLabelText( 'Value' ) ).toHaveValue(
+			duplicate.value
+		);
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
+			path: '/wc-fraud-protection/v1/rules/17',
+		} );
+	} );
+
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
 		let resolveLoad: (
 			response: ReturnType< typeof settingsResponse >
