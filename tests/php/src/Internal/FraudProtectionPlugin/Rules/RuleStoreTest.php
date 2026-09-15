@@ -139,37 +139,83 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		);
 		$this->assertSame( 1, $exact_value_page['total'] );
 		$this->assertSame( 'old@example.com', $exact_value_page['items'][0]->conditions['value'] );
+
+		$email_value_only_page = $this->sut->get_active_rules_page(
+			array( 'value' => 'OLD@EXAMPLE.COM' )
+		);
+		$this->assertSame( 1, $email_value_only_page['total'] );
+		$this->assertSame( 'old@example.com', $email_value_only_page['items'][0]->conditions['value'] );
+
+		$ip_value_only_page = $this->sut->get_active_rules_page(
+			array( 'value' => '2001:DB8::1' )
+		);
+		$this->assertSame( 1, $ip_value_only_page['total'] );
+		$this->assertSame( '2001:db8::1', $ip_value_only_page['items'][0]->conditions['value'] );
 	}
 
 	/**
 	 * @testdox The merchant rules page sorts each visible column on the server and uses the rule ID as a tie-breaker.
 	 */
 	public function test_active_rules_page_sorts_by_requested_column(): void {
-		$zulu  = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
-		$alpha = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'alpha@example.com' ) );
-		$this->set_created_at( $zulu->id, '2026-01-01 00:00:00' );
-		$this->set_created_at( $alpha->id, '2026-01-01 00:00:00' );
-
-		$ascending = $this->sut->get_active_rules_page(
+		$allow_email = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$block_ip    = $this->sut->create_rule(
+			FraudDecision::Block,
 			array(
-				'orderby' => 'value',
-				'order'   => 'asc',
-			),
-			1,
-			20
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '192.0.2.10',
+			)
 		);
-		$this->assertSame( 'alpha@example.com', $ascending['items'][0]->conditions['value'] );
-		$this->assertSame( 'zulu@example.com', $ascending['items'][1]->conditions['value'] );
-
-		$descending = $this->sut->get_active_rules_page(
+		$block_email = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'alpha@example.com' ) );
+		$allow_ip    = $this->sut->create_rule(
+			FraudDecision::Allow,
 			array(
-				'orderby' => 'created_at',
-				'order'   => 'desc',
-			),
-			1,
-			20
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '10.0.0.1',
+			)
 		);
-		$this->assertSame( $alpha->id, $descending['items'][0]->id, 'Equal timestamps must use descending IDs as the tie-breaker.' );
+		$this->set_created_at( $allow_email->id, '2026-01-02 00:00:00' );
+		$this->set_created_at( $block_ip->id, '2026-01-03 00:00:00' );
+		$this->set_created_at( $block_email->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $allow_ip->id, '2026-01-04 00:00:00' );
+
+		$expected = array(
+			'action'     => array(
+				'asc'  => array( $allow_email->id, $allow_ip->id, $block_ip->id, $block_email->id ),
+				'desc' => array( $block_email->id, $block_ip->id, $allow_ip->id, $allow_email->id ),
+			),
+			'value'      => array(
+				'asc'  => array( $allow_ip->id, $block_ip->id, $block_email->id, $allow_email->id ),
+				'desc' => array( $allow_email->id, $block_email->id, $block_ip->id, $allow_ip->id ),
+			),
+			'type'       => array(
+				'asc'  => array( $allow_email->id, $block_email->id, $block_ip->id, $allow_ip->id ),
+				'desc' => array( $allow_ip->id, $block_ip->id, $block_email->id, $allow_email->id ),
+			),
+			'created_at' => array(
+				'asc'  => array( $block_email->id, $allow_email->id, $block_ip->id, $allow_ip->id ),
+				'desc' => array( $allow_ip->id, $block_ip->id, $allow_email->id, $block_email->id ),
+			),
+		);
+
+		foreach ( $expected as $orderby => $directions ) {
+			foreach ( $directions as $order => $expected_ids ) {
+				$page = $this->sut->get_active_rules_page(
+					array(
+						'orderby' => $orderby,
+						'order'   => $order,
+					),
+					1,
+					20
+				);
+				$this->assertSame(
+					$expected_ids,
+					array_map( fn( Rule $rule ) => $rule->id, $page['items'] ),
+					"Unexpected {$orderby} {$order} order"
+				);
+			}
+		}
 	}
 
 	/**
