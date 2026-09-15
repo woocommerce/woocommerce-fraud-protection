@@ -125,7 +125,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		await userEvent.click(
 			await screen.findByRole( 'link', {
-				name: 'View checkout sessions',
+				name: 'View checkout attempts',
 			} )
 		);
 
@@ -176,7 +176,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		await userEvent.click( checkbox );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout sessions' } )
+			screen.getByRole( 'link', { name: 'View checkout attempts' } )
 		);
 
 		expect( confirm ).toHaveBeenCalledTimes( 1 );
@@ -187,7 +187,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		).not.toHaveAttribute( 'aria-disabled', 'true' );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout sessions' } )
+			screen.getByRole( 'link', { name: 'View checkout attempts' } )
 		);
 		expect( confirm ).toHaveBeenCalledTimes( 2 );
 		expect( mockHistory.location.pathname ).toBe( '/' );
@@ -199,7 +199,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		await userEvent.click( await screen.findByRole( 'checkbox' ) );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout sessions' } )
+			screen.getByRole( 'link', { name: 'View checkout attempts' } )
 		);
 
 		expect( window.confirm ).toHaveBeenCalledTimes( 1 );
@@ -227,7 +227,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		await userEvent.click(
 			await screen.findByRole( 'link', {
-				name: 'View checkout sessions',
+				name: 'View checkout attempts',
 			} )
 		);
 		await userEvent.click(

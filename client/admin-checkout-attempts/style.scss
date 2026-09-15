@@ -174,8 +174,8 @@
 	}
 
 	.wc-fraud-protection-checkout-attempts__flagged-info-icon {
-		width: 16px;
-		height: 16px;
+		width: 24px;
+		height: 24px;
 	}
 
 	// Email and IP cells hold the value and, when a rule targets it, a chip. By
@@ -226,10 +226,10 @@
 
 // The "Turn on automatic fraud prevention" row action renders inside the
 // DataViews actions menu, which portals outside the page wrapper — so this rule
-// is intentionally unscoped. It highlights that one item with the admin accent
-// colour. The item opens the enable drawer when selected.
+// is intentionally unscoped. It reads as a regular (black) menu item rather than
+// a link, and opens the enable drawer when selected.
 .wc-fraud-protection-checkout-attempts__menu-link {
-	color: var(--wp-admin-theme-color, #2271b1);
+	color: $gray-900;
 	font-weight: 500;
 }
 

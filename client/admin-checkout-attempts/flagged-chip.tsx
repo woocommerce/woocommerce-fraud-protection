@@ -29,7 +29,7 @@ export function FlaggedChip( {
 			? sprintf(
 					// translators: %s is the date automatic fraud prevention was enabled.
 					__(
-						'Flagged as suspicious but allowed because automatic fraud prevention was off. Enabled %s.',
+						'Flagged as suspicious but allowed because automatic fraud prevention was off. Enabled: %s',
 						'woocommerce-fraud-protection'
 					),
 					formatSiteDate( enabledAt )
@@ -82,7 +82,7 @@ export function FlaggedChip( {
 							<Icon
 								className="wc-fraud-protection-checkout-attempts__flagged-info-icon"
 								icon={ info }
-								size={ 16 }
+								size={ 24 }
 								aria-hidden="true"
 							/>
 						</button>

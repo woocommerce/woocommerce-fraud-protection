@@ -4,6 +4,9 @@ import { createReduxStore, register } from '@wordpress/data';
 export type Settings = {
 	automatic_protection: boolean;
 	automatic_protection_opted_out: boolean;
+	// GMT datetime (RFC3339 without offset) protection was last turned on, or
+	// null when off.
+	automatic_protection_enabled_at: string | null;
 };
 
 export type Performance = {
@@ -83,6 +86,8 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 				automatic_protection: action.response.automatic_protection,
 				automatic_protection_opted_out:
 					action.response.automatic_protection_opted_out,
+				automatic_protection_enabled_at:
+					action.response.automatic_protection_enabled_at,
 			};
 
 			return {

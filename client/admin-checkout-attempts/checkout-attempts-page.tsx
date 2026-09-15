@@ -221,12 +221,16 @@ export function CheckoutAttemptsPage() {
 	// initial GET is preloaded for this route). Until that resolution finishes,
 	// treat protection as on so protection-off controls — the banner and the
 	// "enable" row action — do not appear or fire before the real state is known.
-	const protectionOn = useSelect( ( select ) => {
+	const { protectionOn, enabledAt } = useSelect( ( select ) => {
 		const store = select( settingsStore );
 		const settings = store.getSettings();
 		return store.hasFinishedResolution( 'getSettings' )
-			? settings?.automatic_protection === true
-			: true;
+			? {
+					protectionOn: settings?.automatic_protection === true,
+					enabledAt:
+						settings?.automatic_protection_enabled_at ?? null,
+			  }
+			: { protectionOn: true, enabledAt: null };
 	}, [] );
 
 	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );
@@ -235,11 +239,11 @@ export function CheckoutAttemptsPage() {
 	const effectiveConfig = useMemo(
 		() => ( {
 			automaticProtection: protectionOn,
-			automaticProtectionEnabledAt: null,
+			automaticProtectionEnabledAt: enabledAt,
 			settingsUrl: settingsRoute,
 			paymentMethods,
 		} ),
-		[ protectionOn, paymentMethods ]
+		[ protectionOn, enabledAt, paymentMethods ]
 	);
 
 	const isCompact = 'compact' === view.layout?.density;

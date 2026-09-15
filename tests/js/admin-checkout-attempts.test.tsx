@@ -13,7 +13,11 @@ import { unstable_HistoryRouter as HistoryRouter } from 'react-router-dom';
 import { createMemoryHistory } from 'history';
 
 import apiFetch from '@wordpress/api-fetch';
-import { dispatch as dataDispatch } from '@wordpress/data';
+import {
+	createReduxStore,
+	dispatch as dataDispatch,
+	register,
+} from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
 
 import { buildActions } from '../../client/admin-checkout-attempts/actions';
@@ -37,6 +41,16 @@ import type {
 jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
 	default: jest.fn(),
+} ) );
+
+// The enable drawer confirms a successful save with a "Settings saved." snackbar
+// through @wordpress/notices. Point that store at a spy so the toast is
+// assertable; a matching core/notices store is registered below.
+const mockCreateSuccessNotice = jest.fn();
+
+jest.mock( '@wordpress/notices', () => ( {
+	__esModule: true,
+	store: { name: 'core/notices' },
 } ) );
 
 // The list lives inside the settings single-page app. `getHistory()` and the
@@ -78,6 +92,24 @@ import { CheckoutAttemptsPage } from '../../client/admin-checkout-attempts/check
 
 const mockedApiFetch = apiFetch as unknown as jest.Mock;
 const mockedDataViews = DataViews as unknown as jest.Mock;
+
+// Register the spied core/notices store into the default registry the page and
+// drawer use (they read data through the global @wordpress/data registry, not a
+// per-test one).
+register(
+	createReduxStore( 'core/notices', {
+		reducer: ( state = null ) => state,
+		actions: {
+			createSuccessNotice: (
+				content: string,
+				options: { type: 'snackbar' }
+			) => {
+				mockCreateSuccessNotice( content, options );
+				return { type: 'CREATE_SUCCESS_NOTICE' };
+			},
+		},
+	} )
+);
 
 if ( ! window.PointerEvent ) {
 	Object.defineProperty( window, 'PointerEvent', {
@@ -415,7 +447,7 @@ describe( 'checkout attempts status field', () => {
 
 		expect(
 			await screen.findByText(
-				/because automatic fraud prevention was off\. Enabled/,
+				/because automatic fraud prevention was off\. Enabled: /,
 				{},
 				{ timeout: 3000 }
 			)
@@ -734,6 +766,9 @@ describe( 'checkout attempts display preferences', () => {
 const settingsResponse = ( automaticProtection = false ) => ( {
 	automatic_protection: automaticProtection,
 	automatic_protection_opted_out: true,
+	automatic_protection_enabled_at: automaticProtection
+		? '2026-04-20T00:00:00'
+		: null,
 	performance: {
 		flagged_by_fraud_prevention: 0,
 		blocked_automatically: 0,
@@ -807,11 +842,12 @@ const listPaths = () =>
 
 // The list reads automatic-protection state from the settings store; seed it to
 // a known value and mark it resolved so the resolver does not also fetch.
-const seedProtection = ( on: boolean ) => {
+const seedProtection = ( on: boolean, enabledAt: string | null = null ) => {
 	const store = dataDispatch( settingsStore ) as unknown as {
 		receiveSettings: ( settings: {
 			automatic_protection: boolean;
 			automatic_protection_opted_out: boolean;
+			automatic_protection_enabled_at: string | null;
 		} ) => void;
 		finishResolution: ( selector: string, args: unknown[] ) => void;
 		setError: ( error: null ) => void;
@@ -819,6 +855,7 @@ const seedProtection = ( on: boolean ) => {
 	store.receiveSettings( {
 		automatic_protection: on,
 		automatic_protection_opted_out: true,
+		automatic_protection_enabled_at: enabledAt,
 	} );
 	store.finishResolution( 'getSettings', [] );
 	store.setError( null );
@@ -828,6 +865,7 @@ describe( 'CheckoutAttemptsPage', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
 		mockedDataViews.mockClear();
+		mockCreateSuccessNotice.mockReset();
 		window.localStorage.clear();
 		seedProtection( false );
 		mockApi();
@@ -1168,6 +1206,15 @@ describe( 'CheckoutAttemptsPage', () => {
 				method: 'POST',
 				data: { automatic_protection: true },
 			} )
+		);
+
+		// ...confirms the change with a "Settings saved." snackbar, matching the
+		// standard settings form...
+		await waitFor( () =>
+			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+				'Settings saved.',
+				{ type: 'snackbar' }
+			)
 		);
 
 		// ...and the banner goes away once protection is on.

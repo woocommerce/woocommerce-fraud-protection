@@ -2,6 +2,7 @@ import { Button, Checkbox, Drawer, Notice, Stack, Text } from '@wordpress/ui';
 import { useDispatch, useSelect } from '@wordpress/data';
 import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
+import { store as noticesStore } from '@wordpress/notices';
 
 import { settingsStore } from '../admin-settings/data/store';
 
@@ -24,6 +25,7 @@ export function EnableFraudPreventionDrawer( {
 	const [ checked, setChecked ] = useState( false );
 
 	const { saveSettings, setError } = useDispatch( settingsStore );
+	const { createSuccessNotice } = useDispatch( noticesStore );
 	const { isSaving, error } = useSelect( ( select ) => {
 		const store = select( settingsStore );
 		return {
@@ -44,6 +46,13 @@ export function EnableFraudPreventionDrawer( {
 	const save = async () => {
 		const didSave = await saveSettings( { automatic_protection: checked } );
 		if ( didSave ) {
+			// Mirror the settings page: confirm the change with a snackbar so the
+			// merchant gets the same "Settings saved." feedback here as when saving
+			// from the standard WooCommerce settings form.
+			createSuccessNotice(
+				__( 'Settings saved.', 'woocommerce-fraud-protection' ),
+				{ type: 'snackbar' }
+			);
 			onOpenChange( false );
 		}
 	};

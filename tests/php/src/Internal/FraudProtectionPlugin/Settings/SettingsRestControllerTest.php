@@ -77,9 +77,10 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame(
 			array(
-				'automatic_protection'           => false,
-				'automatic_protection_opted_out' => false,
-				'performance'                    => $this->performance_counts,
+				'automatic_protection'            => false,
+				'automatic_protection_opted_out'  => false,
+				'automatic_protection_enabled_at' => null,
+				'performance'                     => $this->performance_counts,
 			),
 			$response->get_data()
 		);
@@ -112,12 +113,13 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => true ) ) );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame(
-			array(
-				'automatic_protection'           => true,
-				'automatic_protection_opted_out' => false,
-			),
-			$response->get_data()
+		$data = $response->get_data();
+		$this->assertSame( true, $data['automatic_protection'] );
+		$this->assertSame( false, $data['automatic_protection_opted_out'] );
+		// Turning protection on records the enable date, returned as RFC3339.
+		$this->assertMatchesRegularExpression(
+			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/',
+			$data['automatic_protection_enabled_at']
 		);
 		$this->assertSame( 'yes', get_option( self::OPTION_NAME ) );
 	}
@@ -133,8 +135,9 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame(
 			array(
-				'automatic_protection'           => false,
-				'automatic_protection_opted_out' => false,
+				'automatic_protection'            => false,
+				'automatic_protection_opted_out'  => false,
+				'automatic_protection_enabled_at' => null,
 			),
 			$response->get_data()
 		);
@@ -217,8 +220,9 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame(
 			array(
-				'automatic_protection'           => false,
-				'automatic_protection_opted_out' => true,
+				'automatic_protection'            => false,
+				'automatic_protection_opted_out'  => true,
+				'automatic_protection_enabled_at' => null,
 			),
 			$response->get_data()
 		);

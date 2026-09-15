@@ -70,8 +70,8 @@ export function AutomaticProtectionCard( {
 		noticeText = sprintf(
 			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
 			_n(
-				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
-				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. Blocking will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
 				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
@@ -178,14 +178,19 @@ export function AutomaticProtectionCard( {
 									/>
 								</Notice.Actions>
 							) }
-							<Notice.CloseIcon
-								label={ __(
-									'Dismiss automatic fraud prevention notice',
-									'woocommerce-fraud-protection'
-								) }
-								disabled={ isOptingOut }
-								onClick={ dismiss }
-							/>
+							{ /* The opt-out banner presents a decision (opt out /
+							     learn more), so it stays put and offers no dismiss.
+							     Only the post-opt-out reminder can be dismissed. */ }
+							{ optedOut && (
+								<Notice.CloseIcon
+									label={ __(
+										'Dismiss automatic fraud prevention notice',
+										'woocommerce-fraud-protection'
+									) }
+									disabled={ isOptingOut }
+									onClick={ dismiss }
+								/>
+							) }
 						</Notice.Root>
 					) }
 				</Stack>

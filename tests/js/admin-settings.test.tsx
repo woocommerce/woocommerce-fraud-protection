@@ -76,6 +76,9 @@ const settingsResponse = (
 ) => ( {
 	automatic_protection: automaticProtection,
 	automatic_protection_opted_out: optedOut,
+	automatic_protection_enabled_at: automaticProtection
+		? '2026-04-20T00:00:00'
+		: null,
 	performance,
 } );
 
@@ -252,7 +255,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toBeInTheDocument();
 		expect(
 			performance.getByRole( 'link', {
-				name: 'View checkout sessions',
+				name: 'View checkout attempts',
 			} )
 		).toHaveAttribute(
 			'href',
@@ -537,12 +540,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 	} );
 
-	it( 'shows the opt-out actions and dismisses the notice, persisting it per user', async () => {
+	it( 'shows the opt-out actions and offers no dismiss on the opt-out notice', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, performanceWithFlagged( 12 ) )
 		);
-		// The dismissal is persisted with a PUT to the current-user endpoint.
-		mockedApiFetch.mockResolvedValue( {} as never );
 		renderSettings();
 
 		expect(
@@ -557,15 +558,37 @@ describe( 'FraudProtectionSettingsPage', () => {
 			'https://woocommerce.com/document/fraud-protection/'
 		);
 
+		// The opt-out notice presents a decision, so it cannot be dismissed.
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Dismiss automatic fraud prevention notice',
+			} )
+		).not.toBeInTheDocument();
+	} );
+
+	it( 'dismisses the post-opt-out reminder, persisting it per user', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithFlagged( 12 ), true )
+		);
+		// The dismissal is persisted with a PUT to the current-user endpoint.
+		mockedApiFetch.mockResolvedValue( {} as never );
+		renderSettings();
+
+		// The reminder shown after opting out has no opt-out button.
+		const countLink = await screen.findByRole( 'link', {
+			name: '12 checkout attempts',
+		} );
+		expect( countLink.parentElement ).toHaveTextContent(
+			'We recommend turning it on.'
+		);
+
 		fireEvent.click(
 			screen.getByRole( 'button', {
 				name: 'Dismiss automatic fraud prevention notice',
 			} )
 		);
 		expect(
-			screen.queryByRole( 'button', {
-				name: 'Opt out of automatic blocking',
-			} )
+			screen.queryByRole( 'link', { name: '12 checkout attempts' } )
 		).not.toBeInTheDocument();
 
 		// The choice is stored as a per-user WooCommerce Admin preference.

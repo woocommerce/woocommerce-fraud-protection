@@ -133,9 +133,10 @@ class SettingsRestController extends \WP_REST_Controller {
 
 		return rest_ensure_response(
 			array(
-				'automatic_protection'           => $this->automatic_protection->is_enabled(),
-				'automatic_protection_opted_out' => $this->automatic_protection->is_opted_out(),
-				'performance'                    => $performance,
+				'automatic_protection'            => $this->automatic_protection->is_enabled(),
+				'automatic_protection_opted_out'  => $this->automatic_protection->is_opted_out(),
+				'automatic_protection_enabled_at' => $this->get_enabled_at_rfc3339(),
+				'performance'                     => $performance,
 			)
 		);
 	}
@@ -187,18 +188,25 @@ class SettingsRestController extends \WP_REST_Controller {
 			'title'      => 'woocommerce_fraud_protection_settings',
 			'type'       => 'object',
 			'properties' => array(
-				'automatic_protection'           => array(
+				'automatic_protection'            => array(
 					'description' => __( 'Whether automatic fraud prevention is enabled.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view', 'edit' ),
 				),
-				'automatic_protection_opted_out' => array(
+				'automatic_protection_opted_out'  => array(
 					'description' => __( 'Whether automatic fraud prevention enrollment was declined.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
-				'performance'                    => array(
+				'automatic_protection_enabled_at' => array(
+					'description' => __( 'The date automatic fraud prevention was last turned on, or null when off.', 'woocommerce-fraud-protection' ),
+					'type'        => array( 'string', 'null' ),
+					'format'      => 'date-time',
+					'context'     => array( 'view' ),
+					'readonly'    => true,
+				),
+				'performance'                     => array(
 					'description' => __( 'Fraud prevention performance for the previous 30 days.', 'woocommerce-fraud-protection' ),
 					'type'        => 'object',
 					'context'     => array( 'view' ),
@@ -217,12 +225,27 @@ class SettingsRestController extends \WP_REST_Controller {
 	/**
 	 * Get the stored setting values.
 	 *
-	 * @return array{automatic_protection: bool, automatic_protection_opted_out: bool}
+	 * @return array{automatic_protection: bool, automatic_protection_opted_out: bool, automatic_protection_enabled_at: ?string}
 	 */
 	private function get_setting_values(): array {
 		return array(
-			'automatic_protection'           => $this->automatic_protection->is_enabled(),
-			'automatic_protection_opted_out' => $this->automatic_protection->is_opted_out(),
+			'automatic_protection'            => $this->automatic_protection->is_enabled(),
+			'automatic_protection_opted_out'  => $this->automatic_protection->is_opted_out(),
+			'automatic_protection_enabled_at' => $this->get_enabled_at_rfc3339(),
 		);
+	}
+
+	/**
+	 * Get the enable date as an RFC3339 UTC datetime for the client.
+	 *
+	 * The setting stores the date as 'Y-m-d H:i:s'; the list formats it in the
+	 * site timezone, matching how session and rule dates are returned.
+	 *
+	 * @return string|null The RFC3339 datetime, or null when protection is off.
+	 */
+	private function get_enabled_at_rfc3339(): ?string {
+		$enabled_at = $this->automatic_protection->get_enabled_at();
+
+		return null === $enabled_at ? null : mysql_to_rfc3339( $enabled_at );
 	}
 }
