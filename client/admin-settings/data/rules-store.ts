@@ -28,16 +28,17 @@ type State = {
 	isLoading: boolean;
 	error: string | null;
 	query: RulesQuery;
+	requestId: number;
 };
 
 type Action =
-	| { type: 'SET_QUERY'; query: RulesQuery }
-	| { type: 'SET_LOADING'; isLoading: boolean }
+	| { type: 'START_REQUEST'; query: RulesQuery; requestId: number }
 	| {
 			type: 'RECEIVE_RULES';
 			response: { data: Rule[]; totalItems: number; totalPages: number };
+			requestId: number;
 	  }
-	| { type: 'SET_ERROR'; error: string | null };
+	| { type: 'SET_ERROR'; error: string | null; requestId: number };
 
 const DEFAULT_QUERY: RulesQuery = { page: 1, perPage: 20 };
 const DEFAULT_STATE: State = {
@@ -47,22 +48,8 @@ const DEFAULT_STATE: State = {
 	isLoading: false,
 	error: null,
 	query: DEFAULT_QUERY,
+	requestId: 0,
 };
-
-const QUERY_KEYS: Array< keyof RulesQuery > = [
-	'page',
-	'perPage',
-	'action',
-	'type',
-	'value',
-	'from',
-	'to',
-	'orderby',
-	'order',
-];
-
-const areQueriesEqual = ( first: RulesQuery, second: RulesQuery ): boolean =>
-	QUERY_KEYS.every( ( key ) => first[ key ] === second[ key ] );
 
 const getErrorMessage = ( error: unknown ): string | null => {
 	if (
@@ -78,11 +65,18 @@ const getErrorMessage = ( error: unknown ): string | null => {
 
 const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 	switch ( action.type ) {
-		case 'SET_QUERY':
-			return { ...state, query: action.query, error: null };
-		case 'SET_LOADING':
-			return { ...state, isLoading: action.isLoading };
+		case 'START_REQUEST':
+			return {
+				...state,
+				query: action.query,
+				requestId: action.requestId,
+				isLoading: true,
+				error: null,
+			};
 		case 'RECEIVE_RULES':
+			if ( action.requestId !== state.requestId ) {
+				return state;
+			}
 			return {
 				...state,
 				...action.response,
@@ -90,6 +84,9 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 				error: null,
 			};
 		case 'SET_ERROR':
+			if ( action.requestId !== state.requestId ) {
+				return state;
+			}
 			return { ...state, isLoading: false, error: action.error };
 		default:
 			return state;
@@ -97,21 +94,21 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 };
 
 const actions = {
-	setQuery( query: RulesQuery ): Action {
-		return { type: 'SET_QUERY', query };
+	startRequest( query: RulesQuery, requestId: number ): Action {
+		return { type: 'START_REQUEST', query, requestId };
 	},
-	setLoading( isLoading: boolean ): Action {
-		return { type: 'SET_LOADING', isLoading };
+	receiveRules(
+		response: {
+			data: Rule[];
+			totalItems: number;
+			totalPages: number;
+		},
+		requestId: number
+	): Action {
+		return { type: 'RECEIVE_RULES', response, requestId };
 	},
-	receiveRules( response: {
-		data: Rule[];
-		totalItems: number;
-		totalPages: number;
-	} ): Action {
-		return { type: 'RECEIVE_RULES', response };
-	},
-	setError( error: string | null ): Action {
-		return { type: 'SET_ERROR', error };
+	setError( error: string | null, requestId: number ): Action {
+		return { type: 'SET_ERROR', error, requestId };
 	},
 	requestRules:
 		( query: RulesQuery ) =>
@@ -120,10 +117,10 @@ const actions = {
 			select,
 		}: {
 			dispatch: typeof actions;
-			select: { getQuery: () => RulesQuery };
+			select: { getRequestId: () => number };
 		} ) => {
-			dispatch.setQuery( query );
-			dispatch.setLoading( true );
+			const requestId = select.getRequestId() + 1;
+			dispatch.startRequest( query, requestId );
 			const params = new URLSearchParams();
 			const requestKeys = [
 				'action',
@@ -149,16 +146,10 @@ const actions = {
 				} >( {
 					path: `/wc-fraud-protection/v1/rules?${ params.toString() }`,
 				} );
-				if ( ! areQueriesEqual( select.getQuery(), query ) ) {
-					return null;
-				}
-				dispatch.receiveRules( response );
+				dispatch.receiveRules( response, requestId );
 				return response;
 			} catch ( error ) {
-				if ( ! areQueriesEqual( select.getQuery(), query ) ) {
-					return null;
-				}
-				dispatch.setError( getErrorMessage( error ) );
+				dispatch.setError( getErrorMessage( error ), requestId );
 				return null;
 			}
 		},
@@ -176,6 +167,9 @@ const selectors = {
 	},
 	getQuery( state: State ): RulesQuery {
 		return state.query;
+	},
+	getRequestId( state: State ): number {
+		return state.requestId;
 	},
 	isLoading( state: State ): boolean {
 		return state.isLoading;
