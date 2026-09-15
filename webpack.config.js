@@ -8,7 +8,18 @@ module.exports = {
 			( plugin ) =>
 				plugin.constructor.name !== 'DependencyExtractionWebpackPlugin'
 		),
-		new WooCommerceDependencyExtractionWebpackPlugin(),
+		new WooCommerceDependencyExtractionWebpackPlugin( {
+			requestToExternal: ( request ) => {
+				if (
+					[
+						'@wordpress/private-apis',
+						'@wordpress/theme',
+					].includes( request )
+				) {
+					return false;
+				}
+			},
+		} ),
 	],
 	entry: {
 		'admin-settings': './client/admin-settings/index.tsx',

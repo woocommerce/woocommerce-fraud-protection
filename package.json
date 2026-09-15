@@ -50,9 +50,14 @@
 		"@types/jest": "^30.0.0",
 		"@types/react": "^18.3.28",
 		"@types/react-dom": "^18.3.7",
+		"@woocommerce/dependency-extraction-webpack-plugin": "5.1.0",
+		"@woocommerce/navigation": "9.0.0",
 		"@wordpress/api-fetch": "^7.54.0",
 		"@wordpress/base-styles": "^6.20.0",
+		"@wordpress/components": "40.1.0",
 		"@wordpress/data": "^10.54.0",
+		"@wordpress/dataviews": "^19.0.0",
+		"@wordpress/date": "^5.55.0",
 		"@wordpress/element": "^8.6.0",
 		"@wordpress/env": "11.14.0",
 		"@wordpress/i18n": "^6.27.0",
@@ -62,9 +67,7 @@
 		"@wordpress/postcss-plugins-preset": "^5.54.0",
 		"@wordpress/scripts": "^34.2.0",
 		"@wordpress/theme": "^2.0.0",
-		"@wordpress/ui": "^0.21.0",
-		"@woocommerce/dependency-extraction-webpack-plugin": "5.1.0",
-		"@woocommerce/navigation": "9.0.0",
+		"@wordpress/ui": "^0.22.0",
 		"cssnano": "^6.1.2",
 		"history": "^5.3.0",
 		"jquery": "^3.7.1",
@@ -76,6 +79,10 @@
 	},
 	"jest": {
 		"preset": "@wordpress/jest-preset-default",
+		"globalSetup": "./tests/js/jest-global-setup.js",
+		"moduleNameMapper": {
+			"^@wordpress/dataviews/wp$": "<rootDir>/tests/js/mocks/dataviews.tsx"
+		},
 		"testMatch": [
 			"**/tests/js/**/*.test.js",
 			"**/tests/js/**/*.test.ts",

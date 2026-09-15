@@ -79,6 +79,198 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The merchant rules page filters by action, type, exact value and dates, and orders newest first.
+	 */
+	public function test_active_rules_page_filters_and_paginates(): void {
+		$old_allow      = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'old@example.com' ) );
+		$same_day_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'same-day@example.com' ) );
+		$new_block      = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'new@example.com' ) );
+		$ip_allow       = $this->sut->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '2001:db8::1',
+			)
+		);
+		$disabled_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'disabled@example.com' ) );
+		$this->set_created_at( $old_allow->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $same_day_allow->id, '2026-01-01 23:59:59' );
+		$this->set_created_at( $new_block->id, '2026-02-01 00:00:00' );
+		$this->set_created_at( $ip_allow->id, '2026-01-01 12:00:00' );
+		$this->set_created_at( $disabled_allow->id, '2026-01-01 12:00:00' );
+		$this->sut->update_rule( $disabled_allow->id, status: RuleStatus::Disabled );
+
+		$page = $this->sut->get_active_rules_page(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'from'   => '2026-01-01 00:00:00',
+				'to'     => '2026-01-01 23:59:59',
+			),
+			1,
+			1
+		);
+
+		$this->assertSame( 2, $page['total'] );
+		$this->assertSame( 2, $page['pages'] );
+		$this->assertSame( 'same-day@example.com', $page['items'][0]->conditions['value'] );
+
+		$second_page = $this->sut->get_active_rules_page(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'from'   => '2026-01-01 00:00:00',
+				'to'     => '2026-01-01 23:59:59',
+			),
+			2,
+			1
+		);
+
+		$this->assertSame( 2, $second_page['total'] );
+		$this->assertSame( 2, $second_page['pages'] );
+		$this->assertSame( 'old@example.com', $second_page['items'][0]->conditions['value'] );
+
+		$exact_value_page = $this->sut->get_active_rules_page(
+			array(
+				'type'  => 'email',
+				'value' => 'OLD@EXAMPLE.COM',
+			)
+		);
+		$this->assertSame( 1, $exact_value_page['total'] );
+		$this->assertSame( 'old@example.com', $exact_value_page['items'][0]->conditions['value'] );
+
+		$email_value_only_page = $this->sut->get_active_rules_page(
+			array( 'value' => 'OLD@EXAMPLE.COM' )
+		);
+		$this->assertSame( 1, $email_value_only_page['total'] );
+		$this->assertSame( 'old@example.com', $email_value_only_page['items'][0]->conditions['value'] );
+
+		$ip_value_only_page = $this->sut->get_active_rules_page(
+			array( 'value' => '2001:DB8::1' )
+		);
+		$this->assertSame( 1, $ip_value_only_page['total'] );
+		$this->assertSame( '2001:db8::1', $ip_value_only_page['items'][0]->conditions['value'] );
+	}
+
+	/**
+	 * @testdox The merchant rules page sorts each visible column on the server and uses the rule ID as a tie-breaker.
+	 */
+	public function test_active_rules_page_sorts_by_requested_column(): void {
+		$allow_email = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$block_ip    = $this->sut->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '192.0.2.10',
+			)
+		);
+		$block_email = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'alpha@example.com' ) );
+		$allow_ip    = $this->sut->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '10.0.0.1',
+			)
+		);
+		$this->set_created_at( $allow_email->id, '2026-01-02 00:00:00' );
+		$this->set_created_at( $block_ip->id, '2026-01-03 00:00:00' );
+		$this->set_created_at( $block_email->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $allow_ip->id, '2026-01-04 00:00:00' );
+
+		$expected = array(
+			'action'     => array(
+				'asc'  => array( $allow_email->id, $allow_ip->id, $block_ip->id, $block_email->id ),
+				'desc' => array( $block_email->id, $block_ip->id, $allow_ip->id, $allow_email->id ),
+			),
+			'value'      => array(
+				'asc'  => array( $allow_ip->id, $block_ip->id, $block_email->id, $allow_email->id ),
+				'desc' => array( $allow_email->id, $block_email->id, $block_ip->id, $allow_ip->id ),
+			),
+			'type'       => array(
+				'asc'  => array( $allow_email->id, $block_email->id, $block_ip->id, $allow_ip->id ),
+				'desc' => array( $allow_ip->id, $block_ip->id, $block_email->id, $allow_email->id ),
+			),
+			'created_at' => array(
+				'asc'  => array( $block_email->id, $allow_email->id, $block_ip->id, $allow_ip->id ),
+				'desc' => array( $allow_ip->id, $block_ip->id, $allow_email->id, $block_email->id ),
+			),
+		);
+
+		foreach ( $expected as $orderby => $directions ) {
+			foreach ( $directions as $order => $expected_ids ) {
+				$page = $this->sut->get_active_rules_page(
+					array(
+						'orderby' => $orderby,
+						'order'   => $order,
+					),
+					1,
+					20
+				);
+				$this->assertSame(
+					$expected_ids,
+					array_map( fn( Rule $rule ) => $rule->id, $page['items'] ),
+					"Unexpected {$orderby} {$order} order"
+				);
+			}
+		}
+	}
+
+	/**
+	 * @testdox Value and type sorting works without database JSON functions.
+	 */
+	public function test_active_rules_page_sorting_supports_minimum_database_versions(): void {
+		$email    = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$ip       = $this->sut->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '10.0.0.1',
+			)
+		);
+		$quoted_z = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'a"z@example.com' ) );
+		$quoted_a = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'a"a@example.com' ) );
+
+		$reject_json_functions = static function ( string $query ): string {
+			if ( preg_match( '/JSON_(?:EXTRACT|UNQUOTE)/i', $query ) ) {
+				throw new \RuntimeException( 'JSON functions are unavailable.' );
+			}
+			return $query;
+		};
+		add_filter( 'query', $reject_json_functions );
+
+		try {
+			$value_ascending  = $this->sut->get_active_rules_page(
+				array(
+					'orderby' => 'value',
+					'order'   => 'asc',
+				)
+			);
+			$value_descending = $this->sut->get_active_rules_page(
+				array(
+					'orderby' => 'value',
+					'order'   => 'desc',
+				)
+			);
+			$type_page        = $this->sut->get_active_rules_page(
+				array(
+					'orderby' => 'type',
+					'order'   => 'asc',
+				)
+			);
+		} finally {
+			remove_filter( 'query', $reject_json_functions );
+		}
+
+		$this->assertSame( array( $ip->id, $quoted_a->id, $quoted_z->id, $email->id ), array_map( fn( Rule $rule ) => $rule->id, $value_ascending['items'] ) );
+		$this->assertSame( array( $email->id, $quoted_z->id, $quoted_a->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $value_descending['items'] ) );
+		$this->assertSame( array( $email->id, $quoted_z->id, $quoted_a->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $type_page['items'] ) );
+	}
+
+	/**
 	 * Get a rule row straight from the table.
 	 *
 	 * @param int $id The rule id.

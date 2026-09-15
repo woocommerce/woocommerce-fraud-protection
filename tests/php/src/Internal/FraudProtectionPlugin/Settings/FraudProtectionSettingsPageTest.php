@@ -181,7 +181,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	 * @testdox The Fraud prevention tab uses generated metadata to enqueue its runtime assets.
 	 */
 	public function test_matching_tab_enqueues_generated_assets(): void {
-		$dependencies = array( 'react-jsx-runtime', 'wp-api-fetch', 'wp-components', 'wp-element', 'wp-i18n' );
+		$dependencies = array( 'react', 'react-dom', 'react-jsx-runtime', 'wc-navigation', 'wp-a11y', 'wp-api-fetch', 'wp-compose', 'wp-data', 'wp-date', 'wp-deprecated', 'wp-element', 'wp-hooks', 'wp-i18n', 'wp-notices', 'wp-primitives' );
 		$version      = 'settings-test-version';
 		$this->write_asset_fixture( $dependencies, $version );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
@@ -201,14 +201,14 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
 		$this->assertSame( array( array( 'GET', '/wc-fraud-protection/v1/settings' ) ), $rest_requests );
-		$this->assertFalse( wp_style_is( 'wp-components', 'enqueued' ) );
+		$this->assertTrue( wp_style_is( 'wp-components', 'enqueued' ) );
 		$this->assertTrue( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 
 		$style  = wp_styles()->registered[ self::ASSET_HANDLE ];
 		$script = wp_scripts()->registered[ self::ASSET_HANDLE ];
 		$this->assertSame( plugins_url( 'build/admin-settings.css', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $style->src );
-		$this->assertSame( array(), $style->deps );
+		$this->assertSame( array( 'wp-components', 'wc-admin-style' ), $style->deps );
 		$this->assertSame( $version, $style->ver );
 		$this->assertSame( plugins_url( 'build/admin-settings.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $script->src );
 		$this->assertSame( $dependencies, $script->deps );

@@ -1,3 +1,6 @@
+@import '@wordpress/components/build-style/style.css';
+@import '@wordpress/dataviews/build-style/style.css';
+
 .wc-fraud-protection-settings__content {
 	max-width: 720px;
 	margin: 0 auto;
@@ -81,5 +84,59 @@
 		.wc-fraud-protection-settings__performance-metrics {
 			grid-template-columns: minmax(0, 1fr);
 		}
+	}
+}
+
+.wc-fraud-protection-rules {
+	margin: calc(-1 * var(--wpds-dimension-gap-xl)) -30px
+		calc(-1 * var(--wpds-dimension-gap-3xl));
+	padding: 0 var(--wpds-dimension-padding-md);
+	background: var(--wpds-color-background-surface-neutral);
+
+	&__description {
+		color: var(--wpds-color-foreground-content-neutral-weak) !important;
+	}
+
+	&__breadcrumb {
+		color: var(--wpds-color-foreground-content-neutral) !important;
+
+		a {
+			color: inherit !important;
+		}
+	}
+
+	&__toolbar {
+		border-bottom: var(--wpds-border-width-xs) solid
+			var(--wpds-color-stroke-surface-neutral-weak);
+	}
+
+	&__filters {
+		margin-block: var(--wpds-dimension-gap-lg);
+		margin-inline: var(--wpds-dimension-padding-2xl);
+	}
+
+	&__empty-state {
+		margin-block-start: calc(2 * var(--wpds-dimension-gap-3xl));
+	}
+
+	.dataviews-layout__container {
+		margin-block-end: var(--wpds-dimension-gap-xl);
+	}
+
+	.dataviews-view-table tr td:first-child {
+		padding-inline-start: var(--wpds-dimension-padding-md);
+	}
+
+	&__action--allow &__action-icon {
+		color: var(--wpds-color-foreground-content-success-weak);
+	}
+
+	&__action--block &__action-icon {
+		color: var(--wpds-color-foreground-content-error-weak);
+	}
+
+	&__action,
+	&__value {
+		color: var(--wpds-color-foreground-content-neutral) !important;
 	}
 }

@@ -28,6 +28,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtecti
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RulesRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CartEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\CheckoutEventTracker;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Trackers\PaymentMethodEventTracker;
@@ -244,6 +245,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
 			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_settings_page_assets' ) );
 			wc_get_container()->get( SettingsRestController::class )->register();
+			wc_get_container()->get( RulesRestController::class )->register();
 		}
 	}
 
