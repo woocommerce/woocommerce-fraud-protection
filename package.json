@@ -88,5 +88,8 @@
 		"setupFilesAfterEnv": [
 			"./tests/js/setup.js"
 		]
+	},
+	"dependencies": {
+		"@wordpress/date": "^5.55.0"
 	}
 }
