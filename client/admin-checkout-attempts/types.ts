@@ -51,15 +51,11 @@ export type PaymentMethodOption = {
 	title: string;
 };
 
-// The values the list's fields and row actions need. The list page assembles it
-// from shared frontend sources — the settings store (automatic-protection
-// state), the navigation helper (settings URL) and the on-demand payment-method
-// options — rather than a server-injected global.
+// The values the list's fields and row actions need.
 export type CheckoutAttemptsConfig = {
 	automaticProtection: boolean;
 	// GMT datetime (RFC3339 without offset) protection was turned on, or null
 	// when off or unknown.
 	automaticProtectionEnabledAt: string | null;
 	settingsUrl: string;
-	paymentMethods: PaymentMethodOption[];
 };

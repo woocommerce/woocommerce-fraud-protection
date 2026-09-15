@@ -19,7 +19,6 @@ import { getFields } from './fields';
 import { ProtectionOffBanner } from './protection-off-banner';
 import { loadPrefs, savePrefs } from './persisted-state';
 import { useCheckoutAttempts } from './use-checkout-attempts';
-import { usePaymentMethodOptions } from './use-payment-method-options';
 import { getFraudProtectionRoute } from '../admin-settings/navigation';
 import { settingsStore } from '../admin-settings/data/store';
 import type { DisplayPrefs, StatusTab } from './persisted-state';
@@ -200,8 +199,6 @@ function listAdminPath( view: View, tab: StatusTab ): string {
 }
 
 export function CheckoutAttemptsPage() {
-	const paymentMethods = usePaymentMethodOptions();
-
 	const pageRef = useRef< HTMLDivElement >( null );
 	const [ searchParams ] = useSearchParams();
 
@@ -240,9 +237,8 @@ export function CheckoutAttemptsPage() {
 			automaticProtection: protectionOn,
 			automaticProtectionEnabledAt: enabledAt,
 			settingsUrl: settingsRoute,
-			paymentMethods,
 		} ),
-		[ protectionOn, enabledAt, paymentMethods ]
+		[ protectionOn, enabledAt ]
 	);
 
 	const isCompact = 'compact' === view.layout?.density;

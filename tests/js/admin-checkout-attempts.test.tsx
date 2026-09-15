@@ -28,6 +28,7 @@ import {
 	getOutcomeLabel,
 	getOutcomeOptions,
 } from '../../client/admin-checkout-attempts/outcomes';
+import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/payment-method-elements';
 import { buildListPath } from '../../client/admin-checkout-attempts/use-checkout-attempts';
 import {
 	loadPrefs,
@@ -223,12 +224,44 @@ describe( 'checkout attempts outcomes', () => {
 	} );
 } );
 
+describe( 'checkout attempts provider filter', () => {
+	const config: CheckoutAttemptsConfig = {
+		automaticProtection: false,
+		automaticProtectionEnabledAt: null,
+		settingsUrl: '',
+	};
+
+	it( 'lets DataViews load the provider options', () => {
+		const field = getFields( config ).find(
+			( candidate ) => candidate.id === 'payment_method'
+		);
+
+		expect( field?.getElements ).toBe( getPaymentMethodElements );
+		expect( field?.elements ).toBeUndefined();
+	} );
+
+	it( 'resolves REST payment methods to DataViews options', async () => {
+		mockedApiFetch.mockReset();
+		mockedApiFetch.mockResolvedValue( [
+			{ id: 'bacs', title: 'Direct bank transfer' },
+			{ id: 'cod', title: '' },
+		] );
+
+		await expect( getPaymentMethodElements() ).resolves.toEqual( [
+			{ value: 'bacs', label: 'Direct bank transfer' },
+			{ value: 'cod', label: 'cod' },
+		] );
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-fraud-protection/v1/sessions/payment-methods',
+		} );
+	} );
+} );
+
 describe( 'checkout attempts row actions', () => {
 	const actionsConfig: CheckoutAttemptsConfig = {
 		automaticProtection: false,
 		automaticProtectionEnabledAt: null,
 		settingsUrl: 'https://example.test/wp-admin/settings',
-		paymentMethods: [],
 	};
 
 	const noopEnable = () => {};
@@ -384,7 +417,6 @@ describe( 'checkout attempts status field', () => {
 		automaticProtection: false,
 		automaticProtectionEnabledAt: null,
 		settingsUrl: 'https://example.test/wp-admin/settings',
-		paymentMethods: [],
 	};
 
 	const renderField = (
@@ -635,7 +667,6 @@ describe( 'checkout attempts rules filter field', () => {
 		automaticProtection: false,
 		automaticProtectionEnabledAt: null,
 		settingsUrl: '',
-		paymentMethods: [],
 	};
 	const rulesField = () =>
 		getFields( config ).find( ( field ) => field.id === 'rules' )!;
@@ -788,15 +819,13 @@ const settingsResponse = ( automaticProtection = false ) => ( {
 
 type ListResponse = ReturnType< typeof listResponse >;
 
-// Route apiFetch by path: the paginated sessions list (read with parse:false),
-// the on-demand provider options, and the settings GET/POST the store uses.
+// Route apiFetch by path: the paginated sessions list (read with parse:false)
+// and the settings GET/POST the store uses.
 const mockApi = ( {
 	sessions,
-	paymentMethods = [],
 	onPost,
 }: {
 	sessions?: ListResponse | ( () => ListResponse | Promise< ListResponse > );
-	paymentMethods?: Array< { id: string; title: string } >;
 	onPost?: ( value: boolean ) => void;
 } = {} ) => {
 	const nextSessions =
@@ -811,9 +840,6 @@ const mockApi = ( {
 			data?: { automatic_protection?: boolean };
 		} ) => {
 			const path = String( options.path );
-			if ( path.includes( '/sessions/payment-methods' ) ) {
-				return Promise.resolve( paymentMethods );
-			}
 			if ( path.includes( '/wc-fraud-protection/v1/sessions' ) ) {
 				return Promise.resolve( nextSessions() );
 			}
@@ -844,8 +870,7 @@ const renderPage = ( search = '' ) => {
 	} );
 };
 
-// Only the paginated list requests (which carry query args), not the
-// provider-options request at /sessions/payment-methods.
+// Only the paginated list requests, which carry query arguments.
 const listPaths = () =>
 	settledPaths().filter( ( path ) => path.includes( '/sessions?' ) );
 

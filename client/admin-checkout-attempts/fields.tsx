@@ -3,6 +3,7 @@ import { __ } from '@wordpress/i18n';
 import type { Field } from '@wordpress/dataviews';
 
 import { OutcomeBadge, getOutcomeOptions } from './outcomes';
+import { getPaymentMethodElements } from './payment-method-elements';
 import { RuleChip } from './rule-chip';
 import type { CheckoutAttemptsConfig, Session } from './types';
 
@@ -21,7 +22,6 @@ export function getFields(
 	config: CheckoutAttemptsConfig,
 	isCompact = false
 ): Field< Session >[] {
-	const paymentMethods = config.paymentMethods;
 	const valueClass =
 		'wc-fraud-protection-checkout-attempts__value' +
 		( isCompact ? ' is-compact' : '' );
@@ -39,10 +39,7 @@ export function getFields(
 			getValue: ( { item } ) => item.payment_method.id,
 			render: ( { item } ) =>
 				item.payment_method.title || item.payment_method.id || EMPTY,
-			elements: paymentMethods.map( ( method ) => ( {
-				value: method.id,
-				label: method.title || method.id,
-			} ) ),
+			getElements: getPaymentMethodElements,
 			filterBy: { operators: [ 'isAny' ] },
 		},
 		{
