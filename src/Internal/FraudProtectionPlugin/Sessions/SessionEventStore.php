@@ -184,8 +184,8 @@ class SessionEventStore {
 			);
 		}
 
-		$table  = $this->schema_manager->get_sessions_table_name();
-		$cutoff = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
+		$table                           = $this->schema_manager->get_sessions_table_name();
+		$cutoff                          = gmdate( 'Y-m-d H:i:s', time() - ( 30 * DAY_IN_SECONDS ) );
 		$flagged_condition               = SessionOutcome::FlaggedByFraudPrevention->sql_condition();
 		$blocked_automatically_condition = SessionOutcome::BlockedAutomatically->sql_condition();
 		$allowed_by_rules_condition      = SessionOutcome::AllowedByRules->sql_condition();

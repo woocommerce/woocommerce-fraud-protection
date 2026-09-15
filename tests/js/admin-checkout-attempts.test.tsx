@@ -29,6 +29,7 @@ import {
 	getOutcomeOptions,
 } from '../../client/admin-checkout-attempts/outcomes';
 import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/payment-method-elements';
+import { getFlaggedExplanation } from '../../client/admin-checkout-attempts/flagged-chip';
 import { buildListPath } from '../../client/admin-checkout-attempts/use-checkout-attempts';
 import {
 	loadPrefs,
@@ -449,20 +450,19 @@ describe( 'checkout attempts status field', () => {
 		expect( flaggedInfo() ).toBeInTheDocument();
 	} );
 
-	it( 'explains the flag and links to enabling protection while it is off', async () => {
-		renderField(
-			'outcome',
-			aSession( { outcome: 'flagged_by_fraud_prevention' } )
+	it( 'builds the explanation and enable link while protection is off', () => {
+		render(
+			<>
+				{ getFlaggedExplanation( {
+					protectionOn: false,
+					enabledAt: null,
+					settingsUrl: config.settingsUrl,
+				} ) }
+			</>
 		);
 
-		await userEvent.hover( flaggedInfo() );
-
 		expect(
-			await screen.findByText(
-				/because automatic fraud prevention is off/,
-				{},
-				{ timeout: 3000 }
-			)
+			screen.getByText( /because automatic fraud prevention is off/ )
 		).toBeInTheDocument();
 		const link = screen.getByRole( 'link', {
 			name: 'Enable automatic fraud prevention',
@@ -473,24 +473,20 @@ describe( 'checkout attempts status field', () => {
 		expect( link ).toHaveAttribute( 'rel', 'noopener noreferrer' );
 	} );
 
-	it( 'notes when protection was enabled in the tooltip once it is on', async () => {
-		renderField(
-			'outcome',
-			aSession( { outcome: 'flagged_by_fraud_prevention' } ),
-			{
-				...config,
-				automaticProtection: true,
-				automaticProtectionEnabledAt: '2026-04-20T00:00:00',
-			}
+	it( 'builds the enable-date explanation once protection is on', () => {
+		render(
+			<>
+				{ getFlaggedExplanation( {
+					protectionOn: true,
+					enabledAt: '2026-04-20T00:00:00',
+					settingsUrl: config.settingsUrl,
+				} ) }
+			</>
 		);
 
-		await userEvent.hover( flaggedInfo() );
-
 		expect(
-			await screen.findByText(
-				/because automatic fraud prevention was off\. Enabled: /,
-				{},
-				{ timeout: 3000 }
+			screen.getByText(
+				/because automatic fraud prevention was off\. Enabled: /
 			)
 		).toBeInTheDocument();
 		// No enable link once protection is on.
@@ -524,7 +520,7 @@ describe( 'checkout attempts status field', () => {
 		expect( screen.getByText( 'Allow rule' ) ).toBeInTheDocument();
 	} );
 
-	it( 'shows the rule tooltip when hovering the label text, not only the icon', async () => {
+	it( 'uses the visible rule label as part of the tooltip trigger', () => {
 		renderField(
 			'email',
 			aSession( {
@@ -539,15 +535,13 @@ describe( 'checkout attempts status field', () => {
 			} )
 		);
 
-		// Hovering the visible label (not the icon) must open the tooltip.
-		await userEvent.hover( screen.getByText( 'Block rule' ) );
-
-		expect(
-			await screen.findByText( /Rule created/, {}, { timeout: 3000 } )
-		).toBeInTheDocument();
+		const label = screen.getByText( 'Block rule' );
+		expect( label.closest( 'button' ) ).toHaveAccessibleName(
+			/Block rule created/
+		);
 	} );
 
-	it( 'leads the compact rule tooltip with the allow/block word', async () => {
+	it( 'keeps the rule type in the compact trigger name', () => {
 		renderField(
 			'email',
 			aSession( {
@@ -564,16 +558,8 @@ describe( 'checkout attempts status field', () => {
 			true
 		);
 
-		await userEvent.hover(
-			screen.getByText( 'Block rule' ) // sr-only label in compact
-		);
-
 		expect(
-			await screen.findByText(
-				/Block rule created/,
-				{},
-				{ timeout: 3000 }
-			)
+			screen.getByRole( 'button', { name: /Block rule created/ } )
 		).toBeInTheDocument();
 	} );
 

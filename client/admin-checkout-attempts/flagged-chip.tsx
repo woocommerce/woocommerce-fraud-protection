@@ -14,15 +14,17 @@ import { formatSiteDate } from './dates';
 // popover's content (and that link) is reachable by keyboard, touch, and screen
 // readers, which a tooltip's is not.
 
-export function FlaggedChip( {
-	protectionOn,
-	enabledAt,
-	settingsUrl,
-}: {
+type FlaggedChipProps = {
 	protectionOn: boolean;
 	enabledAt: string | null;
 	settingsUrl: string;
-} ) {
+};
+
+export function getFlaggedExplanation( {
+	protectionOn,
+	enabledAt,
+	settingsUrl,
+}: FlaggedChipProps ) {
 	let explanation;
 	if ( protectionOn ) {
 		explanation = enabledAt
@@ -61,6 +63,12 @@ export function FlaggedChip( {
 			'woocommerce-fraud-protection'
 		);
 	}
+
+	return explanation;
+}
+
+export function FlaggedChip( props: FlaggedChipProps ) {
+	const explanation = getFlaggedExplanation( props );
 
 	return (
 		<>
