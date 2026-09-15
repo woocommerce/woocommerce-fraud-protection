@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { format } from '@wordpress/date';
+import { dateI18n } from '@wordpress/date';
 import { Icon, Notice, Stack, Tabs, Text } from '@wordpress/ui';
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
@@ -21,6 +21,9 @@ const ruleTypes = [
 	{ value: 'email', label: __( 'Email', 'woocommerce-fraud-protection' ) },
 	{ value: 'ip', label: __( 'IP', 'woocommerce-fraud-protection' ) },
 ];
+
+export const formatRuleCreatedDate = ( createdAt: string ): string =>
+	dateI18n( 'j M Y', createdAt );
 
 const fields: Field< Rule >[] = [
 	{
@@ -80,7 +83,7 @@ const fields: Field< Rule >[] = [
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
-		render: ( { item } ) => format( 'j M Y', item.created_at ),
+		render: ( { item } ) => formatRuleCreatedDate( item.created_at ),
 	},
 ];
 
