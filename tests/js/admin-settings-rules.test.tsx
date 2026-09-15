@@ -784,9 +784,11 @@ describe( 'RulesPage', () => {
 		).toHaveAttribute( 'aria-disabled', 'true' );
 
 		await userEvent.type( value, 'x' );
-		expect(
-			within( drawer ).queryByText( /This email is already allowed/ )
-		).not.toBeInTheDocument();
+		await waitFor( () =>
+			expect(
+				within( drawer ).queryByText( /This email is already allowed/ )
+			).not.toBeInTheDocument()
+		);
 	} );
 
 	it( 'keeps contextual rule type and value fixed', () => {
@@ -1046,6 +1048,12 @@ describe( 'RulesPage', () => {
 		expect(
 			screen.getByRole( 'heading', { name: 'Edit rule' } )
 		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				'Edit a rule to always allow or block checkout attempt based on an IP or email address. If a session matches both, it will always be allowed.',
+				{ exact: true }
+			)
+		).toBeInTheDocument();
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( rule.value );
 		await userEvent.selectOptions(
 			screen.getByLabelText( 'Action' ),
@@ -1128,9 +1136,29 @@ describe( 'RulesPage', () => {
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		);
-		await userEvent.click(
-			await screen.findByRole( 'button', { name: 'View rule' } )
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		const error = within( drawer ).getByText(
+			'This email is already allowed by a rule.'
 		);
+		const viewRule = await screen.findByRole( 'button', {
+			name: 'View rule',
+		} );
+		const value = within( drawer ).getByLabelText( 'Value' );
+		expect( error.tagName ).toBe( 'P' );
+		expect( error.querySelector( 'svg[height="16"]' ) ).toBeInTheDocument();
+		expect( error.parentElement ).toBe( viewRule.parentElement );
+		expect( error.parentElement?.previousElementSibling ).toContainElement(
+			value
+		);
+		expect( ( value as HTMLInputElement ).validity.valid ).toBe( false );
+		expect( value ).toHaveAttribute( 'data-validity-visible' );
+		expect( value ).toHaveAttribute( 'aria-describedby', error.id );
+		expect(
+			within( drawer ).getAllByText(
+				'This email is already allowed by a rule.'
+			)
+		).toHaveLength( 1 );
+		await userEvent.click( viewRule );
 
 		expect( onViewRule ).toHaveBeenCalledWith( 17 );
 	} );
