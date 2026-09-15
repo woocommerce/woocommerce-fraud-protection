@@ -49,7 +49,17 @@ Prepare a release pull request and use the protected GitHub Actions workflow to 
 
 10. The workflow validates the branch, target branch, version, changelog, pull request state, and required checks. It builds the release ZIP in CI and derives a QIT ZIP that adds only the dependency manifests needed for audits. QIT runs its activation and security tests against the QIT ZIP. The workflow then waits at the `release` environment before publication. Ask the user to download the release ZIP artifact and complete smoke tests on representative WoA test sites. Wait for confirmation that the smoke tests passed, then ask the user to approve the environment job. Do not create the tag or GitHub release locally.
 
-11. After the workflow completes, verify that the release is public, its tag targets the tested release commit, and `woocommerce-fraud-protection.zip` is attached. Ask the user to merge the release pull request with a merge commit. Do not use squash or rebase. Verify that the tag commit is an ancestor of the target branch, then report the release and pull request URLs.
+11. After the workflow completes, verify that the release is public, its tag targets the tested release commit, and `woocommerce-fraud-protection.zip` is attached. Because the translation import runs asynchronously, query the GlotPress debug endpoint with bounded retries until `latest_version` matches the release tag with dots replaced by underscores. This confirms that the POT import completed; it does not confirm that language packs were generated. For example:
+
+   ```bash
+   release_version="<version>"
+   expected_translation_version="v${release_version//./_}"
+   curl --fail --silent --show-error \
+     https://translate.wordpress.com/-language-packs/debug/woocommerce/extensions/woocommerce-fraud-protection \
+     | jq -e --arg expected "$expected_translation_version" '.success == true and .data.latest_version == $expected'
+   ```
+
+   If the expected version does not appear within the bounded wait, report that the release is published but its translation import is not confirmed. Include the last response and do not claim that the import completed. Ask the user to merge the release pull request with a merge commit. Do not use squash or rebase. Verify that the tag commit is an ancestor of the target branch, then report the release and pull request URLs.
 
 ## Requirements
 
