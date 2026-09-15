@@ -6,12 +6,11 @@ import { MemoryRouter } from 'react-router-dom';
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
-import { getSettings, setSettings } from '@wordpress/date';
 
 import { rulesStore } from '../../client/admin-settings/data/rules-store';
 import {
-	formatRuleCreatedDate,
 	getQueryFromView,
+	getUtcDateFilterBound,
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
 import { dataViews } from './mocks/dataviews';
@@ -124,25 +123,27 @@ describe( 'RulesPage', () => {
 		).toBe( 'Created date' );
 	} );
 
-	it( 'shows created dates in the site timezone used by the filter', () => {
-		const originalSettings = getSettings();
-		setSettings( {
-			...originalSettings,
-			timezone: {
-				...originalSettings.timezone,
-				offset: 0,
-				offsetFormatted: '0',
-				string: 'UTC',
-				abbr: 'UTC',
-			},
-		} );
-
+	it( 'converts local filter dates to inclusive UTC bounds', () => {
+		const runtimeProcess = (
+			globalThis as typeof globalThis & {
+				process: { env: { TZ?: string } };
+			}
+		 ).process;
+		const originalTimezone = runtimeProcess.env.TZ;
+		runtimeProcess.env.TZ = 'America/Sao_Paulo';
 		try {
-			expect( formatRuleCreatedDate( '2026-09-15T01:08:37Z' ) ).toBe(
-				'15 Sep 2026'
+			expect( getUtcDateFilterBound( '2026-09-15', false ) ).toBe(
+				'2026-09-15T03:00:00Z'
+			);
+			expect( getUtcDateFilterBound( '2026-09-15', true ) ).toBe(
+				'2026-09-16T02:59:59Z'
 			);
 		} finally {
-			setSettings( originalSettings );
+			if ( originalTimezone === undefined ) {
+				delete runtimeProcess.env.TZ;
+			} else {
+				runtimeProcess.env.TZ = originalTimezone;
+			}
 		}
 	} );
 
@@ -390,7 +391,7 @@ describe( 'RulesPage', () => {
 				{
 					field: 'created_at',
 					operator: 'between',
-					value: [ '2026-09-01T00:00:00', '2026-09-30T23:59:59' ],
+					value: [ '2026-09-01', '2026-09-30' ],
 				},
 			],
 			fields: [],
@@ -405,8 +406,8 @@ describe( 'RulesPage', () => {
 			action: 'block',
 			type: 'ip',
 			value: '198.51.100.1',
-			from: '2026-09-01',
-			to: '2026-09-30',
+			from: getUtcDateFilterBound( '2026-09-01', false ),
+			to: getUtcDateFilterBound( '2026-09-30', true ),
 		} );
 	} );
 
