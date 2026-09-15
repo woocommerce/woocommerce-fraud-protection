@@ -20,7 +20,7 @@ import {
 } from '@wordpress/ui';
 import { Button as ComponentsButton } from '@wordpress/components';
 import { notAllowed, published } from '@wordpress/icons';
-import { DataViews } from '@wordpress/dataviews/wp';
+import { DataForm, DataViews } from '@wordpress/dataviews/wp';
 import type { Action, Field, View } from '@wordpress/dataviews';
 import { useDispatch } from '@wordpress/data';
 import { store as noticesStore } from '@wordpress/notices';
@@ -29,7 +29,12 @@ import { Link } from 'react-router-dom';
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
 import { getFraudProtectionRoute } from './navigation';
-import { RuleFormDrawer } from './components/rule-form-drawer';
+import {
+	getRuleFormFields,
+	ruleForm,
+	RuleFormDrawer,
+} from './components/rule-form-drawer';
+import type { RuleFormData } from './components/rule-form-drawer';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
 const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -265,6 +270,27 @@ export function RulesPage() {
 		() => getFields( view.sort?.field ),
 		[ view.sort?.field ]
 	);
+	const deletingRuleData = useMemo< RuleFormData | undefined >(
+		() =>
+			deletingRule
+				? {
+						action: deletingRule.action,
+						type: deletingRule.type,
+						value: deletingRule.value,
+				  }
+				: undefined,
+		[ deletingRule ]
+	);
+	const deletingRuleFields = useMemo(
+		() =>
+			deletingRuleData
+				? getRuleFormFields( {
+						data: deletingRuleData,
+						disabled: true,
+				  } )
+				: [],
+		[ deletingRuleData ]
+	);
 	const actionTab = getActionTab( view );
 	const hasActiveFilters = Boolean( view.filters?.length );
 	const isInitialLoading = isLoading && rules.length === 0;
@@ -355,6 +381,12 @@ export function RulesPage() {
 			className="wc-fraud-protection-rules"
 			direction="column"
 			aria-busy={ isLoading }
+			style={
+				{
+					'--wp-dataviews-color-background':
+						'var(--wpds-color-background-surface-neutral, #fcfcfc)',
+				} as React.CSSProperties
+			}
 		>
 			{ isInitialLoading && (
 				<VisuallyHidden>
@@ -613,19 +645,29 @@ export function RulesPage() {
 						/>
 					</Dialog.Header>
 					<Dialog.Content>
-						<Dialog.Description>
-							{ __(
-								'Are you sure you want to delete this rule? This action cannot be undone.',
-								'woocommerce-fraud-protection'
+						<Stack direction="column" gap="xl">
+							<Dialog.Description>
+								{ __(
+									'This rule will no longer apply to future checkout attempts. Past attempts won’t be affected.',
+									'woocommerce-fraud-protection'
+								) }
+							</Dialog.Description>
+							{ deletingRuleData && (
+								<DataForm< RuleFormData >
+									data={ deletingRuleData }
+									fields={ deletingRuleFields }
+									form={ ruleForm }
+									onChange={ () => undefined }
+								/>
 							) }
-						</Dialog.Description>
-						{ deleteError && (
-							<Notice.Root intent="error">
-								<Notice.Description>
-									{ deleteError }
-								</Notice.Description>
-							</Notice.Root>
-						) }
+							{ deleteError && (
+								<Notice.Root intent="error">
+									<Notice.Description>
+										{ deleteError }
+									</Notice.Description>
+								</Notice.Root>
+							) }
+						</Stack>
 					</Dialog.Content>
 					<Dialog.Footer>
 						<ComponentsButton

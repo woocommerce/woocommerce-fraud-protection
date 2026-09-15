@@ -32,7 +32,10 @@ export type RuleFormContext = {
 	finalStatus: 'allowed' | 'blocked';
 };
 
-type RuleFormData = Pick< CreateRuleRequest, 'action' | 'type' | 'value' >;
+export type RuleFormData = Pick<
+	CreateRuleRequest,
+	'action' | 'type' | 'value'
+>;
 
 export const getInitialRuleFormData = (
 	context?: RuleFormContext
@@ -116,7 +119,7 @@ function RuleValueEditControl( {
 							onClick={ () => onViewRule( duplicateRuleId ) }
 						>
 							{ __(
-								'View rule',
+								'Edit existing rule',
 								'woocommerce-fraud-protection'
 							) }
 						</ComponentsButton>
@@ -191,10 +194,100 @@ export const isCompleteIp = ( value: string ): boolean => {
 	return hasCompression ? groupCount < 8 : groupCount === 8;
 };
 
-const form: Form = {
+export const ruleForm: Form = {
 	layout: { type: 'regular' },
 	fields: [ 'action', 'type', 'value' ],
 };
+
+type RuleFormFieldsOptions = {
+	data: RuleFormData;
+	disabled?: boolean;
+	matchFieldsDisabled?: boolean;
+	duplicateError?: string;
+	duplicateRuleId?: number;
+	onViewRule?: ( id: number ) => void;
+};
+
+export const getRuleFormFields = ( {
+	data,
+	disabled = false,
+	matchFieldsDisabled = false,
+	duplicateError,
+	duplicateRuleId,
+	onViewRule,
+}: RuleFormFieldsOptions ): Field< RuleFormData >[] => [
+	{
+		id: 'action',
+		label: __( 'Action', 'woocommerce-fraud-protection' ),
+		type: 'text',
+		Edit: 'select',
+		elements: [
+			{
+				value: 'allow',
+				label: __( 'Allow', 'woocommerce-fraud-protection' ),
+			},
+			{
+				value: 'block',
+				label: __( 'Block', 'woocommerce-fraud-protection' ),
+			},
+		],
+		isDisabled: disabled,
+		isValid: { elements: true },
+	},
+	{
+		id: 'type',
+		label: __( 'Rule type', 'woocommerce-fraud-protection' ),
+		type: 'text',
+		Edit: 'select',
+		elements: [
+			{
+				value: 'email',
+				label: __( 'Email address', 'woocommerce-fraud-protection' ),
+			},
+			{
+				value: 'ip',
+				label: __( 'IP address', 'woocommerce-fraud-protection' ),
+			},
+		],
+		isDisabled: disabled || matchFieldsDisabled,
+		isValid: { elements: true },
+	},
+	{
+		id: 'value',
+		label: __( 'Value', 'woocommerce-fraud-protection' ),
+		type: 'text',
+		Edit: ( props ) => (
+			<RuleValueEditControl
+				{ ...props }
+				duplicateError={ duplicateError }
+				duplicateRuleId={ duplicateRuleId }
+				onViewRule={ onViewRule }
+			/>
+		),
+		placeholder: getRuleValuePlaceholder( data.type ),
+		isDisabled: disabled || matchFieldsDisabled,
+		isValid: {
+			required: true,
+			custom: ( item ) => {
+				const value = item.value.trim();
+				if ( item.type === 'email' ) {
+					return isCompleteEmail( value )
+						? null
+						: __(
+								'Enter a complete email address.',
+								'woocommerce-fraud-protection'
+						  );
+				}
+				return isCompleteIp( value )
+					? null
+					: __(
+							'Enter a complete IP address.',
+							'woocommerce-fraud-protection'
+					  );
+			},
+		},
+	},
+];
 
 export function RuleFormDrawer( {
 	open,
@@ -239,97 +332,27 @@ export function RuleFormDrawer( {
 	const hasDuplicateError = saveError?.code === DUPLICATE_RULE_ERROR;
 
 	const fields = useMemo< Field< RuleFormData >[] >(
-		() => [
-			{
-				id: 'action',
-				label: __( 'Action', 'woocommerce-fraud-protection' ),
-				type: 'text',
-				Edit: 'select',
-				elements: [
-					{
-						value: 'allow',
-						label: __( 'Allow', 'woocommerce-fraud-protection' ),
-					},
-					{
-						value: 'block',
-						label: __( 'Block', 'woocommerce-fraud-protection' ),
-					},
-				],
-				isDisabled: isSaving,
-				isValid: { elements: true },
-			},
-			{
-				id: 'type',
-				label: __( 'Rule type', 'woocommerce-fraud-protection' ),
-				type: 'text',
-				Edit: 'select',
-				elements: [
-					{
-						value: 'email',
-						label: __(
-							'Email address',
-							'woocommerce-fraud-protection'
-						),
-					},
-					{
-						value: 'ip',
-						label: __(
-							'IP address',
-							'woocommerce-fraud-protection'
-						),
-					},
-				],
-				isDisabled: isSaving || Boolean( context ),
-				isValid: { elements: true },
-			},
-			{
-				id: 'value',
-				label: __( 'Value', 'woocommerce-fraud-protection' ),
-				type: 'text',
-				Edit: ( props ) => (
-					<RuleValueEditControl
-						{ ...props }
-						duplicateError={
-							hasDuplicateError ? saveError?.message : undefined
-						}
-						duplicateRuleId={ saveError?.ruleId ?? undefined }
-						onViewRule={ onViewRule }
-					/>
-				),
-				placeholder: getRuleValuePlaceholder( data.type ),
-				isDisabled: isSaving || Boolean( context ),
-				isValid: {
-					required: true,
-					custom: ( item ) => {
-						const value = item.value.trim();
-						if ( item.type === 'email' ) {
-							return isCompleteEmail( value )
-								? null
-								: __(
-										'Enter a complete email address.',
-										'woocommerce-fraud-protection'
-								  );
-						}
-						return isCompleteIp( value )
-							? null
-							: __(
-									'Enter a complete IP address.',
-									'woocommerce-fraud-protection'
-							  );
-					},
-				},
-			},
-		],
+		() =>
+			getRuleFormFields( {
+				data,
+				disabled: isSaving,
+				matchFieldsDisabled: Boolean( context ),
+				duplicateError: hasDuplicateError
+					? saveError?.message
+					: undefined,
+				duplicateRuleId: saveError?.ruleId ?? undefined,
+				onViewRule,
+			} ),
 		[
 			context,
-			data.type,
+			data,
 			hasDuplicateError,
 			isSaving,
 			onViewRule,
 			saveError,
 		]
 	);
-	const { validity, isValid } = useFormValidity( data, fields, form );
+	const { validity, isValid } = useFormValidity( data, fields, ruleForm );
 
 	const save = async () => {
 		if ( ! isValid || hasDuplicateError || isSaving ) {
@@ -468,7 +491,7 @@ export function RuleFormDrawer( {
 						<DataForm< RuleFormData >
 							data={ data }
 							fields={ fields }
-							form={ form }
+							form={ ruleForm }
 							validity={ validity }
 							onChange={ ( changes ) => {
 								if ( isSaving ) {

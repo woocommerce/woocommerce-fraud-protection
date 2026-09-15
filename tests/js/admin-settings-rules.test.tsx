@@ -1122,7 +1122,7 @@ describe( 'RulesPage', () => {
 		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
 	} );
 
-	it( 'offers View rule for a contextual edit duplicate', async () => {
+	it( 'offers Edit existing rule for a contextual edit duplicate', async () => {
 		const rule: Rule = {
 			id: 9,
 			action: 'allow',
@@ -1160,7 +1160,7 @@ describe( 'RulesPage', () => {
 			'This email is already allowed by a rule.'
 		);
 		const viewRule = await screen.findByRole( 'button', {
-			name: 'View rule',
+			name: 'Edit existing rule',
 		} );
 		const value = within( drawer ).getByLabelText( 'Value' );
 		expect( error.tagName ).toBe( 'P' );
@@ -1224,7 +1224,7 @@ describe( 'RulesPage', () => {
 			'This email is already allowed by a rule.'
 		);
 		const viewRule = within( drawer ).getByRole( 'button', {
-			name: 'View rule',
+			name: 'Edit existing rule',
 		} );
 		const value = within( drawer ).getByLabelText( 'Value' );
 		expect( error.tagName ).toBe( 'P' );
@@ -1469,7 +1469,19 @@ describe( 'RulesPage', () => {
 			name: 'Delete rule',
 		} );
 		expect( dialog ).toHaveTextContent(
-			'Are you sure you want to delete this rule? This action cannot be undone.'
+			'This rule will no longer apply to future checkout attempts. Past attempts won’t be affected.'
+		);
+		expect( within( dialog ).getByLabelText( 'Action' ) ).toBeDisabled();
+		expect( within( dialog ).getByLabelText( 'Action' ) ).toHaveValue(
+			'allow'
+		);
+		expect( within( dialog ).getByLabelText( 'Rule type' ) ).toBeDisabled();
+		expect( within( dialog ).getByLabelText( 'Rule type' ) ).toHaveValue(
+			'email'
+		);
+		expect( within( dialog ).getByLabelText( 'Value' ) ).toBeDisabled();
+		expect( within( dialog ).getByLabelText( 'Value' ) ).toHaveValue(
+			'shopper@example.com'
 		);
 		await userEvent.click(
 			within( dialog ).getByRole( 'button', { name: 'Delete' } )
