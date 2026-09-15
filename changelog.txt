@@ -1,6 +1,6 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-2026-xx-xx - version 0.2.4
+2026-09-14 - version 0.2.4
 * Added - Inbox invitation to enable automatic protection during early access.
 * Added - Merchants can opt out before automatic protection is enabled automatically.
 * Updated - Performance summary now labels flagged checkout attempts and hides that metric when automatic protection is enabled.
