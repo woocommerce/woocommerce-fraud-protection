@@ -362,13 +362,24 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox An authorized create normalizes the exact value and returns the public rule.
 	 */
 	public function test_create_rule_normalizes_value_and_returns_public_rule(): void {
+		$api_client = $this->createMock( ApiClient::class );
+		$api_client->expects( $this->never() )->method( 'report' );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'create', FraudDecision::Allow, 'email', 'api' );
+		$this->sut->init(
+			$this->rule_store,
+			$this->schema_manager,
+			$this->event_store,
+			$api_client,
+			new SessionIdNormalizer(),
+			$telemetry
+		);
 		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
 				'type'   => 'email',
 				'value'  => ' Shopper@Example.com ',
-				'origin' => 'rules',
 			)
 		);
 
@@ -519,13 +530,15 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	public function test_contextual_create_rejects_unusable_recorded_attempts(): void {
 		$api_client = $this->createMock( ApiClient::class );
 		$api_client->expects( $this->never() )->method( 'report' );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
 		$this->sut->init(
 			$this->rule_store,
 			$this->schema_manager,
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			$this->createMock( SettingsTelemetry::class )
+			$telemetry
 		);
 		$params = array(
 			'action'              => 'allow',
