@@ -6,9 +6,11 @@ import { MemoryRouter } from 'react-router-dom';
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
+import { getSettings, setSettings } from '@wordpress/date';
 
 import { rulesStore } from '../../client/admin-settings/data/rules-store';
 import {
+	formatRuleCreatedDate,
 	getQueryFromView,
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
@@ -120,6 +122,28 @@ describe( 'RulesPage', () => {
 				( field ) => field.id === 'created_at'
 			)?.label
 		).toBe( 'Created date' );
+	} );
+
+	it( 'shows created dates in the site timezone used by the filter', () => {
+		const originalSettings = getSettings();
+		setSettings( {
+			...originalSettings,
+			timezone: {
+				...originalSettings.timezone,
+				offset: 0,
+				offsetFormatted: '0',
+				string: 'UTC',
+				abbr: 'UTC',
+			},
+		} );
+
+		try {
+			expect( formatRuleCreatedDate( '2026-09-15T01:08:37Z' ) ).toBe(
+				'15 Sep 2026'
+			);
+		} finally {
+			setSettings( originalSettings );
+		}
 	} );
 
 	it( 'selects All when DataViews removes the action filter', async () => {
