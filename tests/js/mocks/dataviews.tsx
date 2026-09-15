@@ -74,6 +74,14 @@ export function DataViews( props: DataViewsProps ) {
 	);
 }
 
+export function DataForm() {
+	return null;
+}
+
+export function useFormValidity() {
+	return { validity: undefined, isValid: false };
+}
+
 export namespace DataViews {
 	export function FiltersToggle() {
 		return <button type="button" aria-label="Add filter" />;

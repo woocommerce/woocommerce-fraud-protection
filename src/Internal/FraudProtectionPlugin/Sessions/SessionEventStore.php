@@ -127,6 +127,44 @@ class SessionEventStore {
 	}
 
 	/**
+	 * Read the narrow set of event fields needed for a contextual rule create.
+	 *
+	 * @param int $event_id Recorded session event row ID.
+	 * @return ?array{id: int, session_id: ?string, final_status: ?string, email: ?string, ip: ?string}
+	 */
+	public function get_event( int $event_id ): ?array {
+		global $wpdb;
+
+		if ( $event_id <= 0 ) {
+			return null;
+		}
+
+		$table = $this->schema_manager->get_sessions_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager.
+				"SELECT id, session_id, final_status, email, ip FROM {$table} WHERE id = %d",
+				$event_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $row ) ) {
+			return null;
+		}
+
+		return array(
+			'id'           => (int) ( $row['id'] ?? 0 ),
+			'session_id'   => is_string( $row['session_id'] ?? null ) ? $row['session_id'] : null,
+			'final_status' => is_string( $row['final_status'] ?? null ) ? $row['final_status'] : null,
+			'email'        => is_string( $row['email'] ?? null ) ? $row['email'] : null,
+			'ip'           => is_string( $row['ip'] ?? null ) ? $row['ip'] : null,
+		);
+	}
+
+	/**
 	 * Count performance outcomes recorded during the previous 30 days.
 	 *
 	 * @return array{flagged_by_fraud_prevention: int, blocked_automatically: int, allowed_by_rules: int, blocked_by_rules: int}

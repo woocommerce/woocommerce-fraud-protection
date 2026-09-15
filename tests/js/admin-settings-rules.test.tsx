@@ -13,6 +13,7 @@ import {
 	getUtcDateFilterBound,
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
+import { isCompleteIp } from '../../client/admin-settings/components/rule-form-drawer';
 import { dataViews } from './mocks/dataviews';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
@@ -77,6 +78,14 @@ describe( 'RulesPage', () => {
 			page: 1,
 			perPage: 20,
 		} );
+	} );
+
+	it( 'validates complete IPv4 and IPv6 values', () => {
+		expect( isCompleteIp( '203.0.113.9' ) ).toBe( true );
+		expect( isCompleteIp( '2001:db8::1' ) ).toBe( true );
+		expect( isCompleteIp( '203.0.113' ) ).toBe( false );
+		expect( isCompleteIp( ':::' ) ).toBe( false );
+		expect( isCompleteIp( '2001:db8:0:0:0:0:0:0:1' ) ).toBe( false );
 	} );
 
 	it( 'loads rules and maps the action tab to a single server filter', async () => {
@@ -554,5 +563,58 @@ describe( 'RulesPage', () => {
 		expect( registry.select( rulesStore ).getError() ).toBe(
 			'Could not get a valid response from the server.'
 		);
+	} );
+
+	it( 'opens the create rule drawer from the rules page', async () => {
+		renderRules();
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		expect(
+			await screen.findByRole( 'heading', { name: 'Create rule' } )
+		).toBeInTheDocument();
+	} );
+
+	it( 'sends the exact create request through the rules store', async () => {
+		const registry = createRegistry();
+		registry.register( rulesStore );
+		const createdRule = {
+			id: 9,
+			action: 'allow' as const,
+			value: 'shopper@example.com',
+			type: 'email' as const,
+			created_at: '2026-09-14T12:00:00Z',
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( createdRule )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+				page: 1,
+				perPage: 20,
+			} );
+
+		await act( async () => {
+			await registry.dispatch( rulesStore ).createRule( {
+				action: 'allow',
+				type: 'email',
+				value: 'shopper@example.com',
+				origin: 'rules',
+			} );
+		} );
+
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-fraud-protection/v1/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'shopper@example.com',
+				origin: 'rules',
+			},
+		} );
 	} );
 } );

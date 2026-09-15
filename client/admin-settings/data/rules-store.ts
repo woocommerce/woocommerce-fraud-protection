@@ -41,6 +41,14 @@ type Action =
 	  }
 	| { type: 'SET_ERROR'; error: string | null; requestId: number };
 
+export type CreateRuleRequest = {
+	action: Rule[ 'action' ];
+	type: Rule[ 'type' ];
+	value: string;
+	recorded_attempt_id?: number;
+	origin?: 'rules' | 'checkout_attempts' | 'api';
+};
+
 const DEFAULT_QUERY: RulesQuery = { page: 1, perPage: 20 };
 const DEFAULT_STATE: State = {
 	data: [],
@@ -193,6 +201,23 @@ const actions = {
 				dispatch.setError( getErrorMessage( error ), requestId );
 				return null;
 			}
+		},
+	createRule:
+		( request: CreateRuleRequest ) =>
+		async ( {
+			dispatch,
+			select,
+		}: {
+			dispatch: typeof actions;
+			select: { getQuery: () => RulesQuery };
+		} ) => {
+			const response = await apiFetch< Rule >( {
+				path: '/wc-fraud-protection/v1/rules',
+				method: 'POST',
+				data: request,
+			} );
+			await dispatch.requestRules( select.getQuery() );
+			return response;
 		},
 };
 

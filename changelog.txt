@@ -2,6 +2,7 @@
 
 2026-xx-xx - version 0.2.5
 * Added - Merchants can view their active allow and block rules with filters and paging.
+* Added - Merchants can create exact email and IP allow or block rules.
 
 2026-09-14 - version 0.2.4
 * Added - Inbox invitation to enable automatic protection during early access.
