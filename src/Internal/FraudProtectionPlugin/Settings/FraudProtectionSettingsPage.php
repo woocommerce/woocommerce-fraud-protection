@@ -114,7 +114,7 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 		wp_enqueue_style(
 			self::SCRIPT_HANDLE,
 			plugins_url( 'build/admin-settings.css', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
-			array( 'wp-components' ),
+			array( 'wp-components', 'wc-admin-style' ),
 			$asset['version']
 		);
 		wp_enqueue_script(
