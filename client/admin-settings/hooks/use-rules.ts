@@ -15,7 +15,7 @@ export function useRules() {
 			totalPages: store.getTotalPages(),
 		};
 	}, [] );
-	const { requestRules } = useDispatch( rulesStore );
+	const { createRule, requestRules } = useDispatch( rulesStore );
 
-	return { ...state, requestRules };
+	return { ...state, createRule, requestRules };
 }

@@ -24,6 +24,22 @@ type DataViewsProps = {
 	onChangeView?: ( view: View ) => void;
 };
 
+type DataFormProps = {
+	data: Record< string, unknown >;
+	fields?: Array< {
+		id: string;
+		label?: string;
+		Edit?: string | React.ComponentType< any >;
+		elements?: Array< { value: string; label: string } >;
+		isDisabled?: boolean;
+		placeholder?: string;
+		isValid?: {
+			custom?: ( item: Record< string, any > ) => string | null;
+		};
+	} >;
+	onChange?: ( changes: Record< string, unknown > ) => void;
+};
+
 export const dataViews = {
 	props: undefined as DataViewsProps | undefined,
 };
@@ -72,6 +88,112 @@ export function DataViews( props: DataViewsProps ) {
 			{ data.length === 0 && ! isLoading && empty }
 		</>
 	);
+}
+
+export function DataForm( { data, fields = [], onChange }: DataFormProps ) {
+	return (
+		<>
+			{ fields.map( ( field ) => {
+				const validation = field.isValid?.custom?.(
+					data as Record< string, any >
+				);
+				if ( typeof field.Edit === 'function' ) {
+					const Edit = field.Edit;
+					return (
+						<Edit
+							key={ field.id }
+							data={ data }
+							field={ {
+								...field,
+								label: field.label ?? field.id,
+								getValue: ( { item }: { item: typeof data } ) =>
+									item[ field.id ],
+								setValue: ( {
+									value,
+								}: {
+									value: unknown;
+								} ) => ( {
+									[ field.id ]: value,
+								} ),
+								isDisabled: () => Boolean( field.isDisabled ),
+								isValid: field.isValid ?? {},
+							} }
+							onChange={ onChange }
+							validity={
+								validation
+									? {
+											custom: {
+												type: 'invalid',
+												message: validation,
+											},
+									  }
+									: undefined
+							}
+						/>
+					);
+				}
+				return field.Edit === 'select' ? (
+					<label key={ field.id } htmlFor={ field.id }>
+						{ field.label }
+						<select
+							id={ field.id }
+							aria-label={ field.label }
+							value={ String( data[ field.id ] ?? '' ) }
+							disabled={ field.isDisabled }
+							onChange={ ( event ) =>
+								onChange?.( {
+									[ field.id ]: event.target.value,
+								} )
+							}
+						>
+							{ field.elements?.map( ( element ) => (
+								<option
+									key={ element.value }
+									value={ element.value }
+								>
+									{ element.label }
+								</option>
+							) ) }
+						</select>
+					</label>
+				) : (
+					<label key={ field.id } htmlFor={ field.id }>
+						{ field.label }
+						<input
+							id={ field.id }
+							aria-label={ field.label }
+							placeholder={ field.placeholder }
+							value={ String( data[ field.id ] ?? '' ) }
+							disabled={ field.isDisabled }
+							onChange={ ( event ) =>
+								onChange?.( {
+									[ field.id ]: event.target.value,
+								} )
+							}
+						/>
+						{ validation && (
+							<span role="alert">{ validation }</span>
+						) }
+					</label>
+				);
+			} ) }
+		</>
+	);
+}
+
+export function useFormValidity(
+	data: Record< string, unknown >,
+	fields: DataFormProps[ 'fields' ] = []
+) {
+	const valueField = fields.find( ( field ) => field.id === 'value' );
+	const valueError = valueField?.isValid?.custom?.(
+		data as Record< string, any >
+	);
+	return {
+		validity: undefined,
+		isValid:
+			Boolean( data.action && data.type && data.value ) && ! valueError,
+	};
 }
 
 export namespace DataViews {

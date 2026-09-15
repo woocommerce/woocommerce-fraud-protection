@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import { dateI18n } from '@wordpress/date';
 import {
+	Button,
 	EmptyState,
 	Icon,
 	Notice,
@@ -18,6 +19,7 @@ import { Link } from 'react-router-dom';
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
 import { getFraudProtectionRoute } from './navigation';
+import { RuleFormDrawer } from './components/rule-form-drawer';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
 const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -210,6 +212,7 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 };
 
 export function RulesPage() {
+	const [ isCreateOpen, setIsCreateOpen ] = useState( false );
 	const [ view, setView ] = useState< View >( {
 		type: 'table' as const,
 		page: 1,
@@ -302,40 +305,56 @@ export function RulesPage() {
 							padding: '12px 16px',
 						} }
 					>
-						<Text
-							className="wc-fraud-protection-rules__breadcrumb"
-							variant="heading-lg"
-							style={ {
-								display: 'flex',
-								alignItems: 'center',
-								gap: 8,
-								margin: '0 8px 8px',
-								height: 32,
-								fontWeight: 500,
-							} }
-							render={
-								<nav
-									aria-label={ __(
-										'Breadcrumb',
+						<Stack
+							direction="row"
+							justify="space-between"
+							align="start"
+						>
+							<Text
+								className="wc-fraud-protection-rules__breadcrumb"
+								variant="heading-lg"
+								style={ {
+									display: 'flex',
+									alignItems: 'center',
+									gap: 8,
+									margin: '0 8px 8px',
+									height: 32,
+									fontWeight: 500,
+								} }
+								render={
+									<nav
+										aria-label={ __(
+											'Breadcrumb',
+											'woocommerce-fraud-protection'
+										) }
+									/>
+								}
+							>
+								<Link to={ rootSettingsHref }>
+									{ __(
+										'Fraud prevention',
 										'woocommerce-fraud-protection'
 									) }
-								/>
-							}
-						>
-							<Link to={ rootSettingsHref }>
+								</Link>
+								<span aria-hidden="true">/</span>
+								<span aria-current="page">
+									{ __(
+										'Rules',
+										'woocommerce-fraud-protection'
+									) }
+								</span>
+							</Text>
+							<Button
+								variant="solid"
+								size="compact"
+								onClick={ () => setIsCreateOpen( true ) }
+							>
 								{ __(
-									'Fraud prevention',
+									'Create rule',
 									'woocommerce-fraud-protection'
 								) }
-							</Link>
-							<span aria-hidden="true">/</span>
-							<span aria-current="page">
-								{ __(
-									'Rules',
-									'woocommerce-fraud-protection'
-								) }
-							</span>
-						</Text>
+							</Button>
+						</Stack>
 						<Text
 							className="wc-fraud-protection-rules__description"
 							variant="body-md"
@@ -462,6 +481,10 @@ export function RulesPage() {
 					</Tabs.Root>
 				</Stack>
 			</DataViews>
+			<RuleFormDrawer
+				open={ isCreateOpen }
+				onClose={ () => setIsCreateOpen( false ) }
+			/>
 		</Stack>
 	);
 }
