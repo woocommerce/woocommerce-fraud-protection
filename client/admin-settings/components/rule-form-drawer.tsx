@@ -1,8 +1,8 @@
 import {
 	useCallback,
 	useEffect,
+	useId,
 	useMemo,
-	useRef,
 	useState,
 } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
@@ -13,10 +13,12 @@ import { store as noticesStore } from '@wordpress/notices';
 import {
 	Button,
 	Drawer,
+	InputControl,
 	Notice,
 	Stack,
 	Text,
 	ValidatedInputControl,
+	ValidityIndicator,
 } from '@wordpress/ui';
 
 import type { CreateRuleRequest, Rule } from '../data/rules-store';
@@ -63,39 +65,42 @@ function RuleValueEditControl( {
 	hideLabelFromVision,
 	validity,
 }: DataFormControlProps< RuleFormData > ) {
-	const inputRef = useRef< HTMLInputElement >( null );
+	const duplicateMessageId = useId();
 	const value = field.getValue( { item: data } );
 	const onValueChange = useCallback(
 		( newValue: string ) =>
 			onChange( field.setValue( { item: data, value: newValue } ) ),
 		[ data, field, onChange ]
 	);
-	const customValidity = data.valueError
-		? { type: 'invalid' as const, message: data.valueError }
-		: validity?.custom;
-	useEffect( () => {
-		if ( data.valueError ) {
-			window.queueMicrotask( () => {
-				const input = inputRef.current;
-				if ( ! input ) {
-					return;
-				}
-				const wasDisabled = input.disabled;
-				input.disabled = false;
-				input.dispatchEvent(
-					new Event( 'invalid', { bubbles: true, cancelable: true } )
-				);
-				input.disabled = wasDisabled;
-			} );
-		}
-	}, [ data.valueError ] );
+
+	if ( data.valueError ) {
+		return (
+			<Stack direction="column" gap="xs">
+				<InputControl
+					aria-describedby={ duplicateMessageId }
+					aria-invalid="true"
+					required={ Boolean( field.isValid.required ) }
+					label={ field.label }
+					placeholder={ field.placeholder }
+					value={ value ?? '' }
+					onValueChange={ onValueChange }
+					hideLabelFromVision={ hideLabelFromVision }
+					disabled={ field.isDisabled( { item: data, field } ) }
+				/>
+				<ValidityIndicator
+					id={ duplicateMessageId }
+					type="invalid"
+					message={ data.valueError }
+				/>
+			</Stack>
+		);
+	}
 
 	return (
 		<ValidatedInputControl
-			ref={ inputRef }
 			required={ Boolean( field.isValid.required ) }
 			markWhenOptional={ true }
-			customValidity={ customValidity }
+			customValidity={ validity?.custom }
 			label={ field.label }
 			placeholder={ field.placeholder }
 			value={ value ?? '' }

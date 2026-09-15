@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -719,17 +719,33 @@ describe( 'RulesPage', () => {
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		);
 
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		const error = await within( drawer ).findByText(
+			'This email is already allowed by a rule.'
+		);
+		const duplicateValue = within( drawer ).getByLabelText( 'Value' );
+		expect( error.tagName ).toBe( 'P' );
+		expect( error.querySelector( 'svg[height="16"]' ) ).toBeInTheDocument();
+		expect( error.previousElementSibling ).toContainElement(
+			duplicateValue
+		);
+		expect( duplicateValue ).toHaveAttribute( 'aria-invalid', 'true' );
+		expect( duplicateValue ).toHaveAttribute(
+			'aria-describedby',
+			error.id
+		);
+		expect( duplicateValue ).not.toHaveAttribute( 'data-validity-visible' );
 		expect(
-			await screen.findByText(
+			within( drawer ).getAllByText(
 				'This email is already allowed by a rule.'
 			)
-		).toBeInTheDocument();
+		).toHaveLength( 1 );
 		expect( onClose ).not.toHaveBeenCalled();
 		expect(
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		).toHaveAttribute( 'aria-disabled', 'true' );
 
-		await userEvent.type( value, 'x' );
+		await userEvent.type( duplicateValue, 'x' );
 		expect(
 			screen.queryByText( 'This email is already allowed by a rule.' )
 		).not.toBeInTheDocument();
