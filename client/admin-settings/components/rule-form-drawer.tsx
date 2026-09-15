@@ -515,7 +515,7 @@ export function RuleFormDrawer( {
 								{ sprintf(
 									/* translators: 1: Rule creation date. 2: Rule last update date. */
 									__(
-										'This rule created on %1$s and last updated on %2$s',
+										'This rule created on %1$s and last updated on %2$s.',
 										'woocommerce-fraud-protection'
 									),
 									format( 'j M Y', rule.created_at ),

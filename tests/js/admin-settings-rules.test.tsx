@@ -1067,7 +1067,7 @@ describe( 'RulesPage', () => {
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( rule.value );
 		expect(
 			screen.getByText(
-				'This rule created on 14 Sep 2026 and last updated on 15 Sep 2026'
+				'This rule created on 14 Sep 2026 and last updated on 15 Sep 2026.'
 			)
 		).toBeInTheDocument();
 		await userEvent.selectOptions(
@@ -1111,7 +1111,7 @@ describe( 'RulesPage', () => {
 
 		expect(
 			screen.getByText(
-				'This rule created on 14 Sep 2026 and last updated on 14 Sep 2026'
+				'This rule created on 14 Sep 2026 and last updated on 14 Sep 2026.'
 			)
 		).toBeInTheDocument();
 	} );
