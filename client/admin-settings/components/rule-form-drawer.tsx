@@ -55,7 +55,6 @@ function RuleValueEditControl( {
 	field,
 	onChange,
 	hideLabelFromVision,
-	markWhenOptional,
 	validity,
 }: DataFormControlProps< RuleFormData > ) {
 	const value = field.getValue( { item: data } );
@@ -71,7 +70,7 @@ function RuleValueEditControl( {
 	return (
 		<ValidatedInputControl
 			required={ Boolean( field.isValid.required ) }
-			markWhenOptional={ markWhenOptional }
+			markWhenOptional={ true }
 			customValidity={ customValidity }
 			label={ field.label }
 			placeholder={ field.placeholder }
@@ -193,7 +192,7 @@ export function RuleFormDrawer( {
 					{
 						value: 'email',
 						label: __(
-							'Email address',
+							'email address',
 							'woocommerce-fraud-protection'
 						),
 					},

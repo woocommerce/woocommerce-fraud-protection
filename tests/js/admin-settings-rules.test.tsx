@@ -648,6 +648,10 @@ describe( 'RulesPage', () => {
 		expect(
 			await screen.findByRole( 'heading', { name: 'Create rule' } )
 		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Rule type' ) ).toHaveDisplayValue(
+			'email address'
+		);
+		expect( screen.getByLabelText( 'Value' ) ).toBeInTheDocument();
 	} );
 
 	it( 'submits the drawer, closes it, refreshes rules, and shows the success snackbar', async () => {

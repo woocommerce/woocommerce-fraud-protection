@@ -346,6 +346,7 @@ export function RulesPage() {
 							</Text>
 							<Button
 								variant="solid"
+								size="compact"
 								onClick={ () => setIsCreateOpen( true ) }
 							>
 								{ __(
