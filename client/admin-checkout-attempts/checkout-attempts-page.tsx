@@ -218,19 +218,18 @@ export function CheckoutAttemptsPage() {
 	);
 
 	// Automatic fraud prevention state comes from the shared settings store (its
-	// initial GET is preloaded for this route). Until that resolution finishes,
-	// treat protection as on so protection-off controls — the banner and the
-	// "enable" row action — do not appear or fire before the real state is known.
+	// initial GET is preloaded for this route). Until the settings are known —
+	// still loading, or the load failed and left them null — treat protection as
+	// on so protection-off controls (the banner and the "enable" row action) do
+	// not appear or fire before the real state is confirmed.
 	const { protectionOn, enabledAt } = useSelect( ( select ) => {
-		const store = select( settingsStore );
-		const settings = store.getSettings();
-		return store.hasFinishedResolution( 'getSettings' )
-			? {
-					protectionOn: settings?.automatic_protection === true,
-					enabledAt:
-						settings?.automatic_protection_enabled_at ?? null,
-			  }
-			: { protectionOn: true, enabledAt: null };
+		const settings = select( settingsStore ).getSettings();
+		return {
+			protectionOn: settings
+				? settings.automatic_protection === true
+				: true,
+			enabledAt: settings?.automatic_protection_enabled_at ?? null,
+		};
 	}, [] );
 
 	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );

@@ -15,8 +15,10 @@ import { createMemoryHistory } from 'history';
 import apiFetch from '@wordpress/api-fetch';
 import {
 	createReduxStore,
+	createRegistry,
 	dispatch as dataDispatch,
 	register,
+	RegistryProvider,
 } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
 
@@ -1236,6 +1238,64 @@ describe( 'CheckoutAttemptsPage', () => {
 			screen.queryByRole( 'button', {
 				name: 'Enable automatic fraud prevention',
 			} )
+		).not.toBeInTheDocument();
+	} );
+
+	it( 'keeps the protection-off controls hidden when the settings load fails', async () => {
+		mockApi();
+
+		// A failed settings load finishes resolution but leaves the settings
+		// null. The protection state is then unknown, so the off banner and the
+		// "enable" row action must stay hidden rather than appear as if
+		// protection were off. Use an isolated registry so `current` is null
+		// (the shared store cannot be reset to null once seeded).
+		const registry = createRegistry();
+		registry.register( settingsStore );
+		// The enable drawer is always mounted and reads core/notices, so the
+		// isolated registry needs it too.
+		registry.register(
+			createReduxStore( 'core/notices', {
+				reducer: ( state = null ) => state,
+				actions: {
+					createSuccessNotice: () => ( {
+						type: 'CREATE_SUCCESS_NOTICE',
+					} ),
+				},
+			} )
+		);
+		const settingsDispatch = registry.dispatch(
+			settingsStore
+		) as unknown as {
+			finishResolution: ( selector: string, args: unknown[] ) => void;
+			setError: ( error: {
+				message: string | null;
+				operation: 'load';
+			} ) => void;
+		};
+		settingsDispatch.finishResolution( 'getSettings', [] );
+		settingsDispatch.setError( { message: 'Boom', operation: 'load' } );
+
+		mockHistory = createMemoryHistory( {
+			initialEntries: [ '/wp-admin/admin.php?' ],
+		} );
+		render( <CheckoutAttemptsPage />, {
+			wrapper: ( { children }: { children: ReactNode } ) => (
+				<RegistryProvider value={ registry }>
+					<HistoryRouter history={ mockHistory }>
+						{ children }
+					</HistoryRouter>
+				</RegistryProvider>
+			),
+		} );
+
+		await waitFor( () => expect( lastDataViewsProps() ).toBeDefined() );
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Enable automatic fraud prevention',
+			} )
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText( /Automatic fraud prevention is off/ )
 		).not.toBeInTheDocument();
 	} );
 } );
