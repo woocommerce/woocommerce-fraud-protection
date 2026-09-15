@@ -341,7 +341,7 @@ export function RulesPage() {
 						<Tabs.Panel value="all">
 							{ actionTab === 'all' && (
 								<>
-									<DataViews.FiltersToggled />
+									<DataViews.FiltersToggled className="wc-fraud-protection-rules__filters" />
 									<DataViews.Layout />
 									<DataViews.Pagination />
 								</>
@@ -350,7 +350,7 @@ export function RulesPage() {
 						<Tabs.Panel value="allow">
 							{ actionTab === 'allow' && (
 								<>
-									<DataViews.FiltersToggled />
+									<DataViews.FiltersToggled className="wc-fraud-protection-rules__filters" />
 									<DataViews.Layout />
 									<DataViews.Pagination />
 								</>
@@ -359,7 +359,7 @@ export function RulesPage() {
 						<Tabs.Panel value="block">
 							{ actionTab === 'block' && (
 								<>
-									<DataViews.FiltersToggled />
+									<DataViews.FiltersToggled className="wc-fraud-protection-rules__filters" />
 									<DataViews.Layout />
 									<DataViews.Pagination />
 								</>

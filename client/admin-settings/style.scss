@@ -107,6 +107,14 @@
 			var(--wpds-color-stroke-surface-neutral-weak);
 	}
 
+	&__filters {
+		margin-block: var(--wpds-dimension-gap-lg);
+	}
+
+	.dataviews-view-table tr td:first-child {
+		padding-inline-start: var(--wpds-dimension-padding-2xl);
+	}
+
 	&__action--allow &__action-icon {
 		color: var(--wpds-color-foreground-content-success-weak);
 	}
