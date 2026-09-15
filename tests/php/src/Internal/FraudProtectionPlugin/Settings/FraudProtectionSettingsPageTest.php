@@ -208,7 +208,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$style  = wp_styles()->registered[ self::ASSET_HANDLE ];
 		$script = wp_scripts()->registered[ self::ASSET_HANDLE ];
 		$this->assertSame( plugins_url( 'build/admin-settings.css', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $style->src );
-		$this->assertSame( array( 'wp-components' ), $style->deps );
+		$this->assertSame( array( 'wp-components', 'wc-admin-style' ), $style->deps );
 		$this->assertSame( $version, $style->ver );
 		$this->assertSame( plugins_url( 'build/admin-settings.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $script->src );
 		$this->assertSame( $dependencies, $script->deps );
