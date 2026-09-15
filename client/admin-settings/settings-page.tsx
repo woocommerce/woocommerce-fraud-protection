@@ -76,6 +76,7 @@ export function FraudProtectionSettingsPage() {
 					savedSettings?.automatic_protection ?? null
 				}
 			/>
+			<RulesCard />
 			<PerformanceCard
 				automaticProtection={
 					savedSettings?.automatic_protection ?? false
@@ -83,7 +84,6 @@ export function FraudProtectionSettingsPage() {
 				isLoading={ isLoading }
 				performance={ performance }
 			/>
-			<RulesCard />
 			<Stack direction="row">
 				<Button
 					variant="solid"

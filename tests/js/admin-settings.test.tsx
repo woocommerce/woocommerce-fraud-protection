@@ -125,7 +125,12 @@ describe( 'FraudProtectionSettingsPage', () => {
 		const rulesCard = (
 			await screen.findByRole( 'heading', { name: 'Rules' } )
 		).closest( 'section' );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
 		expect( rulesCard ).not.toBeNull();
+		expect( performanceCard ).not.toBeNull();
+		expect( rulesCard?.nextElementSibling ).toBe( performanceCard );
 		const rules = within( rulesCard as HTMLElement );
 
 		expect(
@@ -236,7 +241,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 		await userEvent.click(
 			await within( drawer ).findByRole( 'button', {
-				name: 'View rule',
+				name: 'Edit existing rule',
 			} )
 		);
 
@@ -285,7 +290,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
 		);
 		const viewRule = await within( drawer ).findByRole( 'button', {
-			name: 'View rule',
+			name: 'Edit existing rule',
 		} );
 		act( () => viewRule.click() );
 		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 3, {
