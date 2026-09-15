@@ -1,3 +1,4 @@
+@import '@wordpress/components/build-style/style.css';
 @import '@wordpress/dataviews/build-style/style.css';
 
 .wc-fraud-protection-settings__content {
@@ -87,111 +88,35 @@
 }
 
 .wc-fraud-protection-rules {
-	max-width: none;
-	width: 100%;
-	box-sizing: border-box;
-	margin: 0;
-
-	&__header {
-		box-sizing: border-box;
-		min-height: 84px;
-		padding: 12px 16px;
-	}
+	background: var(--wpds-color-background-surface-neutral);
 
 	&__description {
-		margin-inline: 8px !important;
+		color: var(--wpds-color-foreground-content-neutral-weak) !important;
 	}
 
 	&__breadcrumb {
-		display: flex;
-		align-items: center;
-		gap: var(--wpds-dimension-gap-xs);
-		margin: 0 8px 8px;
-		color: #1e1e1e;
+		color: var(--wpds-color-foreground-content-neutral) !important;
 
 		a {
-			color: inherit;
+			color: inherit !important;
 		}
 	}
 
-	&__action {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--wpds-dimension-gap-xs);
-
-		&--allow {
-			color: #4ab866;
-		}
-
-		&--block {
-			color: #cc1818;
-		}
+	&__toolbar {
+		border-bottom: var(--wpds-border-width-xs) solid
+			var(--wpds-color-stroke-surface-neutral-weak);
 	}
 
-	> [data-orientation='horizontal'] {
-		position: relative;
-
-		> [role='tablist'] {
-			position: absolute;
-			top: 0;
-			left: 0;
-			z-index: 1;
-			height: 40px;
-			padding: 0 24px;
-		}
-
-		> [role='tabpanel'] {
-			position: relative;
-			padding-top: 40px;
-			border-top: 1px solid var(--wpds-color-stroke-surface-neutral-weak);
-		}
+	&__action--allow &__action-icon {
+		color: var(--wpds-color-foreground-content-success-weak);
 	}
 
-	.dataviews-wrapper {
-		position: relative;
-		border: 0;
-
-		.dataviews__view-actions {
-			position: absolute;
-			top: -40px;
-			right: 0;
-			left: 0;
-			min-height: 40px;
-			margin: 0;
-			padding: 0 24px;
-			justify-content: flex-end !important;
-			border-bottom: 1px solid var(--wpds-color-stroke-surface-neutral-weak);
-
-			.dataviews__search {
-				flex: 0 0 auto;
-			}
-		}
+	&__action--block &__action-icon {
+		color: var(--wpds-color-foreground-content-error-weak);
 	}
 
-	.dataviews-layout__container {
-		border: 0;
-	}
-
-	.dataviews-view-table {
-		table-layout: fixed;
-		width: 100%;
-
-		col.dataviews-view-table__col-action,
-		col.dataviews-view-table__col-value,
-		col.dataviews-view-table__col-type,
-		col.dataviews-view-table__col-created_at {
-			width: 25% !important;
-		}
-
-		tr {
-			height: 56px;
-			border-bottom: 1px solid var(--wpds-color-stroke-surface-neutral-weak);
-		}
-
-		th,
-		td {
-			height: 48px;
-			padding: 0 8px;
-		}
+	&__action,
+	&__value {
+		color: var(--wpds-color-foreground-content-neutral) !important;
 	}
 }

@@ -181,7 +181,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	 * @testdox The Fraud prevention tab uses generated metadata to enqueue its runtime assets.
 	 */
 	public function test_matching_tab_enqueues_generated_assets(): void {
-		$dependencies = array( 'react-jsx-runtime', 'wp-api-fetch', 'wp-components', 'wp-element', 'wp-i18n' );
+		$dependencies = array( 'react', 'react-dom', 'react-jsx-runtime', 'wc-navigation', 'wp-a11y', 'wp-api-fetch', 'wp-compose', 'wp-data', 'wp-date', 'wp-deprecated', 'wp-element', 'wp-hooks', 'wp-i18n', 'wp-notices', 'wp-primitives' );
 		$version      = 'settings-test-version';
 		$this->write_asset_fixture( $dependencies, $version );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;

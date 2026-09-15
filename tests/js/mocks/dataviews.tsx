@@ -8,21 +8,47 @@ type Rule = {
 
 type DataViewsProps = {
 	data: Rule[];
+	children?: React.ReactNode;
 };
 
-export function DataViews( { data }: DataViewsProps ) {
+export function DataViews( { data, children }: DataViewsProps ) {
 	return (
-		<table aria-label="Rules">
-			<tbody>
-				{ data.map( ( rule ) => (
-					<tr key={ rule.id }>
-						<td>{ rule.action }</td>
-						<td>{ rule.value }</td>
-						<td>{ rule.type }</td>
-						<td>{ rule.created_at }</td>
-					</tr>
-				) ) }
-			</tbody>
-		</table>
+		<>
+			{ children }
+			<table aria-label="Rules">
+				<tbody>
+					{ data.map( ( rule ) => (
+						<tr key={ rule.id }>
+							<td>{ rule.action }</td>
+							<td>{ rule.value }</td>
+							<td>{ rule.type }</td>
+							<td>{ rule.created_at }</td>
+						</tr>
+					) ) }
+				</tbody>
+			</table>
+		</>
 	);
+}
+
+export namespace DataViews {
+	export function FiltersToggle() {
+		return <button type="button" aria-label="Add filter" />;
+	}
+
+	export function ViewConfig() {
+		return <button type="button" aria-label="View options" />;
+	}
+
+	export function FiltersToggled() {
+		return null;
+	}
+
+	export function Layout() {
+		return null;
+	}
+
+	export function Pagination() {
+		return null;
+	}
 }
