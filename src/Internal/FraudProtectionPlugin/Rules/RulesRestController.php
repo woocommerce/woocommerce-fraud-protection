@@ -100,11 +100,16 @@ class RulesRestController extends \WP_REST_Controller {
 		}
 
 		$filters = array();
-		foreach ( array( 'action', 'type', 'value' ) as $key ) {
+		foreach ( array( 'action', 'type' ) as $key ) {
 			$value = $request->get_param( $key );
 			if ( is_string( $value ) && '' !== $value ) {
 				$filters[ $key ] = sanitize_text_field( $value );
 			}
+		}
+
+		$value = $request->get_param( 'value' );
+		if ( is_string( $value ) && '' !== $value ) {
+			$filters['value'] = $value;
 		}
 
 		foreach ( array( 'from', 'to' ) as $key ) {
