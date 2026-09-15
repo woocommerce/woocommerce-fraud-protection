@@ -20,6 +20,7 @@ import {
 	isCompleteIp,
 	RuleFormDrawer,
 } from '../../client/admin-settings/components/rule-form-drawer';
+import type { RuleFormContext } from '../../client/admin-settings/components/rule-form-drawer';
 import { dataViews } from './mocks/dataviews';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
@@ -66,7 +67,11 @@ const renderRules = () => {
 	);
 };
 
-const renderDrawer = ( onClose = jest.fn(), onSuccess = jest.fn() ) => {
+const renderDrawer = (
+	onClose = jest.fn(),
+	onSuccess = jest.fn(),
+	context?: RuleFormContext
+) => {
 	const registry = createRegistry();
 	registry.register( rulesStore );
 	registry.register( noticesStore );
@@ -77,6 +82,7 @@ const renderDrawer = ( onClose = jest.fn(), onSuccess = jest.fn() ) => {
 					open
 					onClose={ onClose }
 					onSuccess={ onSuccess }
+					context={ context }
 				/>
 			</RegistryProvider>
 		</MemoryRouter>
@@ -663,7 +669,7 @@ describe( 'RulesPage', () => {
 			} );
 
 		await userEvent.type(
-			screen.getByLabelText( 'Value' ),
+			screen.getByLabelText( /Value/ ),
 			'created@example.com'
 		);
 		await userEvent.click(
@@ -703,7 +709,7 @@ describe( 'RulesPage', () => {
 		} );
 		renderDrawer( onClose );
 
-		const value = screen.getByLabelText( 'Value' );
+		const value = screen.getByLabelText( /Value/ );
 		await userEvent.type( value, 'duplicate@example.com' );
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Create rule' } )
@@ -723,6 +729,20 @@ describe( 'RulesPage', () => {
 		expect(
 			screen.queryByText( 'This email is already allowed by a rule.' )
 		).not.toBeInTheDocument();
+	} );
+
+	it( 'keeps contextual rule type and value fixed', () => {
+		renderDrawer( jest.fn(), jest.fn(), {
+			recordedAttemptId: 7,
+			type: 'ip',
+			value: '203.0.113.9',
+			finalStatus: 'allowed',
+		} );
+
+		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'block' );
+		expect( screen.getByLabelText( 'Rule type' ) ).toBeDisabled();
+		expect( screen.getByLabelText( /Value/ ) ).toBeDisabled();
+		expect( screen.getByLabelText( /Value/ ) ).toHaveValue( '203.0.113.9' );
 	} );
 
 	it( 'sends the exact create request through the rules store', async () => {

@@ -29,7 +29,7 @@ type DataFormProps = {
 	fields?: Array< {
 		id: string;
 		label?: string;
-		Edit?: string;
+		Edit?: string | React.ComponentType< any >;
 		elements?: Array< { value: string; label: string } >;
 		isDisabled?: boolean;
 		placeholder?: string;
@@ -97,6 +97,41 @@ export function DataForm( { data, fields = [], onChange }: DataFormProps ) {
 				const validation = field.isValid?.custom?.(
 					data as Record< string, any >
 				);
+				if ( typeof field.Edit === 'function' ) {
+					const Edit = field.Edit;
+					return (
+						<Edit
+							key={ field.id }
+							data={ data }
+							field={ {
+								...field,
+								label: field.label ?? field.id,
+								getValue: ( { item }: { item: typeof data } ) =>
+									item[ field.id ],
+								setValue: ( {
+									value,
+								}: {
+									value: unknown;
+								} ) => ( {
+									[ field.id ]: value,
+								} ),
+								isDisabled: () => Boolean( field.isDisabled ),
+								isValid: field.isValid ?? {},
+							} }
+							onChange={ onChange }
+							validity={
+								validation
+									? {
+											custom: {
+												type: 'invalid',
+												message: validation,
+											},
+									  }
+									: undefined
+							}
+						/>
+					);
+				}
 				return field.Edit === 'select' ? (
 					<label key={ field.id } htmlFor={ field.id }>
 						{ field.label }
