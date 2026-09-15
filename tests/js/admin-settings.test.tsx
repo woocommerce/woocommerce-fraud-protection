@@ -162,6 +162,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 				type: 'email',
 				value: 'card@example.com',
 				created_at: '2026-09-15T12:00:00Z',
+				updated_at: null,
 			} )
 			.mockResolvedValueOnce( {
 				data: [],
@@ -215,6 +216,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			type: 'email',
 			value: 'duplicate@example.com',
 			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
 		};
 		mockedApiFetch
 			.mockResolvedValueOnce( settingsResponse( false ) )
@@ -311,6 +313,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			type: 'email',
 			value: 'duplicate@example.com',
 			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
 		};
 		let resolveDetail: ( rule: typeof duplicate ) => void = () => undefined;
 		const detailRequest = new Promise< typeof duplicate >( ( resolve ) => {
