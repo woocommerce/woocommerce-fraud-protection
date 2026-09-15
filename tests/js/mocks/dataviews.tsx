@@ -30,7 +30,7 @@ export const dataViews = {
 
 export function DataViews( props: DataViewsProps ) {
 	dataViews.props = props;
-	const { data, children, empty, fields = [] } = props;
+	const { data, children, empty, fields = [], isLoading } = props;
 	return (
 		<>
 			{ children }
@@ -69,7 +69,7 @@ export function DataViews( props: DataViewsProps ) {
 					} ) }
 				</tbody>
 			</table>
-			{ data.length === 0 && empty }
+			{ data.length === 0 && ! isLoading && empty }
 		</>
 	);
 }

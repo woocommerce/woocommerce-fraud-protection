@@ -123,7 +123,7 @@ describe( 'RulesPage', () => {
 		).toBe( 'Created' );
 	} );
 
-	it( 'shows table skeletons while the initial rules request loads', async () => {
+	it( 'uses the DataViews loading state while the initial request loads', async () => {
 		let resolveRequest: ( response: RulesResponse ) => void = () => {};
 		mockedApiFetch.mockReturnValueOnce(
 			new Promise< RulesResponse >( ( resolve ) => {
@@ -136,10 +136,8 @@ describe( 'RulesPage', () => {
 		expect(
 			await screen.findByText( 'Loading rules' )
 		).toBeInTheDocument();
-		expect( dataViews.props?.data ).toHaveLength( 5 );
-		expect( dataViews.props?.data.every( ( rule ) => rule.id < 0 ) ).toBe(
-			true
-		);
+		expect( dataViews.props?.data ).toHaveLength( 0 );
+		expect( dataViews.props?.isLoading ).toBe( true );
 		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
 		expect(
 			screen.getByText( 'Loading rules' ).closest( '[aria-busy="true"]' )

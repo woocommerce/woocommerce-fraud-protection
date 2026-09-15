@@ -5,7 +5,6 @@ import {
 	EmptyState,
 	Icon,
 	Notice,
-	Skeleton,
 	Stack,
 	Tabs,
 	Text,
@@ -31,23 +30,6 @@ const ruleTypes = [
 	{ value: 'ip', label: __( 'IP', 'woocommerce-fraud-protection' ) },
 ];
 
-const loadingRules: Rule[] = Array.from( { length: 5 }, ( _, index ) => ( {
-	id: -( index + 1 ),
-	action: 'allow',
-	value: '',
-	type: 'email',
-	created_at: '',
-} ) );
-
-const RuleSkeleton = ( { width }: { width: string } ) => (
-	<Skeleton
-		style={ {
-			width,
-			height: 'var(--wpds-typography-line-height-md)',
-		} }
-	/>
-);
-
 const fields: Field< Rule >[] = [
 	{
 		id: 'action',
@@ -55,47 +37,39 @@ const fields: Field< Rule >[] = [
 		type: 'text',
 		elements: ruleActions,
 		filterBy: { operators: [ 'is' ] },
-		render: ( { item } ) =>
-			item.id < 0 ? (
-				<RuleSkeleton width="50%" />
-			) : (
-				<Stack
-					className={ `wc-fraud-protection-rules__action wc-fraud-protection-rules__action--${ item.action }` }
-					direction="row"
-					align="center"
-					gap="xs"
-					render={ <span /> }
-				>
-					<Icon
-						className="wc-fraud-protection-rules__action-icon"
-						icon={
-							item.action === 'allow' ? published : notAllowed
-						}
-						aria-hidden="true"
-						size={ 18 }
-					/>
-					{ item.action === 'allow'
-						? __( 'Allow', 'woocommerce-fraud-protection' )
-						: __( 'Block', 'woocommerce-fraud-protection' ) }
-				</Stack>
-			),
+		render: ( { item } ) => (
+			<Stack
+				className={ `wc-fraud-protection-rules__action wc-fraud-protection-rules__action--${ item.action }` }
+				direction="row"
+				align="center"
+				gap="xs"
+				render={ <span /> }
+			>
+				<Icon
+					className="wc-fraud-protection-rules__action-icon"
+					icon={ item.action === 'allow' ? published : notAllowed }
+					aria-hidden="true"
+					size={ 18 }
+				/>
+				{ item.action === 'allow'
+					? __( 'Allow', 'woocommerce-fraud-protection' )
+					: __( 'Block', 'woocommerce-fraud-protection' ) }
+			</Stack>
+		),
 	},
 	{
 		id: 'value',
 		label: __( 'Value', 'woocommerce-fraud-protection' ),
 		type: 'text',
 		filterBy: { operators: [ 'is' ] },
-		render: ( { item } ) =>
-			item.id < 0 ? (
-				<RuleSkeleton width="75%" />
-			) : (
-				<Text
-					className="wc-fraud-protection-rules__value"
-					variant="body-md"
-				>
-					{ item.value }
-				</Text>
-			),
+		render: ( { item } ) => (
+			<Text
+				className="wc-fraud-protection-rules__value"
+				variant="body-md"
+			>
+				{ item.value }
+			</Text>
+		),
 	},
 	{
 		id: 'type',
@@ -103,15 +77,10 @@ const fields: Field< Rule >[] = [
 		type: 'text',
 		elements: ruleTypes,
 		filterBy: { operators: [ 'is' ] },
-		render: ( { item } ) => {
-			if ( item.id < 0 ) {
-				return <RuleSkeleton width="40%" />;
-			}
-
-			return item.type === 'email'
+		render: ( { item } ) =>
+			item.type === 'email'
 				? __( 'Email', 'woocommerce-fraud-protection' )
-				: __( 'IP', 'woocommerce-fraud-protection' );
-		},
+				: __( 'IP', 'woocommerce-fraud-protection' ),
 	},
 	{
 		id: 'created_at',
@@ -119,12 +88,7 @@ const fields: Field< Rule >[] = [
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
-		render: ( { item } ) =>
-			item.id < 0 ? (
-				<RuleSkeleton width="50%" />
-			) : (
-				format( 'j M Y', item.created_at )
-			),
+		render: ( { item } ) => format( 'j M Y', item.created_at ),
 	},
 ];
 
@@ -268,7 +232,6 @@ export function RulesPage() {
 	);
 	const actionTab = getActionTab( view );
 	const isInitialLoading = isLoading && rules.length === 0;
-	const displayedRules = isInitialLoading ? loadingRules : rules;
 
 	useEffect( () => {
 		requestRules( getQueryFromView( view ) );
@@ -276,7 +239,7 @@ export function RulesPage() {
 
 	const empty = useMemo(
 		() => (
-			<EmptyState.Root>
+			<EmptyState.Root className="wc-fraud-protection-rules__empty-state">
 				<EmptyState.Title>
 					{ __( 'No rules', 'woocommerce-fraud-protection' ) }
 				</EmptyState.Title>
@@ -303,7 +266,7 @@ export function RulesPage() {
 				</VisuallyHidden>
 			) }
 			<DataViews
-				data={ displayedRules }
+				data={ rules }
 				fields={ visibleFields }
 				view={ view }
 				onChangeView={ setView }
