@@ -219,6 +219,49 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Value and type sorting works without database JSON functions.
+	 */
+	public function test_active_rules_page_sorting_supports_minimum_database_versions(): void {
+		$email = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$ip    = $this->sut->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '10.0.0.1',
+			)
+		);
+
+		$reject_json_functions = static function ( string $query ): string {
+			if ( preg_match( '/JSON_(?:EXTRACT|UNQUOTE)/i', $query ) ) {
+				throw new \RuntimeException( 'JSON functions are unavailable.' );
+			}
+			return $query;
+		};
+		add_filter( 'query', $reject_json_functions );
+
+		try {
+			$value_page = $this->sut->get_active_rules_page(
+				array(
+					'orderby' => 'value',
+					'order'   => 'asc',
+				)
+			);
+			$type_page  = $this->sut->get_active_rules_page(
+				array(
+					'orderby' => 'type',
+					'order'   => 'asc',
+				)
+			);
+		} finally {
+			remove_filter( 'query', $reject_json_functions );
+		}
+
+		$this->assertSame( array( $ip->id, $email->id ), array_map( fn( Rule $rule ) => $rule->id, $value_page['items'] ) );
+		$this->assertSame( array( $email->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $type_page['items'] ) );
+	}
+
+	/**
 	 * Get a rule row straight from the table.
 	 *
 	 * @param int $id The rule id.

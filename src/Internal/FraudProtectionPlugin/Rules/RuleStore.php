@@ -373,8 +373,8 @@ class RuleStore {
 		$order            = isset( $filters['order'] ) && 'asc' === strtolower( (string) $filters['order'] ) ? 'ASC' : 'DESC';
 		$order_expression = match ( $orderby ) {
 			'action' => 'action',
-			'value'  => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(conditions, '$.value')))",
-			'type'   => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(conditions, '$.field')))",
+			'value'  => "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"value\":\"', -1), '\"', 1))",
+			'type'   => "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"field\":\"', -1), '\"', 1))",
 			default  => 'created_at',
 		};
 		$sql  = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$order_expression} {$order}, id {$order} LIMIT %d OFFSET %d";
