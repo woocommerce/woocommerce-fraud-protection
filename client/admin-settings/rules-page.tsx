@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { Notice, Stack, Tabs, Text } from '@wordpress/ui';
+import { format } from '@wordpress/date';
+import { Icon, Notice, Stack, Tabs, Text } from '@wordpress/ui';
+import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { Field, View } from '@wordpress/dataviews';
 import { Link } from 'react-router-dom';
@@ -17,7 +19,7 @@ const ruleActions = [
 ];
 const ruleTypes = [
 	{ value: 'email', label: __( 'Email', 'woocommerce-fraud-protection' ) },
-	{ value: 'ip', label: __( 'IP address', 'woocommerce-fraud-protection' ) },
+	{ value: 'ip', label: __( 'IP', 'woocommerce-fraud-protection' ) },
 ];
 
 const fields: Field< Rule >[] = [
@@ -28,10 +30,20 @@ const fields: Field< Rule >[] = [
 		elements: ruleActions,
 		filterBy: { operators: [ 'is' ] },
 		enableSorting: false,
-		render: ( { item } ) =>
-			item.action === 'allow'
-				? __( 'Allow', 'woocommerce-fraud-protection' )
-				: __( 'Block', 'woocommerce-fraud-protection' ),
+		render: ( { item } ) => (
+			<span
+				className={ `wc-fraud-protection-rules__action wc-fraud-protection-rules__action--${ item.action }` }
+			>
+				<Icon
+					icon={ item.action === 'allow' ? published : notAllowed }
+					aria-hidden="true"
+					size={ 18 }
+				/>
+				{ item.action === 'allow'
+					? __( 'Allow', 'woocommerce-fraud-protection' )
+					: __( 'Block', 'woocommerce-fraud-protection' ) }
+			</span>
+		),
 	},
 	{
 		id: 'value',
@@ -50,14 +62,16 @@ const fields: Field< Rule >[] = [
 		render: ( { item } ) =>
 			item.type === 'email'
 				? __( 'Email', 'woocommerce-fraud-protection' )
-				: __( 'IP address', 'woocommerce-fraud-protection' ),
+				: __( 'IP', 'woocommerce-fraud-protection' ),
 	},
 	{
 		id: 'created_at',
-		label: __( 'Created', 'woocommerce-fraud-protection' ),
+		label: __( 'Created/Date', 'woocommerce-fraud-protection' ),
+		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
 		filterBy: { operators: [ 'between' ] },
 		enableSorting: false,
+		render: ( { item } ) => format( 'j M Y', item.created_at ),
 	},
 ];
 
@@ -136,33 +150,37 @@ export function RulesPage() {
 	);
 
 	return (
-		<Stack
-			className="wc-fraud-protection-rules"
-			direction="column"
-			gap="lg"
-		>
-			<nav
-				className="wc-fraud-protection-rules__breadcrumb"
-				aria-label={ __(
-					'Breadcrumb',
-					'woocommerce-fraud-protection'
-				) }
+		<Stack className="wc-fraud-protection-rules" direction="column">
+			<Stack
+				className="wc-fraud-protection-rules__header"
+				direction="column"
+				gap="none"
 			>
-				<Link to={ rootSettingsHref }>
-					{ __( 'Fraud prevention', 'woocommerce-fraud-protection' ) }
-				</Link>
-				<span aria-hidden="true">/</span>
-				<span aria-current="page">
-					{ __( 'Rules', 'woocommerce-fraud-protection' ) }
-				</span>
-			</nav>
-			<Stack direction="column" gap="xs">
-				<Text variant="heading-lg" render={ <h1 /> }>
-					{ __( 'Rules', 'woocommerce-fraud-protection' ) }
-				</Text>
-				<Text variant="body-md" render={ <p /> }>
+				<nav
+					className="wc-fraud-protection-rules__breadcrumb"
+					aria-label={ __(
+						'Breadcrumb',
+						'woocommerce-fraud-protection'
+					) }
+				>
+					<Link to={ rootSettingsHref }>
+						{ __(
+							'Fraud prevention',
+							'woocommerce-fraud-protection'
+						) }
+					</Link>
+					<span aria-hidden="true">/</span>
+					<span aria-current="page">
+						{ __( 'Rules', 'woocommerce-fraud-protection' ) }
+					</span>
+				</nav>
+				<Text
+					className="wc-fraud-protection-rules__description"
+					variant="body-md"
+					render={ <p /> }
+				>
 					{ __(
-						'Allow rules take priority over block rules.',
+						'Rules that always let checkout attempts through or always block them, no matter what our fraud detection decides.',
 						'woocommerce-fraud-protection'
 					) }
 				</Text>
