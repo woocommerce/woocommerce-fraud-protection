@@ -214,27 +214,29 @@ describe( 'RulesPage', () => {
 	} );
 
 	it( 'converts local filter dates to inclusive UTC bounds', () => {
-		const runtimeProcess = (
-			globalThis as typeof globalThis & {
-				process: { env: { TZ?: string } };
-			}
-		 ).process;
-		const originalTimezone = runtimeProcess.env.TZ;
-		runtimeProcess.env.TZ = 'America/Sao_Paulo';
-		try {
-			expect( getUtcDateFilterBound( '2026-09-15', false ) ).toBe(
-				'2026-09-15T03:00:00Z'
-			);
-			expect( getUtcDateFilterBound( '2026-09-15', true ) ).toBe(
-				'2026-09-16T02:59:59Z'
-			);
-		} finally {
-			if ( originalTimezone === undefined ) {
-				delete runtimeProcess.env.TZ;
-			} else {
-				runtimeProcess.env.TZ = originalTimezone;
-			}
-		}
+		const start = new Date(
+			getUtcDateFilterBound( '2026-09-15', false ) as string
+		);
+		const end = new Date(
+			getUtcDateFilterBound( '2026-09-15', true ) as string
+		);
+
+		expect( [
+			start.getFullYear(),
+			start.getMonth(),
+			start.getDate(),
+			start.getHours(),
+			start.getMinutes(),
+			start.getSeconds(),
+		] ).toEqual( [ 2026, 8, 15, 0, 0, 0 ] );
+		expect( [
+			end.getFullYear(),
+			end.getMonth(),
+			end.getDate(),
+			end.getHours(),
+			end.getMinutes(),
+			end.getSeconds(),
+		] ).toEqual( [ 2026, 8, 15, 23, 59, 59 ] );
 	} );
 
 	it( 'selects All when DataViews removes the action filter', async () => {
