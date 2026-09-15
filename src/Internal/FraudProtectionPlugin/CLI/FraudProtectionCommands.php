@@ -176,11 +176,11 @@ class FraudProtectionCommands {
 			? $this->automatic_protection_updater->reset( SettingsChangeChannel::Cli )
 			: $this->automatic_protection_updater->set_enabled( 'enabled' === $value, SettingsChangeChannel::Cli );
 		if ( ! $success ) {
-			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The automatic-protection setting could not be saved.', 'woocommerce-fraud-protection' ) );
+			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'The automatic fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ) );
 			return;
 		}
 
-		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The automatic-protection setting was updated.', 'woocommerce-fraud-protection' ) );
+		$this->legacy_proxy->call_static( WP_CLI::class, 'success', __( 'The automatic fraud prevention setting was updated.', 'woocommerce-fraud-protection' ) );
 	}
 
 	/**

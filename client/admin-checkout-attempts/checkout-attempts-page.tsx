@@ -321,9 +321,10 @@ export function CheckoutAttemptsPage() {
 
 	// A page past the last one (a stale link, or rows pruned since) would show a
 	// confusing empty list, so fall back to the last existing page — or page 1
-	// when there are no results at all.
+	// when there are no results at all. A failed request reports zero pages, so
+	// skip the correction on error: it would drop the deep link and refetch.
 	useEffect( () => {
-		if ( isLoading ) {
+		if ( isLoading || error ) {
 			return;
 		}
 
@@ -335,7 +336,7 @@ export function CheckoutAttemptsPage() {
 			setView( nextView );
 			commitToUrl( nextView, tab, true );
 		}
-	}, [ isLoading, totalPages, view, tab, commitToUrl ] );
+	}, [ isLoading, error, totalPages, view, tab, commitToUrl ] );
 
 	// The empty state depends on why the list is empty, so it does not claim
 	// there were no attempts when a search, filter, or load error is the cause.

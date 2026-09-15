@@ -236,6 +236,24 @@ $format = array( '%s', '%s', '%s', '%s', '%s', '%s', '%f', '%s', '%s', '%s', '%s
 $tally    = array();
 $inserted = 0;
 
+// Real merchant-rule ids by action, so a rule-decided row references a rule that
+// actually exists instead of a fabricated id. Empty when the rules table is
+// absent or holds no rule of that action; those rows then store a null
+// matched_rule_id (the outcome still reads from trigger_type).
+$rules_table = $wpdb->prefix . 'wc_fraud_protection_rules';
+$rule_ids    = array(
+	'allow' => array(),
+	'block' => array(),
+);
+if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $rules_table ) ) ) === $rules_table ) {
+	foreach ( (array) $wpdb->get_results( 'SELECT id, action FROM ' . $rules_table, ARRAY_A ) as $rule ) {
+		$rule_action = (string) ( $rule['action'] ?? '' );
+		if ( isset( $rule_ids[ $rule_action ] ) ) {
+			$rule_ids[ $rule_action ][] = (int) $rule['id'];
+		}
+	}
+}
+
 for ( $i = 0; $i < $count; $i++ ) {
 	$recipe   = $recipes[ $weighted[ wp_rand( 0, count( $weighted ) - 1 ) ] ];
 	$person   = $people[ wp_rand( 0, count( $people ) - 1 ) ];
@@ -255,6 +273,13 @@ for ( $i = 0; $i < $count; $i++ ) {
 
 	$order_id = ( 'allowed' === $recipe['final_status'] && 1 === wp_rand( 0, 1 ) ) ? wp_rand( 1000, 99999 ) : null;
 
+	// A rule-decided outcome references a real rule of the matching action when
+	// one exists; otherwise it records no rule rather than a fabricated id.
+	$rule_action     = 'allow_rule' === $recipe['trigger'] ? 'allow' : 'block';
+	$matched_rule_id = ( $recipe['rule'] && array() !== $rule_ids[ $rule_action ] )
+		? $rule_ids[ $rule_action ][ wp_rand( 0, count( $rule_ids[ $rule_action ] ) - 1 ) ]
+		: null;
+
 	$data = array(
 		'session_id'       => 'sess_' . bin2hex( random_bytes( 12 ) ),
 		'recorded_at'      => gmdate( 'Y-m-d H:i:s', time() - wp_rand( 0, 29 * DAY_IN_SECONDS ) ),
@@ -273,7 +298,7 @@ for ( $i = 0; $i < $count; $i++ ) {
 		'billing_name'     => $person[0] . ' ' . $person[1],
 		'order_id'         => $order_id,
 		'payment_method'   => $payment_methods[ wp_rand( 0, count( $payment_methods ) - 1 ) ],
-		'matched_rule_id'  => $recipe['rule'] ? wp_rand( 1, 5 ) : null,
+		'matched_rule_id'  => $matched_rule_id,
 	);
 
 	if ( false !== $wpdb->insert( $table, $data, $format ) ) {

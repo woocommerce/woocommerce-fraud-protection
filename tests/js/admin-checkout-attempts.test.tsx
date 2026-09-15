@@ -1001,6 +1001,21 @@ describe( 'CheckoutAttemptsPage', () => {
 		).toHaveLength( 1 );
 	} );
 
+	it( 'keeps the current page when the request fails', async () => {
+		mockApi( {
+			sessions: () => Promise.reject( new Error( 'Nope.' ) ),
+		} );
+
+		renderPage( '/?paged=3' );
+
+		await waitFor( () =>
+			expect( screen.getAllByText( 'Nope.' ).length ).toBeGreaterThan( 0 )
+		);
+		// A failed request reports zero pages; the list must not reset the page
+		// (which would drop the deep link and refetch).
+		expect( lastDataViewsProps().view.page ).toBe( 3 );
+	} );
+
 	it( 'shows the automatic-protection banner while protection is off', async () => {
 		mockApi();
 

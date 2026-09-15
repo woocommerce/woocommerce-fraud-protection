@@ -184,7 +184,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->automatic_protection_set( array( $value ) );
 
-		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
+		$this->assertSame( array( 'The automatic fraud prevention setting was updated.' ), $this->wp_cli_successes );
 	}
 
 	/**
@@ -199,7 +199,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->automatic_protection_set( array( 'default' ) );
 
-		$this->assertSame( array( 'The automatic-protection setting was updated.' ), $this->wp_cli_successes );
+		$this->assertSame( array( 'The automatic fraud prevention setting was updated.' ), $this->wp_cli_successes );
 	}
 
 	/**
@@ -230,7 +230,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection_updater->expects( $this->never() )->method( 'reset' );
 
 		$this->expectException( WPCLIErrorException::class );
-		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->expectExceptionMessage( 'The automatic fraud prevention setting could not be saved.' );
 		$this->sut->automatic_protection_set( array( $value ) );
 	}
 
@@ -245,7 +245,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 			->willReturn( false );
 
 		$this->expectException( WPCLIErrorException::class );
-		$this->expectExceptionMessage( 'The automatic-protection setting could not be saved.' );
+		$this->expectExceptionMessage( 'The automatic fraud prevention setting could not be saved.' );
 		$this->sut->automatic_protection_set( array( 'default' ) );
 	}
 
