@@ -411,7 +411,7 @@ class RulesRestController extends \WP_REST_Controller {
 		}
 
 		try {
-			$result = $this->rule_store->update_rule_with_result( $id, $decision, $conditions );
+			$result = $this->rule_store->update_rule_with_result( $id, $decision, $conditions, required_status: RuleStatus::Active );
 		} catch ( DuplicateRuleException $error ) {
 			return $this->duplicate_rule_error( $error, $type );
 		} catch ( \InvalidArgumentException ) {
@@ -445,7 +445,7 @@ class RulesRestController extends \WP_REST_Controller {
 
 		$id = (int) $request->get_param( 'id' );
 		try {
-			$deleted_rule = $this->rule_store->delete_rule_with_result( $id );
+			$deleted_rule = $this->rule_store->delete_rule_with_result( $id, RuleStatus::Active );
 		} catch ( \RuntimeException ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rule_delete_failed', __( 'The rule could not be deleted.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}

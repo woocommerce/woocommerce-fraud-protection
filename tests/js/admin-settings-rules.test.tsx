@@ -1031,6 +1031,22 @@ describe( 'RulesPage', () => {
 		} );
 	} );
 
+	it( 'rejects an invalid rule detail response', async () => {
+		const registry = createRegistry();
+		registry.register( rulesStore );
+		mockedApiFetch.mockResolvedValueOnce( {
+			id: 9,
+			action: 'allow',
+			value: 'shopper@example.com',
+			type: 'email',
+			created_at: '2026-09-14T12:00:00Z',
+		} );
+
+		await expect(
+			registry.dispatch( rulesStore ).requestRule( 9 )
+		).rejects.toThrow( 'Could not get a valid response from the server.' );
+	} );
+
 	it( 'opens edit state, saves changes, and shows the exact success toast', async () => {
 		const rule: Rule = {
 			id: 9,

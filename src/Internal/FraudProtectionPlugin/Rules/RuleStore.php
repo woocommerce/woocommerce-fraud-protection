@@ -178,12 +178,13 @@ class RuleStore {
 	 * @param ?array         $conditions New condition document, if changing; validated and normalized.
 	 * @param ?RuleStatus    $status     New status, if changing.
 	 * @param ?int           $position   New evaluation position, if changing.
+	 * @param ?RuleStatus    $required_status Status that the rule must have before updating, or null for any live status.
 	 * @return ?array{rule: Rule, changed: bool} The current rule and change result, or null when no live rule has the given id.
 	 * @throws \InvalidArgumentException When a given value is invalid.
 	 * @throws DuplicateRuleException When the new conditions duplicate another live rule.
 	 * @throws \RuntimeException When the update or write lock fails.
 	 */
-	public function update_rule_with_result( int $id, ?FraudDecision $action = null, ?array $conditions = null, ?RuleStatus $status = null, ?int $position = null ): ?array {
+	public function update_rule_with_result( int $id, ?FraudDecision $action = null, ?array $conditions = null, ?RuleStatus $status = null, ?int $position = null, ?RuleStatus $required_status = null ): ?array {
 		global $wpdb;
 
 		if ( ! is_null( $action ) && ! in_array( $action, FraudDecision::ACTIONABLE, true ) ) {
@@ -208,7 +209,7 @@ class RuleStore {
 		try {
 			for ( $attempt = 0; $attempt < 3; $attempt++ ) {
 				$rule = $this->get_rule( $id );
-				if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status ) {
+				if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status || ( ! is_null( $required_status ) && $required_status !== $rule->status ) ) {
 					return null;
 				}
 
@@ -293,11 +294,12 @@ class RuleStore {
 	/**
 	 * Delete a rule and return the rule state protected by the write lock.
 	 *
-	 * @param int $id The rule id.
+	 * @param int         $id              The rule id.
+	 * @param ?RuleStatus $required_status Status that the rule must have before deletion, or null for any live status.
 	 * @return ?Rule The deleted rule snapshot, or null when no live rule has the given id.
 	 * @throws \RuntimeException When the read, delete, or write lock fails.
 	 */
-	public function delete_rule_with_result( int $id ): ?Rule {
+	public function delete_rule_with_result( int $id, ?RuleStatus $required_status = null ): ?Rule {
 		global $wpdb;
 
 		$user_id = get_current_user_id();
@@ -311,7 +313,7 @@ class RuleStore {
 		$write_lock_name = $this->acquire_write_lock();
 		try {
 			$rule = $this->get_rule( $id );
-			if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status ) {
+			if ( is_null( $rule ) || RuleStatus::Deleted === $rule->status || ( ! is_null( $required_status ) && $required_status !== $rule->status ) ) {
 				return null;
 			}
 			$affected = $this->run_write_query( $this->build_update_sql( $changes, $id ) );

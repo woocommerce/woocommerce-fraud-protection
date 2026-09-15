@@ -82,7 +82,8 @@ const isRule = ( value: unknown ): value is Rule => {
 		( rule.action === 'allow' || rule.action === 'block' ) &&
 		typeof rule.value === 'string' &&
 		( rule.type === 'email' || rule.type === 'ip' ) &&
-		typeof rule.created_at === 'string'
+		typeof rule.created_at === 'string' &&
+		( rule.updated_at === null || typeof rule.updated_at === 'string' )
 	);
 };
 
@@ -225,10 +226,15 @@ const actions = {
 			await dispatch.requestRules( select.getQuery() );
 			return response;
 		},
-	requestRule: ( id: number ) => async () =>
-		apiFetch< Rule >( {
+	requestRule: ( id: number ) => async () => {
+		const response = await apiFetch< unknown >( {
 			path: `/wc-fraud-protection/v1/rules/${ id }`,
-		} ),
+		} );
+		if ( ! isRule( response ) ) {
+			throw new Error( INVALID_RESPONSE_MESSAGE );
+		}
+		return response;
+	},
 	updateRule:
 		( id: number, request: UpdateRuleRequest ) =>
 		async ( {

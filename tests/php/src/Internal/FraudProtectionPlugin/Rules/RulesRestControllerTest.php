@@ -1012,6 +1012,55 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox An update does not change a rule disabled after the controller read.
+	 */
+	public function test_concurrent_disabled_update_returns_not_found(): void {
+		$rule      = $this->rule_store->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'disabled-during-update@example.com',
+			)
+		);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$table  = $this->schema_manager->get_rules_table_name();
+		$reads  = 0;
+		$filter = function ( string $query ) use ( $table, $rule, &$reads, &$filter ): string {
+			if ( ! str_contains( $query, "SELECT * FROM {$table} WHERE id = {$rule->id}" ) ) {
+				return $query;
+			}
+			++$reads;
+			if ( 2 === $reads ) {
+				remove_filter( 'query', $filter );
+				$this->rule_store->update_rule( $rule->id, status: RuleStatus::Disabled );
+			}
+
+			return $query;
+		};
+		add_filter( 'query', $filter );
+		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request->set_body_params(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'value'  => 'disabled-during-update@example.com',
+				'origin' => 'rules',
+			)
+		);
+
+		$response = $this->server->dispatch( $request );
+		remove_filter( 'query', $filter );
+		$stored = $this->rule_store->get_rule( $rule->id );
+
+		$this->assertSame( 404, $response->get_status() );
+		$this->assertSame( RuleStatus::Disabled, $stored->status );
+		$this->assertSame( FraudDecision::Block, $stored->action );
+	}
+
+	/**
 	 * @testdox Delete soft-deletes once, sends no feedback, and tracks the deleted rule.
 	 */
 	public function test_delete_rule_tracks_success_only_without_feedback(): void {
@@ -1039,6 +1088,29 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Delete does not expose or change a disabled rule.
+	 */
+	public function test_delete_rule_rejects_a_disabled_rule(): void {
+		$rule = $this->rule_store->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'disabled@example.com',
+			)
+		);
+		$this->assertNotNull( $this->rule_store->update_rule( $rule->id, status: RuleStatus::Disabled ) );
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+
+		$this->assertSame( 404, $response->get_status() );
+		$this->assertSame( RuleStatus::Disabled, $this->rule_store->get_rule( $rule->id )->status );
+	}
+
+	/**
 	 * @testdox Delete telemetry uses the rule snapshot protected by the store write lock.
 	 */
 	public function test_delete_rule_tracks_the_locked_rule_snapshot(): void {
@@ -1059,7 +1131,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$this->assertNotNull( $deleted_rule );
 		$rule_store = $this->createMock( RuleStore::class );
-		$rule_store->expects( $this->once() )->method( 'delete_rule_with_result' )->with( 42 )->willReturn( $deleted_rule );
+		$rule_store->expects( $this->once() )->method( 'delete_rule_with_result' )->with( 42, RuleStatus::Active )->willReturn( $deleted_rule );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Allow, 'email', 'rules' );
 		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
