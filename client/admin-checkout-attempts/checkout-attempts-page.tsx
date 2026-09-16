@@ -21,8 +21,16 @@ import { loadPrefs, savePrefs } from './persisted-state';
 import { useCheckoutAttempts } from './use-checkout-attempts';
 import { getFraudProtectionRoute } from '../admin-settings/navigation';
 import { settingsStore } from '../admin-settings/data/store';
+import type { Rule } from '../admin-settings/data/rules-store';
+import { useRuleFormDrawer } from '../admin-settings/hooks/use-rule-form-drawer';
+import {
+	RuleFormDrawer,
+	type RuleFormContext,
+} from '../admin-settings/components/rule-form-drawer';
+import { RuleDeleteDialog } from '../admin-settings/components/rule-delete-dialog';
 import type { DisplayPrefs, StatusTab } from './persisted-state';
 import type { FinalStatus } from './types';
+import type { RuleActionType } from './actions';
 import './style.scss';
 
 // The settings pane URL: the breadcrumb links to it, and the flagged-attempt
@@ -229,8 +237,21 @@ export function CheckoutAttemptsPage() {
 		};
 	}, [] );
 
-	const [ isDrawerOpen, setIsDrawerOpen ] = useState( false );
-	const openDrawer = useCallback( () => setIsDrawerOpen( true ), [] );
+	const [ isEnableDrawerOpen, setIsEnableDrawerOpen ] = useState( false );
+	const openEnableDrawer = useCallback(
+		() => setIsEnableDrawerOpen( true ),
+		[]
+	);
+	const [ ruleFormContext, setRuleFormContext ] =
+		useState< RuleFormContext >();
+	const [ deletingRule, setDeletingRule ] = useState< Rule >();
+	const {
+		closeRuleForm,
+		isOpen: isRuleFormOpen,
+		openCreateRule,
+		openEditRule,
+		ruleId,
+	} = useRuleFormDrawer();
 
 	const effectiveConfig = useMemo(
 		() => ( {
@@ -246,10 +267,69 @@ export function CheckoutAttemptsPage() {
 		() => getFields( effectiveConfig, isCompact ),
 		[ effectiveConfig, isCompact ]
 	);
-	const actions = useMemo(
-		() => buildActions( effectiveConfig, openDrawer ),
-		[ effectiveConfig, openDrawer ]
+	const { sessions, totalItems, totalPages, isLoading, error, refresh } =
+		useCheckoutAttempts( view, TAB_TO_STATUS[ tab ] );
+	const closeAttemptRuleForm = useCallback( () => {
+		closeRuleForm();
+		setRuleFormContext( undefined );
+	}, [ closeRuleForm ] );
+	const openAttemptRuleForm = useCallback(
+		( item: ( typeof sessions )[ number ], type: RuleActionType ) => {
+			const value = item[ type ];
+			if ( ! value ) {
+				return;
+			}
+			setRuleFormContext( {
+				recordedAttemptId: item.id,
+				type,
+				value,
+				finalStatus: item.final_status,
+			} );
+			openCreateRule();
+		},
+		[ openCreateRule ]
 	);
+	const openAttemptRuleEdit = useCallback(
+		( selectedRuleId: number ) => {
+			setRuleFormContext( undefined );
+			openEditRule( selectedRuleId );
+		},
+		[ openEditRule ]
+	);
+	const openAttemptRuleDelete = useCallback(
+		( item: ( typeof sessions )[ number ], type: RuleActionType ) => {
+			const rule = item.rules[ type ];
+			const value = item[ type ];
+			if ( ! rule || ! value ) {
+				return;
+			}
+			closeAttemptRuleForm();
+			setDeletingRule( { ...rule, type, value } );
+		},
+		[ closeAttemptRuleForm ]
+	);
+	const actions = useMemo(
+		() =>
+			buildActions( effectiveConfig, openEnableDrawer, {
+				onCreateRule: openAttemptRuleForm,
+				onEditRule: openAttemptRuleEdit,
+				onDeleteRule: openAttemptRuleDelete,
+			} ),
+		[
+			effectiveConfig,
+			openAttemptRuleDelete,
+			openAttemptRuleEdit,
+			openAttemptRuleForm,
+			openEnableDrawer,
+		]
+	);
+	const paginationInfo = {
+		totalItems,
+		totalPages:
+			isLoading || error
+				? Math.max( totalPages, view.page ?? 1 )
+				: totalPages,
+	};
 
 	// Mirror the current view and tab to the URL by pushing a full admin URL
 	// through the WooCommerce history. `replace` avoids a history entry for
@@ -328,9 +408,6 @@ export function CheckoutAttemptsPage() {
 		return () => form.removeEventListener( 'submit', preventSubmit );
 	}, [] );
 
-	const { sessions, totalItems, totalPages, isLoading, error } =
-		useCheckoutAttempts( view, TAB_TO_STATUS[ tab ] );
-
 	// A page past the last one (a stale link, or rows pruned since) would show a
 	// confusing empty list, so fall back to the last existing page — or page 1
 	// when there are no results at all. A failed request reports zero pages, so
@@ -379,7 +456,7 @@ export function CheckoutAttemptsPage() {
 	const listContent = (
 		<>
 			{ ! protectionOn && (
-				<ProtectionOffBanner onEnable={ openDrawer } />
+				<ProtectionOffBanner onEnable={ openEnableDrawer } />
 			) }
 
 			<DataViews< ( typeof sessions )[ number ] >
@@ -388,7 +465,7 @@ export function CheckoutAttemptsPage() {
 				view={ view }
 				onChangeView={ onChangeView }
 				actions={ actions }
-				paginationInfo={ { totalItems, totalPages } }
+				paginationInfo={ paginationInfo }
 				isLoading={ isLoading }
 				defaultLayouts={ { table: {} } }
 				getItemId={ ( item ) => String( item.id ) }
@@ -469,8 +546,23 @@ export function CheckoutAttemptsPage() {
 			</Tabs.Root>
 
 			<EnableFraudPreventionDrawer
-				open={ isDrawerOpen }
-				onOpenChange={ setIsDrawerOpen }
+				open={ isEnableDrawerOpen }
+				onOpenChange={ setIsEnableDrawerOpen }
+			/>
+			<RuleFormDrawer
+				open={ isRuleFormOpen }
+				ruleId={ ruleId }
+				context={ ruleFormContext }
+				origin="checkout_attempts"
+				onClose={ closeAttemptRuleForm }
+				onSuccess={ refresh }
+				onViewRule={ openAttemptRuleEdit }
+			/>
+			<RuleDeleteDialog
+				rule={ deletingRule }
+				origin="checkout_attempts"
+				onClose={ () => setDeletingRule( undefined ) }
+				onSuccess={ refresh }
 			/>
 		</div>
 	);

@@ -60,8 +60,10 @@ export const getRuleValuePlaceholder = ( type: Rule[ 'type' ] ): string =>
 type RuleFormDrawerProps = {
 	open: boolean;
 	onClose: () => void;
+	onSuccess?: ( rule: Rule ) => void;
 	onViewRule?: ( id: number ) => void;
 	context?: RuleFormContext;
+	origin?: CreateRuleRequest[ 'origin' ];
 	ruleId?: number;
 };
 
@@ -319,13 +321,17 @@ function RuleForm( {
 	context,
 	mutation,
 	onClose,
+	onSuccess,
 	onViewRule,
+	origin,
 	rule,
 }: {
 	context?: RuleFormContext;
 	mutation: RuleMutation;
 	onClose: () => void;
+	onSuccess?: ( rule: Rule ) => void;
 	onViewRule?: ( id: number ) => void;
+	origin?: CreateRuleRequest[ 'origin' ];
 	rule?: Rule;
 } ) {
 	const { clearSaveError, isSaving, saveError, saveRule } = mutation;
@@ -370,13 +376,16 @@ function RuleForm( {
 			type: data.type,
 			value: data.value,
 			...( rule
-				? { origin: context ? 'checkout_attempts' : 'rules' }
+				? { origin: origin ?? 'rules' }
 				: {
 						recorded_attempt_id: context?.recordedAttemptId,
-						origin: context ? 'checkout_attempts' : 'rules',
+						origin:
+							origin ??
+							( context ? 'checkout_attempts' : 'rules' ),
 				  } ),
 		} );
 		if ( result ) {
+			onSuccess?.( result );
 			onClose();
 		}
 	};
@@ -456,8 +465,10 @@ function RuleForm( {
 export function RuleFormDrawer( {
 	open,
 	onClose,
+	onSuccess,
 	onViewRule,
 	context,
+	origin,
 	ruleId,
 }: RuleFormDrawerProps ) {
 	const isEdit = ruleId !== undefined;
@@ -511,7 +522,9 @@ export function RuleFormDrawer( {
 						context={ context }
 						mutation={ mutation }
 						onClose={ onClose }
+						onSuccess={ onSuccess }
 						onViewRule={ onViewRule }
+						origin={ origin }
 						rule={ isEdit ? rule : undefined }
 					/>
 				) : (
