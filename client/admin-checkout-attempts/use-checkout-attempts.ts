@@ -1,5 +1,5 @@
 import apiFetch from '@wordpress/api-fetch';
-import { useEffect, useState } from '@wordpress/element';
+import { useCallback, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { addQueryArgs } from '@wordpress/url';
 import type { View } from '@wordpress/dataviews';
@@ -14,6 +14,7 @@ export type CheckoutAttemptsState = {
 	totalPages: number;
 	isLoading: boolean;
 	error: string | null;
+	refresh: () => void;
 };
 
 function filterValues( view: View, field: string ): string[] {
@@ -53,13 +54,20 @@ export function useCheckoutAttempts(
 	view: View,
 	finalStatus: FinalStatus | null
 ): CheckoutAttemptsState {
-	const [ state, setState ] = useState< CheckoutAttemptsState >( {
+	const [ state, setState ] = useState<
+		Omit< CheckoutAttemptsState, 'refresh' >
+	>( {
 		sessions: [],
 		totalItems: 0,
 		totalPages: 0,
 		isLoading: true,
 		error: null,
 	} );
+	const [ requestVersion, setRequestVersion ] = useState( 0 );
+	const refresh = useCallback(
+		() => setRequestVersion( ( version ) => version + 1 ),
+		[]
+	);
 
 	const path = buildListPath( view, finalStatus );
 
@@ -117,7 +125,7 @@ export function useCheckoutAttempts(
 		return () => {
 			active = false;
 		};
-	}, [ path ] );
+	}, [ path, requestVersion ] );
 
-	return state;
+	return { ...state, refresh };
 }

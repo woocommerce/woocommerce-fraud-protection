@@ -37,6 +37,10 @@ import {
 	savePrefs,
 } from '../../client/admin-checkout-attempts/persisted-state';
 import { settingsStore } from '../../client/admin-settings/data/store';
+import {
+	rulesStore,
+	type Rule,
+} from '../../client/admin-settings/data/rules-store';
 import type {
 	CheckoutAttemptsConfig,
 	RuleReference,
@@ -95,6 +99,7 @@ jest.mock( '@woocommerce/navigation', () => ( {
 // cover, so DataViews is replaced with a spy that records the props it receives.
 jest.mock( '@wordpress/dataviews/wp', () => ( {
 	__esModule: true,
+	...jest.requireActual( '@wordpress/dataviews/wp' ),
 	DataViews: jest.fn( () => null ),
 } ) );
 
@@ -284,6 +289,21 @@ describe( 'checkout attempts row actions', () => {
 	};
 
 	const noopEnable = () => {};
+	const runAction = (
+		actionId: string,
+		session: Session,
+		callbacks: Parameters< typeof buildActions >[ 2 ]
+	) => {
+		const action = buildActions(
+			actionsConfig,
+			noopEnable,
+			callbacks
+		).find( ( candidate ) => candidate.id === actionId )!;
+		const { callback } = action as unknown as {
+			callback: ( items: Session[] ) => void;
+		};
+		callback( [ session ] );
+	};
 
 	const eligibleIds = ( session: Session ) =>
 		buildActions( actionsConfig, noopEnable )
@@ -428,6 +448,61 @@ describe( 'checkout attempts row actions', () => {
 		( action as unknown as { callback: () => void } ).callback();
 
 		expect( onEnable ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	it( 'passes the selected attempt and value type to create actions', () => {
+		const session = aSession( { id: 27 } );
+		const callbacks = {
+			onCreateRule: jest.fn(),
+			onEditRule: jest.fn(),
+			onDeleteRule: jest.fn(),
+		};
+
+		runAction( 'email-block', session, callbacks );
+		runAction( 'ip-block', session, callbacks );
+
+		expect( callbacks.onCreateRule ).toHaveBeenNthCalledWith(
+			1,
+			session,
+			'email'
+		);
+		expect( callbacks.onCreateRule ).toHaveBeenNthCalledWith(
+			2,
+			session,
+			'ip'
+		);
+	} );
+
+	it( 'passes the matching rule ID and value type to edit and delete actions', () => {
+		const session = aSession( {
+			rules: {
+				email: aRule( { id: 71 } ),
+				ip: aRule( { id: 82 } ),
+			},
+		} );
+		const callbacks = {
+			onCreateRule: jest.fn(),
+			onEditRule: jest.fn(),
+			onDeleteRule: jest.fn(),
+		};
+
+		runAction( 'email-edit', session, callbacks );
+		runAction( 'ip-edit', session, callbacks );
+		runAction( 'email-delete', session, callbacks );
+		runAction( 'ip-delete', session, callbacks );
+
+		expect( callbacks.onEditRule ).toHaveBeenNthCalledWith( 1, 71 );
+		expect( callbacks.onEditRule ).toHaveBeenNthCalledWith( 2, 82 );
+		expect( callbacks.onDeleteRule ).toHaveBeenNthCalledWith(
+			1,
+			session,
+			'email'
+		);
+		expect( callbacks.onDeleteRule ).toHaveBeenNthCalledWith(
+			2,
+			session,
+			'ip'
+		);
 	} );
 } );
 
@@ -861,6 +936,78 @@ const mockApi = ( {
 	);
 };
 
+const fullRule = ( overrides: Partial< Rule > = {} ): Rule => ( {
+	id: 90,
+	action: 'block',
+	type: 'email',
+	value: 'shopper@example.com',
+	created_at: '2026-04-01T10:00:00',
+	updated_at: null,
+	...overrides,
+} );
+
+const mockRuleApi = ( {
+	before,
+	after = before,
+	details = {},
+}: {
+	before: Session[];
+	after?: Session[];
+	details?: Record< number, Rule >;
+} ) => {
+	let mutated = false;
+	mockedApiFetch.mockImplementation(
+		( options: {
+			path: string;
+			method?: string;
+			data?: Partial< Rule > & { automatic_protection?: boolean };
+		} ) => {
+			const path = String( options.path );
+			if ( path.includes( '/wc-fraud-protection/v1/sessions' ) ) {
+				return Promise.resolve(
+					listResponse( mutated ? after : before )
+				);
+			}
+			if ( path.includes( '/wc-fraud-protection/v1/settings' ) ) {
+				return Promise.resolve( settingsResponse() );
+			}
+			if ( path === '/wc-fraud-protection/v1/rules' ) {
+				mutated = true;
+				return Promise.resolve(
+					fullRule( {
+						id: 91,
+						action: options.data?.action,
+						type: options.data?.type,
+						value: options.data?.value,
+					} )
+				);
+			}
+			const ruleMatch = path.match(
+				/\/wc-fraud-protection\/v1\/rules\/(\d+)/
+			);
+			if ( ruleMatch ) {
+				const id = Number( ruleMatch[ 1 ] );
+				if ( options.method === 'DELETE' ) {
+					mutated = true;
+					return Promise.resolve( undefined );
+				}
+				if ( options.method === 'PUT' ) {
+					mutated = true;
+					return Promise.resolve(
+						fullRule( {
+							...details[ id ],
+							...options.data,
+							id,
+						} )
+					);
+				}
+				return Promise.resolve( details[ id ] );
+			}
+			return Promise.resolve( undefined );
+		}
+	);
+};
+
 // The list's navigation state lives in the URL. Seed the shared history with the
 // admin URL (an optional query string under test) and render inside a router
 // bound to that same history.
@@ -878,6 +1025,15 @@ const renderPage = ( search = '' ) => {
 // Only the paginated list requests, which carry query arguments.
 const listPaths = () =>
 	settledPaths().filter( ( path ) => path.includes( '/sessions?' ) );
+
+const chooseAttemptAction = ( actionId: string, session: Session ) => {
+	const action = lastDataViewsProps().actions.find(
+		( candidate: { id: string } ) => candidate.id === actionId
+	);
+	act( () => {
+		( action.callback as ( items: Session[] ) => void )( [ session ] );
+	} );
+};
 
 // The list reads automatic-protection state from the settings store; seed it to
 // a known value and mark it resolved so the resolver does not also fetch.
@@ -947,6 +1103,223 @@ describe( 'CheckoutAttemptsPage', () => {
 			'/wc-fraud-protection/v1/sessions'
 		);
 		expect( listPaths()[ 0 ] ).not.toContain( 'final_status' );
+	} );
+
+	it( 'opens contextual create drawers for email and IP with the inverse action', async () => {
+		const allowed = aSession( { id: 21 } );
+		const blocked = aSession( {
+			id: 22,
+			final_status: 'blocked',
+			outcome: 'blocked_automatically',
+		} );
+		mockRuleApi( { before: [ allowed, blocked ] } );
+
+		renderPage();
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 2 )
+		);
+
+		chooseAttemptAction( 'email-block', allowed );
+		expect(
+			await screen.findByRole( 'dialog', { name: 'Create rule' } )
+		).toBeVisible();
+		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'block' );
+		expect( screen.getByLabelText( 'Rule type' ) ).toHaveValue( 'email' );
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( allowed.email );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Close' } )
+		);
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+			).not.toBeInTheDocument()
+		);
+
+		chooseAttemptAction( 'ip-allow', blocked );
+		expect(
+			await screen.findByRole( 'dialog', { name: 'Create rule' } )
+		).toBeVisible();
+		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'allow' );
+		expect( screen.getByLabelText( 'Rule type' ) ).toHaveValue( 'ip' );
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( blocked.ip );
+	} );
+
+	it( 'creates a contextual rule, closes the drawer, refreshes row actions, and preserves list state', async () => {
+		const attempt = aSession( { id: 31 } );
+		const refreshedAttempt = aSession( {
+			id: 31,
+			rules: { email: aRule( { id: 91 } ), ip: null },
+		} );
+		savePrefs( {
+			fields: [ 'email', 'outcome' ],
+			perPage: 50,
+			layout: { density: 'compact' },
+		} );
+		mockRuleApi( { before: [ attempt ], after: [ refreshedAttempt ] } );
+
+		renderPage(
+			'status=allowed&search=shopper&outcome=allowed&provider=stripe'
+		);
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 1 )
+		);
+		const searchBeforeSave = mockHistory.location.search;
+
+		chooseAttemptAction( 'email-block', attempt );
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules',
+				method: 'POST',
+				data: {
+					action: 'block',
+					type: 'email',
+					value: 'shopper@example.com',
+					recorded_attempt_id: 31,
+					origin: 'checkout_attempts',
+				},
+			} )
+		);
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+			).not.toBeInTheDocument()
+		);
+		await waitFor( () =>
+			expect( lastDataViewsProps().data[ 0 ].rules.email?.id ).toBe( 91 )
+		);
+
+		expect( mockHistory.location.search ).toBe( searchBeforeSave );
+		expect( lastDataViewsProps().view ).toEqual(
+			expect.objectContaining( {
+				search: 'shopper',
+				perPage: 50,
+				fields: [ 'email', 'outcome' ],
+				layout: { density: 'compact' },
+			} )
+		);
+		expect(
+			screen.getByRole( 'tab', { name: 'Allowed', selected: true } )
+		).toBeInTheDocument();
+		const refreshedActionIds = lastDataViewsProps()
+			.actions.filter(
+				( action: { isEligible?: ( item: Session ) => boolean } ) =>
+					action.isEligible?.( refreshedAttempt ) ?? true
+			)
+			.map( ( action: { id: string } ) => action.id );
+		expect( refreshedActionIds ).toEqual(
+			expect.arrayContaining( [ 'email-edit', 'email-delete' ] )
+		);
+		expect( listPaths().length ).toBeGreaterThanOrEqual( 2 );
+	} );
+
+	it( 'edits the matching rule with the checkout-attempts origin', async () => {
+		const attempt = aSession( {
+			rules: { email: aRule( { id: 701 } ), ip: null },
+		} );
+		mockRuleApi( {
+			before: [ attempt ],
+			details: { 701: fullRule( { id: 701 } ) },
+		} );
+
+		renderPage();
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 1 )
+		);
+		chooseAttemptAction( 'email-edit', attempt );
+		await screen.findByDisplayValue( 'shopper@example.com' );
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'allow'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules/701',
+				method: 'PUT',
+				data: {
+					action: 'allow',
+					type: 'email',
+					value: 'shopper@example.com',
+					origin: 'checkout_attempts',
+				},
+			} )
+		);
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+			).not.toBeInTheDocument()
+		);
+	} );
+
+	it( 'deletes the matching rule with the checkout-attempts origin', async () => {
+		const attempt = aSession( {
+			rules: { email: null, ip: aRule( { id: 802 } ) },
+		} );
+		mockRuleApi( { before: [ attempt ] } );
+
+		renderPage();
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 1 )
+		);
+		chooseAttemptAction( 'ip-delete', attempt );
+		const dialog = await screen.findByRole( 'dialog', {
+			name: 'Delete rule',
+		} );
+		expect( within( dialog ).getByLabelText( 'Rule type' ) ).toHaveValue(
+			'ip'
+		);
+		expect( within( dialog ).getByLabelText( 'Value' ) ).toHaveValue(
+			'203.0.113.9'
+		);
+		await userEvent.click(
+			within( dialog ).getByRole( 'button', { name: 'Delete' } )
+		);
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules/802?origin=checkout_attempts',
+				method: 'DELETE',
+			} )
+		);
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Delete rule' } )
+			).not.toBeInTheDocument()
+		);
+	} );
+
+	it( 'cancels rule deletion without sending a request', async () => {
+		const attempt = aSession( {
+			rules: { email: aRule( { id: 803 } ), ip: null },
+		} );
+		mockRuleApi( { before: [ attempt ] } );
+
+		renderPage();
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 1 )
+		);
+		chooseAttemptAction( 'email-delete', attempt );
+		const dialog = await screen.findByRole( 'dialog', {
+			name: 'Delete rule',
+		} );
+		await userEvent.click(
+			within( dialog ).getByRole( 'button', { name: 'Cancel' } )
+		);
+
+		expect(
+			settledPaths().some( ( path ) => path.includes( '/rules/803?' ) )
+		).toBe( false );
+		expect(
+			screen.queryByRole( 'dialog', { name: 'Delete rule' } )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'refetches with the enforced status when a tab is selected', async () => {
@@ -1277,6 +1650,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		// (the shared store cannot be reset to null once seeded).
 		const registry = createRegistry();
 		registry.register( settingsStore );
+		registry.register( rulesStore );
 		// The enable drawer is always mounted and reads core/notices, so the
 		// isolated registry needs it too.
 		registry.register(

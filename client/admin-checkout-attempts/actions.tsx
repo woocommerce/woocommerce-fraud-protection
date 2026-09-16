@@ -6,9 +6,15 @@ import type { CheckoutAttemptsConfig, Session } from './types';
 const hasEmail = ( item: Session ): boolean => Boolean( item.email );
 const hasIp = ( item: Session ): boolean => Boolean( item.ip );
 
-// The rule actions have no destination yet: rule management ships separately,
-// so they render as labels and perform no action when selected.
-const noop = (): void => {};
+export type RuleActionType = 'email' | 'ip';
+
+type RuleActionCallbacks = {
+	onCreateRule: ( item: Session, type: RuleActionType ) => void;
+	onEditRule: ( ruleId: number ) => void;
+	onDeleteRule: ( item: Session, type: RuleActionType ) => void;
+};
+
+const firstItem = ( items: Session[] ): Session | undefined => items[ 0 ];
 
 /**
  * Build the per-row actions shown in the checkout attempts list.
@@ -19,12 +25,14 @@ const noop = (): void => {};
  * opposite of the enforced result (block an allowed attempt, allow a blocked
  * one), and a value with a rule offers edit and delete for that rule.
  *
- * @param config   The page configuration (automatic-protection state).
- * @param onEnable Opens the "enable fraud prevention" drawer.
+ * @param config    The page configuration (automatic-protection state).
+ * @param onEnable  Opens the "enable fraud prevention" drawer.
+ * @param callbacks Opens rule create, edit, and delete controls.
  */
 export function buildActions(
 	config: CheckoutAttemptsConfig,
-	onEnable: () => void
+	onEnable: () => void,
+	callbacks?: RuleActionCallbacks
 ): Action< Session >[] {
 	return [
 		{
@@ -60,7 +68,12 @@ export function buildActions(
 				hasEmail( item ) &&
 				! item.rules.email &&
 				item.final_status === 'allowed',
-			callback: noop,
+			callback: ( items ) => {
+				const item = firstItem( items );
+				if ( item ) {
+					callbacks?.onCreateRule( item, 'email' );
+				}
+			},
 		},
 		{
 			id: 'email-allow',
@@ -72,7 +85,12 @@ export function buildActions(
 				hasEmail( item ) &&
 				! item.rules.email &&
 				item.final_status === 'blocked',
-			callback: noop,
+			callback: ( items ) => {
+				const item = firstItem( items );
+				if ( item ) {
+					callbacks?.onCreateRule( item, 'email' );
+				}
+			},
 		},
 		{
 			id: 'email-edit',
@@ -82,7 +100,12 @@ export function buildActions(
 			),
 			isEligible: ( item ) =>
 				hasEmail( item ) && Boolean( item.rules.email ),
-			callback: noop,
+			callback: ( items ) => {
+				const ruleId = firstItem( items )?.rules.email?.id;
+				if ( ruleId ) {
+					callbacks?.onEditRule( ruleId );
+				}
+			},
 		},
 		{
 			id: 'email-delete',
@@ -92,7 +115,12 @@ export function buildActions(
 			),
 			isEligible: ( item ) =>
 				hasEmail( item ) && Boolean( item.rules.email ),
-			callback: noop,
+			callback: ( items ) => {
+				const item = firstItem( items );
+				if ( item ) {
+					callbacks?.onDeleteRule( item, 'email' );
+				}
+			},
 		},
 		{
 			id: 'ip-block',
@@ -104,7 +132,12 @@ export function buildActions(
 				hasIp( item ) &&
 				! item.rules.ip &&
 				item.final_status === 'allowed',
-			callback: noop,
+			callback: ( items ) => {
+				const item = firstItem( items );
+				if ( item ) {
+					callbacks?.onCreateRule( item, 'ip' );
+				}
+			},
 		},
 		{
 			id: 'ip-allow',
@@ -116,13 +149,23 @@ export function buildActions(
 				hasIp( item ) &&
 				! item.rules.ip &&
 				item.final_status === 'blocked',
-			callback: noop,
+			callback: ( items ) => {
+				const item = firstItem( items );
+				if ( item ) {
+					callbacks?.onCreateRule( item, 'ip' );
+				}
+			},
 		},
 		{
 			id: 'ip-edit',
 			label: __( 'Edit IP address rule', 'woocommerce-fraud-protection' ),
 			isEligible: ( item ) => hasIp( item ) && Boolean( item.rules.ip ),
-			callback: noop,
+			callback: ( items ) => {
+				const ruleId = firstItem( items )?.rules.ip?.id;
+				if ( ruleId ) {
+					callbacks?.onEditRule( ruleId );
+				}
+			},
 		},
 		{
 			id: 'ip-delete',
@@ -131,7 +174,12 @@ export function buildActions(
 				'woocommerce-fraud-protection'
 			),
 			isEligible: ( item ) => hasIp( item ) && Boolean( item.rules.ip ),
-			callback: noop,
+			callback: ( items ) => {
+				const item = firstItem( items );
+				if ( item ) {
+					callbacks?.onDeleteRule( item, 'ip' );
+				}
+			},
 		},
 	];
 }
