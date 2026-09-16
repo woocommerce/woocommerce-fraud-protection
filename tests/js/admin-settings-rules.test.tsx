@@ -5,6 +5,7 @@ import {
 	render,
 	screen,
 	waitFor,
+	within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -12,6 +13,7 @@ import { MemoryRouter } from 'react-router-dom';
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
 import type { View } from '@wordpress/dataviews';
+import { store as noticesStore } from '@wordpress/notices';
 
 import {
 	rulesStore,
@@ -22,6 +24,12 @@ import {
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
 import { getUtcDateFilterBound } from '../../client/admin-settings/rule-date';
+import {
+	getInitialRuleFormData,
+	getRuleValuePlaceholder,
+	isCompleteIp,
+	RuleFormDrawer,
+} from '../../client/admin-settings/components/rule-form-drawer';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
@@ -67,6 +75,7 @@ function collectionResponse(
 function renderRules() {
 	const registry = createRegistry();
 	registry.register( rulesStore );
+	registry.register( noticesStore );
 	return render(
 		<MemoryRouter>
 			<RegistryProvider value={ registry }>
@@ -76,12 +85,58 @@ function renderRules() {
 	);
 }
 
+function renderDrawer(
+	props: Partial< React.ComponentProps< typeof RuleFormDrawer > > = {}
+) {
+	const registry = createRegistry();
+	registry.register( rulesStore );
+	registry.register( noticesStore );
+	const onClose = props.onClose ?? jest.fn();
+	const result = render(
+		<MemoryRouter>
+			<RegistryProvider value={ registry }>
+				<RuleFormDrawer open onClose={ onClose } { ...props } />
+			</RegistryProvider>
+		</MemoryRouter>
+	);
+	return { ...result, registry, onClose };
+}
+
 beforeEach( () => {
 	mockedApiFetch.mockReset();
 	mockedApiFetch.mockResolvedValue( collectionResponse() as never );
 } );
 
 describe( 'RulesPage', () => {
+	it( 'validates complete IPv4 and IPv6 values', () => {
+		expect( isCompleteIp( '203.0.113.9' ) ).toBe( true );
+		expect( isCompleteIp( '2001:db8::1' ) ).toBe( true );
+		expect( isCompleteIp( '203.0.113' ) ).toBe( false );
+		expect( isCompleteIp( ':::' ) ).toBe( false );
+	} );
+
+	it( 'derives contextual form values and placeholders', () => {
+		expect( getInitialRuleFormData() ).toEqual( {
+			action: 'allow',
+			type: 'email',
+			value: '',
+		} );
+		expect(
+			getInitialRuleFormData( {
+				recordedAttemptId: 7,
+				type: 'ip',
+				value: '203.0.113.9',
+				finalStatus: 'allowed',
+			} )
+		).toEqual( { action: 'block', type: 'ip', value: '203.0.113.9' } );
+		expect( getRuleValuePlaceholder( 'email' ) ).toBe(
+			'e.g. j.holland@gmail.com'
+		);
+		expect( getRuleValuePlaceholder( 'ip' ) ).toBe(
+			'e.g. 111.111.111.111'
+		);
+	} );
+
 	it( 'maps filters and one active sort to the query', () => {
 		const query = getQueryFromView( {
 			type: 'table',
@@ -212,5 +267,192 @@ describe( 'RulesPage', () => {
 		expect(
 			screen.getByText( 'Try changing or removing your filters.' )
 		).toBeInTheDocument();
+	} );
+
+	it( 'opens the create rule drawer from the rules page', async () => {
+		renderRules();
+		await screen.findByText( rule.value );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		expect(
+			await screen.findByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Rule type' ) ).toHaveDisplayValue(
+			'Email address'
+		);
+	} );
+
+	it( 'rejects invalid and overlong email values through DataForm', async () => {
+		renderDrawer();
+		const valueInput = screen.getByLabelText( 'Value' );
+		const submit = screen.getByRole( 'button', { name: 'Create rule' } );
+		await userEvent.type( valueInput, 'not-an-email' );
+		expect( ( valueInput as HTMLInputElement ).validity.typeMismatch ).toBe(
+			true
+		);
+		await waitFor( () =>
+			expect( submit ).toHaveAttribute( 'aria-disabled', 'true' )
+		);
+		await userEvent.clear( valueInput );
+		const overlongEmail = `${ 'a'.repeat( 250 ) }@b.com`;
+		await userEvent.type( valueInput, overlongEmail );
+		expect( valueInput ).not.toHaveValue( overlongEmail );
+		expect( ( valueInput as HTMLInputElement ).value ).toHaveLength( 254 );
+		await userEvent.clear( valueInput );
+		await userEvent.type( valueInput, 'buyer@internal' );
+		expect( ( valueInput as HTMLInputElement ).validity.valid ).toBe(
+			true
+		);
+		await waitFor( () =>
+			expect( submit ).toHaveAttribute( 'aria-disabled', 'false' )
+		);
+	} );
+
+	it( 'creates a rule and shows the mutation snackbar', async () => {
+		const { onClose, registry } = renderDrawer();
+		mockedApiFetch.mockResolvedValueOnce( { ...rule, id: 9 } as never );
+		const valueInput = screen.getByLabelText( 'Value' );
+		expect( valueInput ).toHaveAttribute( 'type', 'email' );
+		expect( valueInput ).toHaveAttribute( 'maxlength', '254' );
+		await userEvent.type( valueInput, 'buyer@internal' );
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await waitFor( () => expect( onClose ).toHaveBeenCalled() );
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-fraud-protection/v1/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'buyer@internal',
+				recorded_attempt_id: undefined,
+				origin: 'rules',
+			},
+		} );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual(
+			expect.arrayContaining( [
+				expect.objectContaining( {
+					content: 'Rule created successfully',
+					type: 'snackbar',
+				} ),
+			] )
+		);
+	} );
+
+	it( 'prevents the drawer from closing while a rule is being saved', async () => {
+		let resolveCreate: ( response: Rule ) => void = () => undefined;
+		mockedApiFetch.mockReturnValueOnce(
+			new Promise< Rule >( ( resolve ) => {
+				resolveCreate = resolve;
+			} ) as never
+		);
+		const { onClose } = renderDrawer();
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'buyer@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await waitFor( () =>
+			expect(
+				screen.getByRole( 'button', { name: 'Close' } )
+			).toHaveAttribute( 'aria-disabled', 'true' )
+		);
+		await userEvent.keyboard( '{Escape}' );
+		expect( onClose ).not.toHaveBeenCalled();
+		expect(
+			screen.getByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+		await act( async () => resolveCreate( { ...rule, id: 10 } ) );
+		await waitFor( () => expect( onClose ).toHaveBeenCalled() );
+	} );
+
+	it( 'shows a non-duplicate mutation failure as a snackbar and stays open', async () => {
+		const { onClose, registry } = renderDrawer();
+		mockedApiFetch.mockRejectedValueOnce( {
+			message: 'The exact create error.',
+		} );
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'failed@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await waitFor( () =>
+			expect( registry.select( noticesStore ).getNotices() ).toEqual(
+				expect.arrayContaining( [
+					expect.objectContaining( {
+						content: 'The exact create error.',
+						type: 'snackbar',
+					} ),
+				] )
+			)
+		);
+		expect( onClose ).not.toHaveBeenCalled();
+		expect(
+			screen.getByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+	} );
+
+	it( 'keeps contextual fields fixed and submits their source attempt', async () => {
+		mockedApiFetch.mockResolvedValueOnce( { ...rule, id: 9 } as never );
+		renderDrawer( {
+			context: {
+				recordedAttemptId: 7,
+				type: 'ip',
+				value: '203.0.113.9',
+				finalStatus: 'allowed',
+			},
+		} );
+		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'block' );
+		expect( screen.getByLabelText( 'Rule type' ) ).toBeDisabled();
+		expect( screen.getByLabelText( 'Value' ) ).toBeDisabled();
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules',
+				method: 'POST',
+				data: {
+					action: 'block',
+					type: 'ip',
+					value: '203.0.113.9',
+					recorded_attempt_id: 7,
+					origin: 'checkout_attempts',
+				},
+			} )
+		);
+	} );
+
+	it( 'keeps a duplicate error beside the value and opens the existing rule', async () => {
+		const onViewRule = jest.fn();
+		mockedApiFetch.mockRejectedValueOnce( {
+			code: 'woocommerce_fraud_protection_duplicate_rule',
+			message: 'This email is already allowed by a rule.',
+			data: { rule_id: 17 },
+		} );
+		const { registry } = renderDrawer( { onViewRule } );
+		await userEvent.type(
+			screen.getByLabelText( 'Value' ),
+			'duplicate@example.com'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', {
+				name: 'Edit existing rule',
+			} )
+		);
+		expect( onViewRule ).toHaveBeenCalledWith( 17 );
+		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
 	} );
 } );

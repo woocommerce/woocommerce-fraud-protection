@@ -126,8 +126,6 @@ class RuleStore {
 		);
 
 		if ( false === $this->run_write_query( $this->build_insert_sql( $columns ) ) ) {
-			// The unique hash key is the backstop for concurrent creations:
-			// re-check so a lost race reports as a duplicate, not a failure.
 			$existing_id = $this->find_rule_id_by_hash( $hash );
 			if ( ! is_null( $existing_id ) ) {
 				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
@@ -574,6 +572,7 @@ class RuleStore {
 	 *
 	 * @param FraudDecision $action The action of the new rule.
 	 * @return int The position to insert the rule at.
+	 * @throws \RuntimeException When a position query fails.
 	 */
 	private function seed_position( FraudDecision $action ): int {
 		global $wpdb;
@@ -583,11 +582,17 @@ class RuleStore {
 		if ( FraudDecision::Allow === $action ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$first_block_position = $wpdb->get_var( $wpdb->prepare( "SELECT MIN(position) FROM {$table} WHERE status != %s AND action = %s", RuleStatus::Deleted->value, FraudDecision::Block->value ) );
+			if ( '' !== $wpdb->last_error ) {
+				throw new \RuntimeException( 'Failed to find the first block rule position: ' . esc_html( $wpdb->last_error ) );
+			}
 
 			if ( ! is_null( $first_block_position ) ) {
 				$position = (int) $first_block_position;
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET position = position + 1 WHERE status != %s AND position >= %d", RuleStatus::Deleted->value, $position ) );
+				$shifted = $wpdb->query( $wpdb->prepare( "UPDATE {$table} SET position = position + 1 WHERE status != %s AND position >= %d", RuleStatus::Deleted->value, $position ) );
+				if ( false === $shifted ) {
+					throw new \RuntimeException( 'Failed to shift block rule positions: ' . esc_html( $wpdb->last_error ) );
+				}
 
 				return $position;
 			}
@@ -595,6 +600,9 @@ class RuleStore {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$max_position = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(position) FROM {$table} WHERE status != %s", RuleStatus::Deleted->value ) );
+		if ( '' !== $wpdb->last_error ) {
+			throw new \RuntimeException( 'Failed to find the last rule position: ' . esc_html( $wpdb->last_error ) );
+		}
 
 		return is_null( $max_position ) ? 1 : (int) $max_position + 1;
 	}

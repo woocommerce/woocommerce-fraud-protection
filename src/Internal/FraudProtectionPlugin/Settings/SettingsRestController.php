@@ -103,6 +103,13 @@ class SettingsRestController extends \WP_REST_Controller {
 					'methods'             => \WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'opt_out' ),
 					'permission_callback' => array( $this, 'permissions_check' ),
+					'args'                => array(
+						'source' => array(
+							'type'     => 'string',
+							'required' => true,
+							'enum'     => array( 'inbox', 'settings' ),
+						),
+					),
 				),
 			)
 		);

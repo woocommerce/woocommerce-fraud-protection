@@ -399,6 +399,75 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Position selection reports database read failures.
+	 */
+	public function test_seed_position_reports_database_read_failures(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$schema        = $this->createMock( SchemaManager::class );
+		$schema->method( 'get_rules_table_name' )->willReturn( 'test_rules' );
+		$store = new RuleStore();
+		$store->init( $schema );
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Replace the database for one isolated failure path.
+		$wpdb = $this->getMockBuilder( \wpdb::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'prepare', 'get_var' ) )
+			->getMock();
+		$wpdb->method( 'prepare' )->willReturnArgument( 0 );
+		$wpdb->method( 'get_var' )->willReturnCallback(
+			static function () use ( &$wpdb ) {
+				$wpdb->last_error = 'Controlled read failure';
+				return null;
+			}
+		);
+
+		$seed_position = new \ReflectionMethod( RuleStore::class, 'seed_position' );
+		$seed_position->setAccessible( true );
+		try {
+			$this->expectException( \RuntimeException::class );
+			$seed_position->invoke( $store, FraudDecision::Allow );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
+	 * @testdox Position selection reports failures while shifting block rules.
+	 */
+	public function test_seed_position_reports_database_update_failures(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$schema        = $this->createMock( SchemaManager::class );
+		$schema->method( 'get_rules_table_name' )->willReturn( 'test_rules' );
+		$store = new RuleStore();
+		$store->init( $schema );
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Replace the database for one isolated failure path.
+		$wpdb = $this->getMockBuilder( \wpdb::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'prepare', 'get_var', 'query' ) )
+			->getMock();
+		$wpdb->method( 'prepare' )->willReturnArgument( 0 );
+		$wpdb->method( 'get_var' )->willReturn( '1' );
+		$wpdb->method( 'query' )->willReturnCallback(
+			static function () use ( &$wpdb ) {
+				$wpdb->last_error = 'Controlled update failure';
+				return false;
+			}
+		);
+
+		$seed_position = new \ReflectionMethod( RuleStore::class, 'seed_position' );
+		$seed_position->setAccessible( true );
+		try {
+			$this->expectException( \RuntimeException::class );
+			$seed_position->invoke( $store, FraudDecision::Allow );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
 	 * @testdox Should soft-delete a rule: kept in the table with a null hash, excluded from the active ruleset.
 	 */
 	public function test_delete_is_a_soft_delete(): void {

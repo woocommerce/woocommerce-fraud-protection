@@ -51,6 +51,8 @@ jest.mock( '@woocommerce/navigation', () => ( {
 jest.mock( '@wordpress/dataviews/wp', () => ( {
 	__esModule: true,
 	DataViews: () => null,
+	DataForm: () => null,
+	useFormValidity: () => ( { validity: undefined, isValid: true } ),
 } ) );
 
 if ( ! window.ResizeObserver ) {
