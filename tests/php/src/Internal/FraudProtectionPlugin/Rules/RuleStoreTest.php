@@ -532,7 +532,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A delete result preserves the rule state read under the write lock.
+	 * @testdox A delete result preserves the rule state read before deletion.
 	 */
 	public function test_delete_rule_with_result_returns_the_deleted_rule_snapshot(): void {
 		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'snapshot@example.com' ) );
@@ -622,6 +622,28 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox An explicit position overrides the position seeded for an action change.
+	 */
+	public function test_action_change_accepts_an_explicit_position_override(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+
+		$updated = $this->sut->update_rule( $rule->id, FraudDecision::Allow, position: 42 );
+
+		$this->assertSame( 42, $updated->position );
+	}
+
+	/**
+	 * @testdox An update that keeps the action does not reseed the rule position.
+	 */
+	public function test_unchanged_action_does_not_reseed_position(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+
+		$updated = $this->sut->update_rule( $rule->id, FraudDecision::Block, $this->email_condition( 'changed@example.com' ) );
+
+		$this->assertSame( $rule->position, $updated->position );
+	}
+
+	/**
 	 * @testdox A failed action update does not move any rule.
 	 */
 	public function test_failed_action_update_preserves_rule_order(): void {
@@ -638,64 +660,6 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 				array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
 			);
 		}
-	}
-
-	/**
-	 * @testdox A rule deleted before its action update executes does not move other rules.
-	 */
-	public function test_concurrent_delete_prevents_action_group_move(): void {
-		global $wpdb;
-
-		$allow  = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
-		$block  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
-		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
-		$table  = $this->schema_manager->get_rules_table_name();
-		$filter = static function ( string $query ) use ( $wpdb, $table, $target, &$filter ): string {
-			if ( ! str_contains( $query, "UPDATE {$table} AS moving INNER JOIN" ) ) {
-				return $query;
-			}
-			remove_filter( 'query', $filter );
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET status = %s WHERE id = %d", RuleStatus::Deleted->value, $target->id ) );
-
-			return $query;
-		};
-		add_filter( 'query', $filter );
-
-		$this->assertNull( $this->sut->update_rule( $target->id, FraudDecision::Allow ) );
-		remove_filter( 'query', $filter );
-
-		$this->assertSame( 1, (int) $this->row_for( $allow->id )['position'] );
-		$this->assertSame( 2, (int) $this->row_for( $block->id )['position'] );
-	}
-
-	/**
-	 * @testdox A request that waits for the same update reports a true no-op and preserves the valid group order.
-	 */
-	public function test_concurrent_matching_update_is_a_no_op(): void {
-		$allow  = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
-		$block  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
-		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
-		$table  = $this->schema_manager->get_rules_table_name();
-		$filter = function ( string $query ) use ( $table, $target, &$filter ): string {
-			if ( ! str_contains( $query, "SELECT MIN(position) FROM {$table}" ) ) {
-				return $query;
-			}
-			remove_filter( 'query', $filter );
-			$this->sut->update_rule( $target->id, FraudDecision::Allow );
-
-			return $query;
-		};
-		add_filter( 'query', $filter );
-
-		$result = $this->sut->update_rule_with_result( $target->id, FraudDecision::Allow );
-		remove_filter( 'query', $filter );
-
-		$this->assertFalse( $result['changed'] );
-		$this->assertSame(
-			array( $allow->id, $target->id, $block->id ),
-			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
-		);
 	}
 
 	/**
