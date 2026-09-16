@@ -69,7 +69,7 @@
 		"@wordpress/notices": "^5.54.0",
 		"@wordpress/postcss-plugins-preset": "^5.54.0",
 		"@wordpress/scripts": "^34.2.0",
-		"@wordpress/theme": "^2.0.0",
+		"@wordpress/theme": "^2.1.0",
 		"@wordpress/ui": "^0.22.0",
 		"@wordpress/url": "^4.54.0",
 		"cssnano": "^6.1.2",
@@ -84,9 +84,6 @@
 	"jest": {
 		"preset": "@wordpress/jest-preset-default",
 		"globalSetup": "./tests/js/jest-global-setup.js",
-		"moduleNameMapper": {
-			"^@wordpress/dataviews/wp$": "<rootDir>/tests/js/mocks/dataviews.tsx"
-		},
 		"testMatch": [
 			"**/tests/js/**/*.test.js",
 			"**/tests/js/**/*.test.ts",

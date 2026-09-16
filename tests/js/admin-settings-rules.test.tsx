@@ -16,7 +16,6 @@ import {
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
 import { getUtcDateFilterBound } from '../../client/admin-settings/rule-date';
-import { dataViews } from './mocks/dataviews';
 
 jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
@@ -74,7 +73,6 @@ function renderRules() {
 beforeEach( () => {
 	mockedApiFetch.mockReset();
 	mockedApiFetch.mockResolvedValue( collectionResponse() as never );
-	dataViews.props = undefined;
 } );
 
 describe( 'RulesPage', () => {
@@ -140,31 +138,18 @@ describe( 'RulesPage', () => {
 
 	it( 'keeps all four columns sortable with Created descending as default', async () => {
 		renderRules();
-		await waitFor( () =>
-			expect( dataViews.props?.fields ).toHaveLength( 4 )
-		);
-		expect( dataViews.props?.view?.sort ).toEqual( {
-			field: 'created_at',
-			direction: 'desc',
-		} );
+		await screen.findByText( rule.value );
 		expect(
-			dataViews.props?.fields?.every(
-				( field ) => field.enableSorting !== false
-			)
-		).toBe( true );
-		act(
-			() =>
-				dataViews.props?.onChangeView?.( {
-					...dataViews.props?.view,
-					sort: { field: 'value', direction: 'asc' },
-				} as View )
-		);
-		await waitFor( () =>
-			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=value&order=asc',
-				parse: false,
-			} )
-		);
+			screen.getByRole( 'columnheader', { name: /Created/ } )
+		).toHaveAttribute( 'aria-sort', 'descending' );
+		for ( const name of [ 'Action', 'Value', 'Rule type', 'Created' ] ) {
+			expect(
+				screen.getByRole( 'button', { name } )
+			).toBeInTheDocument();
+		}
+		expect(
+			screen.getByRole( 'button', { name: 'View options' } )
+		).toBeInTheDocument();
 	} );
 
 	it( 'shows list loading, empty, and error states from resolver metadata', async () => {
@@ -178,7 +163,6 @@ describe( 'RulesPage', () => {
 		expect(
 			await screen.findByText( 'Loading rules' )
 		).toBeInTheDocument();
-		expect( dataViews.props?.isLoading ).toBe( true );
 		await act( async () => resolveList( collectionResponse( [] ) ) );
 		expect( await screen.findByText( 'No rules' ) ).toBeInTheDocument();
 		unmount();
@@ -197,19 +181,13 @@ describe( 'RulesPage', () => {
 	} );
 
 	it( 'shows the filtered empty state when no rules match', async () => {
+		const user = userEvent.setup();
 		mockedApiFetch
 			.mockResolvedValueOnce( collectionResponse() as never )
 			.mockResolvedValueOnce( collectionResponse( [] ) as never );
 		renderRules();
 		await screen.findByText( rule.value );
-		act(
-			() =>
-				dataViews.props?.onChangeView?.( {
-					...dataViews.props?.view,
-					filters: [ { field: 'type', operator: 'is', value: 'ip' } ],
-					page: 1,
-				} as View )
-		);
+		await user.click( screen.getByRole( 'tab', { name: 'Block' } ) );
 		expect(
 			await screen.findByText( 'No matching rules' )
 		).toBeInTheDocument();

@@ -1,5 +1,17 @@
 /* global beforeEach, jest */
 
+const reportConsoleError = console.error.bind( console );
+console.error = ( ...args ) => {
+	// JSDOM cannot parse the nested CSS that @wordpress/ui injects at runtime.
+	if (
+		args[ 0 ]?.type === 'css parsing' ||
+		args[ 0 ]?.message === 'Could not parse CSS stylesheet'
+	) {
+		return;
+	}
+	reportConsoleError( ...args );
+};
+
 // JSDOM does not provide Fetch API globals. Stub Request for instanceof checks.
 global.Request = class Request {
 	constructor( input ) {

@@ -10,6 +10,8 @@ module.exports = {
 		),
 		new WooCommerceDependencyExtractionWebpackPlugin( {
 			requestToExternal: ( request ) => {
+				// @wordpress/ui needs these at runtime, but supported WordPress
+				// versions do not expose public globals for them.
 				if (
 					[
 						'@wordpress/private-apis',
