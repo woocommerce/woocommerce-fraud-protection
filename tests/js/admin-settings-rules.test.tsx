@@ -371,23 +371,24 @@ describe( 'RulesPage', () => {
 	} );
 
 	it( 'rejects invalid and overlong email values through DataForm', async () => {
+		const user = userEvent.setup();
 		renderDrawer();
 		const valueInput = screen.getByLabelText( 'Value' );
 		const submit = screen.getByRole( 'button', { name: 'Create rule' } );
-		await userEvent.type( valueInput, 'not-an-email' );
+		await user.type( valueInput, 'not-an-email' );
 		expect( ( valueInput as HTMLInputElement ).validity.typeMismatch ).toBe(
 			true
 		);
 		await waitFor( () =>
 			expect( submit ).toHaveAttribute( 'aria-disabled', 'true' )
 		);
-		await userEvent.clear( valueInput );
+		await user.clear( valueInput );
 		const overlongEmail = `${ 'a'.repeat( 250 ) }@b.com`;
-		await userEvent.type( valueInput, overlongEmail );
+		await user.paste( overlongEmail );
 		expect( valueInput ).not.toHaveValue( overlongEmail );
 		expect( ( valueInput as HTMLInputElement ).value ).toHaveLength( 254 );
-		await userEvent.clear( valueInput );
-		await userEvent.type( valueInput, 'buyer@internal' );
+		await user.clear( valueInput );
+		await user.type( valueInput, 'buyer@internal' );
 		expect( ( valueInput as HTMLInputElement ).validity.valid ).toBe(
 			true
 		);
