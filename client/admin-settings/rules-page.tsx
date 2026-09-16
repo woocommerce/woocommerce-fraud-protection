@@ -211,26 +211,6 @@ export function RulesPage() {
 	const hasActiveFilters = Boolean( view.filters?.length );
 	const isInitialLoading = isLoading && rules.length === 0;
 	const loadErrorMessage = getLoadErrorMessage( error );
-	const listContent = (
-		<DataViews
-			data={ rules }
-			fields={ fields }
-			view={ view }
-			onChangeView={ setView }
-			isLoading={ isLoading }
-			paginationInfo={ { totalItems, totalPages } }
-			getItemId={ ( item ) => String( item.id ) }
-			defaultLayouts={ { table: {} } }
-			empty={
-				error ? null : (
-					<RulesEmptyState hasActiveFilters={ hasActiveFilters } />
-				)
-			}
-			search={ false }
-			config={ { perPageSizes: [ 20, 50, 100 ] } }
-		/>
-	);
-
 	return (
 		<Stack
 			className="wc-fraud-protection-rules"
@@ -277,43 +257,88 @@ export function RulesPage() {
 					</Notice.Root>
 				</div>
 			) }
-			<Tabs.Root
-				value={ actionTab }
-				onValueChange={ ( value ) => {
-					const filters = ( view.filters ?? [] ).filter(
-						( filter ) => filter.field !== 'action'
-					);
-					if ( value !== 'all' ) {
-						filters.push( {
-							field: 'action',
-							operator: 'is',
-							value,
-						} );
-					}
-					setView( { ...view, page: 1, filters } );
-				} }
+			<DataViews
+				data={ rules }
+				fields={ fields }
+				view={ view }
+				onChangeView={ setView }
+				isLoading={ isLoading }
+				paginationInfo={ { totalItems, totalPages } }
+				getItemId={ ( item ) => String( item.id ) }
+				defaultLayouts={ { table: {} } }
+				empty={
+					error ? null : (
+						<RulesEmptyState
+							hasActiveFilters={ hasActiveFilters }
+						/>
+					)
+				}
+				search={ false }
+				config={ { perPageSizes: [ 20, 50, 100 ] } }
 			>
-				<Tabs.List variant="minimal">
-					<Tabs.Tab value="all">
-						{ __( 'All', 'woocommerce-fraud-protection' ) }
-					</Tabs.Tab>
-					<Tabs.Tab value="allow">
-						{ __( 'Allow', 'woocommerce-fraud-protection' ) }
-					</Tabs.Tab>
-					<Tabs.Tab value="block">
-						{ __( 'Block', 'woocommerce-fraud-protection' ) }
-					</Tabs.Tab>
-				</Tabs.List>
-				<Tabs.Panel value="all">
-					{ actionTab === 'all' && listContent }
-				</Tabs.Panel>
-				<Tabs.Panel value="allow">
-					{ actionTab === 'allow' && listContent }
-				</Tabs.Panel>
-				<Tabs.Panel value="block">
-					{ actionTab === 'block' && listContent }
-				</Tabs.Panel>
-			</Tabs.Root>
+				<Tabs.Root
+					value={ actionTab }
+					onValueChange={ ( value ) => {
+						const filters = ( view.filters ?? [] ).filter(
+							( filter ) => filter.field !== 'action'
+						);
+						if ( value !== 'all' ) {
+							filters.push( {
+								field: 'action',
+								operator: 'is',
+								value,
+							} );
+						}
+						setView( { ...view, page: 1, filters } );
+					} }
+				>
+					<Stack
+						className="wc-fraud-protection-rules__toolbar"
+						direction="row"
+						align="center"
+						justify="space-between"
+						gap="sm"
+					>
+						<Tabs.List variant="minimal">
+							<Tabs.Tab value="all">
+								{ __( 'All', 'woocommerce-fraud-protection' ) }
+							</Tabs.Tab>
+							<Tabs.Tab value="allow">
+								{ __(
+									'Allow',
+									'woocommerce-fraud-protection'
+								) }
+							</Tabs.Tab>
+							<Tabs.Tab value="block">
+								{ __(
+									'Block',
+									'woocommerce-fraud-protection'
+								) }
+							</Tabs.Tab>
+						</Tabs.List>
+						<Stack
+							className="wc-fraud-protection-rules__view-controls"
+							direction="row"
+							align="center"
+							gap="xs"
+						>
+							<DataViews.FiltersToggle />
+							<DataViews.ViewConfig />
+						</Stack>
+					</Stack>
+					<DataViews.FiltersToggled />
+					<Tabs.Panel value="all">
+						{ actionTab === 'all' && <DataViews.Layout /> }
+					</Tabs.Panel>
+					<Tabs.Panel value="allow">
+						{ actionTab === 'allow' && <DataViews.Layout /> }
+					</Tabs.Panel>
+					<Tabs.Panel value="block">
+						{ actionTab === 'block' && <DataViews.Layout /> }
+					</Tabs.Panel>
+					<DataViews.Footer />
+				</Tabs.Root>
+			</DataViews>
 		</Stack>
 	);
 }

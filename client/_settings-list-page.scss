@@ -2,7 +2,7 @@
 	// WooCommerce settings add 30px of inline padding around the page content.
 	margin-inline: -30px;
 	padding-block: var(--wpds-dimension-padding-lg);
-	padding-inline: calc(2 * var(--wpds-dimension-padding-2xl));
+	padding-inline: var(--wpds-dimension-padding-2xl);
 	background: var(--wpds-color-background-surface-neutral-strong);
 }
 

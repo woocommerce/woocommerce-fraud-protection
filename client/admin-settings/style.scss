@@ -92,10 +92,6 @@
 
 	@include settings-list-page.page;
 
-	--wp-dataviews-color-background: var(
-		--wpds-color-background-surface-neutral
-	);
-
 	&__header {
 
 		@include settings-list-page.header;
@@ -119,6 +115,23 @@
 		margin-block: var(--wpds-dimension-gap-lg);
 	}
 
+	&__toolbar {
+		flex-wrap: wrap;
+	}
+
+	&__view-controls {
+		margin-inline-start: auto;
+	}
+
+	.dataviews-filters__container,
+	.dataviews-footer {
+		padding-inline: 0;
+	}
+
+	.dataviews-filters__container {
+		margin-block-start: var(--wpds-dimension-gap-md);
+	}
+
 	&__action--allow &__action-icon {
 		color: var(--wpds-color-foreground-content-success-weak);
 	}
@@ -131,4 +144,10 @@
 	&__value {
 		color: var(--wpds-color-foreground-content-neutral);
 	}
+}
+
+// WooCommerce leaves a gap below the settings tab bar. Remove it only when
+// the rules page is active so the white surfaces meet.
+#mainform:has( .wc-fraud-protection-rules ) nav.nav-tab-wrapper {
+	margin-bottom: 0;
 }
