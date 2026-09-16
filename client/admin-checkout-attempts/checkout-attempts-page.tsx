@@ -393,7 +393,7 @@ export function CheckoutAttemptsPage() {
 				defaultLayouts={ { table: {} } }
 				getItemId={ ( item ) => String( item.id ) }
 				searchLabel={ __(
-					'Search by email or IP address',
+					'Search by email or IP',
 					'woocommerce-fraud-protection'
 				) }
 				empty={ <p>{ emptyMessage }</p> }
@@ -430,7 +430,7 @@ export function CheckoutAttemptsPage() {
 				</nav>
 				<p className="wc-fraud-protection-checkout-attempts__description">
 					{ __(
-						'A record of past checkout attempts and how fraud prevention responded to each one. Creating rules or changing your protection settings affects future attempts, not these records.',
+						'See checkout attempts and how fraud prevention responded to them, including any that fraud prevention blocked before completing.',
 						'woocommerce-fraud-protection'
 					) }
 				</p>

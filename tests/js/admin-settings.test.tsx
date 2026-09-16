@@ -198,7 +198,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			},
 		} );
 		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-			'Rule created successfully',
+			'Rule created successfully.',
 			{ type: 'snackbar' }
 		);
 	} );
@@ -723,7 +723,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 	it.each( [
 		[
 			false,
-			'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this change.',
+			'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 		],
 		[
 			true,

@@ -188,7 +188,7 @@ function RulesEmptyState( {
 							'woocommerce-fraud-protection'
 					  )
 					: __(
-							'Any custom rules you create will appear here.',
+							'Any rules you create will appear here.',
 							'woocommerce-fraud-protection'
 					  ) }
 			</EmptyState.Description>
@@ -314,7 +314,7 @@ export function RulesPage() {
 				</Stack>
 				<p className="wc-fraud-protection-rules__description">
 					{ __(
-						'Rules that always let checkout attempts through or always block them, no matter what our fraud detection decides.',
+						'Rules that override any automatic fraud prevention decision. Allow rules take priority over block rules.',
 						'woocommerce-fraud-protection'
 					) }
 				</p>
@@ -499,7 +499,7 @@ export function RulesPage() {
 									setDeletingRule( undefined );
 									createSuccessNotice(
 										__(
-											'Rule deleted',
+											'Rule deleted.',
 											'woocommerce-fraud-protection'
 										),
 										{ type: 'snackbar' }

@@ -1,4 +1,4 @@
-import { Badge } from '@wordpress/ui';
+import { Badge, Tooltip } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
 
 import { FlaggedChip } from './flagged-chip';
@@ -39,7 +39,7 @@ const OUTCOMES: Record< Outcome, OutcomeDefinition > = {
 		intent: 'medium',
 	},
 	blocked_automatically: {
-		label: __( 'Blocked automatically', 'woocommerce-fraud-protection' ),
+		label: __( 'Blocked', 'woocommerce-fraud-protection' ),
 		intent: 'high',
 	},
 	blocked_by_rules: {
@@ -94,6 +94,25 @@ export function OutcomeBadge( {
 
 	if ( ! definition ) {
 		return <>{ outcome }</>;
+	}
+	if ( 'blocked_automatically' === outcome ) {
+		return (
+			<Tooltip.Root>
+				<Tooltip.Trigger
+					render={
+						<Badge intent={ definition.intent } tabIndex={ 0 }>
+							{ definition.label }
+						</Badge>
+					}
+				/>
+				<Tooltip.Popup>
+					{ __(
+						'Blocked automatically by fraud prevention',
+						'woocommerce-fraud-protection'
+					) }
+				</Tooltip.Popup>
+			</Tooltip.Root>
+		);
 	}
 
 	return <Badge intent={ definition.intent }>{ definition.label }</Badge>;

@@ -27,6 +27,7 @@ import { getFields } from '../../client/admin-checkout-attempts/fields';
 import {
 	getOutcomeLabel,
 	getOutcomeOptions,
+	OutcomeBadge,
 } from '../../client/admin-checkout-attempts/outcomes';
 import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/payment-method-elements';
 import { getFlaggedExplanation } from '../../client/admin-checkout-attempts/flagged-chip';
@@ -210,6 +211,7 @@ describe( 'checkout attempts outcomes', () => {
 		expect( getOutcomeLabel( 'blocked_by_rules' ) ).toBe(
 			'Blocked by rules'
 		);
+		expect( getOutcomeLabel( 'blocked_automatically' ) ).toBe( 'Blocked' );
 
 		const options = getOutcomeOptions();
 		expect( options ).toHaveLength( 5 );
@@ -222,6 +224,17 @@ describe( 'checkout attempts outcomes', () => {
 				'blocked_by_rules',
 			] )
 		);
+	} );
+
+	it( 'explains an automatic block in a tooltip', async () => {
+		render( <OutcomeBadge outcome="blocked_automatically" /> );
+		await userEvent.tab();
+		expect( screen.getByText( 'Blocked' ) ).toHaveFocus();
+		expect(
+			await screen.findByText(
+				'Blocked automatically by fraud prevention'
+			)
+		).toBeInTheDocument();
 	} );
 } );
 
@@ -907,13 +920,16 @@ describe( 'CheckoutAttemptsPage', () => {
 		renderPage();
 
 		expect(
-			screen.getByText( /A record of past checkout attempts/ )
+			screen.getByText(
+				'See checkout attempts and how fraud prevention responded to them, including any that fraud prevention blocked before completing.'
+			)
 		).toBeInTheDocument();
 
 		await waitFor( () => {
 			expect( lastDataViewsProps().data ).toHaveLength( 2 );
 		} );
 		const props = lastDataViewsProps();
+		expect( props.searchLabel ).toBe( 'Search by email or IP' );
 		expect( props.paginationInfo ).toEqual( {
 			totalItems: 2,
 			totalPages: 1,

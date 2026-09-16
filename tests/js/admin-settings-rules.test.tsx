@@ -252,6 +252,9 @@ describe( 'RulesPage', () => {
 		).toBeInTheDocument();
 		await act( async () => resolveList( collectionResponse( [] ) ) );
 		expect( await screen.findByText( 'No rules' ) ).toBeInTheDocument();
+		expect(
+			screen.getByText( 'Any rules you create will appear here.' )
+		).toBeInTheDocument();
 		unmount();
 
 		mockedApiFetch.mockReset();
@@ -321,6 +324,28 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
+	it( 'shows only the creation date for a rule that was never updated', async () => {
+		mockedApiFetch.mockResolvedValueOnce( rule as never );
+		renderDrawer( { ruleId: rule.id } );
+
+		const metadata = await screen.findByText(
+			/^This rule was created on /
+		);
+		expect( metadata ).not.toHaveTextContent( 'last updated' );
+	} );
+
+	it( 'shows the update date for a rule that was updated', async () => {
+		mockedApiFetch.mockResolvedValueOnce( {
+			...rule,
+			updated_at: '2026-09-15T13:30:00Z',
+		} as never );
+		renderDrawer( { ruleId: rule.id } );
+
+		expect(
+			await screen.findByText( /and last updated on/ )
+		).toBeInTheDocument();
+	} );
+
 	it( 'stays closed when an edit request finishes after close', async () => {
 		let resolveDetail: ( response: Rule ) => void = () => undefined;
 		mockedApiFetch
@@ -386,7 +411,7 @@ describe( 'RulesPage', () => {
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
 			expect.arrayContaining( [
 				expect.objectContaining( {
-					content: 'Rule created successfully',
+					content: 'Rule created successfully.',
 					type: 'snackbar',
 				} ),
 			] )
@@ -526,7 +551,7 @@ describe( 'RulesPage', () => {
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
 			expect.arrayContaining( [
 				expect.objectContaining( {
-					content: 'Rule updated successfully',
+					content: 'Rule updated successfully.',
 					type: 'snackbar',
 				} ),
 			] )
@@ -594,7 +619,7 @@ describe( 'RulesPage', () => {
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
 			expect.arrayContaining( [
 				expect.objectContaining( {
-					content: 'Rule deleted',
+					content: 'Rule deleted.',
 					type: 'snackbar',
 				} ),
 			] )

@@ -2,6 +2,7 @@
 
 2026-xx-xx - version 0.2.5
 * Added - Checkout attempts list on the Fraud prevention settings page showing recent attempts and how each was handled, with filtering, sorting and search.
+* Updated - Refined merchant-facing copy and rule date details across Fraud prevention settings.
 * Added - Merchants can view their active allow and block rules with filters and paging.
 * Added - Merchants can create exact email and IP allow or block rules.
 * Added - Merchants can edit or delete active allow and block rules.
