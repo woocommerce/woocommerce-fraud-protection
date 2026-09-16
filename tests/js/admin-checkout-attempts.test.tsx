@@ -55,9 +55,9 @@ jest.mock( '@woocommerce/data', () => ( {
 	useUserPreferences: () => mockUseUserPreferences(),
 } ) );
 
-// The enable drawer confirms a successful save with a "Settings saved." snackbar
-// through @wordpress/notices. Point that store at a spy so the toast is
-// assertable; a matching core/notices store is registered below.
+// The enable drawer confirms a successful save with a snackbar through
+// @wordpress/notices. Point that store at a spy so the toast is assertable; a
+// matching core/notices store is registered below.
 const mockCreateSuccessNotice = jest.fn();
 
 jest.mock( '@wordpress/notices', () => ( {
@@ -1231,11 +1231,10 @@ describe( 'CheckoutAttemptsPage', () => {
 			} )
 		);
 
-		// ...confirms the change with a "Settings saved." snackbar, matching the
-		// standard settings form...
+		// ...confirms that automatic fraud prevention is on...
 		await waitFor( () =>
 			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-				'Settings saved.',
+				'Automatic fraud prevention is on, flagged checkout attempts will be blocked automatically going forward.',
 				{ type: 'snackbar' }
 			)
 		);
