@@ -1,7 +1,8 @@
-import { Badge, Tooltip } from '@wordpress/ui';
+import { Badge } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
 
 import { FlaggedChip } from './flagged-chip';
+import { OutcomeInfo } from './outcome-info';
 import type { Outcome } from './types';
 
 type BadgeIntent =
@@ -31,7 +32,7 @@ const OUTCOMES: Record< Outcome, OutcomeDefinition > = {
 	},
 	flagged_by_fraud_prevention: {
 		// Used for the Outcome filter option. The Outcome column itself renders an
-		// "Allowed" badge plus a "Flagged" badge and an info tooltip (see
+		// "Allowed" badge plus a "Flagged" badge and an info popover (see
 		// OutcomeBadge), since the attempt was allowed and "flagged" carries the
 		// risk signal. The wording matches the settings performance summary's
 		// "Flagged by fraud prevention".
@@ -97,21 +98,24 @@ export function OutcomeBadge( {
 	}
 	if ( 'blocked_automatically' === outcome ) {
 		return (
-			<Tooltip.Root>
-				<Tooltip.Trigger
-					render={
-						<Badge intent={ definition.intent } tabIndex={ 0 }>
-							{ definition.label }
-						</Badge>
-					}
-				/>
-				<Tooltip.Popup>
+			<span className="wc-fraud-protection-checkout-attempts__status">
+				<Badge intent={ definition.intent }>{ definition.label }</Badge>
+				<OutcomeInfo
+					ariaLabel={ __(
+						'Why was this blocked?',
+						'woocommerce-fraud-protection'
+					) }
+					title={ __(
+						'Why this checkout attempt was blocked',
+						'woocommerce-fraud-protection'
+					) }
+				>
 					{ __(
 						'Blocked automatically by fraud prevention',
 						'woocommerce-fraud-protection'
 					) }
-				</Tooltip.Popup>
-			</Tooltip.Root>
+				</OutcomeInfo>
+			</span>
 		);
 	}
 

@@ -226,10 +226,15 @@ describe( 'checkout attempts outcomes', () => {
 		);
 	} );
 
-	it( 'explains an automatic block in a tooltip', async () => {
+	it( 'explains an automatic block with an info control', async () => {
 		render( <OutcomeBadge outcome="blocked_automatically" /> );
+		expect( screen.getByText( 'Blocked' ) ).toBeInTheDocument();
+		const infoControl = screen.getByRole( 'button', {
+			name: 'Why was this blocked?',
+		} );
 		await userEvent.tab();
-		expect( screen.getByText( 'Blocked' ) ).toHaveFocus();
+		expect( infoControl ).toHaveFocus();
+		await userEvent.keyboard( '{Enter}' );
 		expect(
 			await screen.findByText(
 				'Blocked automatically by fraud prevention'
