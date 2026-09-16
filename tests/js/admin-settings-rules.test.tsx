@@ -422,7 +422,7 @@ describe( 'RulesPage', () => {
 		await waitFor( () => expect( onClose ).toHaveBeenCalled() );
 	} );
 
-	it( 'shows a non-duplicate mutation failure as a snackbar and stays open', async () => {
+	it( 'shows a create failure in the drawer and stays open', async () => {
 		const { onClose, registry } = renderDrawer();
 		mockedApiFetch.mockRejectedValueOnce( {
 			message: 'The exact create error.',
@@ -434,20 +434,13 @@ describe( 'RulesPage', () => {
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		);
-		await waitFor( () =>
-			expect( registry.select( noticesStore ).getNotices() ).toEqual(
-				expect.arrayContaining( [
-					expect.objectContaining( {
-						content: 'The exact create error.',
-						type: 'snackbar',
-					} ),
-				] )
-			)
-		);
-		expect( onClose ).not.toHaveBeenCalled();
+		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
 		expect(
-			screen.getByRole( 'dialog', { name: 'Create rule' } )
+			await within( drawer ).findByText( 'The exact create error.' )
 		).toBeInTheDocument();
+		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
+		expect( onClose ).not.toHaveBeenCalled();
+		expect( drawer ).toBeInTheDocument();
 	} );
 
 	it( 'keeps contextual fields fixed and submits their source attempt', async () => {
@@ -538,6 +531,28 @@ describe( 'RulesPage', () => {
 				} ),
 			] )
 		);
+	} );
+
+	it( 'shows an update failure in the drawer and stays open', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( rule as never )
+			.mockRejectedValueOnce( { message: 'The exact update error.' } );
+		const { onClose, registry } = renderDrawer( { ruleId: rule.id } );
+		await screen.findByDisplayValue( rule.value );
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'block'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+		const drawer = screen.getByRole( 'dialog', { name: 'Edit rule' } );
+		expect(
+			await within( drawer ).findByText( 'The exact update error.' )
+		).toBeInTheDocument();
+		expect( registry.select( noticesStore ).getNotices() ).toEqual( [] );
+		expect( onClose ).not.toHaveBeenCalled();
+		expect( drawer ).toBeInTheDocument();
 	} );
 
 	it( 'keeps the delete dialog open after a delete failure', async () => {

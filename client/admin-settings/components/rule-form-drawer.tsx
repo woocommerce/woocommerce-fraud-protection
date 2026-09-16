@@ -402,6 +402,13 @@ function RuleForm( {
 							} ) );
 						} }
 					/>
+					{ saveError && ! hasDuplicateError && (
+						<Notice.Root intent="error">
+							<Notice.Description>
+								{ saveError.message }
+							</Notice.Description>
+						</Notice.Root>
+					) }
 					{ rule && (
 						<Text
 							variant="body-md"

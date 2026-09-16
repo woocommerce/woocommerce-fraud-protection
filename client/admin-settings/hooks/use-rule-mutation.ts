@@ -52,8 +52,7 @@ export function useRuleMutation() {
 			request: UpdateRuleRequest
 		) => Promise< Rule >;
 	};
-	const { createSuccessNotice, createErrorNotice } =
-		useDispatch( noticesStore );
+	const { createSuccessNotice } = useDispatch( noticesStore );
 	const [ isSaving, setIsSaving ] = useState( false );
 	const [ saveError, setSaveError ] = useState< RuleMutationError | null >(
 		null
@@ -106,23 +105,12 @@ export function useRuleMutation() {
 						  )
 				);
 				setSaveError( mutationError );
-				if ( mutationError.code !== DUPLICATE_RULE_ERROR ) {
-					createErrorNotice( mutationError.message, {
-						type: 'snackbar',
-					} );
-				}
 				return null;
 			} finally {
 				setIsSaving( false );
 			}
 		},
-		[
-			createErrorNotice,
-			createRule,
-			createSuccessNotice,
-			isSaving,
-			updateRule,
-		]
+		[ createRule, createSuccessNotice, isSaving, updateRule ]
 	);
 
 	return { clearSaveError, isSaving, saveError, saveRule };
