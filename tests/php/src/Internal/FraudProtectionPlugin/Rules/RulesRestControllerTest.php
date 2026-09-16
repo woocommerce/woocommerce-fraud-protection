@@ -1265,16 +1265,16 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Delete telemetry uses the rule snapshot protected by the store write lock.
+	 * @testdox Delete telemetry uses the rule snapshot returned by the store.
 	 */
-	public function test_delete_rule_tracks_the_locked_rule_snapshot(): void {
+	public function test_delete_rule_tracks_the_returned_rule_snapshot(): void {
 		$deleted_rule = Rule::from_row(
 			array(
 				'id'          => 42,
 				'action'      => 'allow',
 				'status'      => 'active',
 				'position'    => 1,
-				'conditions'  => '{"field":"email","operator":"equals","value":"locked@example.com"}',
+				'conditions'  => '{"field":"email","operator":"equals","value":"deleted@example.com"}',
 				'created_at'  => '2026-09-15 12:00:00',
 				'created_by'  => 1,
 				'updated_at'  => null,
