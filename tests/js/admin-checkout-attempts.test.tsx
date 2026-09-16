@@ -451,24 +451,41 @@ describe( 'checkout attempts row actions', () => {
 	} );
 
 	it( 'passes the selected attempt and value type to create actions', () => {
-		const session = aSession( { id: 27 } );
+		const allowed = aSession( { id: 27 } );
+		const blocked = aSession( {
+			id: 28,
+			final_status: 'blocked',
+			outcome: 'blocked_automatically',
+		} );
 		const callbacks = {
 			onCreateRule: jest.fn(),
 			onEditRule: jest.fn(),
 			onDeleteRule: jest.fn(),
 		};
 
-		runAction( 'email-block', session, callbacks );
-		runAction( 'ip-block', session, callbacks );
+		runAction( 'email-block', allowed, callbacks );
+		runAction( 'ip-block', allowed, callbacks );
+		runAction( 'email-allow', blocked, callbacks );
+		runAction( 'ip-allow', blocked, callbacks );
 
 		expect( callbacks.onCreateRule ).toHaveBeenNthCalledWith(
 			1,
-			session,
+			allowed,
 			'email'
 		);
 		expect( callbacks.onCreateRule ).toHaveBeenNthCalledWith(
 			2,
-			session,
+			allowed,
+			'ip'
+		);
+		expect( callbacks.onCreateRule ).toHaveBeenNthCalledWith(
+			3,
+			blocked,
+			'email'
+		);
+		expect( callbacks.onCreateRule ).toHaveBeenNthCalledWith(
+			4,
+			blocked,
 			'ip'
 		);
 	} );
@@ -949,10 +966,12 @@ const fullRule = ( overrides: Partial< Rule > = {} ): Rule => ( {
 const mockRuleApi = ( {
 	before,
 	after = before,
+	createError,
 	details = {},
 }: {
 	before: Session[];
 	after?: Session[];
+	createError?: unknown;
 	details?: Record< number, Rule >;
 } ) => {
 	let mutated = false;
@@ -972,6 +991,9 @@ const mockRuleApi = ( {
 				return Promise.resolve( settingsResponse() );
 			}
 			if ( path === '/wc-fraud-protection/v1/rules' ) {
+				if ( createError ) {
+					return Promise.reject( createError );
+				}
 				mutated = true;
 				return Promise.resolve(
 					fullRule( {
@@ -1025,6 +1047,18 @@ const renderPage = ( search = '' ) => {
 // Only the paginated list requests, which carry query arguments.
 const listPaths = () =>
 	settledPaths().filter( ( path ) => path.includes( '/sessions?' ) );
+
+const ruleMutationRequests = () =>
+	mockedApiFetch.mock.calls
+		.map( ( [ options ] ) => options )
+		.filter(
+			( options: { method?: string; path?: string } ) =>
+				String( options.path ).includes(
+					'/wc-fraud-protection/v1/rules'
+				) &&
+				[ 'POST', 'PUT', 'DELETE' ].indexOf( options.method ?? '' ) !==
+					-1
+		);
 
 const chooseAttemptAction = ( actionId: string, session: Session ) => {
 	const action = lastDataViewsProps().actions.find(
@@ -1126,6 +1160,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'block' );
 		expect( screen.getByLabelText( 'Rule type' ) ).toHaveValue( 'email' );
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( allowed.email );
+		expect( ruleMutationRequests() ).toHaveLength( 0 );
 
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Close' } )
@@ -1143,6 +1178,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'allow' );
 		expect( screen.getByLabelText( 'Rule type' ) ).toHaveValue( 'ip' );
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( blocked.ip );
+		expect( ruleMutationRequests() ).toHaveLength( 0 );
 	} );
 
 	it( 'creates a contextual rule, closes the drawer, refreshes row actions, and preserves list state', async () => {
@@ -1167,6 +1203,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		const searchBeforeSave = mockHistory.location.search;
 
 		chooseAttemptAction( 'email-block', attempt );
+		expect( ruleMutationRequests() ).toHaveLength( 0 );
 		await userEvent.click(
 			await screen.findByRole( 'button', { name: 'Create rule' } )
 		);
@@ -1184,6 +1221,7 @@ describe( 'CheckoutAttemptsPage', () => {
 				},
 			} )
 		);
+		expect( ruleMutationRequests() ).toHaveLength( 1 );
 		await waitFor( () =>
 			expect(
 				screen.queryByRole( 'dialog', { name: 'Create rule' } )
@@ -1221,8 +1259,15 @@ describe( 'CheckoutAttemptsPage', () => {
 		const attempt = aSession( {
 			rules: { email: aRule( { id: 701 } ), ip: null },
 		} );
+		const refreshedAttempt = aSession( {
+			rules: {
+				email: aRule( { id: 701, action: 'allow' } ),
+				ip: null,
+			},
+		} );
 		mockRuleApi( {
 			before: [ attempt ],
+			after: [ refreshedAttempt ],
 			details: { 701: fullRule( { id: 701 } ) },
 		} );
 
@@ -1257,13 +1302,22 @@ describe( 'CheckoutAttemptsPage', () => {
 				screen.queryByRole( 'dialog', { name: 'Edit rule' } )
 			).not.toBeInTheDocument()
 		);
+		await waitFor( () =>
+			expect( lastDataViewsProps().data[ 0 ].rules.email?.action ).toBe(
+				'allow'
+			)
+		);
+		expect( listPaths().length ).toBeGreaterThanOrEqual( 2 );
 	} );
 
 	it( 'deletes the matching rule with the checkout-attempts origin', async () => {
 		const attempt = aSession( {
 			rules: { email: null, ip: aRule( { id: 802 } ) },
 		} );
-		mockRuleApi( { before: [ attempt ] } );
+		const refreshedAttempt = aSession( {
+			rules: { email: null, ip: null },
+		} );
+		mockRuleApi( { before: [ attempt ], after: [ refreshedAttempt ] } );
 
 		renderPage();
 		await waitFor( () =>
@@ -1294,6 +1348,72 @@ describe( 'CheckoutAttemptsPage', () => {
 				screen.queryByRole( 'dialog', { name: 'Delete rule' } )
 			).not.toBeInTheDocument()
 		);
+		await waitFor( () =>
+			expect( lastDataViewsProps().data[ 0 ].rules.ip ).toBeNull()
+		);
+		const refreshedActionIds = lastDataViewsProps()
+			.actions.filter(
+				( action: { isEligible?: ( item: Session ) => boolean } ) =>
+					action.isEligible?.( refreshedAttempt ) ?? true
+			)
+			.map( ( action: { id: string } ) => action.id );
+		expect( refreshedActionIds ).toContain( 'ip-block' );
+		expect( listPaths().length ).toBeGreaterThanOrEqual( 2 );
+	} );
+
+	it( 'opens a duplicate rule for normal editing with the checkout-attempts origin', async () => {
+		const attempt = aSession( { id: 41 } );
+		const existingRule = fullRule( { id: 17, action: 'allow' } );
+		mockRuleApi( {
+			before: [ attempt ],
+			createError: {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: 17 },
+			},
+			details: { 17: existingRule },
+		} );
+
+		renderPage();
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 1 )
+		);
+		chooseAttemptAction( 'email-block', attempt );
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Edit existing rule' } )
+		);
+
+		expect(
+			await screen.findByRole( 'dialog', { name: 'Edit rule' } )
+		).toBeVisible();
+		expect( screen.getByLabelText( 'Rule type' ) ).toBeEnabled();
+		expect( screen.getByLabelText( 'Value' ) ).toBeEnabled();
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue(
+			existingRule.value
+		);
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'block'
+		);
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules/17',
+				method: 'PUT',
+				data: {
+					action: 'block',
+					type: 'email',
+					value: 'shopper@example.com',
+					origin: 'checkout_attempts',
+				},
+			} )
+		);
 	} );
 
 	it( 'cancels rule deletion without sending a request', async () => {
@@ -1315,7 +1435,11 @@ describe( 'CheckoutAttemptsPage', () => {
 		);
 
 		expect(
-			settledPaths().some( ( path ) => path.includes( '/rules/803?' ) )
+			ruleMutationRequests().some(
+				( request: { method?: string; path?: string } ) =>
+					request.method === 'DELETE' &&
+					String( request.path ).includes( '/rules/803' )
+			)
 		).toBe( false );
 		expect(
 			screen.queryByRole( 'dialog', { name: 'Delete rule' } )
@@ -1624,6 +1748,25 @@ describe( 'CheckoutAttemptsPage', () => {
 				screen.queryByText( /Automatic fraud prevention is off/ )
 			).not.toBeInTheDocument()
 		);
+	} );
+
+	it( 'opens the existing enable drawer from a flagged row action', async () => {
+		const flagged = aSession( {
+			outcome: 'flagged_by_fraud_prevention',
+		} );
+		mockApi( { sessions: listResponse( [ flagged ], 1 ) } );
+
+		renderPage();
+		await waitFor( () =>
+			expect( lastDataViewsProps().data ).toHaveLength( 1 )
+		);
+		chooseAttemptAction( 'enable-automatic-protection', flagged );
+
+		expect(
+			await screen.findByRole( 'heading', {
+				name: 'Enable fraud prevention',
+			} )
+		).toBeVisible();
 	} );
 
 	it( 'hides the automatic-protection banner when protection is on', async () => {

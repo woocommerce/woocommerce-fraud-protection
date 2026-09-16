@@ -616,6 +616,10 @@ describe( 'RulesPage', () => {
 				screen.queryByRole( 'dialog', { name: 'Delete rule' } )
 			).toBeNull()
 		);
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: `/wc-fraud-protection/v1/rules/${ rule.id }?origin=rules`,
+			method: 'DELETE',
+		} );
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
 			expect.arrayContaining( [
 				expect.objectContaining( {
