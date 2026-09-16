@@ -1,5 +1,19 @@
 /* global beforeEach, jest */
 
+// eslint-disable-next-line no-console
+const reportConsoleError = console.error.bind( console );
+// eslint-disable-next-line no-console
+console.error = ( ...args ) => {
+	// JSDOM cannot parse the nested CSS that @wordpress/ui injects at runtime.
+	if (
+		args[ 0 ]?.type === 'css parsing' ||
+		args[ 0 ]?.message === 'Could not parse CSS stylesheet'
+	) {
+		return;
+	}
+	reportConsoleError( ...args );
+};
+
 // JSDOM does not provide Fetch API globals. Stub Request for instanceof checks.
 global.Request = class Request {
 	constructor( input ) {
@@ -15,6 +29,28 @@ if ( ! window.PointerEvent ) {
 		value: window.MouseEvent,
 	} );
 }
+
+if ( ! window.ResizeObserver ) {
+	Object.defineProperty( window, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class ResizeObserver {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		},
+	} );
+}
+
+// Floating UI checks this browser-only state while positioning a menu. JSDOM's
+// selector engine recurses when it evaluates it.
+const matches = window.Element.prototype.matches;
+window.Element.prototype.matches = function ( selector ) {
+	if ( selector === ':modal' ) {
+		return false;
+	}
+	return matches.call( this, selector );
+};
 
 // Stub HTMLFormElement.prototype.submit to prevent jsdom "Not implemented" errors.
 // Individual tests can override form.submit with their own spy when they need to assert on it.

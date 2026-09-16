@@ -40,6 +40,11 @@ defined( 'ABSPATH' ) || exit;
 class RuleStore {
 
 	/**
+	 * Fields supported by the merchant rules list sort.
+	 */
+	public const SORTABLE_COLUMNS = array( 'action', 'value', 'type', 'created_at' );
+
+	/**
 	 * Object cache group for rules data.
 	 */
 	private const CACHE_GROUP = 'wc_fraud_protection';
@@ -271,6 +276,136 @@ class RuleStore {
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A );
 
 		return is_array( $row ) ? Rule::from_row( $row ) : null;
+	}
+
+	/**
+	 * Get a page of active rules for the merchant management view.
+	 *
+	 * @param array{action?: string, type?: string, value?: string, from?: string, to?: string} $filters  Filters in normalized or UTC form.
+	 * @param int                                                                               $page     One-based page number.
+	 * @param int                                                                               $per_page Items per page.
+	 * @param string                                                                            $orderby  Sort field.
+	 * @param string                                                                            $order    Sort direction.
+	 * @return array{items: Rule[], total: int, pages: int}
+	 * @throws \RuntimeException When a query fails.
+	 */
+	public function get_active_rules_page( array $filters = array(), int $page = 1, int $per_page = 20, string $orderby = 'created_at', string $order = 'desc' ): array {
+		global $wpdb;
+
+		$page     = max( 1, $page );
+		$per_page = min( 100, max( 1, $per_page ) );
+		$where    = array( 'status = %s' );
+		$values   = array( RuleStatus::Active->value );
+
+		if ( isset( $filters['action'] ) && in_array( $filters['action'], array( FraudDecision::Allow->value, FraudDecision::Block->value ), true ) ) {
+			$where[]  = 'action = %s';
+			$values[] = $filters['action'];
+		}
+
+		$type             = isset( $filters['type'] ) && is_string( $filters['type'] ) && in_array( $filters['type'], array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) ? $filters['type'] : null;
+		$has_value_filter = isset( $filters['value'] ) && is_string( $filters['value'] ) && '' !== $filters['value'];
+		if ( $has_value_filter ) {
+			if ( is_string( $type ) ) {
+				$normalized_value = RuleConditions::normalize_value( $type, $filters['value'] );
+				if ( is_null( $normalized_value ) ) {
+					return array(
+						'items' => array(),
+						'total' => 0,
+						'pages' => 0,
+					);
+				}
+				$where[]  = 'condition_hash = %s';
+				$values[] = RuleConditions::hash(
+					array(
+						'field'    => $type,
+						'operator' => 'equals',
+						'value'    => $normalized_value,
+					)
+				);
+			} else {
+				$hashes = array();
+				foreach ( array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ) as $field ) {
+					$value = RuleConditions::normalize_value( $field, $filters['value'] );
+					if ( ! is_null( $value ) ) {
+						$hashes[] = RuleConditions::hash(
+							array(
+								'field'    => $field,
+								'operator' => 'equals',
+								'value'    => $value,
+							)
+						);
+					}
+				}
+				if ( empty( $hashes ) ) {
+					return array(
+						'items' => array(),
+						'total' => 0,
+						'pages' => 0,
+					);
+				}
+				$where[] = 'condition_hash IN ( ' . implode( ', ', array_fill( 0, count( $hashes ), '%s' ) ) . ' )';
+				$values  = array_merge( $values, $hashes );
+			}
+		}
+
+		if ( is_string( $type ) && ! $has_value_filter ) {
+			$where[]  = 'conditions LIKE %s';
+			$values[] = '%"field":"' . $wpdb->esc_like( $type ) . '"%';
+		}
+
+		foreach ( array(
+			'from' => '>=',
+			'to'   => '<=',
+		) as $filter => $operator ) {
+			if ( isset( $filters[ $filter ] ) && is_string( $filters[ $filter ] ) && '' !== $filters[ $filter ] ) {
+				$where[]  = 'created_at ' . $operator . ' %s';
+				$values[] = $filters[ $filter ];
+			}
+		}
+
+		$table     = $this->schema_manager->get_rules_table_name();
+		$where_sql = implode( ' AND ', $where );
+		$count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
+		$total = $wpdb->get_var( $wpdb->prepare( $count_sql, $values ) );
+		if ( false === $total || is_null( $total ) ) {
+			throw new \RuntimeException( 'Active rule count query failed.' );
+		}
+
+		$orderby = in_array( $orderby, self::SORTABLE_COLUMNS, true ) ? $orderby : 'created_at';
+		$order   = 'asc' === strtolower( $order ) ? 'ASC' : 'DESC';
+		// The MVP writes one fixed field/operator/value shape. Revisit these expressions before adding other shapes.
+		$type_expression  = "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"field\":\"', -1), '\"', 1))";
+		$value_expression = "LOWER(REPLACE(LEFT(SUBSTRING_INDEX(conditions, '\"value\":\"', -1), CHAR_LENGTH(SUBSTRING_INDEX(conditions, '\"value\":\"', -1)) - 2), CONCAT(CHAR(92), '/'), '/'))";
+		$order_expression = match ( $orderby ) {
+			'action' => 'action',
+			'value'  => $value_expression,
+			'type'   => $type_expression,
+			default  => 'created_at',
+		};
+		$offset = ( $page - 1 ) * $per_page;
+		$sql    = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$order_expression} {$order}, id {$order} LIMIT %d OFFSET %d";
+		$args   = array_merge( $values, array( $per_page, $offset ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Expressions and direction are selected from fixed allowlists and all values are passed to prepare().
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
+		if ( ! is_array( $rows ) ) {
+			throw new \RuntimeException( 'Active rule list query failed.' );
+		}
+
+		$items = array();
+		foreach ( $rows as $row ) {
+			$rule = Rule::from_row( $row );
+			if ( ! is_null( $rule ) && RuleStatus::Active === $rule->status ) {
+				$items[] = $rule;
+			}
+		}
+
+		$total = (int) $total;
+		return array(
+			'items' => $items,
+			'total' => $total,
+			'pages' => $total > 0 ? (int) ceil( $total / $per_page ) : 0,
+		);
 	}
 
 	/**

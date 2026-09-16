@@ -1,3 +1,7 @@
+@use '../settings-list-page' as settings-list-page;
+@import '@wordpress/components/build-style/style.css';
+@import '@wordpress/dataviews/build-style/style.css';
+
 .wc-fraud-protection-settings__content {
 	max-width: 720px;
 	margin: 0 auto;
@@ -82,4 +86,68 @@
 			grid-template-columns: minmax(0, 1fr);
 		}
 	}
+}
+
+.wc-fraud-protection-rules {
+
+	@include settings-list-page.page;
+
+	&__header {
+
+		@include settings-list-page.header;
+	}
+
+	&__description {
+
+		@include settings-list-page.description;
+	}
+
+	&__breadcrumb {
+
+		@include settings-list-page.breadcrumb;
+	}
+
+	.woocommerce_page_wc-settings #mainform &__breadcrumb {
+		margin: 0;
+	}
+
+	&__error {
+		margin-block: var(--wpds-dimension-gap-lg);
+	}
+
+	&__toolbar {
+		flex-wrap: wrap;
+	}
+
+	&__view-controls {
+		margin-inline-start: auto;
+	}
+
+	.dataviews-filters__container,
+	.dataviews-footer {
+		padding-inline: 0;
+	}
+
+	.dataviews-filters__container {
+		margin-block-start: var(--wpds-dimension-gap-md);
+	}
+
+	&__action--allow &__action-icon {
+		color: var(--wpds-color-foreground-content-success-weak);
+	}
+
+	&__action--block &__action-icon {
+		color: var(--wpds-color-foreground-content-error-weak);
+	}
+
+	&__action,
+	&__value {
+		color: var(--wpds-color-foreground-content-neutral);
+	}
+}
+
+// WooCommerce leaves a gap below the settings tab bar. Remove it only when
+// the rules page is active so the white surfaces meet.
+#mainform:has( .wc-fraud-protection-rules ) nav.nav-tab-wrapper {
+	margin-bottom: 0;
 }

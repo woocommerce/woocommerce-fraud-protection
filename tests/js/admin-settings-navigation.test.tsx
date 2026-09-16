@@ -11,6 +11,7 @@ import {
 } from '@wordpress/data';
 
 import { settingsStore } from '../../client/admin-settings/data/store';
+import { rulesStore } from '../../client/admin-settings/data/rules-store';
 import { FraudProtectionAdminApp } from '../../client/admin-settings';
 
 function mockGetNewPath( _query: { page: string; tab: string }, path: string ) {
@@ -78,7 +79,11 @@ const SETTINGS_PATH = '/wc-fraud-protection/v1/settings';
 // real list page mounts without error while the routing is exercised.
 const apiFetchImplementation = ( options: unknown ) => {
 	const { path } = ( options ?? {} ) as { path?: string };
-	if ( path && path.startsWith( '/wc-fraud-protection/v1/sessions' ) ) {
+	if (
+		path &&
+		( path.startsWith( '/wc-fraud-protection/v1/sessions' ) ||
+			path.startsWith( '/wc-fraud-protection/v1/rules' ) )
+	) {
 		return Promise.resolve( {
 			json: () => Promise.resolve( [] ),
 			headers: { get: () => '0' },
@@ -107,6 +112,7 @@ const renderApp = ( initialRoute = '/' ) => {
 	mockHistory = createTestHistory( initialRoute );
 	const registry = createRegistry();
 	registry.register( settingsStore );
+	registry.register( rulesStore );
 	registry.register( noticesStore );
 
 	return render(
@@ -171,6 +177,19 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( settingsFetchCount() ).toBe( 1 );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
 			path: '/wc-fraud-protection/v1/settings',
+		} );
+	} );
+
+	it( 'loads the rules page on the dedicated route', async () => {
+		renderApp( '/rules' );
+
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
+		expect( mockHistory.location.pathname ).toBe( '/rules' );
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			parse: false,
 		} );
 	} );
 
