@@ -305,7 +305,7 @@ class RuleStore {
 		$type             = isset( $filters['type'] ) && is_string( $filters['type'] ) && in_array( $filters['type'], array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) ? $filters['type'] : null;
 		$has_value_filter = isset( $filters['value'] ) && is_string( $filters['value'] ) && '' !== $filters['value'];
 		// The MVP writes one fixed field/operator/value shape. Revisit these expressions before adding other shapes.
-		$type_expression  = "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"field\":\"', -1), '\"', 1))";
+		$type_expression = "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"field\":\"', -1), '\"', 1))";
 		if ( $has_value_filter ) {
 			if ( is_string( $type ) ) {
 				$normalized_value = RuleConditions::normalize_value( $type, $filters['value'] );
@@ -374,8 +374,8 @@ class RuleStore {
 			throw new \RuntimeException( 'Active rule count query failed.' );
 		}
 
-		$orderby = in_array( $orderby, self::SORTABLE_COLUMNS, true ) ? $orderby : 'created_at';
-		$order   = 'asc' === strtolower( $order ) ? 'ASC' : 'DESC';
+		$orderby          = in_array( $orderby, self::SORTABLE_COLUMNS, true ) ? $orderby : 'created_at';
+		$order            = 'asc' === strtolower( $order ) ? 'ASC' : 'DESC';
 		$value_expression = "LOWER(REPLACE(LEFT(SUBSTRING_INDEX(conditions, '\"value\":\"', -1), CHAR_LENGTH(SUBSTRING_INDEX(conditions, '\"value\":\"', -1)) - 2), CONCAT(CHAR(92), '/'), '/'))";
 		$order_expression = match ( $orderby ) {
 			'action' => 'action',
