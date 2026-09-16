@@ -488,8 +488,14 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox A failed delete query throws instead of reporting a missing rule.
 	 */
 	public function test_delete_query_failure_throws(): void {
-		$rule   = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'fraudster@example.com' ) );
-		$table  = $this->schema_manager->get_rules_table_name();
+		global $wpdb;
+
+		$rule  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'fraudster@example.com' ) );
+		$table = $this->schema_manager->get_rules_table_name();
+
+		// The query is intentionally invalid; keep the expected database error out of test output.
+		$previous_suppress_errors = $wpdb->suppress_errors( true );
+
 		$filter = static function ( string $query ) use ( $table, &$filter ): string {
 			if ( ! str_starts_with( $query, "UPDATE {$table} SET status = 'deleted'" ) ) {
 				return $query;
@@ -505,6 +511,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 			$this->sut->delete_rule( $rule->id );
 		} finally {
 			remove_filter( 'query', $filter );
+			$wpdb->suppress_errors( $previous_suppress_errors );
 		}
 	}
 
@@ -512,7 +519,13 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox A failed rule read query throws instead of reporting a missing rule.
 	 */
 	public function test_get_rule_query_failure_throws(): void {
-		$table  = $this->schema_manager->get_rules_table_name();
+		global $wpdb;
+
+		$table = $this->schema_manager->get_rules_table_name();
+
+		// The query is intentionally invalid; keep the expected database error out of test output.
+		$previous_suppress_errors = $wpdb->suppress_errors( true );
+
 		$filter = static function ( string $query ) use ( $table, &$filter ): string {
 			if ( ! str_starts_with( $query, "SELECT * FROM {$table} WHERE id =" ) ) {
 				return $query;
@@ -528,6 +541,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 			$this->sut->get_rule( 1 );
 		} finally {
 			remove_filter( 'query', $filter );
+			$wpdb->suppress_errors( $previous_suppress_errors );
 		}
 	}
 
@@ -666,8 +680,14 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	 * @testdox A failed action-group boundary query aborts the update without changing the rule.
 	 */
 	public function test_action_move_boundary_query_failure_throws(): void {
+		global $wpdb;
+
 		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
 		$table  = $this->schema_manager->get_rules_table_name();
+
+		// The query is intentionally invalid; keep the expected database error out of test output.
+		$previous_suppress_errors = $wpdb->suppress_errors( true );
+
 		$filter = static function ( string $query ) use ( $table, &$filter ): string {
 			if ( ! str_contains( $query, "SELECT MIN(position) FROM {$table}" ) ) {
 				return $query;
@@ -683,6 +703,7 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 			$this->sut->update_rule( $target->id, FraudDecision::Allow );
 		} finally {
 			remove_filter( 'query', $filter );
+			$wpdb->suppress_errors( $previous_suppress_errors );
 			$this->assertSame( FraudDecision::Block, $this->sut->get_rule( $target->id )->action );
 		}
 	}

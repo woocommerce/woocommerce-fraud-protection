@@ -962,6 +962,8 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @param string $expected_code Expected error code.
 	 */
 	public function test_rule_read_query_failure_returns_server_error( string $method, string $expected_code ): void {
+		global $wpdb;
+
 		$rule    = $this->rule_store->create_rule(
 			FraudDecision::Allow,
 			array(
@@ -980,12 +982,17 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 				)
 			);
 		}
+
+		// The query is intentionally invalid; keep the expected database error out of test output.
+		$previous_suppress_errors = $wpdb->suppress_errors( true );
+
 		$filter = $this->fail_next_rule_read_query();
 
 		try {
 			$response = $this->server->dispatch( $request );
 		} finally {
 			remove_filter( 'query', $filter );
+			$wpdb->suppress_errors( $previous_suppress_errors );
 		}
 
 		$this->assertSame( 500, $response->get_status() );
