@@ -1,6 +1,8 @@
 /* global beforeEach, jest */
 
+// eslint-disable-next-line no-console
 const reportConsoleError = console.error.bind( console );
+// eslint-disable-next-line no-console
 console.error = ( ...args ) => {
 	// JSDOM cannot parse the nested CSS that @wordpress/ui injects at runtime.
 	if (
