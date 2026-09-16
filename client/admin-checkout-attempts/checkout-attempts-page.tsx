@@ -323,6 +323,13 @@ export function CheckoutAttemptsPage() {
 			openEnableDrawer,
 		]
 	);
+	const paginationInfo = {
+		totalItems,
+		totalPages:
+			isLoading || error
+				? Math.max( totalPages, view.page ?? 1 )
+				: totalPages,
+	};
 
 	// Mirror the current view and tab to the URL by pushing a full admin URL
 	// through the WooCommerce history. `replace` avoids a history entry for
@@ -458,7 +465,7 @@ export function CheckoutAttemptsPage() {
 				view={ view }
 				onChangeView={ onChangeView }
 				actions={ actions }
-				paginationInfo={ { totalItems, totalPages } }
+				paginationInfo={ paginationInfo }
 				isLoading={ isLoading }
 				defaultLayouts={ { table: {} } }
 				getItemId={ ( item ) => String( item.id ) }
