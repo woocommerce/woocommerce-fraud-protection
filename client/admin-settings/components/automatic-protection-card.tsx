@@ -40,15 +40,15 @@ export function AutomaticProtectionCard( {
 					'woocommerce-fraud-protection'
 			  )
 			: __(
-					'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+					'Automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 					'woocommerce-fraud-protection'
 			  );
 	} else if ( optedOut ) {
 		noticeText = sprintf(
 			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
 			_n(
-				'<a>%d checkout attempt</a> in the last 30 days is flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.',
-				'<a>%d checkout attempts</a> in the last 30 days are flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.',
+				'<a>%d checkout attempt</a> was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+				'<a>%d checkout attempts</a> were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
 				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
@@ -58,8 +58,8 @@ export function AutomaticProtectionCard( {
 		noticeText = sprintf(
 			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
 			_n(
-				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic blocking is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
-				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic blocking is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+				'<a>%d checkout attempt</a> was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+				'<a>%d checkout attempts</a> were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
