@@ -650,21 +650,31 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toHaveLength( 0 );
 	} );
 
-	it.each< [ number, string ] >( [
-		[ 1, '1 checkout attempt' ],
-		[ 12, '12 checkout attempts' ],
-	] )( 'links the %s flagged attempt count', async ( count, label ) => {
+	it.each< [ number, string, string ] >( [
+		[
+			1,
+			'1 checkout attempt',
+			'1 checkout attempt was flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on automatic blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+		[
+			12,
+			'12 checkout attempts',
+			'12 checkout attempts were flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on automatic blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+	] )( 'links the %s flagged attempt count', async ( count, label, copy ) => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, performanceWithFlagged( count ) )
 		);
 		renderSettings();
 
-		expect(
-			await screen.findByRole( 'link', { name: label } )
-		).toHaveAttribute(
+		const countLink = await screen.findByRole( 'link', {
+			name: label,
+		} );
+		expect( countLink ).toHaveAttribute(
 			'href',
 			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
 		);
+		expect( countLink.parentElement ).toHaveTextContent( copy );
 	} );
 
 	it( 'shows the opt-out actions and offers no dismiss on the opt-out notice', async () => {
