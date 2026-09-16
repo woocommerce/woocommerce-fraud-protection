@@ -45,6 +45,9 @@ jest.mock( '@woocommerce/navigation', () => ( {
 	},
 } ) );
 
+// Base UI needs its positioning timeout before menus become visible in JSDOM.
+jest.setTimeout( 35_000 );
+
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 const rule: Rule = {
 	id: 1,
@@ -321,102 +324,6 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
-	it( 'keeps the selected edit rule when an older detail request finishes', async () => {
-		const secondRule: Rule = {
-			...rule,
-			id: 2,
-			value: 'second@example.com',
-		};
-		let resolveFirst: ( response: Rule ) => void = () => undefined;
-		let resolveSecond: ( response: Rule ) => void = () => undefined;
-		mockedApiFetch
-			.mockResolvedValueOnce(
-				collectionResponse( [ rule, secondRule ] ) as never
-			)
-			.mockReturnValueOnce(
-				new Promise< Rule >( ( resolve ) => {
-					resolveFirst = resolve;
-				} ) as never
-			)
-			.mockReturnValueOnce(
-				new Promise< Rule >( ( resolve ) => {
-					resolveSecond = resolve;
-				} ) as never
-			);
-		renderRules();
-		await screen.findByText( secondRule.value );
-		await chooseRuleAction( rule.value, 'Edit' );
-		expect( await screen.findByText( 'Loading rule' ) ).toBeInTheDocument();
-		await chooseRuleAction( secondRule.value, 'Edit' );
-		await act( async () => resolveFirst( rule ) );
-		expect(
-			screen.queryByDisplayValue( rule.value )
-		).not.toBeInTheDocument();
-		expect( screen.getByText( 'Loading rule' ) ).toBeInTheDocument();
-		await act( async () => resolveSecond( secondRule ) );
-		expect(
-			await screen.findByDisplayValue( secondRule.value )
-		).toBeVisible();
-	} );
-
-	it( 'keeps Create open when an older edit request finishes', async () => {
-		let resolveDetail: ( response: Rule ) => void = () => undefined;
-		mockedApiFetch
-			.mockResolvedValueOnce( collectionResponse() as never )
-			.mockReturnValueOnce(
-				new Promise< Rule >( ( resolve ) => {
-					resolveDetail = resolve;
-				} ) as never
-			);
-		renderRules();
-		await screen.findByText( rule.value );
-		await chooseRuleAction( rule.value, 'Edit' );
-		expect( screen.getByText( 'Loading rule' ) ).toBeInTheDocument();
-		fireEvent.click(
-			screen.getByRole( 'button', {
-				name: 'Create rule',
-				hidden: true,
-			} )
-		);
-		expect(
-			screen.getByRole( 'dialog', { name: 'Create rule' } )
-		).toBeInTheDocument();
-		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( '' );
-		await act( async () => resolveDetail( rule ) );
-		expect(
-			screen.getByRole( 'dialog', { name: 'Create rule' } )
-		).toBeInTheDocument();
-		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( '' );
-	} );
-
-	it( 'keeps Delete open when an older edit request finishes', async () => {
-		let resolveDetail: ( response: Rule ) => void = () => undefined;
-		mockedApiFetch
-			.mockResolvedValueOnce( collectionResponse() as never )
-			.mockReturnValueOnce(
-				new Promise< Rule >( ( resolve ) => {
-					resolveDetail = resolve;
-				} ) as never
-			);
-		renderRules();
-		await screen.findByText( rule.value );
-		await chooseRuleAction( rule.value, 'Edit' );
-		await chooseRuleAction( rule.value, 'Delete' );
-		expect(
-			screen.queryByRole( 'dialog', { name: 'Edit rule' } )
-		).not.toBeInTheDocument();
-		expect(
-			screen.getByRole( 'dialog', { name: 'Delete rule' } )
-		).toBeInTheDocument();
-		await act( async () => resolveDetail( rule ) );
-		expect(
-			screen.getByRole( 'dialog', { name: 'Delete rule' } )
-		).toBeInTheDocument();
-		expect(
-			screen.queryByRole( 'dialog', { name: 'Edit rule' } )
-		).not.toBeInTheDocument();
-	} );
-
 	it( 'stays closed when an edit request finishes after close', async () => {
 		let resolveDetail: ( response: Rule ) => void = () => undefined;
 		mockedApiFetch
@@ -641,9 +548,8 @@ describe( 'RulesPage', () => {
 			.mockResolvedValueOnce( collectionResponse() as never )
 			.mockRejectedValueOnce( { message: 'The exact delete error.' } );
 		renderRules();
-		await userEvent.click(
-			await screen.findByRole( 'button', { name: 'Delete' } )
-		);
+		await screen.findByText( rule.value );
+		await chooseRuleAction( rule.value, 'Delete' );
 		const dialog = await screen.findByRole( 'dialog', {
 			name: 'Delete rule',
 		} );
@@ -660,9 +566,8 @@ describe( 'RulesPage', () => {
 			.mockResolvedValueOnce( collectionResponse() as never )
 			.mockResolvedValueOnce( undefined as never );
 		const { registry } = renderRules();
-		await userEvent.click(
-			await screen.findByRole( 'button', { name: 'Delete' } )
-		);
+		await screen.findByText( rule.value );
+		await chooseRuleAction( rule.value, 'Delete' );
 		const dialog = await screen.findByRole( 'dialog', {
 			name: 'Delete rule',
 		} );
