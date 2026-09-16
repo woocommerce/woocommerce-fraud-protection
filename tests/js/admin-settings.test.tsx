@@ -15,6 +15,7 @@ import {
 	type Performance,
 	settingsStore,
 } from '../../client/admin-settings/data/store';
+import { rulesStore } from '../../client/admin-settings/data/rules-store';
 
 const mockCreateSuccessNotice = jest.fn();
 const mockSettingsHistory = { block: jest.fn( () => jest.fn() ) };
@@ -54,6 +55,12 @@ jest.mock( '@woocommerce/navigation', () => ( {
 } ) );
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
+const settingsFetchCount = () =>
+	mockedApiFetch.mock.calls.filter(
+		( [ options ] ) =>
+			( options as { path?: string } )?.path ===
+			'/wc-fraud-protection/v1/settings'
+	).length;
 
 const zeroPerformance: Performance = {
 	flagged_by_fraud_prevention: 0,
@@ -93,6 +100,7 @@ const findVisibleText = async ( text: string ) => {
 const renderSettings = () => {
 	const registry = createRegistry();
 	registry.register( settingsStore );
+	registry.register( rulesStore );
 	registry.register( noticesStore );
 
 	return render(
@@ -110,6 +118,133 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockCreateSuccessNotice.mockReset();
 		mockSettingsHistory.block.mockClear();
 		window.history.replaceState( {}, '', '/' );
+	} );
+
+	it( 'shows the Rules card controls without a rule count', async () => {
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
+		renderSettings();
+
+		const rulesCard = (
+			await screen.findByRole( 'heading', { name: 'Rules' } )
+		).closest( 'section' );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
+		expect( rulesCard ).not.toBeNull();
+		expect( performanceCard ).not.toBeNull();
+		expect( rulesCard?.nextElementSibling ).toBe( performanceCard );
+		const rules = within( rulesCard as HTMLElement );
+
+		expect(
+			rules.getByText( /Create rules to always allow/ )
+		).toHaveTextContent(
+			'Create rules to always allow or block checkout attempts that match specific criteria. Rules take priority over automatic fraud prevention and allow rules override block rules. See our best practices.'
+		);
+		expect(
+			rules.getByRole( 'link', { name: 'best practices' } )
+		).toHaveAttribute(
+			'href',
+			'https://woocommerce.com/document/fraud-protection/'
+		);
+		expect(
+			rules.getByRole( 'button', { name: 'Create rule' } )
+		).toBeVisible();
+		expect(
+			rules.getByRole( 'link', { name: 'View rules' } )
+		).toBeVisible();
+		expect( rules.queryByText( /^\d+ rules?$/ ) ).not.toBeInTheDocument();
+	} );
+
+	it( 'creates a rule from the Rules card and refreshes with a success toast', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockResolvedValueOnce( {
+				id: 18,
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				created_at: '2026-09-15T12:00:00Z',
+				updated_at: null,
+			} );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'card@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+			).not.toBeInTheDocument()
+		);
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-fraud-protection/v1/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				origin: 'rules',
+			},
+		} );
+		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+			'Rule created successfully',
+			{ type: 'snackbar' }
+		);
+	} );
+
+	it( 'opens an existing duplicate rule in the Edit drawer', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow',
+			type: 'email',
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockResolvedValueOnce( duplicate );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		let drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await within( drawer ).findByRole( 'button', {
+				name: 'Edit existing rule',
+			} )
+		);
+
+		drawer = await screen.findByRole( 'dialog', { name: 'Edit rule' } );
+		expect( within( drawer ).getByLabelText( 'Value' ) ).toHaveValue(
+			duplicate.value
+		);
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
@@ -168,7 +303,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		} );
 		// Save is disabled while loading, so this click must not start a save request.
 		await userEvent.click( save );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 
 		await act( async () => {
 			resolveLoad( settingsResponse( false ) );
@@ -200,7 +335,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect(
 			screen.getByRole( 'button', { name: 'Save' } )
 		).toHaveAttribute( 'aria-disabled', 'true' );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 	} );
 
 	it( 'shows all four performance outcomes when automatic fraud prevention is disabled', async () => {
@@ -333,7 +468,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		// Clicking the disabled button must not retry the failed request.
 		await userEvent.click( save );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 	} );
 
 	it( 'saves a changed Boolean and queues the success Snackbar', async () => {

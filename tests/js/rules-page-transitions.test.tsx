@@ -31,8 +31,6 @@ jest.mock( '@woocommerce/navigation', () => ( {
 	},
 } ) );
 
-jest.setTimeout( 35_000 );
-
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 const firstRule: Rule = {
 	id: 1,
