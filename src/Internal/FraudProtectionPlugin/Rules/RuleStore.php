@@ -64,11 +64,6 @@ class RuleStore {
 	private const ACTIVE_RULES_CACHE_TTL = 5 * MINUTE_IN_SECONDS;
 
 	/**
-	 * Prefix for the database lock used to serialize rule creation.
-	 */
-	private const WRITE_LOCK_PREFIX = 'wcfp_rules_';
-
-	/**
 	 * Schema manager instance.
 	 *
 	 * @var SchemaManager
@@ -110,47 +105,40 @@ class RuleStore {
 			throw new \InvalidArgumentException( 'Invalid rule conditions.' );
 		}
 
-		$hash            = RuleConditions::hash( $normalized );
-		$write_lock_name = $this->acquire_write_lock();
-		try {
+		$hash        = RuleConditions::hash( $normalized );
+		$existing_id = $this->find_rule_id_by_hash( $hash );
+		if ( ! is_null( $existing_id ) ) {
+			throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
+		}
+
+		$user_id = get_current_user_id();
+
+		$columns = array(
+			'action'            => $action->value,
+			'status'            => RuleStatus::Active->value,
+			'position'          => $this->seed_position( $action ),
+			'conditions'        => (string) wp_json_encode( $normalized ),
+			'condition_hash'    => $hash,
+			'source_meta'       => is_null( $source_meta ) ? null : (string) wp_json_encode( $source_meta ),
+			'created_at'        => gmdate( 'Y-m-d H:i:s' ),
+			'created_by'        => $user_id > 0 ? $user_id : null,
+			'source_session_id' => is_null( $source_session_id ) ? null : mb_substr( sanitize_text_field( $source_session_id ), 0, 64 ),
+		);
+
+		if ( false === $this->run_write_query( $this->build_insert_sql( $columns ) ) ) {
 			$existing_id = $this->find_rule_id_by_hash( $hash );
 			if ( ! is_null( $existing_id ) ) {
 				throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
 			}
-
-			$user_id = get_current_user_id();
-
-			$columns = array(
-				'action'            => $action->value,
-				'status'            => RuleStatus::Active->value,
-				'position'          => $this->seed_position( $action ),
-				'conditions'        => (string) wp_json_encode( $normalized ),
-				'condition_hash'    => $hash,
-				'source_meta'       => is_null( $source_meta ) ? null : (string) wp_json_encode( $source_meta ),
-				'created_at'        => gmdate( 'Y-m-d H:i:s' ),
-				'created_by'        => $user_id > 0 ? $user_id : null,
-				'source_session_id' => is_null( $source_session_id ) ? null : mb_substr( sanitize_text_field( $source_session_id ), 0, 64 ),
-			);
-
-			if ( false === $this->run_write_query( $this->build_insert_sql( $columns ) ) ) {
-				// The unique hash key is the backstop for concurrent creations:
-				// re-check so a lost race reports as a duplicate, not a failure.
-				$existing_id = $this->find_rule_id_by_hash( $hash );
-				if ( ! is_null( $existing_id ) ) {
-					throw new DuplicateRuleException( 'A rule with the same conditions already exists.', (int) $existing_id );
-				}
-				throw new \RuntimeException( 'Failed to insert the rule: ' . esc_html( $wpdb->last_error ) );
-			}
-
-			$rule = $this->get_rule( (int) $wpdb->insert_id );
-			if ( is_null( $rule ) ) {
-				throw new \RuntimeException( 'Failed to read back the created rule.' );
-			}
-
-			return $rule;
-		} finally {
-			$this->release_write_lock( $write_lock_name );
+			throw new \RuntimeException( 'Failed to insert the rule: ' . esc_html( $wpdb->last_error ) );
 		}
+
+		$rule = $this->get_rule( (int) $wpdb->insert_id );
+		if ( is_null( $rule ) ) {
+			throw new \RuntimeException( 'Failed to read back the created rule.' );
+		}
+
+		return $rule;
 	}
 
 	/**
@@ -704,49 +692,5 @@ class RuleStore {
 		wp_cache_delete( self::ACTIVE_RULES_CACHE_KEY, self::CACHE_GROUP );
 
 		return $result;
-	}
-
-	/**
-	 * Acquire the database lock used for rule creation.
-	 *
-	 * @return string The acquired lock name.
-	 * @throws \RuntimeException When the lock cannot be acquired.
-	 */
-	private function acquire_write_lock(): string {
-		global $wpdb;
-
-		$lock_name = $this->get_write_lock_name();
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$acquired = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $lock_name ) );
-		if ( '1' !== (string) $acquired ) {
-			throw new \RuntimeException( 'Failed to acquire the rule write lock.' );
-		}
-
-		return $lock_name;
-	}
-
-	/**
-	 * Release the database lock used for rule creation.
-	 *
-	 * @param string $lock_name The acquired lock name.
-	 */
-	private function release_write_lock( string $lock_name ): void {
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
-	}
-
-	/**
-	 * Get the database and site-specific rule write lock name.
-	 *
-	 * @return string The lock name.
-	 */
-	private function get_write_lock_name(): string {
-		global $wpdb;
-
-		$scope = (string) $wpdb->dbname . "\0" . $this->schema_manager->get_rules_table_name();
-
-		return self::WRITE_LOCK_PREFIX . substr( hash( 'sha256', $scope ), 0, 48 );
 	}
 }
