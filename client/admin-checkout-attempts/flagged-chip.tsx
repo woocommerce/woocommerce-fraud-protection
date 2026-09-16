@@ -1,9 +1,9 @@
-import { Badge, Popover } from '@wordpress/ui';
-import { Icon, info } from '@wordpress/icons';
+import { Badge } from '@wordpress/ui';
 import { createInterpolateElement } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
 import { formatSiteDate } from './dates';
+import { OutcomeInfo } from './outcome-info';
 
 // Shown in the Outcome cell next to the "Allowed" badge for an attempt that was
 // flagged as suspicious but allowed: a "Flagged" badge and an info button whose
@@ -31,7 +31,7 @@ export function getFlaggedExplanation( {
 			? sprintf(
 					// translators: %s is the date automatic fraud prevention was enabled.
 					__(
-						'Flagged as suspicious but allowed because automatic fraud prevention was off. Enabled: %s',
+						'Flagged as suspicious but allowed because automatic protection was off. Enabled %s.',
 						'woocommerce-fraud-protection'
 					),
 					formatSiteDate( enabledAt )
@@ -43,7 +43,7 @@ export function getFlaggedExplanation( {
 	} else if ( settingsUrl ) {
 		explanation = createInterpolateElement(
 			__(
-				'Flagged as suspicious but allowed because automatic fraud prevention is off. <a>Enable automatic fraud prevention</a>',
+				'Flagged as suspicious but allowed because automatic fraud prevention is off. <a>Enable automatic fraud prevention</a>.',
 				'woocommerce-fraud-protection'
 			),
 			{
@@ -75,44 +75,18 @@ export function FlaggedChip( props: FlaggedChipProps ) {
 			<Badge intent="medium">
 				{ __( 'Flagged', 'woocommerce-fraud-protection' ) }
 			</Badge>
-			<Popover.Root>
-				<Popover.Trigger
-					openOnHover
-					render={
-						<button
-							type="button"
-							className="wc-fraud-protection-checkout-attempts__flagged-info"
-							aria-label={ __(
-								'Why was this flagged?',
-								'woocommerce-fraud-protection'
-							) }
-						>
-							<Icon
-								className="wc-fraud-protection-checkout-attempts__flagged-info-icon"
-								icon={ info }
-								size={ 24 }
-								aria-hidden="true"
-							/>
-						</button>
-					}
-				/>
-				<Popover.Popup
-					className="wc-fraud-protection-checkout-attempts__flagged-popover"
-					positioner={
-						<Popover.Positioner side="bottom" sideOffset={ 8 } />
-					}
-				>
-					{ /* Required for accessibility; the visible content is the
-					     explanation, so the title is only for assistive tech. */ }
-					<Popover.Title className="screen-reader-text">
-						{ __(
-							'Why this checkout attempt was flagged',
-							'woocommerce-fraud-protection'
-						) }
-					</Popover.Title>
-					{ explanation }
-				</Popover.Popup>
-			</Popover.Root>
+			<OutcomeInfo
+				ariaLabel={ __(
+					'Why was this flagged?',
+					'woocommerce-fraud-protection'
+				) }
+				title={ __(
+					'Why this checkout attempt was flagged',
+					'woocommerce-fraud-protection'
+				) }
+			>
+				{ explanation }
+			</OutcomeInfo>
 		</>
 	);
 }

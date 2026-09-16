@@ -414,17 +414,24 @@ function RuleForm( {
 							variant="body-md"
 							className="wc-fraud-protection-rule-form__metadata"
 						>
-							{ sprintf(
-								/* translators: 1: Rule creation date. 2: Rule last update date. */
-								__(
-									'This rule created on %1$s and last updated on %2$s.',
-									'woocommerce-fraud-protection'
-								),
-								formatRuleDate( rule.created_at ),
-								formatRuleDate(
-									rule.updated_at ?? rule.created_at
-								)
-							) }
+							{ rule.updated_at
+								? sprintf(
+										/* translators: 1: Rule creation date. 2: Rule last update date. */
+										__(
+											'This rule was created on %1$s and last updated on %2$s.',
+											'woocommerce-fraud-protection'
+										),
+										formatRuleDate( rule.created_at ),
+										formatRuleDate( rule.updated_at )
+								  )
+								: sprintf(
+										/* translators: %s: Rule creation date. */
+										__(
+											'This rule was created on %s.',
+											'woocommerce-fraud-protection'
+										),
+										formatRuleDate( rule.created_at )
+								  ) }
 						</Text>
 					) }
 				</Stack>

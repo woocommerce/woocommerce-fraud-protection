@@ -43,11 +43,11 @@ export function EnableFraudPreventionDrawer( {
 	const save = async () => {
 		const didSave = await saveSettings( { automatic_protection: checked } );
 		if ( didSave ) {
-			// Mirror the settings page: confirm the change with a snackbar so the
-			// merchant gets the same "Settings saved." feedback here as when saving
-			// from the standard WooCommerce settings form.
 			createSuccessNotice(
-				__( 'Settings saved.', 'woocommerce-fraud-protection' ),
+				__(
+					'Automatic fraud prevention is on, flagged checkout attempts will be blocked automatically going forward.',
+					'woocommerce-fraud-protection'
+				),
 				{ type: 'snackbar' }
 			);
 			onOpenChange( false );

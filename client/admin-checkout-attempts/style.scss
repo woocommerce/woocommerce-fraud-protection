@@ -134,8 +134,8 @@
 		gap: 6px;
 	}
 
-	// The info icon that carries the flagged tooltip.
-	.wc-fraud-protection-checkout-attempts__flagged-info {
+	// The info icon that carries an outcome explanation.
+	.wc-fraud-protection-checkout-attempts__outcome-info {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -146,7 +146,7 @@
 		cursor: pointer;
 	}
 
-	.wc-fraud-protection-checkout-attempts__flagged-info-icon {
+	.wc-fraud-protection-checkout-attempts__outcome-info-icon {
 		width: 24px;
 		height: 24px;
 	}
@@ -217,17 +217,17 @@
 	--wp-ui-drawer-z-index: 100001;
 }
 
-// The flagged-session explanation renders in the portaled Popover, which
+// The outcome explanation renders in the portaled Popover, which
 // already supplies a light surface with its own padding and border. Just cap its
 // width and, like the enable drawer, lift it above the WordPress admin chrome:
 // the popover's z-index defaults to `initial` (auto), so admin layers would
 // otherwise paint over it. Scoped through the portal that holds our popover.
 [data-base-ui-portal]:has(
-		.wc-fraud-protection-checkout-attempts__flagged-popover
+		.wc-fraud-protection-checkout-attempts__outcome-popover
 	) {
 	--wp-ui-popover-z-index: 100001;
 }
 
-.wc-fraud-protection-checkout-attempts__flagged-popover {
+.wc-fraud-protection-checkout-attempts__outcome-popover {
 	max-width: 320px;
 }

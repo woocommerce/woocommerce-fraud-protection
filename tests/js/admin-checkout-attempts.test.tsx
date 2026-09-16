@@ -27,6 +27,7 @@ import { getFields } from '../../client/admin-checkout-attempts/fields';
 import {
 	getOutcomeLabel,
 	getOutcomeOptions,
+	OutcomeBadge,
 } from '../../client/admin-checkout-attempts/outcomes';
 import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/payment-method-elements';
 import { getFlaggedExplanation } from '../../client/admin-checkout-attempts/flagged-chip';
@@ -54,9 +55,9 @@ jest.mock( '@woocommerce/data', () => ( {
 	useUserPreferences: () => mockUseUserPreferences(),
 } ) );
 
-// The enable drawer confirms a successful save with a "Settings saved." snackbar
-// through @wordpress/notices. Point that store at a spy so the toast is
-// assertable; a matching core/notices store is registered below.
+// The enable drawer confirms a successful save with a snackbar through
+// @wordpress/notices. Point that store at a spy so the toast is assertable; a
+// matching core/notices store is registered below.
 const mockCreateSuccessNotice = jest.fn();
 
 jest.mock( '@wordpress/notices', () => ( {
@@ -210,6 +211,7 @@ describe( 'checkout attempts outcomes', () => {
 		expect( getOutcomeLabel( 'blocked_by_rules' ) ).toBe(
 			'Blocked by rules'
 		);
+		expect( getOutcomeLabel( 'blocked_automatically' ) ).toBe( 'Blocked' );
 
 		const options = getOutcomeOptions();
 		expect( options ).toHaveLength( 5 );
@@ -222,6 +224,22 @@ describe( 'checkout attempts outcomes', () => {
 				'blocked_by_rules',
 			] )
 		);
+	} );
+
+	it( 'explains an automatic block with an info control', async () => {
+		render( <OutcomeBadge outcome="blocked_automatically" /> );
+		expect( screen.getByText( 'Blocked' ) ).toBeInTheDocument();
+		const infoControl = screen.getByRole( 'button', {
+			name: 'Why was this blocked?',
+		} );
+		await userEvent.tab();
+		expect( infoControl ).toHaveFocus();
+		await userEvent.keyboard( '{Enter}' );
+		expect(
+			await screen.findByText(
+				'Blocked automatically by fraud prevention.'
+			)
+		).toBeInTheDocument();
 	} );
 } );
 
@@ -451,7 +469,7 @@ describe( 'checkout attempts status field', () => {
 	} );
 
 	it( 'builds the explanation and enable link while protection is off', () => {
-		render(
+		const { container } = render(
 			<>
 				{ getFlaggedExplanation( {
 					protectionOn: false,
@@ -461,6 +479,9 @@ describe( 'checkout attempts status field', () => {
 			</>
 		);
 
+		expect( container ).toHaveTextContent(
+			'Flagged as suspicious but allowed because automatic fraud prevention is off. Enable automatic fraud prevention.'
+		);
 		expect(
 			screen.getByText( /because automatic fraud prevention is off/ )
 		).toBeInTheDocument();
@@ -474,21 +495,19 @@ describe( 'checkout attempts status field', () => {
 	} );
 
 	it( 'builds the enable-date explanation once protection is on', () => {
-		render(
+		const { container } = render(
 			<>
 				{ getFlaggedExplanation( {
 					protectionOn: true,
-					enabledAt: '2026-04-20T00:00:00',
+					enabledAt: '2026-04-20T12:00:00',
 					settingsUrl: config.settingsUrl,
 				} ) }
 			</>
 		);
 
-		expect(
-			screen.getByText(
-				/because automatic fraud prevention was off\. Enabled: /
-			)
-		).toBeInTheDocument();
+		expect( container ).toHaveTextContent(
+			'Flagged as suspicious but allowed because automatic protection was off. Enabled Apr 20, 2026.'
+		);
 		// No enable link once protection is on.
 		expect(
 			screen.queryByRole( 'link', {
@@ -907,13 +926,16 @@ describe( 'CheckoutAttemptsPage', () => {
 		renderPage();
 
 		expect(
-			screen.getByText( /A record of past checkout attempts/ )
+			screen.getByText(
+				'See checkout attempts and how fraud prevention responded to them, including any that fraud prevention blocked before completing.'
+			)
 		).toBeInTheDocument();
 
 		await waitFor( () => {
 			expect( lastDataViewsProps().data ).toHaveLength( 2 );
 		} );
 		const props = lastDataViewsProps();
+		expect( props.searchLabel ).toBe( 'Search by email or IP' );
 		expect( props.paginationInfo ).toEqual( {
 			totalItems: 2,
 			totalPages: 1,
@@ -1215,11 +1237,10 @@ describe( 'CheckoutAttemptsPage', () => {
 			} )
 		);
 
-		// ...confirms the change with a "Settings saved." snackbar, matching the
-		// standard settings form...
+		// ...confirms that automatic fraud prevention is on...
 		await waitFor( () =>
 			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-				'Settings saved.',
+				'Automatic fraud prevention is on, flagged checkout attempts will be blocked automatically going forward.',
 				{ type: 'snackbar' }
 			)
 		);

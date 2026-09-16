@@ -157,7 +157,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( /A record of past checkout attempts/ )
+			screen.getByText( /See checkout attempts and how fraud prevention/ )
 		).toBeVisible();
 
 		await userEvent.click(
@@ -177,7 +177,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		renderApp( '/checkout-attempts' );
 
 		expect(
-			screen.getByText( /A record of past checkout attempts/ )
+			screen.getByText( /See checkout attempts and how fraud prevention/ )
 		).toBeVisible();
 		// The list route never fetches the settings data, only its own list.
 		expect( settingsFetchCount() ).toBe( 0 );
@@ -277,7 +277,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( window.confirm ).toHaveBeenCalledTimes( 1 );
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( /A record of past checkout attempts/ )
+			screen.getByText( /See checkout attempts and how fraud prevention/ )
 		).toBeVisible();
 
 		await userEvent.click(

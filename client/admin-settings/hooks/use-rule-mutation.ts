@@ -81,11 +81,11 @@ export function useRuleMutation() {
 				createSuccessNotice(
 					ruleId === undefined
 						? __(
-								'Rule created successfully',
+								'Rule created successfully.',
 								'woocommerce-fraud-protection'
 						  )
 						: __(
-								'Rule updated successfully',
+								'Rule updated successfully.',
 								'woocommerce-fraud-protection'
 						  ),
 					{ type: 'snackbar' }
