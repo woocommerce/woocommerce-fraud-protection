@@ -31,7 +31,7 @@ export function getFlaggedExplanation( {
 			? sprintf(
 					// translators: %s is the date automatic fraud prevention was enabled.
 					__(
-						'Flagged as suspicious but allowed because automatic fraud prevention was off. Enabled: %s',
+						'Flagged as suspicious but allowed because automatic protection was off. Enabled %s.',
 						'woocommerce-fraud-protection'
 					),
 					formatSiteDate( enabledAt )
@@ -43,7 +43,7 @@ export function getFlaggedExplanation( {
 	} else if ( settingsUrl ) {
 		explanation = createInterpolateElement(
 			__(
-				'Flagged as suspicious but allowed because automatic fraud prevention is off. <a>Enable automatic fraud prevention</a>',
+				'Flagged as suspicious but allowed because automatic fraud prevention is off. <a>Enable automatic fraud prevention</a>.',
 				'woocommerce-fraud-protection'
 			),
 			{

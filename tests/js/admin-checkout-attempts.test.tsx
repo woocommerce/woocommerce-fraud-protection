@@ -469,7 +469,7 @@ describe( 'checkout attempts status field', () => {
 	} );
 
 	it( 'builds the explanation and enable link while protection is off', () => {
-		render(
+		const { container } = render(
 			<>
 				{ getFlaggedExplanation( {
 					protectionOn: false,
@@ -479,6 +479,9 @@ describe( 'checkout attempts status field', () => {
 			</>
 		);
 
+		expect( container ).toHaveTextContent(
+			'Flagged as suspicious but allowed because automatic fraud prevention is off. Enable automatic fraud prevention.'
+		);
 		expect(
 			screen.getByText( /because automatic fraud prevention is off/ )
 		).toBeInTheDocument();
@@ -492,21 +495,19 @@ describe( 'checkout attempts status field', () => {
 	} );
 
 	it( 'builds the enable-date explanation once protection is on', () => {
-		render(
+		const { container } = render(
 			<>
 				{ getFlaggedExplanation( {
 					protectionOn: true,
-					enabledAt: '2026-04-20T00:00:00',
+					enabledAt: '2026-04-20T12:00:00',
 					settingsUrl: config.settingsUrl,
 				} ) }
 			</>
 		);
 
-		expect(
-			screen.getByText(
-				/because automatic fraud prevention was off\. Enabled: /
-			)
-		).toBeInTheDocument();
+		expect( container ).toHaveTextContent(
+			'Flagged as suspicious but allowed because automatic protection was off. Enabled Apr 20, 2026.'
+		);
 		// No enable link once protection is on.
 		expect(
 			screen.queryByRole( 'link', {
