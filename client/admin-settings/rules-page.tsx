@@ -2,6 +2,7 @@ import { useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import {
 	Button,
+	Dialog,
 	EmptyState,
 	Icon,
 	Notice,
@@ -11,15 +12,24 @@ import {
 	VisuallyHidden,
 } from '@wordpress/ui';
 import { notAllowed, published } from '@wordpress/icons';
-import { DataViews } from '@wordpress/dataviews/wp';
-import type { Field, View } from '@wordpress/dataviews';
+import { DataForm, DataViews } from '@wordpress/dataviews/wp';
+import type { Action, Field, View } from '@wordpress/dataviews';
+import { useDispatch } from '@wordpress/data';
+import { store as noticesStore } from '@wordpress/notices';
 import { Link } from 'react-router-dom';
 
 import type { Rule, RulesQuery } from './data/rules-store';
+import { rulesStore } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
+import { useRuleFormDrawer } from './hooks/use-rule-form-drawer';
 import { getFraudProtectionRoute } from './navigation';
 import { formatRuleDate, getUtcDateFilterBound } from './rule-date';
-import { RuleFormDrawer } from './components/rule-form-drawer';
+import {
+	getRuleFormFields,
+	ruleForm,
+	RuleFormDrawer,
+} from './components/rule-form-drawer';
+import type { RuleFormData } from './components/rule-form-drawer';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
 const ruleActions = [
@@ -135,7 +145,6 @@ const getActionTab = ( view: View ): 'all' | 'allow' | 'block' => {
 	const value = Array.isArray( actionFilter?.value )
 		? actionFilter?.value[ 0 ]
 		: actionFilter?.value;
-
 	return value === 'allow' || value === 'block' ? value : 'all';
 };
 
@@ -143,7 +152,6 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 	if ( ! error ) {
 		return null;
 	}
-
 	const prefix = __(
 		'The fraud prevention rules could not be loaded.',
 		'woocommerce-fraud-protection'
@@ -151,9 +159,8 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 	if ( error.startsWith( prefix ) ) {
 		return error;
 	}
-
 	return sprintf(
-		/* translators: %s: Error returned by the server. */
+		// translators: %s: Error returned by the server.
 		__(
 			'The fraud prevention rules could not be loaded. %s',
 			'woocommerce-fraud-protection'
@@ -190,7 +197,9 @@ function RulesEmptyState( {
 }
 
 export function RulesPage() {
-	const [ isCreateOpen, setIsCreateOpen ] = useState( false );
+	const [ deletingRule, setDeletingRule ] = useState< Rule | undefined >();
+	const [ deleteError, setDeleteError ] = useState< string | null >( null );
+	const [ isDeleting, setIsDeleting ] = useState( false );
 	const [ view, setView ] = useState< View >( {
 		type: 'table',
 		page: 1,
@@ -207,12 +216,62 @@ export function RulesPage() {
 			},
 		},
 	} );
+	const { closeRuleForm, isOpen, openCreateRule, openEditRule, ruleId } =
+		useRuleFormDrawer();
 	const query = useMemo( () => getQueryFromView( view ), [ view ] );
+	const { deleteRule } = useDispatch( rulesStore );
 	const { error, isLoading, rules, totalItems, totalPages } =
 		useRules( query );
+	const { createSuccessNotice } = useDispatch( noticesStore );
+	const deletingRuleData = useMemo< RuleFormData | undefined >(
+		() =>
+			deletingRule
+				? {
+						action: deletingRule.action,
+						type: deletingRule.type,
+						value: deletingRule.value,
+				  }
+				: undefined,
+		[ deletingRule ]
+	);
+	const deletingRuleFields = useMemo(
+		() =>
+			deletingRuleData
+				? getRuleFormFields( {
+						type: deletingRuleData.type,
+						disabled: true,
+				  } )
+				: [],
+		[ deletingRuleData ]
+	);
 	const actionTab = getActionTab( view );
 	const hasActiveFilters = Boolean( view.filters?.length );
 	const isInitialLoading = isLoading && rules.length === 0;
+	const actions = useMemo< Action< Rule >[] >(
+		() => [
+			{
+				id: 'edit',
+				label: __( 'Edit', 'woocommerce-fraud-protection' ),
+				supportsBulk: false,
+				callback: ( items ) => {
+					if ( items[ 0 ] ) {
+						openEditRule( items[ 0 ].id );
+					}
+				},
+			},
+			{
+				id: 'delete',
+				label: __( 'Delete', 'woocommerce-fraud-protection' ),
+				supportsBulk: false,
+				callback: ( items ) => {
+					closeRuleForm();
+					setDeleteError( null );
+					setDeletingRule( items[ 0 ] );
+				},
+			},
+		],
+		[ closeRuleForm, openEditRule ]
+	);
 	const loadErrorMessage = getLoadErrorMessage( error );
 	return (
 		<Stack
@@ -248,7 +307,7 @@ export function RulesPage() {
 					<Button
 						variant="solid"
 						size="compact"
-						onClick={ () => setIsCreateOpen( true ) }
+						onClick={ openCreateRule }
 					>
 						{ __( 'Create rule', 'woocommerce-fraud-protection' ) }
 					</Button>
@@ -271,6 +330,7 @@ export function RulesPage() {
 			) }
 			<DataViews
 				data={ rules }
+				actions={ isInitialLoading ? [] : actions }
 				fields={ fields }
 				view={ view }
 				onChangeView={ setView }
@@ -352,9 +412,121 @@ export function RulesPage() {
 				</Tabs.Root>
 			</DataViews>
 			<RuleFormDrawer
-				open={ isCreateOpen }
-				onClose={ () => setIsCreateOpen( false ) }
+				open={ isOpen }
+				ruleId={ ruleId }
+				onClose={ closeRuleForm }
+				onViewRule={ openEditRule }
 			/>
+			<Dialog.Root
+				open={ Boolean( deletingRule ) }
+				onOpenChange={ ( open ) => {
+					if ( ! open && ! isDeleting ) {
+						setDeletingRule( undefined );
+						setDeleteError( null );
+					}
+				} }
+			>
+				<Dialog.Popup
+					size="small"
+					portal={
+						<Dialog.Portal className="wc-fraud-protection-rules__dialog-portal" />
+					}
+				>
+					<Dialog.Header>
+						<Dialog.Title>
+							{ __(
+								'Delete rule',
+								'woocommerce-fraud-protection'
+							) }
+						</Dialog.Title>
+						<Dialog.CloseIcon
+							label={ __(
+								'Close',
+								'woocommerce-fraud-protection'
+							) }
+							disabled={ isDeleting }
+						/>
+					</Dialog.Header>
+					<Dialog.Content>
+						<Stack direction="column" gap="xl">
+							<Dialog.Description>
+								{ __(
+									'This rule will no longer apply to future checkout attempts. Past attempts won’t be affected.',
+									'woocommerce-fraud-protection'
+								) }
+							</Dialog.Description>
+							{ deletingRuleData && (
+								<DataForm< RuleFormData >
+									data={ deletingRuleData }
+									fields={ deletingRuleFields }
+									form={ ruleForm }
+									onChange={ () => undefined }
+								/>
+							) }
+							{ deleteError && (
+								<Notice.Root intent="error">
+									<Notice.Description>
+										{ deleteError }
+									</Notice.Description>
+								</Notice.Root>
+							) }
+						</Stack>
+					</Dialog.Content>
+					<Dialog.Footer>
+						<Button
+							variant="minimal"
+							disabled={ isDeleting }
+							onClick={ () => setDeletingRule( undefined ) }
+						>
+							{ __( 'Cancel', 'woocommerce-fraud-protection' ) }
+						</Button>
+						<Button
+							className="wc-fraud-protection-rules__delete-button"
+							variant="solid"
+							loading={ isDeleting }
+							disabled={ isDeleting }
+							onClick={ async () => {
+								if ( ! deletingRule ) {
+									return;
+								}
+								setDeleteError( null );
+								setIsDeleting( true );
+								try {
+									await deleteRule(
+										deletingRule.id,
+										'rules'
+									);
+									setDeletingRule( undefined );
+									createSuccessNotice(
+										__(
+											'Rule deleted',
+											'woocommerce-fraud-protection'
+										),
+										{ type: 'snackbar' }
+									);
+								} catch ( caughtError ) {
+									setDeleteError(
+										typeof caughtError === 'object' &&
+											caughtError !== null &&
+											'message' in caughtError &&
+											typeof caughtError.message ===
+												'string'
+											? caughtError.message
+											: __(
+													'The rule could not be deleted.',
+													'woocommerce-fraud-protection'
+											  )
+									);
+								} finally {
+									setIsDeleting( false );
+								}
+							} }
+						>
+							{ __( 'Delete', 'woocommerce-fraud-protection' ) }
+						</Button>
+					</Dialog.Footer>
+				</Dialog.Popup>
+			</Dialog.Root>
 		</Stack>
 	);
 }

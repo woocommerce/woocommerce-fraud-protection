@@ -3,7 +3,11 @@ import { __ } from '@wordpress/i18n';
 import { useDispatch } from '@wordpress/data';
 import { store as noticesStore } from '@wordpress/notices';
 
-import type { CreateRuleRequest, Rule } from '../data/rules-store';
+import type {
+	CreateRuleRequest,
+	Rule,
+	UpdateRuleRequest,
+} from '../data/rules-store';
 import { rulesStore } from '../data/rules-store';
 
 export const DUPLICATE_RULE_ERROR =
@@ -14,6 +18,8 @@ export type RuleMutationError = {
 	message: string;
 	ruleId: number | null;
 };
+
+type RuleMutationResponse = Rule | null;
 
 const getError = (
 	error: unknown,
@@ -39,11 +45,14 @@ const getError = (
 };
 
 export function useRuleMutation() {
-	const { createRule } = useDispatch( rulesStore ) as {
+	const { createRule, updateRule } = useDispatch( rulesStore ) as {
 		createRule: ( request: CreateRuleRequest ) => Promise< Rule >;
+		updateRule: (
+			id: number,
+			request: UpdateRuleRequest
+		) => Promise< Rule >;
 	};
-	const { createSuccessNotice, createErrorNotice } =
-		useDispatch( noticesStore );
+	const { createSuccessNotice } = useDispatch( noticesStore );
 	const [ isSaving, setIsSaving ] = useState( false );
 	const [ saveError, setSaveError ] = useState< RuleMutationError | null >(
 		null
@@ -51,7 +60,10 @@ export function useRuleMutation() {
 
 	const clearSaveError = useCallback( () => setSaveError( null ), [] );
 	const saveRule = useCallback(
-		async ( request: CreateRuleRequest ): Promise< Rule | null > => {
+		async (
+			ruleId: number | undefined,
+			request: CreateRuleRequest | UpdateRuleRequest
+		): Promise< RuleMutationResponse > => {
 			if ( isSaving ) {
 				return null;
 			}
@@ -59,35 +71,46 @@ export function useRuleMutation() {
 			setSaveError( null );
 			setIsSaving( true );
 			try {
-				const rule = await createRule( request );
+				const rule =
+					ruleId === undefined
+						? await createRule( request as CreateRuleRequest )
+						: await updateRule(
+								ruleId,
+								request as UpdateRuleRequest
+						  );
 				createSuccessNotice(
-					__(
-						'Rule created successfully',
-						'woocommerce-fraud-protection'
-					),
+					ruleId === undefined
+						? __(
+								'Rule created successfully',
+								'woocommerce-fraud-protection'
+						  )
+						: __(
+								'Rule updated successfully',
+								'woocommerce-fraud-protection'
+						  ),
 					{ type: 'snackbar' }
 				);
 				return rule;
 			} catch ( error ) {
 				const mutationError = getError(
 					error,
-					__(
-						'The rule could not be created.',
-						'woocommerce-fraud-protection'
-					)
+					ruleId === undefined
+						? __(
+								'The rule could not be created.',
+								'woocommerce-fraud-protection'
+						  )
+						: __(
+								'The rule could not be updated.',
+								'woocommerce-fraud-protection'
+						  )
 				);
 				setSaveError( mutationError );
-				if ( mutationError.code !== DUPLICATE_RULE_ERROR ) {
-					createErrorNotice( mutationError.message, {
-						type: 'snackbar',
-					} );
-				}
 				return null;
 			} finally {
 				setIsSaving( false );
 			}
 		},
-		[ createErrorNotice, createRule, createSuccessNotice, isSaving ]
+		[ createRule, createSuccessNotice, isSaving, updateRule ]
 	);
 
 	return { clearSaveError, isSaving, saveError, saveRule };

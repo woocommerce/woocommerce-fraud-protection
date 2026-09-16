@@ -124,6 +124,15 @@
 		margin-inline-start: auto;
 	}
 
+	&__delete-button {
+		--wp-ui-button-background-color: var(--wpds-color-background-interactive-error-strong);
+		--wp-ui-button-background-color-active: var(--wpds-color-background-interactive-error-strong-active);
+		--wp-ui-button-background-color-disabled: var(--wpds-color-background-interactive-error-strong-disabled);
+		--wp-ui-button-foreground-color: var(--wpds-color-foreground-interactive-error-strong);
+		--wp-ui-button-foreground-color-active: var(--wpds-color-foreground-interactive-error-strong-active);
+		--wp-ui-button-foreground-color-disabled: var(--wpds-color-foreground-interactive-error-strong-disabled);
+	}
+
 	.dataviews-filters__container,
 	.dataviews-footer {
 		padding-inline: 0;
@@ -153,6 +162,32 @@
 	margin-bottom: 0;
 }
 
+.wc-fraud-protection-rule-form__metadata {
+	color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+.wc-fraud-protection-rule-form__duplicate-link {
+	color: var(--wpds-color-foreground-interactive-brand);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	cursor: pointer;
+
+	&:hover,
+	&:active {
+		color: var(--wpds-color-foreground-interactive-brand-active);
+	}
+}
+
+.wc-fraud-protection-rule-form__loading {
+	align-items: center;
+	justify-content: center;
+	padding-block: var(--wpds-dimension-padding-3xl);
+}
+
 .wc-fraud-protection-rule-form__drawer-portal {
 	--wp-ui-drawer-z-index: #{z-index('.components-modal__screen-overlay')};
+}
+
+.wc-fraud-protection-rules__dialog-portal {
+	--wp-ui-dialog-z-index: #{z-index('.components-modal__screen-overlay')};
 }
