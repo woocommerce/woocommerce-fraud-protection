@@ -45,9 +45,6 @@ jest.mock( '@woocommerce/navigation', () => ( {
 	},
 } ) );
 
-// Base UI needs its positioning timeout before menus become visible in JSDOM.
-jest.setTimeout( 35_000 );
-
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 const rule: Rule = {
 	id: 1,
