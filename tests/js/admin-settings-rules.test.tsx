@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -147,10 +153,22 @@ describe( 'RulesPage', () => {
 				screen.getByRole( 'button', { name } )
 			).toBeInTheDocument();
 		}
+		fireEvent.mouseDown( screen.getByRole( 'button', { name: 'Value' } ) );
+		await userEvent.click(
+			await screen.findByRole( 'menuitemradio', {
+				name: 'Sort ascending',
+			} )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=value&order=asc',
+				parse: false,
+			} )
+		);
 		expect(
 			screen.getByRole( 'button', { name: 'View options' } )
 		).toBeInTheDocument();
-	} );
+	}, 35_000 );
 
 	it( 'shows list loading, empty, and error states from resolver metadata', async () => {
 		let resolveList: ( response: Response ) => void = () => undefined;
