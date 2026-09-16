@@ -481,6 +481,7 @@ export function RulesPage() {
 							{ __( 'Cancel', 'woocommerce-fraud-protection' ) }
 						</Button>
 						<Button
+							className="wc-fraud-protection-rules__delete-button"
 							variant="solid"
 							loading={ isDeleting }
 							disabled={ isDeleting }
