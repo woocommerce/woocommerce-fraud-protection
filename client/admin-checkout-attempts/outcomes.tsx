@@ -111,7 +111,7 @@ export function OutcomeBadge( {
 					) }
 				>
 					{ __(
-						'Blocked automatically by fraud prevention',
+						'Blocked automatically by fraud prevention.',
 						'woocommerce-fraud-protection'
 					) }
 				</OutcomeInfo>

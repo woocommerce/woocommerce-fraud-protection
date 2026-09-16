@@ -237,7 +237,7 @@ describe( 'checkout attempts outcomes', () => {
 		await userEvent.keyboard( '{Enter}' );
 		expect(
 			await screen.findByText(
-				'Blocked automatically by fraud prevention'
+				'Blocked automatically by fraud prevention.'
 			)
 		).toBeInTheDocument();
 	} );
