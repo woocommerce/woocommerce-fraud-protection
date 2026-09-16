@@ -45,11 +45,6 @@ class RuleConditions {
 	private const MAX_EMAIL_LENGTH = 254;
 
 	/**
-	 * Email syntax used by the DataForm email field.
-	 */
-	private const EMAIL_PATTERN = '/^[a-zA-Z0-9.!#$%&\'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/';
-
-	/**
 	 * Validate a condition document and return its normalized form.
 	 *
 	 * @param mixed $conditions The condition document to validate.
@@ -105,7 +100,11 @@ class RuleConditions {
 			case self::FIELD_EMAIL:
 				// Lowercased so differently-cased variants of the same address compare equal.
 				$value = strtolower( $value );
-				if ( mb_strlen( $value ) > self::MAX_EMAIL_LENGTH || 1 !== preg_match( self::EMAIL_PATTERN, $value ) ) {
+				// The shape check is deliberately looser than FILTER_VALIDATE_EMAIL or
+				// is_email(): the value is a matching key against recorder-stored emails,
+				// not a mailbox to validate; also strict validators reject real (e.g.
+				// internationalized) addresses.
+				if ( mb_strlen( $value ) > self::MAX_EMAIL_LENGTH || 1 !== preg_match( '/^\S+@\S+$/', $value ) ) {
 					return null;
 				}
 				return $value;
