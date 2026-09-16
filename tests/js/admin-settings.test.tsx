@@ -650,21 +650,31 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toHaveLength( 0 );
 	} );
 
-	it.each< [ number, string ] >( [
-		[ 1, '1 checkout attempt' ],
-		[ 12, '12 checkout attempts' ],
-	] )( 'links the %s flagged attempt count', async ( count, label ) => {
+	it.each< [ number, string, string ] >( [
+		[
+			1,
+			'1 checkout attempt',
+			'1 checkout attempt was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+		[
+			12,
+			'12 checkout attempts',
+			'12 checkout attempts were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+	] )( 'links the %s flagged attempt count', async ( count, label, copy ) => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, performanceWithFlagged( count ) )
 		);
 		renderSettings();
 
-		expect(
-			await screen.findByRole( 'link', { name: label } )
-		).toHaveAttribute(
+		const countLink = await screen.findByRole( 'link', {
+			name: label,
+		} );
+		expect( countLink ).toHaveAttribute(
 			'href',
 			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
 		);
+		expect( countLink.parentElement ).toHaveTextContent( copy );
 	} );
 
 	it( 'shows the opt-out actions and offers no dismiss on the opt-out notice', async () => {
@@ -693,37 +703,49 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).not.toBeInTheDocument();
 	} );
 
-	it( 'shows the automatic-protection recommendation after an opt-out is stored', async () => {
-		mockedApiFetch.mockResolvedValueOnce(
-			settingsResponse( false, performanceWithFlagged( 12 ), true )
-		);
-		renderSettings();
+	it.each< [ number, string, string ] >( [
+		[
+			1,
+			'1 checkout attempt',
+			'1 checkout attempt was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+		],
+		[
+			12,
+			'12 checkout attempts',
+			'12 checkout attempts were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+		],
+	] )(
+		'shows the automatic-protection recommendation for %s attempts after an opt-out is stored',
+		async ( count, label, copy ) => {
+			mockedApiFetch.mockResolvedValueOnce(
+				settingsResponse( false, performanceWithFlagged( count ), true )
+			);
+			renderSettings();
 
-		const countLink = await screen.findByRole( 'link', {
-			name: '12 checkout attempts',
-		} );
-		expect( countLink.parentElement ).toHaveTextContent(
-			'12 checkout attempts in the last 30 days are flagged as suspicious but allowed because automatic fraud prevention is off. We recommend turning it on.'
-		);
-		expect(
-			screen.queryByRole( 'button', {
-				name: 'Opt out of automatic blocking',
-			} )
-		).not.toBeInTheDocument();
-		expect(
-			screen.queryByRole( 'link', { name: 'Learn more' } )
-		).not.toBeInTheDocument();
-		expect(
-			screen.queryByRole( 'button', {
-				name: 'Dismiss automatic fraud prevention notice',
-			} )
-		).not.toBeInTheDocument();
-	} );
+			const countLink = await screen.findByRole( 'link', {
+				name: label,
+			} );
+			expect( countLink.parentElement ).toHaveTextContent( copy );
+			expect(
+				screen.queryByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			).not.toBeInTheDocument();
+			expect(
+				screen.queryByRole( 'link', { name: 'Learn more' } )
+			).not.toBeInTheDocument();
+			expect(
+				screen.queryByRole( 'button', {
+					name: 'Dismiss automatic fraud prevention notice',
+				} )
+			).not.toBeInTheDocument();
+		}
+	);
 
 	it.each( [
 		[
 			false,
-			'Automatic fraud prevention is off. It will turn on by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+			'Automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 		],
 		[
 			true,
