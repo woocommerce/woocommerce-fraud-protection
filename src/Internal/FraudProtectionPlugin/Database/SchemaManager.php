@@ -603,7 +603,7 @@ class SchemaManager {
 	 *
 	 * `action` and `status` hold the backing values of the `FraudDecision` and
 	 * `RuleStatus` enums, `conditions` is the JSON condition document
-	 * (validated at write time, evaluated in PHP, never queried in SQL) and
+	 * (validated at write time and evaluated in PHP) and
 	 * `condition_hash` is the SHA-256 of its normalized form, unique so
 	 * duplicate rules are rejected at insert time. The hash is nullable only
 	 * for soft-deleted rows: it is set to `NULL` on deletion (MySQL unique

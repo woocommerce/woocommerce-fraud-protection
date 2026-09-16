@@ -218,11 +218,11 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Value and type sorting works without database JSON functions.
+	 * @testdox Value and type sorting uses portable SQL expressions and database pagination.
 	 */
 	public function test_active_rules_page_sorting_supports_minimum_database_versions(): void {
-		$email    = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
-		$ip       = $this->sut->create_rule(
+		$email = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$ip    = $this->sut->create_rule(
 			FraudDecision::Block,
 			array(
 				'field'    => 'ip',
@@ -230,44 +230,47 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 				'value'    => '10.0.0.1',
 			)
 		);
-		$quoted_z = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'quoted-z@example.com' ) );
-		$quoted_a = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'quoted-a@example.com' ) );
-		$this->set_conditions(
-			$quoted_z->id,
-			array(
-				'field'    => 'email',
-				'operator' => 'equals',
-				'value'    => 'a"z@example.com',
-			)
-		);
-		$this->set_conditions(
-			$quoted_a->id,
-			array(
-				'field'    => 'email',
-				'operator' => 'equals',
-				'value'    => 'a"a@example.com',
-			)
-		);
+		$slash = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'a/b@example.com' ) );
 
-		$reject_json_functions = static function ( string $query ): string {
-			if ( preg_match( '/JSON_(?:EXTRACT|UNQUOTE)|SUBSTRING_INDEX|conditions\s+LIKE/i', $query ) ) {
-				throw new \RuntimeException( 'Condition JSON cannot be parsed in SQL.' );
+		$queries       = array();
+		$capture_query = static function ( string $query ) use ( &$queries ): string {
+			if ( preg_match( '/JSON_(?:EXTRACT|UNQUOTE)/i', $query ) ) {
+				throw new \RuntimeException( 'JSON functions are not available on every supported database.' );
 			}
+			$queries[] = $query;
 			return $query;
 		};
-		add_filter( 'query', $reject_json_functions );
+		add_filter( 'query', $capture_query );
 
 		try {
 			$value_ascending  = $this->sut->get_active_rules_page( orderby: 'value', order: 'asc' );
 			$value_descending = $this->sut->get_active_rules_page( orderby: 'value', order: 'desc' );
 			$type_page        = $this->sut->get_active_rules_page( orderby: 'type', order: 'asc' );
+			$filtered_page    = $this->sut->get_active_rules_page(
+				array(
+					'type'  => 'email',
+					'value' => 'A/B@EXAMPLE.COM',
+				),
+				orderby: 'value',
+				order: 'asc'
+			);
 		} finally {
-			remove_filter( 'query', $reject_json_functions );
+			remove_filter( 'query', $capture_query );
 		}
 
-		$this->assertSame( array( $ip->id, $quoted_a->id, $quoted_z->id, $email->id ), array_map( fn( Rule $rule ) => $rule->id, $value_ascending['items'] ) );
-		$this->assertSame( array( $email->id, $quoted_z->id, $quoted_a->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $value_descending['items'] ) );
-		$this->assertSame( array( $email->id, $quoted_z->id, $quoted_a->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $type_page['items'] ) );
+		$this->assertSame( array( $ip->id, $slash->id, $email->id ), array_map( fn( Rule $rule ) => $rule->id, $value_ascending['items'] ) );
+		$this->assertSame( array( $email->id, $slash->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $value_descending['items'] ) );
+		$this->assertSame( array( $email->id, $slash->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $type_page['items'] ) );
+		$this->assertSame( array( $slash->id ), array_map( fn( Rule $rule ) => $rule->id, $filtered_page['items'] ) );
+
+		$sql = implode( "\n", $queries );
+		$this->assertStringContainsString( 'SUBSTRING_INDEX', $sql );
+		$this->assertStringContainsString( 'REPLACE(', $sql );
+		$this->assertStringContainsString( 'CHAR(92)', $sql );
+		$this->assertStringContainsString( 'condition_hash =', $sql );
+		$this->assertStringContainsString( 'LIMIT 20 OFFSET 0', $sql );
+		$this->assertStringNotContainsString( 'JSON_EXTRACT', strtoupper( $sql ) );
+		$this->assertStringNotContainsString( 'JSON_UNQUOTE', strtoupper( $sql ) );
 	}
 
 	/**
@@ -300,21 +303,6 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET created_at = %s WHERE id = %d", $created_at, $id ) );
-	}
-
-	/**
-	 * Replace stored conditions to cover legacy values that current writes reject.
-	 *
-	 * @param int                  $id         Rule ID.
-	 * @param array<string, mixed> $conditions Conditions document.
-	 */
-	private function set_conditions( int $id, array $conditions ): void {
-		global $wpdb;
-
-		$table = $this->schema_manager->get_rules_table_name();
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET conditions = %s WHERE id = %d", wp_json_encode( $conditions ), $id ) );
 	}
 
 	/**

@@ -303,8 +303,10 @@ class RuleStore {
 		}
 
 		$type             = isset( $filters['type'] ) && is_string( $filters['type'] ) && in_array( $filters['type'], array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ), true ) ? $filters['type'] : null;
-		$normalized_value = null;
-		if ( isset( $filters['value'] ) && is_string( $filters['value'] ) && '' !== $filters['value'] ) {
+		$has_value_filter = isset( $filters['value'] ) && is_string( $filters['value'] ) && '' !== $filters['value'];
+		// The MVP writes one fixed field/operator/value shape. Revisit these expressions before adding other shapes.
+		$type_expression  = "LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(conditions, '\"field\":\"', -1), '\"', 1))";
+		if ( $has_value_filter ) {
 			if ( is_string( $type ) ) {
 				$normalized_value = RuleConditions::normalize_value( $type, $filters['value'] );
 				if ( is_null( $normalized_value ) ) {
@@ -314,22 +316,43 @@ class RuleStore {
 						'pages' => 0,
 					);
 				}
+				$where[]  = 'condition_hash = %s';
+				$values[] = RuleConditions::hash(
+					array(
+						'field'    => $type,
+						'operator' => 'equals',
+						'value'    => $normalized_value,
+					)
+				);
 			} else {
-				$normalized_value = array();
+				$hashes = array();
 				foreach ( array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ) as $field ) {
 					$value = RuleConditions::normalize_value( $field, $filters['value'] );
 					if ( ! is_null( $value ) ) {
-						$normalized_value[ $field ] = $value;
+						$hashes[] = RuleConditions::hash(
+							array(
+								'field'    => $field,
+								'operator' => 'equals',
+								'value'    => $value,
+							)
+						);
 					}
 				}
-				if ( empty( $normalized_value ) ) {
+				if ( empty( $hashes ) ) {
 					return array(
 						'items' => array(),
 						'total' => 0,
 						'pages' => 0,
 					);
 				}
+				$where[] = 'condition_hash IN ( ' . implode( ', ', array_fill( 0, count( $hashes ), '%s' ) ) . ' )';
+				$values  = array_merge( $values, $hashes );
 			}
+		}
+
+		if ( is_string( $type ) && ! $has_value_filter ) {
+			$where[]  = $type_expression . ' = %s';
+			$values[] = $type;
 		}
 
 		foreach ( array(
@@ -344,9 +367,27 @@ class RuleStore {
 
 		$table     = $this->schema_manager->get_rules_table_name();
 		$where_sql = implode( ' AND ', $where );
-		$sql       = "SELECT * FROM {$table} WHERE {$where_sql}";
+		$count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
-		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $values ), ARRAY_A );
+		$total = $wpdb->get_var( $wpdb->prepare( $count_sql, $values ) );
+		if ( false === $total || is_null( $total ) ) {
+			throw new \RuntimeException( 'Active rule count query failed.' );
+		}
+
+		$orderby = in_array( $orderby, self::SORTABLE_COLUMNS, true ) ? $orderby : 'created_at';
+		$order   = 'asc' === strtolower( $order ) ? 'ASC' : 'DESC';
+		$value_expression = "LOWER(REPLACE(LEFT(SUBSTRING_INDEX(conditions, '\"value\":\"', -1), CHAR_LENGTH(SUBSTRING_INDEX(conditions, '\"value\":\"', -1)) - 2), CONCAT(CHAR(92), '/'), '/'))";
+		$order_expression = match ( $orderby ) {
+			'action' => 'action',
+			'value'  => $value_expression,
+			'type'   => $type_expression,
+			default  => 'created_at',
+		};
+		$offset = ( $page - 1 ) * $per_page;
+		$sql    = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$order_expression} {$order}, id {$order} LIMIT %d OFFSET %d";
+		$args   = array_merge( $values, array( $per_page, $offset ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Expressions and direction are selected from fixed allowlists and all values are passed to prepare().
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
 		if ( ! is_array( $rows ) ) {
 			throw new \RuntimeException( 'Active rule list query failed.' );
 		}
@@ -354,55 +395,14 @@ class RuleStore {
 		$items = array();
 		foreach ( $rows as $row ) {
 			$rule = Rule::from_row( $row );
-			if ( is_null( $rule ) || RuleStatus::Active !== $rule->status ) {
-				continue;
+			if ( ! is_null( $rule ) && RuleStatus::Active === $rule->status ) {
+				$items[] = $rule;
 			}
-
-			$rule_type  = $rule->conditions['field'] ?? null;
-			$rule_value = $rule->conditions['value'] ?? null;
-			if ( ! is_null( $type ) && $type !== $rule_type ) {
-				continue;
-			}
-			if ( is_string( $normalized_value ) && $normalized_value !== $rule_value ) {
-				continue;
-			}
-			if ( is_array( $normalized_value ) && ( ! is_string( $rule_type ) || ! isset( $normalized_value[ $rule_type ] ) || $normalized_value[ $rule_type ] !== $rule_value ) ) {
-				continue;
-			}
-
-			$items[] = $rule;
 		}
 
-		$orderby   = in_array( $orderby, self::SORTABLE_COLUMNS, true ) ? $orderby : 'created_at';
-		$direction = 'asc' === strtolower( $order ) ? 1 : -1;
-		usort(
-			$items,
-			static function ( Rule $left, Rule $right ) use ( $orderby, $direction ): int {
-				$left_value = match ( $orderby ) {
-					'action' => $left->action->value,
-					'value'  => (string) ( $left->conditions['value'] ?? '' ),
-					'type'   => (string) ( $left->conditions['field'] ?? '' ),
-					default  => $left->created_at,
-				};
-				$right_value = match ( $orderby ) {
-					'action' => $right->action->value,
-					'value'  => (string) ( $right->conditions['value'] ?? '' ),
-					'type'   => (string) ( $right->conditions['field'] ?? '' ),
-					default  => $right->created_at,
-				};
-				$comparison = strcmp( $left_value, $right_value );
-				if ( 0 === $comparison ) {
-					$comparison = $left->id <=> $right->id;
-				}
-
-				return $comparison * $direction;
-			}
-		);
-
-		$total  = count( $items );
-		$offset = ( $page - 1 ) * $per_page;
+		$total = (int) $total;
 		return array(
-			'items' => array_slice( $items, $offset, $per_page ),
+			'items' => $items,
 			'total' => $total,
 			'pages' => $total > 0 ? (int) ceil( $total / $per_page ) : 0,
 		);
