@@ -654,12 +654,12 @@ describe( 'FraudProtectionSettingsPage', () => {
 		[
 			1,
 			'1 checkout attempt',
-			'1 checkout attempt was flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on automatic blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+			'1 checkout attempt was flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 		],
 		[
 			12,
 			'12 checkout attempts',
-			'12 checkout attempts were flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on automatic blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+			'12 checkout attempts were flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 		],
 	] )( 'links the %s flagged attempt count', async ( count, label, copy ) => {
 		mockedApiFetch.mockResolvedValueOnce(

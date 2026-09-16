@@ -58,8 +58,8 @@ export function AutomaticProtectionCard( {
 		noticeText = sprintf(
 			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
 			_n(
-				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on automatic blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
-				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on automatic blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+				'<a>%d checkout attempt</a> was flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+				'<a>%d checkout attempts</a> were flagged in the last 30 days and allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 				flaggedByFraudPreventionCount,
 				'woocommerce-fraud-protection'
 			),
