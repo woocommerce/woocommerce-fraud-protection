@@ -42,6 +42,16 @@ if ( ! window.ResizeObserver ) {
 	} );
 }
 
+// Floating UI checks this browser-only state while positioning a menu. JSDOM's
+// selector engine recurses when it evaluates it.
+const matches = window.Element.prototype.matches;
+window.Element.prototype.matches = function ( selector ) {
+	if ( selector === ':modal' ) {
+		return false;
+	}
+	return matches.call( this, selector );
+};
+
 // Stub HTMLFormElement.prototype.submit to prevent jsdom "Not implemented" errors.
 // Individual tests can override form.submit with their own spy when they need to assert on it.
 if ( typeof window.HTMLFormElement !== 'undefined' ) {

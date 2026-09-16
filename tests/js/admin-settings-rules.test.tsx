@@ -168,7 +168,7 @@ describe( 'RulesPage', () => {
 		expect(
 			screen.getByRole( 'button', { name: 'View options' } )
 		).toBeInTheDocument();
-	}, 35_000 );
+	} );
 
 	it( 'shows list loading, empty, and error states from resolver metadata', async () => {
 		let resolveList: ( response: Response ) => void = () => undefined;
