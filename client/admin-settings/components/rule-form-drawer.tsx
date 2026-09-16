@@ -109,8 +109,8 @@ function RuleValueEditControl( {
 					/>
 					{ duplicateRuleId && onViewRule && (
 						<Button
-							variant="minimal"
-							size="compact"
+							className="wc-fraud-protection-rule-form__duplicate-link"
+							variant="unstyled"
 							onClick={ () => onViewRule( duplicateRuleId ) }
 						>
 							{ __(

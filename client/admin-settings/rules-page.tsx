@@ -271,9 +271,9 @@ export function RulesPage() {
 			},
 		],
 		[ closeRuleForm, openEditRule ]
-		);
-		const loadErrorMessage = getLoadErrorMessage( error );
-		return (
+	);
+	const loadErrorMessage = getLoadErrorMessage( error );
+	return (
 		<Stack
 			className="wc-fraud-protection-rules"
 			direction="column"
