@@ -211,6 +211,37 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
+	it( 'keeps the row actions while a new query loads', async () => {
+		// The second (filtered) request never settles: the list keeps showing
+		// the previous rows while it loads, and their action menus must stay.
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockReturnValueOnce( new Promise( () => undefined ) as never );
+		renderRules();
+		const row = ( await screen.findByText( rule.value ) ).closest( 'tr' );
+		expect(
+			within( row as HTMLElement ).getByRole( 'button', {
+				name: 'Actions',
+			} )
+		).toBeInTheDocument();
+
+		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith(
+				expect.objectContaining( {
+					path: expect.stringContaining( 'action=block' ),
+				} )
+			)
+		);
+		const loadingRow = screen.getByText( rule.value ).closest( 'tr' );
+		expect(
+			within( loadingRow as HTMLElement ).getByRole( 'button', {
+				name: 'Actions',
+			} )
+		).toBeInTheDocument();
+	} );
+
 	it( 'keeps all four columns sortable with Created descending as default', async () => {
 		renderRules();
 		await screen.findByText( rule.value );

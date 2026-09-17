@@ -21,6 +21,17 @@
 		@include settings-list-page.description;
 	}
 
+	.wc-fraud-protection-checkout-attempts__toolbar {
+
+		@include settings-list-page.toolbar;
+	}
+
+	// The search box, filters toggle and view options sit to the right of the
+	// status tabs.
+	.wc-fraud-protection-checkout-attempts__view-controls {
+		margin-inline-start: auto;
+	}
+
 	// The "automatic fraud prevention is off" info banner sits between the tabs and the
 	// list; give it room on both sides. The @wordpress/ui Notice supplies the
 	// info styling (light-blue surface, border, icon) and the dark action button.
@@ -28,22 +39,15 @@
 		margin-block: 16px;
 	}
 
-	// DataViews indents its toolbar (search/view actions and the filters bar),
-	// cells and footer by 24px of its own; the page gutter above now provides
-	// that, so remove the duplicate and let every row align with the breadcrumb,
-	// description and tabs.
-	.dataviews__view-actions,
-	.dataviews-filters__container,
-	.dataviews-footer {
-		padding-inline: 0;
-	}
+	@include settings-list-page.dataviews;
 
-	// More horizontal breathing room between the data columns. The first
-	// (Provider) and last cells align to the page gutter so the provider content
-	// keeps its room and is never clipped. Uses logical properties so the
-	// alignment follows the writing direction in RTL.
-	.dataviews-view-table td,
-	.dataviews-view-table th {
+	// More horizontal breathing room between the data columns, in every density
+	// (the section selectors outrank the per-density paddings DataViews sets).
+	// The first (Provider) and last cells align to the page gutter so the
+	// provider content keeps its room and is never clipped. Uses logical
+	// properties so the alignment follows the writing direction in RTL.
+	.dataviews-view-table tbody td,
+	.dataviews-view-table thead th {
 		padding-inline: var(--wpds-dimension-padding-lg);
 	}
 
@@ -55,6 +59,39 @@
 	.dataviews-view-table tr td:last-child,
 	.dataviews-view-table tr th:last-child {
 		padding-inline-end: 0;
+	}
+
+	// A sortable column header is a button with 8px of inline padding of its
+	// own, which DataViews compensates for in its header cells. Repeat that
+	// compensation for the paddings above so each header label starts exactly
+	// where its column's values do: the cell padding is the data cell's minus
+	// the button's, and in the first column, which has none, the button is
+	// pulled back by its own padding instead.
+	.dataviews-view-table thead th:has(.dataviews-view-table-header-button) {
+		padding-inline: calc(var(--wpds-dimension-padding-lg) - var(--wpds-dimension-padding-sm));
+	}
+
+	.dataviews-view-table thead th:has(.dataviews-view-table-header-button):first-child {
+		padding-inline-start: 0;
+
+		.dataviews-view-table-header-button {
+			margin-inline-start: calc(-1 * var(--wpds-dimension-padding-sm));
+		}
+	}
+
+	.dataviews-view-table thead th:has(.dataviews-view-table-header-button):last-child {
+		padding-inline-end: 0;
+	}
+
+	// In compact density DataViews drops the inner header-cell paddings with
+	// more specific rules than the ones above; restore the compensated value
+	// on exactly those sides (the outer sides keep their gutter alignment).
+	.dataviews-view-table.has-compact-density thead th:has(.dataviews-view-table-header-button):not(:first-child) {
+		padding-inline-start: calc(var(--wpds-dimension-padding-lg) - var(--wpds-dimension-padding-sm));
+	}
+
+	.dataviews-view-table.has-compact-density thead th:has(.dataviews-view-table-header-button):not(:last-child) {
+		padding-inline-end: calc(var(--wpds-dimension-padding-lg) - var(--wpds-dimension-padding-sm));
 	}
 
 	.wc-fraud-protection-checkout-attempts__billing {

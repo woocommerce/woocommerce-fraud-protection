@@ -296,7 +296,7 @@ export function RulesPage() {
 			) }
 			<DataViews
 				data={ rules }
-				actions={ isInitialLoading ? [] : actions }
+				actions={ actions }
 				fields={ fields }
 				view={ view }
 				onChangeView={ setView }
@@ -364,7 +364,7 @@ export function RulesPage() {
 							<DataViews.ViewConfig />
 						</Stack>
 					</Stack>
-					<DataViews.FiltersToggled />
+					<DataViews.FiltersToggled className="dataviews-filters__container" />
 					<Tabs.Panel value="all">
 						{ actionTab === 'all' && <DataViews.Layout /> }
 					</Tabs.Panel>

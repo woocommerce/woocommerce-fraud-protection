@@ -54,7 +54,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox The invitation uses the approved copy, support link, and standard settings action.
+	 * @testdox The invitation uses the approved copy, a support link that opens in a new tab, and the standard settings action.
 	 */
 	public function test_note_content_and_actions(): void {
 		$this->sut->maybe_add_note();
@@ -64,7 +64,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$this->assertSame( 'woocommerce-fraud-protection', $note->get_source() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_INFORMATIONAL, $note->get_type() );
 		$this->assertSame( 'Start blocking risky checkout attempts', $note->get_title() );
-		$this->assertSame( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. <a href="https://woocommerce.com/document/fraud-protection/">Learn more</a>', $note->get_content() );
+		$this->assertSame( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. <a href="https://woocommerce.com/document/fraud-protection/" target="_blank" rel="noopener noreferrer">Learn more</a>', $note->get_content() );
 		$this->assertLessThanOrEqual( 320, mb_strlen( wp_strip_all_tags( $note->get_content() ) ) );
 		$actions = $note->get_actions();
 		$this->assertCount( 1, $actions );

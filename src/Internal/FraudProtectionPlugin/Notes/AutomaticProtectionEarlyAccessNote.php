@@ -131,7 +131,7 @@ class AutomaticProtectionEarlyAccessNote {
 			sprintf(
 				/* translators: 1: Opening documentation link tag, 2: Closing documentation link tag. */
 				__( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. %1$sLearn more%2$s', 'woocommerce-fraud-protection' ),
-				'<a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '">',
+				'<a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '" target="_blank" rel="noopener noreferrer">',
 				'</a>'
 			)
 		);

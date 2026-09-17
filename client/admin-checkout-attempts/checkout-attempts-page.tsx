@@ -1,4 +1,4 @@
-import { Notice, Tabs } from '@wordpress/ui';
+import { Notice, Stack, Tabs } from '@wordpress/ui';
 import {
 	useCallback,
 	useEffect,
@@ -458,23 +458,7 @@ export function CheckoutAttemptsPage() {
 			{ ! protectionOn && (
 				<ProtectionOffBanner onEnable={ openEnableDrawer } />
 			) }
-
-			<DataViews< ( typeof sessions )[ number ] >
-				data={ sessions }
-				fields={ fields }
-				view={ view }
-				onChangeView={ onChangeView }
-				actions={ actions }
-				paginationInfo={ paginationInfo }
-				isLoading={ isLoading }
-				defaultLayouts={ { table: {} } }
-				getItemId={ ( item ) => String( item.id ) }
-				searchLabel={ __(
-					'Search by email or IP',
-					'woocommerce-fraud-protection'
-				) }
-				empty={ <p>{ emptyMessage }</p> }
-			/>
+			<DataViews.Layout />
 		</>
 	);
 
@@ -519,31 +503,78 @@ export function CheckoutAttemptsPage() {
 				</Notice.Root>
 			) }
 
-			<Tabs.Root value={ tab } onValueChange={ onTabChange }>
-				<Tabs.List>
-					<Tabs.Tab value="all">
-						{ __( 'All', 'woocommerce-fraud-protection' ) }
-					</Tabs.Tab>
-					<Tabs.Tab value="allowed">
-						{ __( 'Allowed', 'woocommerce-fraud-protection' ) }
-					</Tabs.Tab>
-					<Tabs.Tab value="blocked">
-						{ __( 'Blocked', 'woocommerce-fraud-protection' ) }
-					</Tabs.Tab>
-				</Tabs.List>
-				{ /* Each tab controls its own panel (the accessibility contract),
-				     but the list is the same across tabs, so it is rendered only
-				     in the panel that is currently active. */ }
-				<Tabs.Panel value="all">
-					{ 'all' === tab && listContent }
-				</Tabs.Panel>
-				<Tabs.Panel value="allowed">
-					{ 'allowed' === tab && listContent }
-				</Tabs.Panel>
-				<Tabs.Panel value="blocked">
-					{ 'blocked' === tab && listContent }
-				</Tabs.Panel>
-			</Tabs.Root>
+			{ /* The list is composed from the DataViews parts (as the rules page
+			     is) so the status tabs share a row with the search, filters and
+			     view options, with the filters bar and the table below. */ }
+			<DataViews< ( typeof sessions )[ number ] >
+				data={ sessions }
+				fields={ fields }
+				view={ view }
+				onChangeView={ onChangeView }
+				actions={ actions }
+				paginationInfo={ paginationInfo }
+				isLoading={ isLoading }
+				defaultLayouts={ { table: {} } }
+				getItemId={ ( item ) => String( item.id ) }
+				empty={ <p>{ emptyMessage }</p> }
+			>
+				<Tabs.Root value={ tab } onValueChange={ onTabChange }>
+					<Stack
+						className="wc-fraud-protection-checkout-attempts__toolbar"
+						direction="row"
+						align="center"
+						justify="space-between"
+						gap="sm"
+					>
+						<Tabs.List variant="minimal">
+							<Tabs.Tab value="all">
+								{ __( 'All', 'woocommerce-fraud-protection' ) }
+							</Tabs.Tab>
+							<Tabs.Tab value="allowed">
+								{ __(
+									'Allowed',
+									'woocommerce-fraud-protection'
+								) }
+							</Tabs.Tab>
+							<Tabs.Tab value="blocked">
+								{ __(
+									'Blocked',
+									'woocommerce-fraud-protection'
+								) }
+							</Tabs.Tab>
+						</Tabs.List>
+						<Stack
+							className="wc-fraud-protection-checkout-attempts__view-controls"
+							direction="row"
+							align="center"
+							gap="xs"
+						>
+							<DataViews.Search
+								label={ __(
+									'Search by email or IP',
+									'woocommerce-fraud-protection'
+								) }
+							/>
+							<DataViews.FiltersToggle />
+							<DataViews.ViewConfig />
+						</Stack>
+					</Stack>
+					<DataViews.FiltersToggled className="dataviews-filters__container" />
+					{ /* Each tab controls its own panel (the accessibility
+					     contract), but the list is the same across tabs, so it
+					     is rendered only in the panel that is currently active. */ }
+					<Tabs.Panel value="all">
+						{ 'all' === tab && listContent }
+					</Tabs.Panel>
+					<Tabs.Panel value="allowed">
+						{ 'allowed' === tab && listContent }
+					</Tabs.Panel>
+					<Tabs.Panel value="blocked">
+						{ 'blocked' === tab && listContent }
+					</Tabs.Panel>
+					<DataViews.Footer />
+				</Tabs.Root>
+			</DataViews>
 
 			<EnableFraudPreventionDrawer
 				open={ isEnableDrawerOpen }
