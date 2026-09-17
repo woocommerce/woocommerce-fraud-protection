@@ -875,7 +875,15 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame(
 			array(
 				'report_id'      => 'wc-fraud-protection-rule-' . $response->get_data()['id'],
+				'source'         => 'manual_review',
 				'asserted_label' => 'good',
+				'context'        => array(
+					'rule_event'    => 'created',
+					'rule_action'   => 'allow',
+					'rule_field'    => 'email',
+					'rule_operator' => 'equals',
+				),
+				'notes'          => 'Merchant created a rule to allow by email.',
 			),
 			$reported_payload
 		);
@@ -885,14 +893,16 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox An allowed contextual outcome suggests Block and sends bad feedback.
 	 */
 	public function test_create_rule_allowed_context_reports_bad_feedback(): void {
-		$api_client = $this->createMock( ApiClient::class );
+		$api_client       = $this->createMock( ApiClient::class );
+		$reported_payload = null;
 		$api_client->expects( $this->once() )
 			->method( 'report' )
 			->with(
 				'context-session',
 				$this->callback(
-					static function ( array $payload ): bool {
-						return 'bad' === ( $payload['asserted_label'] ?? null );
+					static function ( array $payload ) use ( &$reported_payload ): bool {
+						$reported_payload = $payload;
+						return true;
 					}
 				)
 			);
@@ -923,6 +933,21 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( 'block', $response->get_data()['action'] );
+		$this->assertSame(
+			array(
+				'report_id'      => 'wc-fraud-protection-rule-' . $response->get_data()['id'],
+				'source'         => 'manual_review',
+				'asserted_label' => 'bad',
+				'context'        => array(
+					'rule_event'    => 'created',
+					'rule_action'   => 'block',
+					'rule_field'    => 'ip',
+					'rule_operator' => 'equals',
+				),
+				'notes'          => 'Merchant created a rule to block by ip.',
+			),
+			$reported_payload
+		);
 	}
 
 	/**
