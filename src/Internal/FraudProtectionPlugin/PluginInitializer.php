@@ -45,9 +45,7 @@ class PluginInitializer {
 		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.5' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', $plugin_file );
 
-		if ( self::is_managed_install() ) {
-			add_action( 'init', array( self::class, 'load_managed_textdomain' ), 0 );
-		}
+		self::register_managed_textdomain();
 
 		// Force-disable WC Core's built-in fraud protection feature to prevent
 		// session and script conflicts with this plugin's implementation.
@@ -96,6 +94,18 @@ class PluginInitializer {
 		}
 
 		$container->get( FraudProtectionController::class )->register();
+	}
+
+	/**
+	 * Register managed PHP translation loading.
+	 *
+	 * @internal
+	 */
+	public static function register_managed_textdomain(): void {
+		$callback = array( self::class, 'load_managed_textdomain' );
+		if ( self::is_managed_install() && false === has_action( 'init', $callback ) ) {
+			add_action( 'init', $callback, 0 );
+		}
 	}
 
 	/**

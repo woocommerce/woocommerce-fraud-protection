@@ -109,16 +109,20 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 		$container  = wc_get_container();
 		$commands   = $this->createMock( FraudProtectionCommands::class );
 		$controller = $this->createMock( FraudProtectionController::class );
+		$updater    = $this->createMock( ManagedTranslationUpdater::class );
 		$commands->expects( $this->once() )->method( 'register' );
 		$controller->expects( $this->once() )->method( 'register' );
+		$updater->expects( $this->never() )->method( 'register' );
 		$container->replace( FraudProtectionCommands::class, $commands );
 		$container->replace( FraudProtectionController::class, $controller );
+		$container->replace( ManagedTranslationUpdater::class, $updater );
 
 		try {
 			PluginInitializer::handle_woocommerce_loaded();
 		} finally {
 			$container->reset_replacement( FraudProtectionCommands::class );
 			$container->reset_replacement( FraudProtectionController::class );
+			$container->reset_replacement( ManagedTranslationUpdater::class );
 		}
 	}
 
@@ -137,6 +141,7 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_managed_bootstrap_registers_textdomain_loading_at_priority_zero(): void {
 		define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Test captures constants already defined by bootstrap.
 		set_error_handler(
 			static fn( int $severity, string $message ): bool => E_WARNING === $severity && str_contains( $message, 'already defined' )
 		);
@@ -147,6 +152,8 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 			restore_error_handler();
 		}
 
+		$this->assertSame( 0, has_action( 'init', array( PluginInitializer::class, 'load_managed_textdomain' ) ) );
+		PluginInitializer::register_managed_textdomain();
 		$this->assertSame( 0, has_action( 'init', array( PluginInitializer::class, 'load_managed_textdomain' ) ) );
 
 		remove_action( 'init', array( PluginInitializer::class, 'load_managed_textdomain' ), 0 );

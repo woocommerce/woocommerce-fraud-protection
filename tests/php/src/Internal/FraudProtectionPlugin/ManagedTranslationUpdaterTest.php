@@ -181,7 +181,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A valid pt_BR pack uses the exact request, replaces catalogs, removes stale files, and then skips the same revision.
+	 * @testdox A valid pt_BR pack uses the exact request, replaces catalogs, removes stale files, and then skips equal and older revisions.
 	 */
 	public function test_successful_update_and_revision_skip(): void {
 		$this->write_file( $this->catalog_path( '.po' ), $this->po_contents( '2026-09-16 12:00:00+00:00' ) );
@@ -216,6 +216,10 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->update();
 		$this->assertSame( 1, $this->download_calls );
+
+		$this->response['data']['woocommerce-fraud-protection'][0]['last_modified'] = '2026-09-16 12:00:00+00:00';
+		$this->sut->update();
+		$this->assertSame( 1, $this->download_calls );
 	}
 
 	/**
@@ -244,7 +248,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 	 * @testdox A publish failure keeps prior catalogs and does not remove stale files.
 	 */
 	public function test_publish_failure_preserves_installed_files_and_skips_cleanup(): void {
-		$new_json  = $this->catalog_path( '-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json' );
+		$new_json   = $this->catalog_path( '-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json' );
 		$stale_json = $this->catalog_path( '-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json' );
 		$this->write_file( $this->catalog_path( '.po' ), $this->po_contents( '2026-09-16 12:00:00+00:00' ) );
 		$this->write_file( $this->catalog_path( '.mo' ), 'old runtime' );
@@ -252,11 +256,12 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( wp_mkdir_p( $new_json ) );
 		$this->download_source = $this->create_zip(
 			array(
-				self::PREFIX . '.po'                                    => $this->po_contents( self::REVISION ),
-				self::PREFIX . '.mo'                                    => 'new runtime',
+				self::PREFIX . '.po' => $this->po_contents( self::REVISION ),
+				self::PREFIX . '.mo' => 'new runtime',
 				self::PREFIX . '-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json' => 'new json',
 			)
 		);
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Test captures the expected rename warning.
 		set_error_handler(
 			static fn( int $severity, string $message ): bool => E_WARNING === $severity && str_contains( $message, 'rename(' )
 		);

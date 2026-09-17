@@ -30,6 +30,33 @@ wfp_smoke_assert(
 	'The managed loader must identify the managed installation.'
 );
 
+$textdomain_callback  = array(
+	\Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer::class,
+	'load_managed_textdomain',
+);
+$registered_callbacks = array_filter(
+	$GLOBALS['wfp_smoke_hooks']['init'] ?? array(),
+	static function ( $callback ) use ( $textdomain_callback ) {
+		return $textdomain_callback === $callback;
+	}
+);
+wfp_smoke_assert(
+	1 === count( $registered_callbacks ),
+	'The managed loader must register PHP translations when the main file loaded first.'
+);
+
+\Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer::register_managed_textdomain();
+$registered_callbacks = array_filter(
+	$GLOBALS['wfp_smoke_hooks']['init'] ?? array(),
+	static function ( $callback ) use ( $textdomain_callback ) {
+		return $textdomain_callback === $callback;
+	}
+);
+wfp_smoke_assert(
+	1 === count( $registered_callbacks ),
+	'Managed PHP translation registration must be idempotent.'
+);
+
 wfp_smoke_assert(
 	'https://example.test/wp-content/mu-plugins/woocommerce-fraud-protection/assets/js/blocks-checkout.js' === $asset_url,
 	'The root loader must correct an asset URL after the nested main file loads. Got: ' . $asset_url
