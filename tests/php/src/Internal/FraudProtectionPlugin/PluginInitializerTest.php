@@ -131,6 +131,30 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Managed bootstrap registers text-domain loading at the start of init.
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_managed_bootstrap_registers_textdomain_loading_at_priority_zero(): void {
+		define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
+		set_error_handler(
+			static fn( int $severity, string $message ): bool => E_WARNING === $severity && str_contains( $message, 'already defined' )
+		);
+
+		try {
+			PluginInitializer::run( WC_FRAUD_PROTECTION_PLUGIN_FILE );
+		} finally {
+			restore_error_handler();
+		}
+
+		$this->assertSame( 0, has_action( 'init', array( PluginInitializer::class, 'load_managed_textdomain' ) ) );
+
+		remove_action( 'init', array( PluginInitializer::class, 'load_managed_textdomain' ), 0 );
+		remove_action( 'woocommerce_loaded', array( PluginInitializer::class, 'handle_woocommerce_loaded' ) );
+		remove_filter( 'woocommerce_feature_fraud_protection_enabled', '__return_false', 999 );
+	}
+
+	/**
 	 * @testdox Managed installations register the updater.
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled

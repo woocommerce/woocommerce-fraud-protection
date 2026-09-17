@@ -287,6 +287,10 @@ class ManagedTranslationUpdater {
 	 * @param string $locale Requested locale.
 	 */
 	private function validate_archive( string $path, string $locale ): bool {
+		if ( ! $this->legacy_proxy->call_function( 'class_exists', ZipArchive::class ) ) {
+			return false;
+		}
+
 		$zip = new ZipArchive();
 		if ( true !== $zip->open( $path ) ) {
 			return false;
@@ -373,11 +377,15 @@ class ManagedTranslationUpdater {
 		$staged    = array();
 		foreach ( $files as $filename => $source ) {
 			$stage = wp_tempnam( $filename, $directory );
-			if ( ! is_string( $stage ) || ! copy( $source, $stage ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy
+			if ( ! is_string( $stage ) ) {
 				$this->delete_files( $staged );
 				return false;
 			}
 			$staged[ $filename ] = $stage;
+			if ( ! copy( $source, $stage ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy
+				$this->delete_files( $staged );
+				return false;
+			}
 		}
 		$ordered = array_keys( $staged );
 		usort( $ordered, array( $this, 'compare_install_order' ) );

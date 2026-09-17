@@ -70,6 +70,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 
 		$this->register_legacy_proxy_function_mocks(
 			array(
+				'class_exists'            => static fn( $class_name ) => class_exists( $class_name ),
 				'get_current_blog_id'     => static fn() => 91,
 				'get_locale'              => static fn() => self::LOCALE,
 				'get_available_languages' => static fn() => array( self::LOCALE, 'de_DE', self::LOCALE, '../bad' ),
@@ -159,6 +160,27 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Registration does not schedule a duplicate event.
+	 */
+	public function test_register_keeps_existing_cron_event(): void {
+		$schedule_calls = 0;
+		$this->register_legacy_proxy_function_mocks(
+			array(
+				'wp_next_scheduled' => static fn() => 1234567890,
+				'wp_schedule_event' => static function () use ( &$schedule_calls ) {
+					++$schedule_calls;
+					return true;
+				},
+			)
+		);
+
+		$this->sut->register();
+
+		$this->assertSame( 0, $schedule_calls );
+		$this->assertSame( array(), $this->request );
+	}
+
+	/**
 	 * @testdox A valid pt_BR pack uses the exact request, replaces catalogs, removes stale files, and then skips the same revision.
 	 */
 	public function test_successful_update_and_revision_skip(): void {
@@ -194,6 +216,75 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->update();
 		$this->assertSame( 1, $this->download_calls );
+	}
+
+	/**
+	 * @testdox A valid l10n.php pack replaces the alternate runtime catalog and skips the same revision.
+	 */
+	public function test_l10n_php_update_replaces_stale_mo_and_skips_same_revision(): void {
+		$this->write_file( $this->catalog_path( '.po' ), $this->po_contents( '2026-09-16 12:00:00+00:00' ) );
+		$this->write_file( $this->catalog_path( '.mo' ), 'old runtime' );
+		$this->download_source = $this->create_zip(
+			array(
+				self::PREFIX . '.po'       => $this->po_contents( self::REVISION ),
+				self::PREFIX . '.l10n.php' => '<?php return array();',
+			)
+		);
+
+		$this->sut->update();
+
+		$this->assertSame( '<?php return array();', file_get_contents( $this->catalog_path( '.l10n.php' ) ) );
+		$this->assertFileDoesNotExist( $this->catalog_path( '.mo' ) );
+
+		$this->sut->update();
+		$this->assertSame( 1, $this->download_calls );
+	}
+
+	/**
+	 * @testdox A publish failure keeps prior catalogs and does not remove stale files.
+	 */
+	public function test_publish_failure_preserves_installed_files_and_skips_cleanup(): void {
+		$new_json  = $this->catalog_path( '-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json' );
+		$stale_json = $this->catalog_path( '-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json' );
+		$this->write_file( $this->catalog_path( '.po' ), $this->po_contents( '2026-09-16 12:00:00+00:00' ) );
+		$this->write_file( $this->catalog_path( '.mo' ), 'old runtime' );
+		$this->write_file( $stale_json, 'stale json' );
+		$this->assertTrue( wp_mkdir_p( $new_json ) );
+		$this->download_source = $this->create_zip(
+			array(
+				self::PREFIX . '.po'                                    => $this->po_contents( self::REVISION ),
+				self::PREFIX . '.mo'                                    => 'new runtime',
+				self::PREFIX . '-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json' => 'new json',
+			)
+		);
+		set_error_handler(
+			static fn( int $severity, string $message ): bool => E_WARNING === $severity && str_contains( $message, 'rename(' )
+		);
+
+		try {
+			$this->sut->update();
+		} finally {
+			restore_error_handler();
+		}
+
+		$this->assertSame( 'old runtime', file_get_contents( $this->catalog_path( '.mo' ) ) );
+		$this->assertStringContainsString( '2026-09-16', file_get_contents( $this->catalog_path( '.po' ) ) );
+		$this->assertSame( 'stale json', file_get_contents( $stale_json ) );
+	}
+
+	/**
+	 * @testdox Missing ZIP support fails safely and retains installed catalogs.
+	 */
+	public function test_missing_zip_support_preserves_installed_files(): void {
+		$this->register_legacy_proxy_function_mocks( array( 'class_exists' => static fn() => false ) );
+		$this->write_file( $this->catalog_path( '.po' ), $this->po_contents( '2026-09-16 12:00:00+00:00' ) );
+		$this->write_file( $this->catalog_path( '.mo' ), 'old runtime' );
+		$this->download_source = $this->valid_zip();
+
+		$this->sut->update();
+
+		$this->assertSame( 'old runtime', file_get_contents( $this->catalog_path( '.mo' ) ) );
+		$this->assertStringContainsString( '2026-09-16', file_get_contents( $this->catalog_path( '.po' ) ) );
 	}
 
 	/**
@@ -236,6 +327,10 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 		$untrusted['package']     = 'https://example.com/package.zip';
 		$credentialed             = $package;
 		$credentialed['package']  = 'https://user@translate.wordpress.com/package.zip';
+		$custom_port              = $package;
+		$custom_port['package']   = 'https://translate.wordpress.com:443/package.zip';
+		$fragment                 = $package;
+		$fragment['package']      = 'https://translate.wordpress.com/package.zip#catalog';
 
 		return array(
 			'API failure'          => array( array( 'success' => false ) ),
@@ -243,6 +338,8 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 			'wrong version'        => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $wrong_version ) ) ) ),
 			'untrusted host'       => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $untrusted ) ) ) ),
 			'URL credentials'      => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $credentialed ) ) ) ),
+			'custom port'          => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $custom_port ) ) ) ),
+			'URL fragment'         => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $fragment ) ) ) ),
 		);
 	}
 
