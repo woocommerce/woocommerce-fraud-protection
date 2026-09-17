@@ -418,6 +418,113 @@ describe( 'RulesPage', () => {
 		);
 	} );
 
+	it( 'writes and restores a filtered, sorted, paged URL through history', async () => {
+		mockedApiFetch.mockResolvedValue(
+			collectionResponse( [ rule ], 60, 3 ) as never
+		);
+		const { registry } = renderRules();
+		await screen.findByText( rule.value );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Add filter' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'menuitem', { name: 'Value' } )
+		);
+		fireEvent.change( await screen.findByRole( 'textbox' ), {
+			target: { value: '198.51.100.1' },
+		} );
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=created_at&order=desc',
+				parse: false,
+			} )
+		);
+		await userEvent.keyboard( '{Escape}' );
+
+		fireEvent.mouseDown( screen.getByRole( 'button', { name: 'Value' } ) );
+		await userEvent.click(
+			await screen.findByRole( 'menuitemradio', {
+				name: 'Sort ascending',
+			} )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} )
+		);
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Next page' } )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} )
+		);
+		expect( mockHistory.location ).toMatchObject( {
+			pathname: '/wp-admin/admin.php',
+			search: '?page=wc-settings&tab=woocommerce_fraud_protection&value=198.51.100.1&paged=2&orderby=value&order=asc&path=%2Frules',
+		} );
+
+		await registry
+			.dispatch( rulesStore )
+			.invalidateResolution( 'getRules', [
+				{
+					page: 1,
+					perPage: 20,
+					value: '198.51.100.1',
+					orderby: 'value',
+					order: 'asc',
+				},
+			] );
+		const callsBeforeBack = mockedApiFetch.mock.calls.length;
+		act( () => mockHistory.back() );
+		await waitFor( () => {
+			expect( mockHistory.location.search ).toBe(
+				'?page=wc-settings&tab=woocommerce_fraud_protection&value=198.51.100.1&orderby=value&order=asc&path=%2Frules'
+			);
+			expect( mockedApiFetch.mock.calls.length ).toBeGreaterThan(
+				callsBeforeBack
+			);
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} );
+		} );
+		expect(
+			screen.getByRole( 'combobox', { name: 'Current page' } )
+		).toHaveValue( '1' );
+
+		await registry
+			.dispatch( rulesStore )
+			.invalidateResolution( 'getRules', [
+				{
+					page: 2,
+					perPage: 20,
+					value: '198.51.100.1',
+					orderby: 'value',
+					order: 'asc',
+				},
+			] );
+		const callsBeforeForward = mockedApiFetch.mock.calls.length;
+		act( () => mockHistory.forward() );
+		await waitFor( () => {
+			expect(
+				screen.getByRole( 'combobox', { name: 'Current page' } )
+			).toHaveValue( '2' );
+			expect( mockedApiFetch.mock.calls.length ).toBeGreaterThan(
+				callsBeforeForward
+			);
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} );
+		} );
+	} );
+
 	it( 'resets the page when a filter changes and preserves an incomplete filter', async () => {
 		mockedApiFetch.mockResolvedValue(
 			collectionResponse( [ rule ], 60, 3 ) as never
@@ -464,6 +571,13 @@ describe( 'RulesPage', () => {
 				)
 			).toBe( '2' )
 		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&orderby=created_at&order=desc',
+				parse: false,
+			} )
+		);
+		expect( await screen.findByText( rule.value ) ).toBeInTheDocument();
 		expect( mockHistory.index ).toBe( 0 );
 	} );
 
