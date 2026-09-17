@@ -26,6 +26,11 @@ require_once dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection-loader.php';
 $asset_url = plugins_url( 'assets/js/blocks-checkout.js', WC_FRAUD_PROTECTION_PLUGIN_FILE );
 
 wfp_smoke_assert(
+	defined( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL' ) && WC_FRAUD_PROTECTION_MANAGED_INSTALL,
+	'The managed loader must identify the managed installation.'
+);
+
+wfp_smoke_assert(
 	'https://example.test/wp-content/mu-plugins/woocommerce-fraud-protection/assets/js/blocks-checkout.js' === $asset_url,
 	'The root loader must correct an asset URL after the nested main file loads. Got: ' . $asset_url
 );

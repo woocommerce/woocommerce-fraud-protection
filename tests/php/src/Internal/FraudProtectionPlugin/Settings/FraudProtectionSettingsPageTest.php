@@ -226,6 +226,22 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Managed settings use the MU-plugin script translation directory.
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_managed_settings_use_mu_plugin_translation_directory(): void {
+		define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
+		$this->write_asset_fixture( array( 'wp-api-fetch' ), 'settings-test-version' );
+		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
+
+		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
+
+		$script = wp_scripts()->registered[ self::ASSET_HANDLE ];
+		$this->assertSame( WP_LANG_DIR . '/mu-plugins', $script->translations_path );
+	}
+
+	/**
 	 * @testdox The checkout attempts route preloads the settings data it reads.
 	 */
 	public function test_checkout_attempts_route_preloads_settings(): void {
