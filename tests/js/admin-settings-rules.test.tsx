@@ -8,7 +8,11 @@ import {
 	within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import {
+	MemoryRouter,
+	unstable_HistoryRouter as HistoryRouter,
+} from 'react-router-dom';
+import { createMemoryHistory } from 'history';
 
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
@@ -24,6 +28,7 @@ import {
 	RulesPage,
 } from '../../client/admin-settings/rules-page';
 import { getUtcDateFilterBound } from '../../client/admin-settings/rule-date';
+import { getFraudProtectionRoute } from '../../client/admin-settings/navigation';
 import {
 	getInitialRuleFormData,
 	getRuleValuePlaceholder,
@@ -35,7 +40,9 @@ jest.mock( '@wordpress/api-fetch', () => ( {
 	__esModule: true,
 	default: jest.fn(),
 } ) );
+let mockHistory: ReturnType< typeof createMemoryHistory >;
 jest.mock( '@woocommerce/navigation', () => ( {
+	getHistory: () => mockHistory,
 	getNewPath: ( query: Record< string, string >, path: string ) => {
 		const route = new URLSearchParams( query );
 		if ( path !== '/' ) {
@@ -72,16 +79,19 @@ function collectionResponse(
 	} as unknown as Response;
 }
 
-function renderRules() {
+function renderRules( search = '' ) {
+	mockHistory = createMemoryHistory( {
+		initialEntries: [ `/wp-admin/admin.php?${ search }` ],
+	} );
 	const registry = createRegistry();
 	registry.register( rulesStore );
 	registry.register( noticesStore );
 	const result = render(
-		<MemoryRouter>
+		<HistoryRouter history={ mockHistory }>
 			<RegistryProvider value={ registry }>
 				<RulesPage />
 			</RegistryProvider>
-		</MemoryRouter>
+		</HistoryRouter>
 	);
 	return { ...result, registry };
 }
@@ -119,9 +129,21 @@ async function chooseRuleAction( value: string, action: string ) {
 beforeEach( () => {
 	mockedApiFetch.mockReset();
 	mockedApiFetch.mockResolvedValue( collectionResponse() as never );
+	window.localStorage.clear();
 } );
 
 describe( 'RulesPage', () => {
+	it( 'builds full Fraud Protection admin routes with query values', () => {
+		expect(
+			getFraudProtectionRoute( '/rules', {
+				action: 'block',
+				paged: '2',
+			} )
+		).toBe(
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&action=block&paged=2&path=%2Frules'
+		);
+	} );
+
 	it( 'validates complete IPv4 and IPv6 values', () => {
 		expect( isCompleteIp( '203.0.113.9' ) ).toBe( true );
 		expect( isCompleteIp( '2001:db8::1' ) ).toBe( true );
@@ -240,6 +262,382 @@ describe( 'RulesPage', () => {
 				name: 'Actions',
 			} )
 		).toBeInTheDocument();
+	} );
+
+	it( 'restores validated URL state and display preferences', async () => {
+		window.localStorage.setItem(
+			'wc-fraud-protection-rules-prefs',
+			JSON.stringify( {
+				version: 1,
+				prefs: {
+					fields: [ 'value', 'action', 'unknown', 'value' ],
+					perPage: 50,
+					layout: {
+						density: 'compact',
+						styles: { value: { width: '999px' } },
+					},
+				},
+			} )
+		);
+		mockedApiFetch.mockResolvedValue(
+			collectionResponse( [ rule ], 150, 3 ) as never
+		);
+
+		renderRules(
+			'action=block&type=ip&value=198.51.100.1&created_from=2026-09-01&created_to=2026-09-30&paged=3&orderby=value&order=asc'
+		);
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: `/wc-fraud-protection/v1/rules?page=3&per_page=50&action=block&type=ip&value=198.51.100.1&from=${ encodeURIComponent(
+					getUtcDateFilterBound( '2026-09-01', false )!
+				) }&to=${ encodeURIComponent(
+					getUtcDateFilterBound( '2026-09-30', true )!
+				) }&orderby=value&order=asc`,
+				parse: false,
+			} )
+		);
+		expect(
+			screen.getByRole( 'tab', { name: 'Block', selected: true } )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'button', { name: 'Value' } )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'button', { name: 'Action' } )
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', { name: 'Rule type' } )
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole( 'columnheader', { name: /Value/ } )
+		).toHaveStyle( { width: '25%' } );
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'View options' } )
+		);
+		expect(
+			await screen.findByRole( 'radio', { name: 'Compact' } )
+		).toBeChecked();
+		expect( screen.getByRole( 'radio', { name: '50' } ) ).toBeChecked();
+	} );
+
+	it( 'drops invalid URL state and display preferences', async () => {
+		window.localStorage.setItem(
+			'wc-fraud-protection-rules-prefs',
+			JSON.stringify( {
+				version: 1,
+				prefs: {
+					fields: [ 'unknown' ],
+					perPage: 10,
+					layout: { density: 'tiny' },
+				},
+			} )
+		);
+
+		renderRules(
+			'action=permit&type=phone&created_from=2026-09-01junk&created_to=2026-02-30&paged=3x&orderby=id&order=sideways'
+		);
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+				parse: false,
+			} )
+		);
+		expect(
+			screen.getByRole( 'tab', { name: 'All', selected: true } )
+		).toBeInTheDocument();
+		for ( const name of [ 'Action', 'Value', 'Rule type', 'Created' ] ) {
+			expect(
+				screen.getByRole( 'button', { name } )
+			).toBeInTheDocument();
+		}
+	} );
+
+	it( 'stores only supported Rules display preferences', async () => {
+		renderRules();
+		await screen.findByText( rule.value );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'View options' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'radio', { name: 'Compact' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'radio', { name: '50' } )
+		);
+
+		await waitFor( () =>
+			expect(
+				JSON.parse(
+					window.localStorage.getItem(
+						'wc-fraud-protection-rules-prefs'
+					)!
+				)
+			).toEqual( {
+				version: 1,
+				prefs: {
+					fields: [ 'action', 'value', 'type', 'created_at' ],
+					perPage: 50,
+					layout: { density: 'compact' },
+				},
+			} )
+		);
+	} );
+
+	it( 'writes canonical admin URLs and restores tabs through history', async () => {
+		renderRules();
+		await screen.findByText( rule.value );
+
+		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
+		await waitFor( () => {
+			const params = new URLSearchParams( mockHistory.location.search );
+			expect( params.get( 'path' ) ).toBe( '/rules' );
+			expect( params.get( 'action' ) ).toBe( 'block' );
+			expect( params.has( 'paged' ) ).toBe( false );
+			expect( params.has( 'orderby' ) ).toBe( false );
+			expect( params.has( 'order' ) ).toBe( false );
+		} );
+		expect( mockHistory.index ).toBe( 1 );
+
+		act( () => mockHistory.back() );
+		await waitFor( () =>
+			expect(
+				screen.getByRole( 'tab', { name: 'All', selected: true } )
+			).toBeInTheDocument()
+		);
+		act( () => mockHistory.forward() );
+		await waitFor( () =>
+			expect(
+				screen.getByRole( 'tab', {
+					name: 'Block',
+					selected: true,
+				} )
+			).toBeInTheDocument()
+		);
+	} );
+
+	it( 'writes and restores a filtered, sorted, paged URL through history', async () => {
+		mockedApiFetch.mockResolvedValue(
+			collectionResponse( [ rule ], 60, 3 ) as never
+		);
+		const { registry } = renderRules();
+		await screen.findByText( rule.value );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Add filter' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'menuitem', { name: 'Value' } )
+		);
+		fireEvent.change( await screen.findByRole( 'textbox' ), {
+			target: { value: '198.51.100.1' },
+		} );
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=created_at&order=desc',
+				parse: false,
+			} )
+		);
+		await userEvent.keyboard( '{Escape}' );
+
+		fireEvent.mouseDown( screen.getByRole( 'button', { name: 'Value' } ) );
+		await userEvent.click(
+			await screen.findByRole( 'menuitemradio', {
+				name: 'Sort ascending',
+			} )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} )
+		);
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Next page' } )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} )
+		);
+		expect( mockHistory.location ).toMatchObject( {
+			pathname: '/wp-admin/admin.php',
+			search: '?page=wc-settings&tab=woocommerce_fraud_protection&value=198.51.100.1&paged=2&orderby=value&order=asc&path=%2Frules',
+		} );
+
+		await registry
+			.dispatch( rulesStore )
+			.invalidateResolution( 'getRules', [
+				{
+					page: 1,
+					perPage: 20,
+					value: '198.51.100.1',
+					orderby: 'value',
+					order: 'asc',
+				},
+			] );
+		const callsBeforeBack = mockedApiFetch.mock.calls.length;
+		act( () => mockHistory.back() );
+		await waitFor( () => {
+			expect( mockHistory.location.search ).toBe(
+				'?page=wc-settings&tab=woocommerce_fraud_protection&value=198.51.100.1&orderby=value&order=asc&path=%2Frules'
+			);
+			expect( mockedApiFetch.mock.calls.length ).toBeGreaterThan(
+				callsBeforeBack
+			);
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} );
+		} );
+		expect(
+			screen.getByRole( 'combobox', { name: 'Current page' } )
+		).toHaveValue( '1' );
+
+		await registry
+			.dispatch( rulesStore )
+			.invalidateResolution( 'getRules', [
+				{
+					page: 2,
+					perPage: 20,
+					value: '198.51.100.1',
+					orderby: 'value',
+					order: 'asc',
+				},
+			] );
+		const callsBeforeForward = mockedApiFetch.mock.calls.length;
+		act( () => mockHistory.forward() );
+		await waitFor( () => {
+			expect(
+				screen.getByRole( 'combobox', { name: 'Current page' } )
+			).toHaveValue( '2' );
+			expect( mockedApiFetch.mock.calls.length ).toBeGreaterThan(
+				callsBeforeForward
+			);
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				parse: false,
+			} );
+		} );
+	} );
+
+	it( 'resets the page when a filter changes and preserves an incomplete filter', async () => {
+		mockedApiFetch.mockResolvedValue(
+			collectionResponse( [ rule ], 60, 3 ) as never
+		);
+		renderRules( 'paged=3' );
+		await screen.findByText( rule.value );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Add filter' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'menuitem', { name: 'Value' } )
+		);
+
+		await waitFor( () =>
+			expect(
+				new URLSearchParams( mockHistory.location.search ).has(
+					'paged'
+				)
+			).toBe( false )
+		);
+		expect(
+			screen
+				.getAllByRole( 'button', { name: 'Value' } )
+				.some(
+					( button ) =>
+						button.getAttribute( 'aria-expanded' ) === 'true'
+				)
+		).toBe( true );
+	} );
+
+	it( 'replaces a stale page after a successful response', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse( [], 30, 2 ) as never )
+			.mockResolvedValueOnce(
+				collectionResponse( [ rule ], 30, 2 ) as never
+			);
+		renderRules( 'paged=5' );
+
+		await waitFor( () =>
+			expect(
+				new URLSearchParams( mockHistory.location.search ).get(
+					'paged'
+				)
+			).toBe( '2' )
+		);
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenCalledWith( {
+				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&orderby=created_at&order=desc',
+				parse: false,
+			} )
+		);
+		expect( await screen.findByText( rule.value ) ).toBeInTheDocument();
+		expect( mockHistory.index ).toBe( 0 );
+	} );
+
+	it( 'resets to page 1 when a successful response has no results', async () => {
+		mockedApiFetch.mockResolvedValue(
+			collectionResponse( [], 0, 0 ) as never
+		);
+		renderRules( 'paged=3' );
+		await waitFor( () =>
+			expect(
+				new URLSearchParams( mockHistory.location.search ).has(
+					'paged'
+				)
+			).toBe( false )
+		);
+		expect( mockHistory.index ).toBe( 0 );
+	} );
+
+	it( 'keeps the requested page when loading fails', async () => {
+		mockedApiFetch.mockRejectedValue( new Error( 'Unavailable.' ) );
+		renderRules( 'paged=3' );
+
+		await screen.findAllByText(
+			'The fraud prevention rules could not be loaded. Unavailable.'
+		);
+		expect(
+			new URLSearchParams( mockHistory.location.search ).get( 'paged' )
+		).toBe( '3' );
+	} );
+
+	it( 'prevents the settings form from submitting and leaves drawer state out of the URL', async () => {
+		mockHistory = createMemoryHistory( {
+			initialEntries: [ '/wp-admin/admin.php?path=/rules&type=email' ],
+		} );
+		const registry = createRegistry();
+		registry.register( rulesStore );
+		registry.register( noticesStore );
+		const { container } = render(
+			<HistoryRouter history={ mockHistory }>
+				<RegistryProvider value={ registry }>
+					<form>
+						<RulesPage />
+					</form>
+				</RegistryProvider>
+			</HistoryRouter>
+		);
+		await screen.findByText( rule.value );
+
+		const search = mockHistory.location.search;
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		expect( mockHistory.location.search ).toBe( search );
+
+		const submit = new Event( 'submit', {
+			bubbles: true,
+			cancelable: true,
+		} );
+		container.querySelector( 'form' )!.dispatchEvent( submit );
+		expect( submit.defaultPrevented ).toBe( true );
 	} );
 
 	it( 'keeps all four columns sortable with Created descending as default', async () => {

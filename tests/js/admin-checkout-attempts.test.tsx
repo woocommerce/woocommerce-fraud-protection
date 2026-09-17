@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import {
+	act,
 	fireEvent,
 	render,
 	screen,
@@ -35,10 +36,16 @@ import {
 import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/payment-method-elements';
 import { getFlaggedExplanation } from '../../client/admin-checkout-attempts/flagged-chip';
 import { buildListPath } from '../../client/admin-checkout-attempts/use-checkout-attempts';
+import { createPreferenceStore } from '../../client/persisted-state';
 import {
-	loadPrefs,
-	savePrefs,
-} from '../../client/admin-checkout-attempts/persisted-state';
+	createListUrlCodec,
+	defineEnumFilter,
+	defineListFilter,
+	defineRangeFilter,
+	defineScalarFilter,
+	getCorrectedPage,
+	parsePositivePage,
+} from '../../client/list-state';
 import { settingsStore } from '../../client/admin-settings/data/store';
 import {
 	rulesStore,
@@ -101,6 +108,111 @@ jest.mock( '@woocommerce/navigation', () => ( {
 import { CheckoutAttemptsPage } from '../../client/admin-checkout-attempts/checkout-attempts-page';
 
 const mockedApiFetch = apiFetch as unknown as jest.Mock;
+const PREFS_STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
+const PREFS_STORAGE_VERSION = 2;
+const preferenceStore = createPreferenceStore( {
+	storageKey: PREFS_STORAGE_KEY,
+	version: PREFS_STORAGE_VERSION,
+	supportedFields: [
+		'recorded_at',
+		'email',
+		'ip',
+		'ip_country',
+		'billing_country',
+		'outcome',
+		'rules',
+	],
+	supportedPerPage: [ 10, 20, 50, 100 ],
+	supportedDensities: [ 'compact', 'balanced', 'comfortable' ],
+} );
+const loadPrefs = preferenceStore.load;
+const savePrefs = preferenceStore.save;
+
+describe( 'shared list state', () => {
+	it( 'parses positive pages and calculates stale-page corrections', () => {
+		expect( parsePositivePage( '3' ) ).toBe( 3 );
+		expect( parsePositivePage( '3x' ) ).toBe( 1 );
+		expect( getCorrectedPage( 5, 2 ) ).toBe( 2 );
+		expect( getCorrectedPage( 3, 0 ) ).toBe( 1 );
+		expect( getCorrectedPage( 2, 3 ) ).toBeNull();
+	} );
+
+	it( 'decodes and encodes configured filter and state definitions', () => {
+		const scalar = defineScalarFilter( {
+			field: 'search_value',
+			operator: 'is',
+			param: 'value',
+		} );
+		const choice = defineEnumFilter( {
+			field: 'choice',
+			operator: 'is',
+			param: 'choice',
+			values: [ { value: 'known', label: 'Known' } ],
+		} );
+		const tags = defineListFilter( {
+			field: 'tags',
+			operator: 'isAny',
+			param: 'tags',
+			values: [ { value: 'first', label: 'First' } ],
+		} );
+		const dates = defineRangeFilter( {
+			field: 'dates',
+			operator: 'between',
+			params: [ 'from', 'to' ],
+			validate: ( value ) => /^\d{4}-\d{2}-\d{2}$/.test( value ),
+		} );
+		const codec = createListUrlCodec< 'all' | 'blocked' >( {
+			path: '/test',
+			defaultView: {
+				type: 'table',
+				page: 1,
+				perPage: 20,
+				sort: { field: 'created_at', direction: 'desc' },
+				fields: [],
+			},
+			filters: [ scalar, choice, tags, dates ],
+			state: {
+				param: 'status',
+				defaultValue: 'all',
+				values: [ 'all', 'blocked' ],
+			},
+			queryOrder: [ 'filters', 'page', 'sort', 'state' ],
+		} );
+		const decoded = codec.decode(
+			new URLSearchParams(
+				'value=exact&choice=unknown&tags=first,unknown&from=2026-09-01&to=bad&paged=2&status=unknown'
+			),
+			{}
+		);
+
+		expect( decoded.state ).toBe( 'all' );
+		expect( decoded.view ).toMatchObject( {
+			page: 2,
+			filters: [
+				{ field: 'search_value', operator: 'is', value: 'exact' },
+				{ field: 'tags', operator: 'isAny', value: [ 'first' ] },
+				{
+					field: 'dates',
+					operator: 'between',
+					value: [ '2026-09-01', '' ],
+				},
+			],
+		} );
+		expect( codec.encode( decoded.view, decoded.state ).toString() ).toBe(
+			'value=exact&tags=first&from=2026-09-01&paged=2'
+		);
+		expect(
+			codec
+				.encode( {
+					...decoded.view,
+					filters: [
+						{ field: 'tags', operator: 'isAny', value: undefined },
+					],
+				} )
+				.toString()
+		).toBe( 'paged=2' );
+	} );
+} );
 
 // Register the spied core/notices store into the default registry the page and
 // drawer use (they read data through the global @wordpress/data registry, not a
@@ -878,8 +990,6 @@ describe( 'checkout attempts list path', () => {
 } );
 
 describe( 'checkout attempts display preferences', () => {
-	const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
-
 	beforeEach( () => window.localStorage.clear() );
 
 	it( 'returns empty when nothing is stored', () => {
@@ -901,11 +1011,11 @@ describe( 'checkout attempts display preferences', () => {
 	} );
 
 	it( 'falls back to empty when the payload is corrupt or a stale version', () => {
-		window.localStorage.setItem( STORAGE_KEY, 'not json' );
+		window.localStorage.setItem( PREFS_STORAGE_KEY, 'not json' );
 		expect( loadPrefs() ).toEqual( {} );
 
 		window.localStorage.setItem(
-			STORAGE_KEY,
+			PREFS_STORAGE_KEY,
 			JSON.stringify( { version: 999, prefs: { perPage: 50 } } )
 		);
 		expect( loadPrefs() ).toEqual( {} );
@@ -914,7 +1024,7 @@ describe( 'checkout attempts display preferences', () => {
 	it( 'drops invalid preference values', () => {
 		// A payload at the current version but with the wrong value types.
 		window.localStorage.setItem(
-			STORAGE_KEY,
+			PREFS_STORAGE_KEY,
 			JSON.stringify( {
 				version: 2,
 				prefs: { fields: 'nope', perPage: -3 },
@@ -922,6 +1032,24 @@ describe( 'checkout attempts display preferences', () => {
 		);
 
 		expect( loadPrefs() ).toEqual( {} );
+	} );
+
+	it( 'ignores unavailable storage', () => {
+		const getItem = jest
+			.spyOn( Storage.prototype, 'getItem' )
+			.mockImplementation( () => {
+				throw new Error( 'Storage unavailable.' );
+			} );
+		expect( loadPrefs() ).toEqual( {} );
+		getItem.mockRestore();
+
+		const setItem = jest
+			.spyOn( Storage.prototype, 'setItem' )
+			.mockImplementation( () => {
+				throw new Error( 'Storage unavailable.' );
+			} );
+		expect( () => savePrefs( { perPage: 50 } ) ).not.toThrow();
+		setItem.mockRestore();
 	} );
 } );
 
@@ -947,7 +1075,9 @@ const mockApi = ( {
 	sessions,
 	onPost,
 }: {
-	sessions?: ListResponse | ( () => ListResponse | Promise< ListResponse > );
+	sessions?:
+		| ListResponse
+		| ( ( path: string ) => ListResponse | Promise< ListResponse > );
 	onPost?: ( value: boolean ) => void;
 } = {} ) => {
 	const nextSessions =
@@ -963,7 +1093,7 @@ const mockApi = ( {
 		} ) => {
 			const path = String( options.path );
 			if ( path.includes( '/wc-fraud-protection/v1/sessions' ) ) {
-				return Promise.resolve( nextSessions() );
+				return Promise.resolve( nextSessions( path ) );
 			}
 			if ( path.includes( '/wc-fraud-protection/v1/settings' ) ) {
 				if ( 'POST' === options.method ) {
@@ -1072,6 +1202,10 @@ const renderPage = ( search = '' ) => {
 // Only the paginated list requests, which carry query arguments.
 const listPaths = () =>
 	settledPaths().filter( ( path ) => path.includes( '/sessions?' ) );
+const lastListPath = () => {
+	const paths = listPaths();
+	return paths[ paths.length - 1 ];
+};
 
 const ruleMutationRequests = () =>
 	mockedApiFetch.mock.calls
@@ -1434,6 +1568,38 @@ describe( 'CheckoutAttemptsPage', () => {
 		);
 	} );
 
+	it( 'restores and keeps the optional merchant-rule column preference', async () => {
+		window.localStorage.setItem(
+			PREFS_STORAGE_KEY,
+			JSON.stringify( {
+				version: PREFS_STORAGE_VERSION,
+				prefs: {
+					fields: [ 'email', 'rules', 'unknown' ],
+					perPage: 20,
+				},
+			} )
+		);
+		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
+
+		renderPage();
+		await screen.findByText( 'shopper@example.com' );
+		expect(
+			screen.getByRole( 'button', { name: 'Merchant rule' } )
+		).toBeInTheDocument();
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'View options' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'radio', { name: 'Compact' } )
+		);
+
+		expect(
+			JSON.parse( window.localStorage.getItem( PREFS_STORAGE_KEY )! )
+				.prefs.fields
+		).toEqual( [ 'email', 'rules' ] );
+	} );
+
 	it( 'cancels rule deletion without sending a request', async () => {
 		const attempt = aSession( {
 			rules: { email: aRule( { id: 803 } ), ip: null },
@@ -1464,20 +1630,59 @@ describe( 'CheckoutAttemptsPage', () => {
 		).not.toBeInTheDocument();
 	} );
 
-	it( 'refetches with the enforced status when a tab is selected', async () => {
-		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
+	it( 'restores multi-page status state through history', async () => {
+		mockApi( {
+			sessions: ( path ) =>
+				path.includes( 'final_status=blocked' )
+					? listResponse( [ aSession() ], 1, 1 )
+					: listResponse( [ aSession() ], 40, 2 ),
+		} );
 
-		renderPage();
+		renderPage( 'paged=2' );
 		await screen.findByText( 'shopper@example.com' );
+		await waitFor( () => expect( lastListPath() ).toContain( 'page=2&' ) );
 
 		await userEvent.click( screen.getByRole( 'tab', { name: 'Blocked' } ) );
 
+		await waitFor( () =>
+			expect( lastListPath() ).toContain( 'final_status=blocked' )
+		);
+		expect(
+			screen.getByRole( 'tab', { name: 'Blocked', selected: true } )
+		).toBeInTheDocument();
+
+		const callsBeforeBack = listPaths().length;
+		act( () => mockHistory.back() );
 		await waitFor( () => {
 			expect(
-				listPaths().some( ( path ) =>
-					path.includes( 'final_status=blocked' )
+				screen.getByRole( 'tab', { name: 'All', selected: true } )
+			).toBeInTheDocument();
+			expect( listPaths().length ).toBeGreaterThan( callsBeforeBack );
+			expect( lastListPath() ).not.toContain( 'final_status' );
+			expect( lastListPath() ).toContain( 'page=2&' );
+			expect(
+				new URLSearchParams( mockHistory.location.search ).get(
+					'paged'
 				)
-			).toBe( true );
+			).toBe( '2' );
+		} );
+
+		const callsBeforeForward = listPaths().length;
+		act( () => mockHistory.forward() );
+		await waitFor( () => {
+			expect(
+				screen.getByRole( 'tab', {
+					name: 'Blocked',
+					selected: true,
+				} )
+			).toBeInTheDocument();
+			expect( listPaths().length ).toBeGreaterThan( callsBeforeForward );
+			expect( lastListPath() ).toContain( 'final_status=blocked' );
+			expect(
+				new URLSearchParams( mockHistory.location.search ).has(
+					'paged'
+				)
+			).toBe( false );
 		} );
 	} );
 
@@ -1501,14 +1706,19 @@ describe( 'CheckoutAttemptsPage', () => {
 		} );
 	} );
 
-	it( 'starts on the page named in the URL', async () => {
+	it( 'restores configured filters and the page from the URL', async () => {
 		mockApi( { sessions: listResponse( [ aSession() ], 40, 2 ) } );
 
-		renderPage( 'paged=2' );
+		renderPage( 'outcome=allowed&provider=stripe&rules=without&paged=2' );
 		await screen.findByText( 'shopper@example.com' );
-		expect(
-			listPaths().some( ( path ) => path.includes( 'page=2&' ) )
-		).toBe( true );
+		const request = listPaths().find( ( path ) =>
+			path.includes( 'page=2&' )
+		);
+		expect( request ).toBeDefined();
+		const params = new URLSearchParams( request!.split( '?' )[ 1 ] );
+		expect( params.get( 'outcome[0]' ) ).toBe( 'allowed' );
+		expect( params.get( 'payment_method[0]' ) ).toBe( 'stripe' );
+		expect( params.get( 'rules' ) ).toBe( 'without' );
 	} );
 
 	it( 'falls back to the last page when the URL page is past the end', async () => {
