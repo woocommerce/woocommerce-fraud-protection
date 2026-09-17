@@ -10,14 +10,17 @@ import { useSelect } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { View } from '@wordpress/dataviews';
-import { getHistory, getNewPath } from '@woocommerce/navigation';
+import { getHistory } from '@woocommerce/navigation';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { buildActions } from './actions';
 import { EnableFraudPreventionDrawer } from './enable-fraud-prevention-drawer';
 import { getFields } from './fields';
 import { ProtectionOffBanner } from './protection-off-banner';
-import { loadPrefs, savePrefs } from './persisted-state';
+import {
+	loadPrefs as loadStoredPrefs,
+	savePrefs as saveStoredPrefs,
+} from '../persisted-state';
 import { useCheckoutAttempts } from './use-checkout-attempts';
 import { getFraudProtectionRoute } from '../admin-settings/navigation';
 import { settingsStore } from '../admin-settings/data/store';
@@ -28,7 +31,7 @@ import {
 	type RuleFormContext,
 } from '../admin-settings/components/rule-form-drawer';
 import { RuleDeleteDialog } from '../admin-settings/components/rule-delete-dialog';
-import type { DisplayPrefs, StatusTab } from './persisted-state';
+import type { DisplayPrefs } from '../persisted-state';
 import type { FinalStatus } from './types';
 import type { RuleActionType } from './actions';
 import './style.scss';
@@ -56,6 +59,40 @@ const DEFAULT_FIELDS = [
 	'billing_country',
 	'outcome',
 ];
+const SUPPORTED_FIELDS = DEFAULT_FIELDS;
+const SUPPORTED_PER_PAGE = [ 10, 20, 50, 100 ];
+const SUPPORTED_DENSITIES = [ 'compact', 'balanced', 'comfortable' ];
+const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
+const STORAGE_VERSION = 2;
+
+type StatusTab = 'all' | FinalStatus;
+
+function sanitizePrefs( prefs: DisplayPrefs ): DisplayPrefs {
+	const storedFields = prefs.fields?.filter(
+		( field, index, all ) =>
+			SUPPORTED_FIELDS.indexOf( field ) !== -1 &&
+			all.indexOf( field ) === index
+	);
+	const density = prefs.layout?.density;
+
+	return {
+		...( storedFields?.length ? { fields: storedFields } : {} ),
+		...( prefs.perPage && SUPPORTED_PER_PAGE.indexOf( prefs.perPage ) !== -1
+			? { perPage: prefs.perPage }
+			: {} ),
+		...( density && SUPPORTED_DENSITIES.indexOf( density ) !== -1
+			? { layout: { density } }
+			: {} ),
+	};
+}
+
+function loadPrefs(): DisplayPrefs {
+	return sanitizePrefs( loadStoredPrefs( STORAGE_KEY, STORAGE_VERSION ) );
+}
+
+function savePrefs( prefs: DisplayPrefs ): void {
+	saveStoredPrefs( STORAGE_KEY, STORAGE_VERSION, sanitizePrefs( prefs ) );
+}
 
 // The navigation state (search, filters, status tab, sort, page) lives in the
 // URL query so a link reproduces the view and Back/Forward restore it. Column
@@ -195,15 +232,12 @@ function urlNav( params: URLSearchParams ): string {
 // this (rather than the router's `/checkout-attempts` pathname) keeps the browser
 // on `admin.php` with the route in the `path` query arg, so a reload resolves.
 function listAdminPath( view: View, tab: StatusTab ): string {
-	const query: Record< string, string > = {
-		page: 'wc-settings',
-		tab: 'woocommerce_fraud_protection',
-	};
+	const query: Record< string, string > = {};
 	navParams( view, tab ).forEach( ( value, key ) => {
 		query[ key ] = value;
 	} );
 
-	return getNewPath( query, '/checkout-attempts', {} );
+	return getFraudProtectionRoute( '/checkout-attempts', query );
 }
 
 export function CheckoutAttemptsPage() {

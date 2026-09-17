@@ -1,4 +1,10 @@
-import { useMemo, useState } from '@wordpress/element';
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import {
 	Button,
@@ -13,7 +19,8 @@ import {
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { Action, Field, View } from '@wordpress/dataviews';
-import { Link } from 'react-router-dom';
+import { getHistory } from '@woocommerce/navigation';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
@@ -22,6 +29,11 @@ import { getFraudProtectionRoute } from './navigation';
 import { formatRuleDate, getUtcDateFilterBound } from './rule-date';
 import { RuleFormDrawer } from './components/rule-form-drawer';
 import { RuleDeleteDialog } from './components/rule-delete-dialog';
+import {
+	loadPrefs as loadStoredPrefs,
+	savePrefs as saveStoredPrefs,
+	type DisplayPrefs,
+} from '../persisted-state';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
 const ruleActions = [
@@ -32,6 +44,21 @@ const ruleTypes = [
 	{ value: 'email', label: __( 'Email', 'woocommerce-fraud-protection' ) },
 	{ value: 'ip', label: __( 'IP', 'woocommerce-fraud-protection' ) },
 ];
+const DEFAULT_SORT_FIELD = 'created_at';
+const DEFAULT_SORT_DIRECTION = 'desc';
+const DEFAULT_PER_PAGE = 20;
+const DEFAULT_FIELDS = [ 'action', 'value', 'type', 'created_at' ];
+const SUPPORTED_SORT_FIELDS = [ 'action', 'value', 'type', 'created_at' ];
+const SUPPORTED_PER_PAGE = [ 20, 50, 100 ];
+const SUPPORTED_DENSITIES = [ 'compact', 'balanced', 'comfortable' ];
+const STORAGE_KEY = 'wc-fraud-protection-rules-prefs';
+const STORAGE_VERSION = 1;
+const COLUMN_STYLES = {
+	action: { width: '25%' },
+	value: { width: '25%' },
+	type: { width: '25%' },
+	created_at: { width: '25%' },
+};
 
 const fields: Field< Rule >[] = [
 	{
@@ -94,6 +121,185 @@ const fields: Field< Rule >[] = [
 		render: ( { item } ) => formatRuleDate( item.created_at ),
 	},
 ];
+
+function sanitizePrefs( prefs: DisplayPrefs ): DisplayPrefs {
+	const storedFields = prefs.fields?.filter(
+		( field, index, all ) =>
+			DEFAULT_FIELDS.indexOf( field ) !== -1 &&
+			all.indexOf( field ) === index
+	);
+	const density = prefs.layout?.density;
+
+	return {
+		...( storedFields?.length ? { fields: storedFields } : {} ),
+		...( prefs.perPage && SUPPORTED_PER_PAGE.indexOf( prefs.perPage ) !== -1
+			? { perPage: prefs.perPage }
+			: {} ),
+		...( density && SUPPORTED_DENSITIES.indexOf( density ) !== -1
+			? { layout: { density } }
+			: {} ),
+	};
+}
+
+function loadPrefs(): DisplayPrefs {
+	return sanitizePrefs( loadStoredPrefs( STORAGE_KEY, STORAGE_VERSION ) );
+}
+
+function savePrefs( prefs: DisplayPrefs ): void {
+	saveStoredPrefs( STORAGE_KEY, STORAGE_VERSION, sanitizePrefs( prefs ) );
+}
+
+function getFilterValue( view: View, field: string ): unknown {
+	return ( view.filters ?? [] ).find( ( filter ) => filter.field === field )
+		?.value;
+}
+
+function getScalarFilterValue( view: View, field: string ): string {
+	const value = getFilterValue( view, field );
+	return Array.isArray( value )
+		? String( value[ 0 ] ?? '' )
+		: String( value ?? '' );
+}
+
+function isValidLocalDate( value: string | null ): value is string {
+	return Boolean(
+		value &&
+			/^\d{4}-\d{2}-\d{2}$/.test( value ) &&
+			getUtcDateFilterBound( value, false )
+	);
+}
+
+function parsePage( value: string | null ): number {
+	if ( ! value || ! /^[1-9]\d*$/.test( value ) ) {
+		return 1;
+	}
+	const page = Number( value );
+	return Number.isSafeInteger( page ) ? page : 1;
+}
+
+function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
+	const filters: NonNullable< View[ 'filters' ] > = [];
+	const action = params.get( 'action' );
+	if ( action === 'allow' || action === 'block' ) {
+		filters.push( { field: 'action', operator: 'is', value: action } );
+	}
+	const type = params.get( 'type' );
+	if ( type === 'email' || type === 'ip' ) {
+		filters.push( { field: 'type', operator: 'is', value: type } );
+	}
+	const value = params.get( 'value' );
+	if ( value ) {
+		filters.push( { field: 'value', operator: 'is', value } );
+	}
+	const from = params.get( 'created_from' );
+	const to = params.get( 'created_to' );
+	if ( isValidLocalDate( from ) || isValidLocalDate( to ) ) {
+		filters.push( {
+			field: 'created_at',
+			operator: 'between',
+			value: [
+				isValidLocalDate( from ) ? from : '',
+				isValidLocalDate( to ) ? to : '',
+			],
+		} );
+	}
+
+	const orderby = params.get( 'orderby' );
+	const order = params.get( 'order' );
+	const density = prefs.layout?.density;
+
+	return {
+		type: 'table',
+		page: parsePage( params.get( 'paged' ) ),
+		perPage: prefs.perPage ?? DEFAULT_PER_PAGE,
+		sort: {
+			field:
+				orderby && SUPPORTED_SORT_FIELDS.indexOf( orderby ) !== -1
+					? orderby
+					: DEFAULT_SORT_FIELD,
+			direction:
+				order === 'asc' || order === 'desc'
+					? order
+					: DEFAULT_SORT_DIRECTION,
+		},
+		filters,
+		fields: prefs.fields ?? DEFAULT_FIELDS,
+		layout: {
+			styles: COLUMN_STYLES,
+			...( density ? { density } : {} ),
+		},
+	};
+}
+
+function setParam(
+	params: URLSearchParams,
+	key: string,
+	value: string,
+	defaultValue = ''
+): void {
+	if ( ! value || value === defaultValue ) {
+		params.delete( key );
+	} else {
+		params.set( key, value );
+	}
+}
+
+function navParams( view: View ): URLSearchParams {
+	const params = new URLSearchParams();
+	const action = getScalarFilterValue( view, 'action' );
+	const type = getScalarFilterValue( view, 'type' );
+	const value = getScalarFilterValue( view, 'value' );
+	const created = getFilterValue( view, 'created_at' );
+	const from = Array.isArray( created ) ? String( created[ 0 ] ?? '' ) : '';
+	const to = Array.isArray( created ) ? String( created[ 1 ] ?? '' ) : '';
+
+	setParam( params, 'action', action );
+	setParam( params, 'type', type );
+	setParam( params, 'value', value );
+	setParam( params, 'created_from', isValidLocalDate( from ) ? from : '' );
+	setParam( params, 'created_to', isValidLocalDate( to ) ? to : '' );
+	setParam( params, 'paged', String( view.page ?? 1 ), '1' );
+	setParam(
+		params,
+		'orderby',
+		view.sort?.field ?? DEFAULT_SORT_FIELD,
+		DEFAULT_SORT_FIELD
+	);
+	setParam(
+		params,
+		'order',
+		view.sort?.direction ?? DEFAULT_SORT_DIRECTION,
+		DEFAULT_SORT_DIRECTION
+	);
+
+	return params;
+}
+
+function serializeNav( view: View ): string {
+	const params = navParams( view );
+	params.sort();
+	return params.toString();
+}
+
+function urlNav( params: URLSearchParams ): string {
+	return serializeNav( viewFromParams( params, {} ) );
+}
+
+function listAdminPath( view: View ): string {
+	const query: Record< string, string > = {};
+	navParams( view ).forEach( ( value, key ) => {
+		query[ key ] = value;
+	} );
+	return getFraudProtectionRoute( '/rules', query );
+}
+
+function prefsFromView( view: View ): DisplayPrefs {
+	return sanitizePrefs( {
+		fields: view.fields,
+		perPage: view.perPage,
+		layout: view.layout,
+	} );
+}
 
 export const getQueryFromView = ( view: View ): RulesQuery => {
 	const query: RulesQuery = {
@@ -189,23 +395,12 @@ function RulesEmptyState( {
 }
 
 export function RulesPage() {
+	const pageRef = useRef< HTMLDivElement >( null );
+	const [ searchParams ] = useSearchParams();
 	const [ deletingRule, setDeletingRule ] = useState< Rule | undefined >();
-	const [ view, setView ] = useState< View >( {
-		type: 'table',
-		page: 1,
-		perPage: 20,
-		sort: { field: 'created_at', direction: 'desc' },
-		filters: [],
-		fields: [ 'action', 'value', 'type', 'created_at' ],
-		layout: {
-			styles: {
-				action: { width: '25%' },
-				value: { width: '25%' },
-				type: { width: '25%' },
-				created_at: { width: '25%' },
-			},
-		},
-	} );
+	const [ view, setView ] = useState< View >( () =>
+		viewFromParams( searchParams, loadPrefs() )
+	);
 	const { closeRuleForm, isOpen, openCreateRule, openEditRule, ruleId } =
 		useRuleFormDrawer();
 	const query = useMemo( () => getQueryFromView( view ), [ view ] );
@@ -239,8 +434,71 @@ export function RulesPage() {
 		[ closeRuleForm, openEditRule ]
 	);
 	const loadErrorMessage = getLoadErrorMessage( error );
+	const commitToUrl = useCallback( ( nextView: View, replace = false ) => {
+		const history = getHistory();
+		const path = listAdminPath( nextView );
+		if ( replace ) {
+			history.replace( path );
+		} else {
+			history.push( path );
+		}
+	}, [] );
+	const onChangeView = useCallback(
+		( changedView: View ) => {
+			const filtersChanged =
+				JSON.stringify( changedView.filters ?? [] ) !==
+				JSON.stringify( view.filters ?? [] );
+			const nextView = filtersChanged
+				? { ...changedView, page: 1 }
+				: changedView;
+			setView( nextView );
+			savePrefs( prefsFromView( nextView ) );
+			if ( serializeNav( nextView ) !== serializeNav( view ) ) {
+				commitToUrl( nextView );
+			}
+		},
+		[ commitToUrl, view ]
+	);
+
+	useEffect( () => {
+		if ( urlNav( searchParams ) === serializeNav( view ) ) {
+			return;
+		}
+		setView( ( previous ) =>
+			viewFromParams( searchParams, prefsFromView( previous ) )
+		);
+	}, [ searchParams, view ] );
+
+	useEffect( () => {
+		const form = pageRef.current?.closest( 'form' );
+		if ( ! form ) {
+			return;
+		}
+		const preventSubmit = ( event: Event ) => event.preventDefault();
+		form.addEventListener( 'submit', preventSubmit );
+		return () => form.removeEventListener( 'submit', preventSubmit );
+	}, [] );
+
+	useEffect( () => {
+		if ( isLoading || error ) {
+			return;
+		}
+		const current = view.page ?? 1;
+		const target = totalPages >= 1 ? Math.min( current, totalPages ) : 1;
+		if ( target !== current ) {
+			const nextView = { ...view, page: target };
+			setView( nextView );
+			commitToUrl( nextView, true );
+		}
+	}, [ isLoading, error, totalPages, view, commitToUrl ] );
+
+	const paginationInfo = {
+		totalItems,
+		totalPages: Math.max( totalPages, view.page ?? 1 ),
+	};
 	return (
 		<Stack
+			ref={ pageRef }
 			className="wc-fraud-protection-rules"
 			direction="column"
 			aria-busy={ isLoading }
@@ -299,9 +557,9 @@ export function RulesPage() {
 				actions={ actions }
 				fields={ fields }
 				view={ view }
-				onChangeView={ setView }
+				onChangeView={ onChangeView }
 				isLoading={ isLoading }
-				paginationInfo={ { totalItems, totalPages } }
+				paginationInfo={ paginationInfo }
 				getItemId={ ( item ) => String( item.id ) }
 				defaultLayouts={ { table: {} } }
 				empty={
@@ -327,7 +585,7 @@ export function RulesPage() {
 								value,
 							} );
 						}
-						setView( { ...view, page: 1, filters } );
+						onChangeView( { ...view, page: 1, filters } );
 					} }
 				>
 					<Stack

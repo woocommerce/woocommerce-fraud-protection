@@ -36,9 +36,9 @@ import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/p
 import { getFlaggedExplanation } from '../../client/admin-checkout-attempts/flagged-chip';
 import { buildListPath } from '../../client/admin-checkout-attempts/use-checkout-attempts';
 import {
-	loadPrefs,
-	savePrefs,
-} from '../../client/admin-checkout-attempts/persisted-state';
+	loadPrefs as loadStoredPrefs,
+	savePrefs as saveStoredPrefs,
+} from '../../client/persisted-state';
 import { settingsStore } from '../../client/admin-settings/data/store';
 import {
 	rulesStore,
@@ -101,6 +101,12 @@ jest.mock( '@woocommerce/navigation', () => ( {
 import { CheckoutAttemptsPage } from '../../client/admin-checkout-attempts/checkout-attempts-page';
 
 const mockedApiFetch = apiFetch as unknown as jest.Mock;
+const PREFS_STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
+const PREFS_STORAGE_VERSION = 2;
+const loadPrefs = () =>
+	loadStoredPrefs( PREFS_STORAGE_KEY, PREFS_STORAGE_VERSION );
+const savePrefs = ( prefs: Parameters< typeof saveStoredPrefs >[ 2 ] ) =>
+	saveStoredPrefs( PREFS_STORAGE_KEY, PREFS_STORAGE_VERSION, prefs );
 
 // Register the spied core/notices store into the default registry the page and
 // drawer use (they read data through the global @wordpress/data registry, not a
@@ -878,8 +884,6 @@ describe( 'checkout attempts list path', () => {
 } );
 
 describe( 'checkout attempts display preferences', () => {
-	const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
-
 	beforeEach( () => window.localStorage.clear() );
 
 	it( 'returns empty when nothing is stored', () => {
@@ -901,11 +905,11 @@ describe( 'checkout attempts display preferences', () => {
 	} );
 
 	it( 'falls back to empty when the payload is corrupt or a stale version', () => {
-		window.localStorage.setItem( STORAGE_KEY, 'not json' );
+		window.localStorage.setItem( PREFS_STORAGE_KEY, 'not json' );
 		expect( loadPrefs() ).toEqual( {} );
 
 		window.localStorage.setItem(
-			STORAGE_KEY,
+			PREFS_STORAGE_KEY,
 			JSON.stringify( { version: 999, prefs: { perPage: 50 } } )
 		);
 		expect( loadPrefs() ).toEqual( {} );
@@ -914,7 +918,7 @@ describe( 'checkout attempts display preferences', () => {
 	it( 'drops invalid preference values', () => {
 		// A payload at the current version but with the wrong value types.
 		window.localStorage.setItem(
-			STORAGE_KEY,
+			PREFS_STORAGE_KEY,
 			JSON.stringify( {
 				version: 2,
 				prefs: { fields: 'nope', perPage: -3 },
@@ -922,6 +926,24 @@ describe( 'checkout attempts display preferences', () => {
 		);
 
 		expect( loadPrefs() ).toEqual( {} );
+	} );
+
+	it( 'ignores unavailable storage', () => {
+		const getItem = jest
+			.spyOn( Storage.prototype, 'getItem' )
+			.mockImplementation( () => {
+				throw new Error( 'Storage unavailable.' );
+			} );
+		expect( loadPrefs() ).toEqual( {} );
+		getItem.mockRestore();
+
+		const setItem = jest
+			.spyOn( Storage.prototype, 'setItem' )
+			.mockImplementation( () => {
+				throw new Error( 'Storage unavailable.' );
+			} );
+		expect( () => savePrefs( { perPage: 50 } ) ).not.toThrow();
+		setItem.mockRestore();
 	} );
 } );
 
