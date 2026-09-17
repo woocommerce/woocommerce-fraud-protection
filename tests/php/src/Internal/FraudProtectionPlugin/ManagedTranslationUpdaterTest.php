@@ -167,7 +167,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 		$this->register_legacy_proxy_function_mocks(
 			array(
 				'wp_next_scheduled' => static fn() => 1234567890,
-				'wp_schedule_event' => static function () use ( &$schedule_calls ) {
+				'wp_schedule_event' => function () use ( &$schedule_calls ) {
 					++$schedule_calls;
 					return true;
 				},

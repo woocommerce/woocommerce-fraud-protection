@@ -36,7 +36,7 @@ $textdomain_callback  = array(
 );
 $registered_callbacks = array_filter(
 	$GLOBALS['wfp_smoke_hooks']['init'] ?? array(),
-	static function ( $callback ) use ( $textdomain_callback ) {
+	function ( $callback ) use ( $textdomain_callback ) {
 		return $textdomain_callback === $callback;
 	}
 );
@@ -48,7 +48,7 @@ wfp_smoke_assert(
 \Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer::register_managed_textdomain();
 $registered_callbacks = array_filter(
 	$GLOBALS['wfp_smoke_hooks']['init'] ?? array(),
-	static function ( $callback ) use ( $textdomain_callback ) {
+	function ( $callback ) use ( $textdomain_callback ) {
 		return $textdomain_callback === $callback;
 	}
 );

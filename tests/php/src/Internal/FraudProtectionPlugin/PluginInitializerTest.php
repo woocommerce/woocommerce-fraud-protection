@@ -192,7 +192,7 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	public function test_managed_install_loads_mu_plugin_catalog(): void {
 		define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
 		$loaded = array();
-		$filter = static function ( $override, $domain, $mofile, $locale ) use ( &$loaded ) {
+		$filter = function ( $override, $domain, $mofile, $locale ) use ( &$loaded ) {
 			$loaded = array( $domain, $mofile, $locale );
 			return true;
 		};
