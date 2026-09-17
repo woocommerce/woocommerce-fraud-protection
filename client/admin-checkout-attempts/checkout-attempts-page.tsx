@@ -1,30 +1,22 @@
 import { Notice, Stack, Tabs } from '@wordpress/ui';
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from '@wordpress/element';
+import { useCallback, useMemo, useState } from '@wordpress/element';
 import { useSelect } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { View } from '@wordpress/dataviews';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { buildActions } from './actions';
 import { EnableFraudPreventionDrawer } from './enable-fraud-prevention-drawer';
-import { getFields } from './fields';
+import {
+	getFields,
+	outcomeFilter,
+	providerFilter,
+	rulesFilter,
+} from './fields';
 import { ProtectionOffBanner } from './protection-off-banner';
 import { createPreferenceStore } from '../persisted-state';
-import {
-	getCorrectedPage,
-	getFilterValueList,
-	parsePositivePage,
-	serializeCanonicalQuery,
-	setNonDefaultParam,
-	writeAdminListPath,
-} from '../list-state';
+import { createListUrlCodec, useListState } from '../list-state';
 import { useCheckoutAttempts } from './use-checkout-attempts';
 import { getFraudProtectionRoute } from '../admin-settings/navigation';
 import { settingsStore } from '../admin-settings/data/store';
@@ -35,7 +27,6 @@ import {
 	type RuleFormContext,
 } from '../admin-settings/components/rule-form-drawer';
 import { RuleDeleteDialog } from '../admin-settings/components/rule-delete-dialog';
-import type { DisplayPrefs } from '../persisted-state';
 import type { FinalStatus } from './types';
 import type { RuleActionType } from './actions';
 import './style.scss';
@@ -68,6 +59,19 @@ const SUPPORTED_PER_PAGE = [ 10, 20, 50, 100 ];
 const SUPPORTED_DENSITIES = [ 'compact', 'balanced', 'comfortable' ];
 const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
 const STORAGE_VERSION = 2;
+const DEFAULT_VIEW: View = {
+	type: 'table',
+	page: 1,
+	perPage: DEFAULT_PER_PAGE,
+	sort: {
+		field: DEFAULT_SORT_FIELD,
+		direction: DEFAULT_SORT_DIRECTION,
+	},
+	search: '',
+	filters: [],
+	titleField: 'payment_method',
+	fields: DEFAULT_FIELDS,
+};
 
 const preferenceStore = createPreferenceStore( {
 	storageKey: STORAGE_KEY,
@@ -79,126 +83,36 @@ const preferenceStore = createPreferenceStore( {
 
 type StatusTab = 'all' | FinalStatus;
 
-// The navigation state (search, filters, status tab, sort, page) lives in the
-// URL query so a link reproduces the view and Back/Forward restore it. Column
-// visibility, density and page size are display preferences and live in
-// localStorage instead. These helpers translate between the two and the
-// DataViews `view` object.
+const listCodec = createListUrlCodec< StatusTab >( {
+	path: '/checkout-attempts',
+	defaultView: DEFAULT_VIEW,
+	filters: [ outcomeFilter, providerFilter, rulesFilter ],
+	search: true,
+	state: { param: 'status', defaultValue: 'all', values: TABS },
+	queryOrder: [ 'search', 'page', 'sort', 'filters', 'state' ],
+} );
 
-function getListParam( params: URLSearchParams, key: string ): string[] {
-	const value = params.get( key );
-	return value ? value.split( ',' ).filter( Boolean ) : [];
-}
-
-function getTab( params: URLSearchParams ): StatusTab {
-	const status = params.get( 'status' );
-	return TABS.indexOf( status as StatusTab ) !== -1
-		? ( status as StatusTab )
-		: 'all';
-}
-
-function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
-	const filters: NonNullable< View[ 'filters' ] > = [];
-
-	const outcome = getListParam( params, 'outcome' );
-	if ( outcome.length ) {
-		filters.push( { field: 'outcome', operator: 'isAny', value: outcome } );
-	}
-	const provider = getListParam( params, 'provider' );
-	if ( provider.length ) {
-		filters.push( {
-			field: 'payment_method',
-			operator: 'isAny',
-			value: provider,
-		} );
-	}
-	const rules = params.get( 'rules' );
-	if ( 'with' === rules || 'without' === rules ) {
-		filters.push( { field: 'rules', operator: 'is', value: rules } );
-	}
-
-	return {
-		type: 'table',
-		page: parsePositivePage( params.get( 'paged' ) ),
-		perPage: prefs.perPage ?? DEFAULT_PER_PAGE,
-		sort: {
-			field: params.get( 'orderby' ) || DEFAULT_SORT_FIELD,
-			direction: 'asc' === params.get( 'order' ) ? 'asc' : 'desc',
-		},
-		search: params.get( 'search' ) ?? '',
-		filters,
-		titleField: 'payment_method',
-		fields: prefs.fields ?? DEFAULT_FIELDS,
-		...( prefs.layout ? { layout: prefs.layout } : {} ),
-	};
-}
-
-// Build the list's own query args from the current view and tab.
-function navParams( view: View, tab: StatusTab ): URLSearchParams {
-	const params = new URLSearchParams();
-	setNonDefaultParam( params, 'search', view.search ?? '' );
-	setNonDefaultParam( params, 'paged', String( view.page ?? 1 ), '1' );
-	setNonDefaultParam(
-		params,
-		'orderby',
-		view.sort?.field ?? DEFAULT_SORT_FIELD,
-		DEFAULT_SORT_FIELD
-	);
-	setNonDefaultParam(
-		params,
-		'order',
-		view.sort?.direction ?? DEFAULT_SORT_DIRECTION,
-		DEFAULT_SORT_DIRECTION
-	);
-	setNonDefaultParam(
-		params,
-		'outcome',
-		getFilterValueList( view, 'outcome' ).join( ',' ),
-		''
-	);
-	setNonDefaultParam(
-		params,
-		'provider',
-		getFilterValueList( view, 'payment_method' ).join( ',' ),
-		''
-	);
-	setNonDefaultParam(
-		params,
-		'rules',
-		getFilterValueList( view, 'rules' )[ 0 ] ?? '',
-		''
-	);
-	setNonDefaultParam( params, 'status', tab, 'all' );
-	return params;
-}
-
-// A canonical string of the list's nav state, for comparing the view against the
-// URL without being tripped up by param order or omitted defaults.
-function serializeNav( view: View, tab: StatusTab ): string {
-	return serializeCanonicalQuery( navParams( view, tab ) );
-}
-
-// The canonical nav string the URL currently represents (defaults normalized the
-// same way as serializeNav, so an explicit `paged=1` matches an omitted one).
-function urlNav( params: URLSearchParams ): string {
-	return serializeNav( viewFromParams( params, {} ), getTab( params ) );
+function useCheckoutAttemptList( view: View, tab: StatusTab | undefined ) {
+	return useCheckoutAttempts( view, TAB_TO_STATUS[ tab ?? 'all' ] );
 }
 
 export function CheckoutAttemptsPage() {
-	const pageRef = useRef< HTMLDivElement >( null );
-	const [ searchParams ] = useSearchParams();
-
-	// The DataViews view and the status tab are local state, so the list keeps
-	// full control of its own interactions — including a filter that has been
-	// added but does not have a value yet. The navigation parts are mirrored to
-	// the URL (so a link reproduces the view and Back/Forward restore it), while
-	// column visibility, density and page size are saved as display preferences.
-	const [ view, setView ] = useState< View >( () =>
-		viewFromParams( searchParams, preferenceStore.load() )
-	);
-	const [ tab, setTab ] = useState< StatusTab >( () =>
-		getTab( searchParams )
-	);
+	const {
+		pageRef,
+		view,
+		state: tab = 'all',
+		onChangeView,
+		onChangeState: onTabChange,
+		result: { sessions, totalItems, totalPages, isLoading, error, refresh },
+	} = useListState( {
+		codec: listCodec,
+		preferenceStore,
+		policies: {
+			replaceOnSearchOnly: true,
+			resetPageOnStateChange: true,
+		},
+		useData: useCheckoutAttemptList,
+	} );
 
 	// Automatic fraud prevention state comes from the shared settings store (its
 	// initial GET is preloaded for this route). Until the settings are known —
@@ -245,8 +159,6 @@ export function CheckoutAttemptsPage() {
 		() => getFields( effectiveConfig, isCompact ),
 		[ effectiveConfig, isCompact ]
 	);
-	const { sessions, totalItems, totalPages, isLoading, error, refresh } =
-		useCheckoutAttempts( view, TAB_TO_STATUS[ tab ] );
 	const closeAttemptRuleForm = useCallback( () => {
 		closeRuleForm();
 		setRuleFormContext( undefined );
@@ -308,96 +220,6 @@ export function CheckoutAttemptsPage() {
 				? Math.max( totalPages, view.page ?? 1 )
 				: totalPages,
 	};
-
-	// Mirror the current view and tab to the URL by pushing a full admin URL
-	// through the WooCommerce history. `replace` avoids a history entry for
-	// automatic corrections (and search typing); user navigation pushes so Back
-	// restores the previous list state.
-	const commitToUrl = useCallback(
-		( nextView: View, nextTab: StatusTab, replace = false ) => {
-			writeAdminListPath(
-				'/checkout-attempts',
-				navParams( nextView, nextTab ),
-				replace
-			);
-		},
-		[]
-	);
-
-	const onChangeView = useCallback(
-		( nextView: View ) => {
-			// A change to the search text alone replaces the URL so typing does
-			// not create a history entry per keystroke; any other change pushes.
-			const searchOnly =
-				serializeNav( { ...nextView, search: '' }, tab ) ===
-				serializeNav( { ...view, search: '' }, tab );
-
-			setView( nextView );
-			// Column visibility, density and page size are display preferences.
-			preferenceStore.save( preferenceStore.fromView( nextView ) );
-			commitToUrl( nextView, tab, searchOnly );
-		},
-		[ commitToUrl, tab, view ]
-	);
-
-	const onTabChange = useCallback(
-		( value: string ) => {
-			const nextTab: StatusTab =
-				TABS.indexOf( value as StatusTab ) !== -1
-					? ( value as StatusTab )
-					: 'all';
-			// A new tab starts at the first page.
-			const nextView = { ...view, page: 1 };
-			setTab( nextTab );
-			setView( nextView );
-			commitToUrl( nextView, nextTab );
-		},
-		[ commitToUrl, view ]
-	);
-
-	// Reconcile local state from the URL on external navigation (Back/Forward or
-	// a deep link). The list's own writes already match the URL and are skipped
-	// here — which also preserves an in-progress filter that has no value yet, as
-	// that is not represented in the URL.
-	useEffect( () => {
-		if ( urlNav( searchParams ) === serializeNav( view, tab ) ) {
-			return;
-		}
-		setView( ( previous ) => viewFromParams( searchParams, previous ) );
-		setTab( getTab( searchParams ) );
-	}, [ searchParams, view, tab ] );
-
-	// Stop the enclosing WooCommerce settings form from submitting — for example
-	// when Enter is pressed in the search box — which would reload the page to a
-	// broken URL. The list persists through the REST API, never a form submit.
-	useEffect( () => {
-		const form = pageRef.current?.closest( 'form' );
-		if ( ! form ) {
-			return;
-		}
-		const preventSubmit = ( event: Event ) => event.preventDefault();
-		form.addEventListener( 'submit', preventSubmit );
-		return () => form.removeEventListener( 'submit', preventSubmit );
-	}, [] );
-
-	// A page past the last one (a stale link, or rows pruned since) would show a
-	// confusing empty list, so fall back to the last existing page — or page 1
-	// when there are no results at all. A failed request reports zero pages, so
-	// skip the correction on error: it would drop the deep link and refetch.
-	useEffect( () => {
-		if ( isLoading || error ) {
-			return;
-		}
-
-		const current = view.page ?? 1;
-		const target = getCorrectedPage( current, totalPages );
-
-		if ( target !== null ) {
-			const nextView = { ...view, page: target };
-			setView( nextView );
-			commitToUrl( nextView, tab, true );
-		}
-	}, [ isLoading, error, totalPages, view, tab, commitToUrl ] );
 
 	// The empty state depends on why the list is empty, so it does not claim
 	// there were no attempts when a search, filter, or load error is the cause.

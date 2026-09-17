@@ -1,10 +1,4 @@
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from '@wordpress/element';
+import { useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import {
 	Button,
@@ -19,7 +13,7 @@ import {
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { Action, Field, View } from '@wordpress/dataviews';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
@@ -28,15 +22,13 @@ import { getFraudProtectionRoute } from './navigation';
 import { formatRuleDate, getUtcDateFilterBound } from './rule-date';
 import { RuleFormDrawer } from './components/rule-form-drawer';
 import { RuleDeleteDialog } from './components/rule-delete-dialog';
-import { createPreferenceStore, type DisplayPrefs } from '../persisted-state';
+import { createPreferenceStore } from '../persisted-state';
 import {
-	getCorrectedPage,
-	getFilterValue,
-	getScalarFilterValue,
-	parsePositivePage,
-	serializeCanonicalQuery,
-	setNonDefaultParam,
-	writeAdminListPath,
+	createListUrlCodec,
+	defineEnumFilter,
+	defineRangeFilter,
+	defineScalarFilter,
+	useListState,
 } from '../list-state';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
@@ -48,6 +40,23 @@ const ruleTypes = [
 	{ value: 'email', label: __( 'Email', 'woocommerce-fraud-protection' ) },
 	{ value: 'ip', label: __( 'IP', 'woocommerce-fraud-protection' ) },
 ];
+const actionFilter = defineEnumFilter( {
+	field: 'action',
+	operator: 'is',
+	param: 'action',
+	values: ruleActions,
+} );
+const typeFilter = defineEnumFilter( {
+	field: 'type',
+	operator: 'is',
+	param: 'type',
+	values: ruleTypes,
+} );
+const valueFilter = defineScalarFilter( {
+	field: 'value',
+	operator: 'is',
+	param: 'value',
+} );
 const DEFAULT_SORT_FIELD = 'created_at';
 const DEFAULT_SORT_DIRECTION = 'desc';
 const DEFAULT_PER_PAGE = 20;
@@ -64,6 +73,33 @@ const COLUMN_STYLES = {
 	created_at: { width: '25%' },
 };
 
+function isValidLocalDate( value: string ): boolean {
+	return Boolean(
+		/^\d{4}-\d{2}-\d{2}$/.test( value ) &&
+			getUtcDateFilterBound( value, false )
+	);
+}
+
+const createdFilter = defineRangeFilter( {
+	field: 'created_at',
+	operator: 'between',
+	params: [ 'created_from', 'created_to' ],
+	validate: isValidLocalDate,
+} );
+
+const DEFAULT_VIEW: View = {
+	type: 'table',
+	page: 1,
+	perPage: DEFAULT_PER_PAGE,
+	sort: {
+		field: DEFAULT_SORT_FIELD,
+		direction: DEFAULT_SORT_DIRECTION,
+	},
+	filters: [],
+	fields: DEFAULT_FIELDS,
+	layout: { styles: COLUMN_STYLES },
+};
+
 const preferenceStore = createPreferenceStore( {
 	storageKey: STORAGE_KEY,
 	version: STORAGE_VERSION,
@@ -72,13 +108,21 @@ const preferenceStore = createPreferenceStore( {
 	supportedDensities: SUPPORTED_DENSITIES,
 } );
 
+const listCodec = createListUrlCodec( {
+	path: '/rules',
+	defaultView: DEFAULT_VIEW,
+	filters: [ actionFilter, typeFilter, valueFilter, createdFilter ],
+	supportedSortFields: SUPPORTED_SORT_FIELDS,
+	queryOrder: [ 'filters', 'page', 'sort' ],
+} );
+
 const fields: Field< Rule >[] = [
 	{
-		id: 'action',
+		id: actionFilter.field,
 		label: __( 'Action', 'woocommerce-fraud-protection' ),
 		type: 'text',
-		elements: ruleActions,
-		filterBy: { operators: [ 'is' ] },
+		elements: actionFilter.values,
+		filterBy: { operators: [ actionFilter.operator ] },
 		render: ( { item } ) => (
 			<Stack
 				className={ `wc-fraud-protection-rules__action wc-fraud-protection-rules__action--${ item.action }` }
@@ -100,10 +144,10 @@ const fields: Field< Rule >[] = [
 		),
 	},
 	{
-		id: 'value',
+		id: valueFilter.field,
 		label: __( 'Value', 'woocommerce-fraud-protection' ),
 		type: 'text',
-		filterBy: { operators: [ 'is' ] },
+		filterBy: { operators: [ valueFilter.operator ] },
 		render: ( { item } ) => (
 			<Text
 				className="wc-fraud-protection-rules__value"
@@ -114,134 +158,25 @@ const fields: Field< Rule >[] = [
 		),
 	},
 	{
-		id: 'type',
+		id: typeFilter.field,
 		label: __( 'Rule type', 'woocommerce-fraud-protection' ),
 		type: 'text',
-		elements: ruleTypes,
-		filterBy: { operators: [ 'is' ] },
+		elements: typeFilter.values,
+		filterBy: { operators: [ typeFilter.operator ] },
 		render: ( { item } ) =>
 			item.type === 'email'
 				? __( 'Email', 'woocommerce-fraud-protection' )
 				: __( 'IP', 'woocommerce-fraud-protection' ),
 	},
 	{
-		id: 'created_at',
+		id: createdFilter.field,
 		label: __( 'Created', 'woocommerce-fraud-protection' ),
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
-		filterBy: { operators: [ 'between' ] },
+		filterBy: { operators: [ createdFilter.operator ] },
 		render: ( { item } ) => formatRuleDate( item.created_at ),
 	},
 ];
-
-function isValidLocalDate( value: string | null ): value is string {
-	return Boolean(
-		value &&
-			/^\d{4}-\d{2}-\d{2}$/.test( value ) &&
-			getUtcDateFilterBound( value, false )
-	);
-}
-
-function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
-	const filters: NonNullable< View[ 'filters' ] > = [];
-	const action = params.get( 'action' );
-	if ( action === 'allow' || action === 'block' ) {
-		filters.push( { field: 'action', operator: 'is', value: action } );
-	}
-	const type = params.get( 'type' );
-	if ( type === 'email' || type === 'ip' ) {
-		filters.push( { field: 'type', operator: 'is', value: type } );
-	}
-	const value = params.get( 'value' );
-	if ( value ) {
-		filters.push( { field: 'value', operator: 'is', value } );
-	}
-	const from = params.get( 'created_from' );
-	const to = params.get( 'created_to' );
-	if ( isValidLocalDate( from ) || isValidLocalDate( to ) ) {
-		filters.push( {
-			field: 'created_at',
-			operator: 'between',
-			value: [
-				isValidLocalDate( from ) ? from : '',
-				isValidLocalDate( to ) ? to : '',
-			],
-		} );
-	}
-
-	const orderby = params.get( 'orderby' );
-	const order = params.get( 'order' );
-	const density = prefs.layout?.density;
-
-	return {
-		type: 'table',
-		page: parsePositivePage( params.get( 'paged' ) ),
-		perPage: prefs.perPage ?? DEFAULT_PER_PAGE,
-		sort: {
-			field:
-				orderby && SUPPORTED_SORT_FIELDS.indexOf( orderby ) !== -1
-					? orderby
-					: DEFAULT_SORT_FIELD,
-			direction:
-				order === 'asc' || order === 'desc'
-					? order
-					: DEFAULT_SORT_DIRECTION,
-		},
-		filters,
-		fields: prefs.fields ?? DEFAULT_FIELDS,
-		layout: {
-			styles: COLUMN_STYLES,
-			...( density ? { density } : {} ),
-		},
-	};
-}
-
-function navParams( view: View ): URLSearchParams {
-	const params = new URLSearchParams();
-	const action = getScalarFilterValue( view, 'action' );
-	const type = getScalarFilterValue( view, 'type' );
-	const value = getScalarFilterValue( view, 'value' );
-	const created = getFilterValue( view, 'created_at' );
-	const from = Array.isArray( created ) ? String( created[ 0 ] ?? '' ) : '';
-	const to = Array.isArray( created ) ? String( created[ 1 ] ?? '' ) : '';
-
-	setNonDefaultParam( params, 'action', action );
-	setNonDefaultParam( params, 'type', type );
-	setNonDefaultParam( params, 'value', value );
-	setNonDefaultParam(
-		params,
-		'created_from',
-		isValidLocalDate( from ) ? from : ''
-	);
-	setNonDefaultParam(
-		params,
-		'created_to',
-		isValidLocalDate( to ) ? to : ''
-	);
-	setNonDefaultParam( params, 'paged', String( view.page ?? 1 ), '1' );
-	setNonDefaultParam(
-		params,
-		'orderby',
-		view.sort?.field ?? DEFAULT_SORT_FIELD,
-		DEFAULT_SORT_FIELD
-	);
-	setNonDefaultParam(
-		params,
-		'order',
-		view.sort?.direction ?? DEFAULT_SORT_DIRECTION,
-		DEFAULT_SORT_DIRECTION
-	);
-
-	return params;
-}
-
-function serializeNav( view: View ): string {
-	return serializeCanonicalQuery( navParams( view ) );
-}
-
-function urlNav( params: URLSearchParams ): string {
-	return serializeNav( viewFromParams( params, {} ) );
-}
 
 export const getQueryFromView = ( view: View ): RulesQuery => {
 	const query: RulesQuery = {
@@ -251,20 +186,26 @@ export const getQueryFromView = ( view: View ): RulesQuery => {
 		order: view.sort?.direction ?? 'desc',
 	};
 	( view.filters ?? [] ).forEach( ( filter ) => {
-		if ( filter.field === 'action' ) {
+		if ( filter.field === actionFilter.field ) {
 			query.action = Array.isArray( filter.value )
 				? String( filter.value[ 0 ] ?? '' )
 				: String( filter.value ?? '' );
 		}
-		if ( filter.field === 'type' ) {
+		if ( filter.field === typeFilter.field ) {
 			query.type = Array.isArray( filter.value )
 				? String( filter.value[ 0 ] ?? '' )
 				: String( filter.value ?? '' );
 		}
-		if ( filter.field === 'value' && typeof filter.value === 'string' ) {
+		if (
+			filter.field === valueFilter.field &&
+			typeof filter.value === 'string'
+		) {
 			query.value = filter.value;
 		}
-		if ( filter.field === 'created_at' && Array.isArray( filter.value ) ) {
+		if (
+			filter.field === createdFilter.field &&
+			Array.isArray( filter.value )
+		) {
 			query.from =
 				typeof filter.value[ 0 ] === 'string'
 					? getUtcDateFilterBound( filter.value[ 0 ], false )
@@ -279,12 +220,12 @@ export const getQueryFromView = ( view: View ): RulesQuery => {
 };
 
 const getActionTab = ( view: View ): 'all' | 'allow' | 'block' => {
-	const actionFilter = ( view.filters ?? [] ).find(
-		( filter ) => filter.field === 'action'
+	const actionViewFilter = ( view.filters ?? [] ).find(
+		( filter ) => filter.field === actionFilter.field
 	);
-	const value = Array.isArray( actionFilter?.value )
-		? actionFilter?.value[ 0 ]
-		: actionFilter?.value;
+	const value = Array.isArray( actionViewFilter?.value )
+		? actionViewFilter?.value[ 0 ]
+		: actionViewFilter?.value;
 	return value === 'allow' || value === 'block' ? value : 'all';
 };
 
@@ -336,18 +277,26 @@ function RulesEmptyState( {
 	);
 }
 
+function useRulesList( view: View ) {
+	const query = useMemo( () => getQueryFromView( view ), [ view ] );
+	return useRules( query );
+}
+
 export function RulesPage() {
-	const pageRef = useRef< HTMLDivElement >( null );
-	const [ searchParams ] = useSearchParams();
 	const [ deletingRule, setDeletingRule ] = useState< Rule | undefined >();
-	const [ view, setView ] = useState< View >( () =>
-		viewFromParams( searchParams, preferenceStore.load() )
-	);
+	const {
+		pageRef,
+		view,
+		onChangeView,
+		result: { error, isLoading, rules, totalItems, totalPages },
+	} = useListState( {
+		codec: listCodec,
+		preferenceStore,
+		policies: { resetPageOnFilterChange: true },
+		useData: useRulesList,
+	} );
 	const { closeRuleForm, isOpen, openCreateRule, openEditRule, ruleId } =
 		useRuleFormDrawer();
-	const query = useMemo( () => getQueryFromView( view ), [ view ] );
-	const { error, isLoading, rules, totalItems, totalPages } =
-		useRules( query );
 	const actionTab = getActionTab( view );
 	const hasActiveFilters = Boolean( view.filters?.length );
 	const isInitialLoading = isLoading && rules.length === 0;
@@ -376,57 +325,6 @@ export function RulesPage() {
 		[ closeRuleForm, openEditRule ]
 	);
 	const loadErrorMessage = getLoadErrorMessage( error );
-	const commitToUrl = useCallback( ( nextView: View, replace = false ) => {
-		writeAdminListPath( '/rules', navParams( nextView ), replace );
-	}, [] );
-	const onChangeView = useCallback(
-		( changedView: View ) => {
-			const filtersChanged =
-				JSON.stringify( changedView.filters ?? [] ) !==
-				JSON.stringify( view.filters ?? [] );
-			const nextView = filtersChanged
-				? { ...changedView, page: 1 }
-				: changedView;
-			setView( nextView );
-			preferenceStore.save( preferenceStore.fromView( nextView ) );
-			if ( serializeNav( nextView ) !== serializeNav( view ) ) {
-				commitToUrl( nextView );
-			}
-		},
-		[ commitToUrl, view ]
-	);
-
-	useEffect( () => {
-		if ( urlNav( searchParams ) === serializeNav( view ) ) {
-			return;
-		}
-		setView( ( previous ) =>
-			viewFromParams( searchParams, preferenceStore.fromView( previous ) )
-		);
-	}, [ searchParams, view ] );
-
-	useEffect( () => {
-		const form = pageRef.current?.closest( 'form' );
-		if ( ! form ) {
-			return;
-		}
-		const preventSubmit = ( event: Event ) => event.preventDefault();
-		form.addEventListener( 'submit', preventSubmit );
-		return () => form.removeEventListener( 'submit', preventSubmit );
-	}, [] );
-
-	useEffect( () => {
-		if ( isLoading || error ) {
-			return;
-		}
-		const current = view.page ?? 1;
-		const target = getCorrectedPage( current, totalPages );
-		if ( target !== null ) {
-			const nextView = { ...view, page: target };
-			setView( nextView );
-			commitToUrl( nextView, true );
-		}
-	}, [ isLoading, error, totalPages, view, commitToUrl ] );
 
 	const paginationInfo = {
 		totalItems,

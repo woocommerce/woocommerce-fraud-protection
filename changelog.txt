@@ -5,9 +5,9 @@
 * Updated - The checkout attempts list places search, filters and view options beside the status tabs, and its column headers align with their values.
 * Updated - Saving a rule from Fraud prevention settings now opens the rules page.
 * Updated - The Inbox invitation's Learn more link now opens in a new tab.
+* Updated - Rules list filters, sorting, paging, and display preferences now persist across navigation and visits.
 * Fixed - The rules list keeps its actions column while it refreshes.
 * Fixed - Manual rule feedback now identifies the rule action and matching field.
-* Updated - Rules list filters, sorting, paging, and display preferences now persist across navigation and visits.
 
 2026-09-16 - version 0.2.5
 * Added - Checkout attempts list on the Fraud prevention settings page showing recent attempts and how each was handled, with filtering, sorting and search.

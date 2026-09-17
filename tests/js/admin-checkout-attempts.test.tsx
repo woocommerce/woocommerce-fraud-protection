@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import {
+	act,
 	fireEvent,
 	render,
 	screen,
@@ -36,7 +37,15 @@ import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/p
 import { getFlaggedExplanation } from '../../client/admin-checkout-attempts/flagged-chip';
 import { buildListPath } from '../../client/admin-checkout-attempts/use-checkout-attempts';
 import { createPreferenceStore } from '../../client/persisted-state';
-import { getCorrectedPage, parsePositivePage } from '../../client/list-state';
+import {
+	createListUrlCodec,
+	defineEnumFilter,
+	defineListFilter,
+	defineRangeFilter,
+	defineScalarFilter,
+	getCorrectedPage,
+	parsePositivePage,
+} from '../../client/list-state';
 import { settingsStore } from '../../client/admin-settings/data/store';
 import {
 	rulesStore,
@@ -126,6 +135,82 @@ describe( 'shared list state', () => {
 		expect( getCorrectedPage( 5, 2 ) ).toBe( 2 );
 		expect( getCorrectedPage( 3, 0 ) ).toBe( 1 );
 		expect( getCorrectedPage( 2, 3 ) ).toBeNull();
+	} );
+
+	it( 'decodes and encodes configured filter and state definitions', () => {
+		const scalar = defineScalarFilter( {
+			field: 'search_value',
+			operator: 'is',
+			param: 'value',
+		} );
+		const choice = defineEnumFilter( {
+			field: 'choice',
+			operator: 'is',
+			param: 'choice',
+			values: [ { value: 'known', label: 'Known' } ],
+		} );
+		const tags = defineListFilter( {
+			field: 'tags',
+			operator: 'isAny',
+			param: 'tags',
+			values: [ { value: 'first', label: 'First' } ],
+		} );
+		const dates = defineRangeFilter( {
+			field: 'dates',
+			operator: 'between',
+			params: [ 'from', 'to' ],
+			validate: ( value ) => /^\d{4}-\d{2}-\d{2}$/.test( value ),
+		} );
+		const codec = createListUrlCodec< 'all' | 'blocked' >( {
+			path: '/test',
+			defaultView: {
+				type: 'table',
+				page: 1,
+				perPage: 20,
+				sort: { field: 'created_at', direction: 'desc' },
+				fields: [],
+			},
+			filters: [ scalar, choice, tags, dates ],
+			state: {
+				param: 'status',
+				defaultValue: 'all',
+				values: [ 'all', 'blocked' ],
+			},
+			queryOrder: [ 'filters', 'page', 'sort', 'state' ],
+		} );
+		const decoded = codec.decode(
+			new URLSearchParams(
+				'value=exact&choice=unknown&tags=first,unknown&from=2026-09-01&to=bad&paged=2&status=unknown'
+			),
+			{}
+		);
+
+		expect( decoded.state ).toBe( 'all' );
+		expect( decoded.view ).toMatchObject( {
+			page: 2,
+			filters: [
+				{ field: 'search_value', operator: 'is', value: 'exact' },
+				{ field: 'tags', operator: 'isAny', value: [ 'first' ] },
+				{
+					field: 'dates',
+					operator: 'between',
+					value: [ '2026-09-01', '' ],
+				},
+			],
+		} );
+		expect( codec.encode( decoded.view, decoded.state ).toString() ).toBe(
+			'value=exact&tags=first&from=2026-09-01&paged=2'
+		);
+		expect(
+			codec
+				.encode( {
+					...decoded.view,
+					filters: [
+						{ field: 'tags', operator: 'isAny', value: undefined },
+					],
+				} )
+				.toString()
+		).toBe( 'paged=2' );
 	} );
 } );
 
@@ -1115,6 +1200,10 @@ const renderPage = ( search = '' ) => {
 // Only the paginated list requests, which carry query arguments.
 const listPaths = () =>
 	settledPaths().filter( ( path ) => path.includes( '/sessions?' ) );
+const lastListPath = () => {
+	const paths = listPaths();
+	return paths[ paths.length - 1 ];
+};
 
 const ruleMutationRequests = () =>
 	mockedApiFetch.mock.calls
@@ -1539,7 +1628,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		).not.toBeInTheDocument();
 	} );
 
-	it( 'refetches with the enforced status when a tab is selected', async () => {
+	it( 'refetches and restores the enforced status through history', async () => {
 		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
 
 		renderPage();
@@ -1547,12 +1636,34 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		await userEvent.click( screen.getByRole( 'tab', { name: 'Blocked' } ) );
 
+		await waitFor( () =>
+			expect( lastListPath() ).toContain( 'final_status=blocked' )
+		);
+		expect(
+			screen.getByRole( 'tab', { name: 'Blocked', selected: true } )
+		).toBeInTheDocument();
+
+		const callsBeforeBack = listPaths().length;
+		act( () => mockHistory.back() );
 		await waitFor( () => {
 			expect(
-				listPaths().some( ( path ) =>
-					path.includes( 'final_status=blocked' )
-				)
-			).toBe( true );
+				screen.getByRole( 'tab', { name: 'All', selected: true } )
+			).toBeInTheDocument();
+			expect( listPaths().length ).toBeGreaterThan( callsBeforeBack );
+			expect( lastListPath() ).not.toContain( 'final_status' );
+		} );
+
+		const callsBeforeForward = listPaths().length;
+		act( () => mockHistory.forward() );
+		await waitFor( () => {
+			expect(
+				screen.getByRole( 'tab', {
+					name: 'Blocked',
+					selected: true,
+				} )
+			).toBeInTheDocument();
+			expect( listPaths().length ).toBeGreaterThan( callsBeforeForward );
+			expect( lastListPath() ).toContain( 'final_status=blocked' );
 		} );
 	} );
 
@@ -1576,14 +1687,19 @@ describe( 'CheckoutAttemptsPage', () => {
 		} );
 	} );
 
-	it( 'starts on the page named in the URL', async () => {
+	it( 'restores configured filters and the page from the URL', async () => {
 		mockApi( { sessions: listResponse( [ aSession() ], 40, 2 ) } );
 
-		renderPage( 'paged=2' );
+		renderPage( 'outcome=allowed&provider=stripe&rules=without&paged=2' );
 		await screen.findByText( 'shopper@example.com' );
-		expect(
-			listPaths().some( ( path ) => path.includes( 'page=2&' ) )
-		).toBe( true );
+		const request = listPaths().find( ( path ) =>
+			path.includes( 'page=2&' )
+		);
+		expect( request ).toBeDefined();
+		const params = new URLSearchParams( request!.split( '?' )[ 1 ] );
+		expect( params.get( 'outcome[0]' ) ).toBe( 'allowed' );
+		expect( params.get( 'payment_method[0]' ) ).toBe( 'stripe' );
+		expect( params.get( 'rules' ) ).toBe( 'without' );
 	} );
 
 	it( 'falls back to the last page when the URL page is past the end', async () => {

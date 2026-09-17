@@ -6,8 +6,41 @@ import { OutcomeBadge, getOutcomeOptions } from './outcomes';
 import { getPaymentMethodElements } from './payment-method-elements';
 import { RuleChip } from './rule-chip';
 import type { CheckoutAttemptsConfig, Session } from './types';
+import { defineEnumFilter, defineListFilter } from '../list-state';
 
 const EMPTY = '—';
+
+export const providerFilter = defineListFilter( {
+	field: 'payment_method',
+	operator: 'isAny',
+	param: 'provider',
+} );
+
+export const rulesFilter = defineEnumFilter( {
+	field: 'rules',
+	operator: 'is',
+	param: 'rules',
+	values: [
+		{
+			value: 'with',
+			label: __( 'With matching rules', 'woocommerce-fraud-protection' ),
+		},
+		{
+			value: 'without',
+			label: __(
+				'Without matching rules',
+				'woocommerce-fraud-protection'
+			),
+		},
+	],
+} );
+
+export const outcomeFilter = defineListFilter( {
+	field: 'outcome',
+	operator: 'isAny',
+	param: 'outcome',
+	values: getOutcomeOptions(),
+} );
 
 export function getFields(
 	config: CheckoutAttemptsConfig,
@@ -19,7 +52,7 @@ export function getFields(
 
 	return [
 		{
-			id: 'payment_method',
+			id: providerFilter.field,
 			label: __( 'Provider', 'woocommerce-fraud-protection' ),
 			enableHiding: false,
 			enableGlobalSearch: false,
@@ -31,7 +64,7 @@ export function getFields(
 			render: ( { item } ) =>
 				item.payment_method.title || item.payment_method.id || EMPTY,
 			getElements: getPaymentMethodElements,
-			filterBy: { operators: [ 'isAny' ] },
+			filterBy: { operators: [ providerFilter.operator ] },
 		},
 		{
 			id: 'recorded_at',
@@ -128,7 +161,7 @@ export function getFields(
 			// Filter-only field (not shown as a column): whether an active
 			// merchant rule currently targets the attempt's email or IP. A
 			// single-select operator renders it as a radio-style filter.
-			id: 'rules',
+			id: rulesFilter.field,
 			label: __( 'Merchant rule', 'woocommerce-fraud-protection' ),
 			enableSorting: false,
 			enableGlobalSearch: false,
@@ -144,26 +177,11 @@ export function getFields(
 							'Without matching rules',
 							'woocommerce-fraud-protection'
 					  ),
-			elements: [
-				{
-					value: 'with',
-					label: __(
-						'With matching rules',
-						'woocommerce-fraud-protection'
-					),
-				},
-				{
-					value: 'without',
-					label: __(
-						'Without matching rules',
-						'woocommerce-fraud-protection'
-					),
-				},
-			],
-			filterBy: { operators: [ 'is' ] },
+			elements: rulesFilter.values,
+			filterBy: { operators: [ rulesFilter.operator ] },
 		},
 		{
-			id: 'outcome',
+			id: outcomeFilter.field,
 			label: __( 'Outcome', 'woocommerce-fraud-protection' ),
 			enableSorting: false,
 			enableGlobalSearch: false,
@@ -178,8 +196,8 @@ export function getFields(
 					settingsUrl={ config.settingsUrl }
 				/>
 			),
-			elements: getOutcomeOptions(),
-			filterBy: { operators: [ 'isAny' ] },
+			elements: outcomeFilter.values,
+			filterBy: { operators: [ outcomeFilter.operator ] },
 		},
 	];
 }
