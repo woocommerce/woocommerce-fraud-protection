@@ -323,6 +323,36 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 0, $this->download_calls );
 	}
 
+	/**
+	 * @testdox Endpoint transport and HTTP failures retain the installed runtime catalog.
+	 * @dataProvider endpoint_failures
+	 *
+	 * @param mixed $response HTTP response or error.
+	 */
+	public function test_endpoint_failures_preserve_installed_runtime_catalog( $response ): void {
+		$this->register_legacy_proxy_function_mocks( array( 'wp_remote_post' => static fn() => $response ) );
+		$this->write_file( $this->catalog_path( '.mo' ), 'old runtime' );
+		$this->download_source = $this->valid_zip();
+
+		$this->sut->update();
+
+		$this->assertSame( 0, $this->download_calls );
+		$this->assertSame( 'old runtime', file_get_contents( $this->catalog_path( '.mo' ) ) );
+	}
+
+	/** @return array<string, array{mixed}> */
+	public function endpoint_failures(): array {
+		return array(
+			'transport failure' => array( new \WP_Error( 'transport_failed' ) ),
+			'non-200 response'  => array(
+				array(
+					'response' => array( 'code' => 503 ),
+					'body'     => '',
+				),
+			),
+		);
+	}
+
 	/** @return array<string, array{array<string, mixed>}> */
 	public function invalid_responses(): array {
 		$package                  = $this->package_metadata();
