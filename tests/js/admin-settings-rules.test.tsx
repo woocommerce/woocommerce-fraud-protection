@@ -9,7 +9,6 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import type { MemoryRouterProps } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
@@ -73,14 +72,12 @@ function collectionResponse(
 	} as unknown as Response;
 }
 
-function renderRules(
-	initialEntry: MemoryRouterProps[ 'initialEntries' ] = [ '/rules' ]
-) {
+function renderRules() {
 	const registry = createRegistry();
 	registry.register( rulesStore );
 	registry.register( noticesStore );
 	const result = render(
-		<MemoryRouter initialEntries={ initialEntry }>
+		<MemoryRouter>
 			<RegistryProvider value={ registry }>
 				<RulesPage />
 			</RegistryProvider>
@@ -243,17 +240,6 @@ describe( 'RulesPage', () => {
 				name: 'Actions',
 			} )
 		).toBeInTheDocument();
-	} );
-
-	it( 'opens the create drawer when arriving with the create intent', async () => {
-		renderRules( [
-			{ pathname: '/rules', state: { openCreateRule: true } },
-		] );
-
-		expect(
-			await screen.findByRole( 'dialog', { name: 'Create rule' } )
-		).toBeInTheDocument();
-		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( '' );
 	} );
 
 	it( 'keeps all four columns sortable with Created descending as default', async () => {

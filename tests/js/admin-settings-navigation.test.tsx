@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory } from 'history';
 
@@ -50,11 +50,12 @@ jest.mock( '@woocommerce/navigation', () => ( {
 
 // The real checkout attempts and rules pages render DataViews; it is bundled
 // and heavy, and these tests cover the app's routing rather than the lists, so
-// it is replaced with a no-op (its composition parts included). The pages'
+// it is replaced with a no-op (its composition parts included). The rule
+// drawer's DataForm stays real so a rule can be created through it. The pages'
 // Tabs still render and need a ResizeObserver. The lists import DataViews from
 // the `/wp` runtime entry point, so mock that.
 jest.mock( '@wordpress/dataviews/wp', () => ( {
-	__esModule: true,
+	...jest.requireActual( '@wordpress/dataviews/wp' ),
 	DataViews: Object.assign( () => null, {
 		Search: () => null,
 		FiltersToggle: () => null,
@@ -63,8 +64,6 @@ jest.mock( '@wordpress/dataviews/wp', () => ( {
 		Layout: () => null,
 		Footer: () => null,
 	} ),
-	DataForm: () => null,
-	useFormValidity: () => ( { validity: undefined, isValid: true } ),
 } ) );
 
 if ( ! window.ResizeObserver ) {
@@ -247,30 +246,52 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		} );
 	} );
 
-	it( 'opens the create-rule drawer on the rules page from the settings card', async () => {
-		mockedApiFetch
-			.mockResolvedValueOnce( settingsResponse )
-			.mockResolvedValueOnce( {
-				data: [],
-				totalItems: 0,
-				totalPages: 0,
-				page: 1,
-				perPage: 20,
-			} );
+	it( 'moves to the rules page once a rule is created from the settings card', async () => {
+		mockedApiFetch.mockImplementation( ( options: unknown ) => {
+			const { path, method } = ( options ?? {} ) as {
+				path?: string;
+				method?: string;
+			};
+			if (
+				path === '/wc-fraud-protection/v1/rules' &&
+				method === 'POST'
+			) {
+				return Promise.resolve( {
+					id: 18,
+					action: 'allow',
+					type: 'email',
+					value: 'card@example.com',
+					created_at: '2026-09-15T12:00:00Z',
+					updated_at: null,
+				} );
+			}
+			return apiFetchImplementation( options );
+		} );
 		renderApp();
 
 		await userEvent.click(
-			await screen.findByRole( 'link', { name: 'Create rule' } )
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		// The drawer opens on the settings page itself.
+		expect( mockHistory.location.pathname ).toBe( '/' );
+
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'card@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
 		);
 
-		expect( mockHistory.location.pathname ).toBe( '/rules' );
+		await waitFor( () =>
+			expect( mockHistory.location.pathname ).toBe( '/rules' )
+		);
 		expect(
-			await screen.findByRole( 'dialog', { name: 'Create rule' } )
-		).toBeInTheDocument();
-		// The create intent is consumed on arrival: the history entry no longer
-		// carries it, so Back/Forward or a reload will not reopen the drawer.
-		await waitFor( () => expect( mockHistory.location.state ).toBeFalsy() );
-		expect( mockHistory.location.pathname ).toBe( '/rules' );
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
 	} );
 
 	it( 'keeps settings open when checkout-attempt navigation is cancelled', async () => {
