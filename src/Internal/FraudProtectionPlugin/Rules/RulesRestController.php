@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\Schemas\ReportSource;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
@@ -309,7 +310,19 @@ class RulesRestController extends \WP_REST_Controller {
 					$session_id,
 					array(
 						'report_id'      => 'wc-fraud-protection-rule-' . $rule->id,
+						'source'         => ReportSource::ManualReview->value,
 						'asserted_label' => FraudDecision::Allow === $decision ? 'good' : 'bad',
+						'context'        => array(
+							'rule_event'    => 'created',
+							'rule_action'   => $decision->value,
+							'rule_field'    => $conditions['field'],
+							'rule_operator' => $conditions['operator'],
+						),
+						'notes'          => sprintf(
+							'Merchant created a rule to %s by %s.',
+							$decision->value,
+							$conditions['field']
+						),
 					)
 				);
 			} catch ( \Throwable $error ) {
