@@ -1075,7 +1075,9 @@ const mockApi = ( {
 	sessions,
 	onPost,
 }: {
-	sessions?: ListResponse | ( () => ListResponse | Promise< ListResponse > );
+	sessions?:
+		| ListResponse
+		| ( ( path: string ) => ListResponse | Promise< ListResponse > );
 	onPost?: ( value: boolean ) => void;
 } = {} ) => {
 	const nextSessions =
@@ -1091,7 +1093,7 @@ const mockApi = ( {
 		} ) => {
 			const path = String( options.path );
 			if ( path.includes( '/wc-fraud-protection/v1/sessions' ) ) {
-				return Promise.resolve( nextSessions() );
+				return Promise.resolve( nextSessions( path ) );
 			}
 			if ( path.includes( '/wc-fraud-protection/v1/settings' ) ) {
 				if ( 'POST' === options.method ) {
@@ -1628,11 +1630,17 @@ describe( 'CheckoutAttemptsPage', () => {
 		).not.toBeInTheDocument();
 	} );
 
-	it( 'refetches and restores the enforced status through history', async () => {
-		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
+	it( 'restores multi-page status state through history', async () => {
+		mockApi( {
+			sessions: ( path ) =>
+				path.includes( 'final_status=blocked' )
+					? listResponse( [ aSession() ], 1, 1 )
+					: listResponse( [ aSession() ], 40, 2 ),
+		} );
 
-		renderPage();
+		renderPage( 'paged=2' );
 		await screen.findByText( 'shopper@example.com' );
+		await waitFor( () => expect( lastListPath() ).toContain( 'page=2&' ) );
 
 		await userEvent.click( screen.getByRole( 'tab', { name: 'Blocked' } ) );
 
@@ -1651,6 +1659,12 @@ describe( 'CheckoutAttemptsPage', () => {
 			).toBeInTheDocument();
 			expect( listPaths().length ).toBeGreaterThan( callsBeforeBack );
 			expect( lastListPath() ).not.toContain( 'final_status' );
+			expect( lastListPath() ).toContain( 'page=2&' );
+			expect(
+				new URLSearchParams( mockHistory.location.search ).get(
+					'paged'
+				)
+			).toBe( '2' );
 		} );
 
 		const callsBeforeForward = listPaths().length;
@@ -1664,6 +1678,11 @@ describe( 'CheckoutAttemptsPage', () => {
 			).toBeInTheDocument();
 			expect( listPaths().length ).toBeGreaterThan( callsBeforeForward );
 			expect( lastListPath() ).toContain( 'final_status=blocked' );
+			expect(
+				new URLSearchParams( mockHistory.location.search ).has(
+					'paged'
+				)
+			).toBe( false );
 		} );
 	} );
 
