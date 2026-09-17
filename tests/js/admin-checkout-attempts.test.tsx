@@ -1456,6 +1456,38 @@ describe( 'CheckoutAttemptsPage', () => {
 		);
 	} );
 
+	it( 'restores and keeps the optional merchant-rule column preference', async () => {
+		window.localStorage.setItem(
+			PREFS_STORAGE_KEY,
+			JSON.stringify( {
+				version: PREFS_STORAGE_VERSION,
+				prefs: {
+					fields: [ 'email', 'rules', 'unknown' ],
+					perPage: 20,
+				},
+			} )
+		);
+		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
+
+		renderPage();
+		await screen.findByText( 'shopper@example.com' );
+		expect(
+			screen.getByRole( 'button', { name: 'Merchant rule' } )
+		).toBeInTheDocument();
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'View options' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'radio', { name: 'Compact' } )
+		);
+
+		expect(
+			JSON.parse( window.localStorage.getItem( PREFS_STORAGE_KEY )! )
+				.prefs.fields
+		).toEqual( [ 'email', 'rules' ] );
+	} );
+
 	it( 'cancels rule deletion without sending a request', async () => {
 		const attempt = aSession( {
 			rules: { email: aRule( { id: 803 } ), ip: null },

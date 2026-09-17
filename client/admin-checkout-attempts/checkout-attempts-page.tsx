@@ -59,7 +59,7 @@ const DEFAULT_FIELDS = [
 	'billing_country',
 	'outcome',
 ];
-const SUPPORTED_FIELDS = DEFAULT_FIELDS;
+const SUPPORTED_FIELDS = [ ...DEFAULT_FIELDS, 'rules' ];
 const SUPPORTED_PER_PAGE = [ 10, 20, 50, 100 ];
 const SUPPORTED_DENSITIES = [ 'compact', 'balanced', 'comfortable' ];
 const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
