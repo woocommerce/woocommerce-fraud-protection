@@ -35,10 +35,8 @@ import {
 import { getPaymentMethodElements } from '../../client/admin-checkout-attempts/payment-method-elements';
 import { getFlaggedExplanation } from '../../client/admin-checkout-attempts/flagged-chip';
 import { buildListPath } from '../../client/admin-checkout-attempts/use-checkout-attempts';
-import {
-	loadPrefs as loadStoredPrefs,
-	savePrefs as saveStoredPrefs,
-} from '../../client/persisted-state';
+import { createPreferenceStore } from '../../client/persisted-state';
+import { getCorrectedPage, parsePositivePage } from '../../client/list-state';
 import { settingsStore } from '../../client/admin-settings/data/store';
 import {
 	rulesStore,
@@ -103,10 +101,33 @@ import { CheckoutAttemptsPage } from '../../client/admin-checkout-attempts/check
 const mockedApiFetch = apiFetch as unknown as jest.Mock;
 const PREFS_STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
 const PREFS_STORAGE_VERSION = 2;
-const loadPrefs = () =>
-	loadStoredPrefs( PREFS_STORAGE_KEY, PREFS_STORAGE_VERSION );
-const savePrefs = ( prefs: Parameters< typeof saveStoredPrefs >[ 2 ] ) =>
-	saveStoredPrefs( PREFS_STORAGE_KEY, PREFS_STORAGE_VERSION, prefs );
+const preferenceStore = createPreferenceStore( {
+	storageKey: PREFS_STORAGE_KEY,
+	version: PREFS_STORAGE_VERSION,
+	supportedFields: [
+		'recorded_at',
+		'email',
+		'ip',
+		'ip_country',
+		'billing_country',
+		'outcome',
+		'rules',
+	],
+	supportedPerPage: [ 10, 20, 50, 100 ],
+	supportedDensities: [ 'compact', 'balanced', 'comfortable' ],
+} );
+const loadPrefs = preferenceStore.load;
+const savePrefs = preferenceStore.save;
+
+describe( 'shared list state', () => {
+	it( 'parses positive pages and calculates stale-page corrections', () => {
+		expect( parsePositivePage( '3' ) ).toBe( 3 );
+		expect( parsePositivePage( '3x' ) ).toBe( 1 );
+		expect( getCorrectedPage( 5, 2 ) ).toBe( 2 );
+		expect( getCorrectedPage( 3, 0 ) ).toBe( 1 );
+		expect( getCorrectedPage( 2, 3 ) ).toBeNull();
+	} );
+} );
 
 // Register the spied core/notices store into the default registry the page and
 // drawer use (they read data through the global @wordpress/data registry, not a

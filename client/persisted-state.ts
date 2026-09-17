@@ -6,70 +6,116 @@ export type DisplayPrefs = {
 	layout?: View[ 'layout' ];
 };
 
-export function loadPrefs( storageKey: string, version: number ): DisplayPrefs {
-	let raw: string | null = null;
+type PreferenceStoreConfig = {
+	storageKey: string;
+	version: number;
+	supportedFields: readonly string[];
+	supportedPerPage: readonly number[];
+	supportedDensities: readonly string[];
+};
 
-	try {
-		raw = window.localStorage.getItem( storageKey );
-	} catch {
-		return {};
-	}
+export type PreferenceStore = {
+	load: () => DisplayPrefs;
+	save: ( prefs: DisplayPrefs ) => void;
+	fromView: ( view: View ) => DisplayPrefs;
+};
 
-	if ( ! raw ) {
-		return {};
-	}
+export function createPreferenceStore( {
+	storageKey,
+	version,
+	supportedFields,
+	supportedPerPage,
+	supportedDensities,
+}: PreferenceStoreConfig ): PreferenceStore {
+	const sanitize = ( prefs: DisplayPrefs ): DisplayPrefs => {
+		const fields = prefs.fields?.filter(
+			( field, index, all ) =>
+				supportedFields.indexOf( field ) !== -1 &&
+				all.indexOf( field ) === index
+		);
+		const density = prefs.layout?.density;
 
-	try {
-		const parsed = JSON.parse( raw );
+		return {
+			...( fields?.length ? { fields } : {} ),
+			...( prefs.perPage &&
+			supportedPerPage.indexOf( prefs.perPage ) !== -1
+				? { perPage: prefs.perPage }
+				: {} ),
+			...( density && supportedDensities.indexOf( density ) !== -1
+				? { layout: { density } }
+				: {} ),
+		};
+	};
 
-		if (
-			! parsed ||
-			parsed.version !== version ||
-			typeof parsed.prefs !== 'object' ||
-			parsed.prefs === null
-		) {
+	const load = (): DisplayPrefs => {
+		let raw: string | null = null;
+
+		try {
+			raw = window.localStorage.getItem( storageKey );
+		} catch {
 			return {};
 		}
 
-		const prefs = parsed.prefs;
-		const result: DisplayPrefs = {};
-
-		if (
-			Array.isArray( prefs.fields ) &&
-			prefs.fields.every(
-				( field: unknown ) => typeof field === 'string'
-			)
-		) {
-			result.fields = prefs.fields;
-		}
-		if (
-			typeof prefs.perPage === 'number' &&
-			Number.isFinite( prefs.perPage ) &&
-			prefs.perPage > 0
-		) {
-			result.perPage = prefs.perPage;
-		}
-		if ( prefs.layout && typeof prefs.layout === 'object' ) {
-			result.layout = prefs.layout;
+		if ( ! raw ) {
+			return {};
 		}
 
-		return result;
-	} catch {
-		return {};
-	}
-}
+		try {
+			const parsed = JSON.parse( raw );
 
-export function savePrefs(
-	storageKey: string,
-	version: number,
-	prefs: DisplayPrefs
-): void {
-	try {
-		window.localStorage.setItem(
-			storageKey,
-			JSON.stringify( { version, prefs } )
-		);
-	} catch {
-		// Storage is optional. The page remains usable without it.
-	}
+			if (
+				! parsed ||
+				parsed.version !== version ||
+				typeof parsed.prefs !== 'object' ||
+				parsed.prefs === null
+			) {
+				return {};
+			}
+
+			const prefs: DisplayPrefs = {};
+			if (
+				Array.isArray( parsed.prefs.fields ) &&
+				parsed.prefs.fields.every(
+					( field: unknown ) => typeof field === 'string'
+				)
+			) {
+				prefs.fields = parsed.prefs.fields;
+			}
+			if ( typeof parsed.prefs.perPage === 'number' ) {
+				prefs.perPage = parsed.prefs.perPage;
+			}
+			if (
+				parsed.prefs.layout &&
+				typeof parsed.prefs.layout === 'object'
+			) {
+				prefs.layout = parsed.prefs.layout;
+			}
+
+			return sanitize( prefs );
+		} catch {
+			return {};
+		}
+	};
+
+	const save = ( prefs: DisplayPrefs ): void => {
+		try {
+			window.localStorage.setItem(
+				storageKey,
+				JSON.stringify( { version, prefs: sanitize( prefs ) } )
+			);
+		} catch {
+			// Storage is optional. The page remains usable without it.
+		}
+	};
+
+	return {
+		load,
+		save,
+		fromView: ( view ) =>
+			sanitize( {
+				fields: view.fields,
+				perPage: view.perPage,
+				layout: view.layout,
+			} ),
+	};
 }

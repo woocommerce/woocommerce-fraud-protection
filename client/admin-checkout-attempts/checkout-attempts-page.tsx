@@ -10,17 +10,21 @@ import { useSelect } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { View } from '@wordpress/dataviews';
-import { getHistory } from '@woocommerce/navigation';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { buildActions } from './actions';
 import { EnableFraudPreventionDrawer } from './enable-fraud-prevention-drawer';
 import { getFields } from './fields';
 import { ProtectionOffBanner } from './protection-off-banner';
+import { createPreferenceStore } from '../persisted-state';
 import {
-	loadPrefs as loadStoredPrefs,
-	savePrefs as saveStoredPrefs,
-} from '../persisted-state';
+	getCorrectedPage,
+	getFilterValueList,
+	parsePositivePage,
+	serializeCanonicalQuery,
+	setNonDefaultParam,
+	writeAdminListPath,
+} from '../list-state';
 import { useCheckoutAttempts } from './use-checkout-attempts';
 import { getFraudProtectionRoute } from '../admin-settings/navigation';
 import { settingsStore } from '../admin-settings/data/store';
@@ -65,34 +69,15 @@ const SUPPORTED_DENSITIES = [ 'compact', 'balanced', 'comfortable' ];
 const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';
 const STORAGE_VERSION = 2;
 
+const preferenceStore = createPreferenceStore( {
+	storageKey: STORAGE_KEY,
+	version: STORAGE_VERSION,
+	supportedFields: SUPPORTED_FIELDS,
+	supportedPerPage: SUPPORTED_PER_PAGE,
+	supportedDensities: SUPPORTED_DENSITIES,
+} );
+
 type StatusTab = 'all' | FinalStatus;
-
-function sanitizePrefs( prefs: DisplayPrefs ): DisplayPrefs {
-	const storedFields = prefs.fields?.filter(
-		( field, index, all ) =>
-			SUPPORTED_FIELDS.indexOf( field ) !== -1 &&
-			all.indexOf( field ) === index
-	);
-	const density = prefs.layout?.density;
-
-	return {
-		...( storedFields?.length ? { fields: storedFields } : {} ),
-		...( prefs.perPage && SUPPORTED_PER_PAGE.indexOf( prefs.perPage ) !== -1
-			? { perPage: prefs.perPage }
-			: {} ),
-		...( density && SUPPORTED_DENSITIES.indexOf( density ) !== -1
-			? { layout: { density } }
-			: {} ),
-	};
-}
-
-function loadPrefs(): DisplayPrefs {
-	return sanitizePrefs( loadStoredPrefs( STORAGE_KEY, STORAGE_VERSION ) );
-}
-
-function savePrefs( prefs: DisplayPrefs ): void {
-	saveStoredPrefs( STORAGE_KEY, STORAGE_VERSION, sanitizePrefs( prefs ) );
-}
 
 // The navigation state (search, filters, status tab, sort, page) lives in the
 // URL query so a link reproduces the view and Back/Forward restore it. Column
@@ -132,11 +117,9 @@ function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
 		filters.push( { field: 'rules', operator: 'is', value: rules } );
 	}
 
-	const paged = parseInt( params.get( 'paged' ) ?? '', 10 );
-
 	return {
 		type: 'table',
-		page: Number.isInteger( paged ) && paged > 0 ? paged : 1,
+		page: parsePositivePage( params.get( 'paged' ) ),
 		perPage: prefs.perPage ?? DEFAULT_PER_PAGE,
 		sort: {
 			field: params.get( 'orderby' ) || DEFAULT_SORT_FIELD,
@@ -150,94 +133,55 @@ function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
 	};
 }
 
-function filterValueList( view: View, field: string ): string[] {
-	const filter = ( view.filters ?? [] ).find(
-		( candidate ) => candidate.field === field
-	);
-	if ( ! filter || filter.value === undefined || filter.value === null ) {
-		return [];
-	}
-	return Array.isArray( filter.value )
-		? filter.value.map( String )
-		: [ String( filter.value ) ];
-}
-
-function setParam(
-	params: URLSearchParams,
-	key: string,
-	value: string,
-	defaultValue: string
-): void {
-	if ( '' === value || value === defaultValue ) {
-		params.delete( key );
-	} else {
-		params.set( key, value );
-	}
-}
-
 // Build the list's own query args from the current view and tab.
 function navParams( view: View, tab: StatusTab ): URLSearchParams {
 	const params = new URLSearchParams();
-	setParam( params, 'search', view.search ?? '', '' );
-	setParam( params, 'paged', String( view.page ?? 1 ), '1' );
-	setParam(
+	setNonDefaultParam( params, 'search', view.search ?? '' );
+	setNonDefaultParam( params, 'paged', String( view.page ?? 1 ), '1' );
+	setNonDefaultParam(
 		params,
 		'orderby',
 		view.sort?.field ?? DEFAULT_SORT_FIELD,
 		DEFAULT_SORT_FIELD
 	);
-	setParam(
+	setNonDefaultParam(
 		params,
 		'order',
 		view.sort?.direction ?? DEFAULT_SORT_DIRECTION,
 		DEFAULT_SORT_DIRECTION
 	);
-	setParam(
+	setNonDefaultParam(
 		params,
 		'outcome',
-		filterValueList( view, 'outcome' ).join( ',' ),
+		getFilterValueList( view, 'outcome' ).join( ',' ),
 		''
 	);
-	setParam(
+	setNonDefaultParam(
 		params,
 		'provider',
-		filterValueList( view, 'payment_method' ).join( ',' ),
+		getFilterValueList( view, 'payment_method' ).join( ',' ),
 		''
 	);
-	setParam(
+	setNonDefaultParam(
 		params,
 		'rules',
-		filterValueList( view, 'rules' )[ 0 ] ?? '',
+		getFilterValueList( view, 'rules' )[ 0 ] ?? '',
 		''
 	);
-	setParam( params, 'status', tab, 'all' );
+	setNonDefaultParam( params, 'status', tab, 'all' );
 	return params;
 }
 
 // A canonical string of the list's nav state, for comparing the view against the
 // URL without being tripped up by param order or omitted defaults.
 function serializeNav( view: View, tab: StatusTab ): string {
-	const params = navParams( view, tab );
-	params.sort();
-	return params.toString();
+	return serializeCanonicalQuery( navParams( view, tab ) );
 }
 
 // The canonical nav string the URL currently represents (defaults normalized the
 // same way as serializeNav, so an explicit `paged=1` matches an omitted one).
 function urlNav( params: URLSearchParams ): string {
 	return serializeNav( viewFromParams( params, {} ), getTab( params ) );
-}
-
-// The full WooCommerce admin URL for the list in a given view and tab. Writing
-// this (rather than the router's `/checkout-attempts` pathname) keeps the browser
-// on `admin.php` with the route in the `path` query arg, so a reload resolves.
-function listAdminPath( view: View, tab: StatusTab ): string {
-	const query: Record< string, string > = {};
-	navParams( view, tab ).forEach( ( value, key ) => {
-		query[ key ] = value;
-	} );
-
-	return getFraudProtectionRoute( '/checkout-attempts', query );
 }
 
 export function CheckoutAttemptsPage() {
@@ -250,7 +194,7 @@ export function CheckoutAttemptsPage() {
 	// the URL (so a link reproduces the view and Back/Forward restore it), while
 	// column visibility, density and page size are saved as display preferences.
 	const [ view, setView ] = useState< View >( () =>
-		viewFromParams( searchParams, loadPrefs() )
+		viewFromParams( searchParams, preferenceStore.load() )
 	);
 	const [ tab, setTab ] = useState< StatusTab >( () =>
 		getTab( searchParams )
@@ -371,13 +315,11 @@ export function CheckoutAttemptsPage() {
 	// restores the previous list state.
 	const commitToUrl = useCallback(
 		( nextView: View, nextTab: StatusTab, replace = false ) => {
-			const path = listAdminPath( nextView, nextTab );
-			const history = getHistory();
-			if ( replace ) {
-				history.replace( path );
-			} else {
-				history.push( path );
-			}
+			writeAdminListPath(
+				'/checkout-attempts',
+				navParams( nextView, nextTab ),
+				replace
+			);
 		},
 		[]
 	);
@@ -392,11 +334,7 @@ export function CheckoutAttemptsPage() {
 
 			setView( nextView );
 			// Column visibility, density and page size are display preferences.
-			savePrefs( {
-				fields: nextView.fields,
-				perPage: nextView.perPage,
-				layout: nextView.layout,
-			} );
+			preferenceStore.save( preferenceStore.fromView( nextView ) );
 			commitToUrl( nextView, tab, searchOnly );
 		},
 		[ commitToUrl, tab, view ]
@@ -452,9 +390,9 @@ export function CheckoutAttemptsPage() {
 		}
 
 		const current = view.page ?? 1;
-		const target = totalPages >= 1 ? Math.min( current, totalPages ) : 1;
+		const target = getCorrectedPage( current, totalPages );
 
-		if ( target !== current ) {
+		if ( target !== null ) {
 			const nextView = { ...view, page: target };
 			setView( nextView );
 			commitToUrl( nextView, tab, true );

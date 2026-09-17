@@ -19,7 +19,6 @@ import {
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { Action, Field, View } from '@wordpress/dataviews';
-import { getHistory } from '@woocommerce/navigation';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import type { Rule, RulesQuery } from './data/rules-store';
@@ -29,11 +28,16 @@ import { getFraudProtectionRoute } from './navigation';
 import { formatRuleDate, getUtcDateFilterBound } from './rule-date';
 import { RuleFormDrawer } from './components/rule-form-drawer';
 import { RuleDeleteDialog } from './components/rule-delete-dialog';
+import { createPreferenceStore, type DisplayPrefs } from '../persisted-state';
 import {
-	loadPrefs as loadStoredPrefs,
-	savePrefs as saveStoredPrefs,
-	type DisplayPrefs,
-} from '../persisted-state';
+	getCorrectedPage,
+	getFilterValue,
+	getScalarFilterValue,
+	parsePositivePage,
+	serializeCanonicalQuery,
+	setNonDefaultParam,
+	writeAdminListPath,
+} from '../list-state';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
 const ruleActions = [
@@ -59,6 +63,14 @@ const COLUMN_STYLES = {
 	type: { width: '25%' },
 	created_at: { width: '25%' },
 };
+
+const preferenceStore = createPreferenceStore( {
+	storageKey: STORAGE_KEY,
+	version: STORAGE_VERSION,
+	supportedFields: DEFAULT_FIELDS,
+	supportedPerPage: SUPPORTED_PER_PAGE,
+	supportedDensities: SUPPORTED_DENSITIES,
+} );
 
 const fields: Field< Rule >[] = [
 	{
@@ -122,59 +134,12 @@ const fields: Field< Rule >[] = [
 	},
 ];
 
-function sanitizePrefs( prefs: DisplayPrefs ): DisplayPrefs {
-	const storedFields = prefs.fields?.filter(
-		( field, index, all ) =>
-			DEFAULT_FIELDS.indexOf( field ) !== -1 &&
-			all.indexOf( field ) === index
-	);
-	const density = prefs.layout?.density;
-
-	return {
-		...( storedFields?.length ? { fields: storedFields } : {} ),
-		...( prefs.perPage && SUPPORTED_PER_PAGE.indexOf( prefs.perPage ) !== -1
-			? { perPage: prefs.perPage }
-			: {} ),
-		...( density && SUPPORTED_DENSITIES.indexOf( density ) !== -1
-			? { layout: { density } }
-			: {} ),
-	};
-}
-
-function loadPrefs(): DisplayPrefs {
-	return sanitizePrefs( loadStoredPrefs( STORAGE_KEY, STORAGE_VERSION ) );
-}
-
-function savePrefs( prefs: DisplayPrefs ): void {
-	saveStoredPrefs( STORAGE_KEY, STORAGE_VERSION, sanitizePrefs( prefs ) );
-}
-
-function getFilterValue( view: View, field: string ): unknown {
-	return ( view.filters ?? [] ).find( ( filter ) => filter.field === field )
-		?.value;
-}
-
-function getScalarFilterValue( view: View, field: string ): string {
-	const value = getFilterValue( view, field );
-	return Array.isArray( value )
-		? String( value[ 0 ] ?? '' )
-		: String( value ?? '' );
-}
-
 function isValidLocalDate( value: string | null ): value is string {
 	return Boolean(
 		value &&
 			/^\d{4}-\d{2}-\d{2}$/.test( value ) &&
 			getUtcDateFilterBound( value, false )
 	);
-}
-
-function parsePage( value: string | null ): number {
-	if ( ! value || ! /^[1-9]\d*$/.test( value ) ) {
-		return 1;
-	}
-	const page = Number( value );
-	return Number.isSafeInteger( page ) ? page : 1;
 }
 
 function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
@@ -210,7 +175,7 @@ function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
 
 	return {
 		type: 'table',
-		page: parsePage( params.get( 'paged' ) ),
+		page: parsePositivePage( params.get( 'paged' ) ),
 		perPage: prefs.perPage ?? DEFAULT_PER_PAGE,
 		sort: {
 			field:
@@ -231,19 +196,6 @@ function viewFromParams( params: URLSearchParams, prefs: DisplayPrefs ): View {
 	};
 }
 
-function setParam(
-	params: URLSearchParams,
-	key: string,
-	value: string,
-	defaultValue = ''
-): void {
-	if ( ! value || value === defaultValue ) {
-		params.delete( key );
-	} else {
-		params.set( key, value );
-	}
-}
-
 function navParams( view: View ): URLSearchParams {
 	const params = new URLSearchParams();
 	const action = getScalarFilterValue( view, 'action' );
@@ -253,19 +205,27 @@ function navParams( view: View ): URLSearchParams {
 	const from = Array.isArray( created ) ? String( created[ 0 ] ?? '' ) : '';
 	const to = Array.isArray( created ) ? String( created[ 1 ] ?? '' ) : '';
 
-	setParam( params, 'action', action );
-	setParam( params, 'type', type );
-	setParam( params, 'value', value );
-	setParam( params, 'created_from', isValidLocalDate( from ) ? from : '' );
-	setParam( params, 'created_to', isValidLocalDate( to ) ? to : '' );
-	setParam( params, 'paged', String( view.page ?? 1 ), '1' );
-	setParam(
+	setNonDefaultParam( params, 'action', action );
+	setNonDefaultParam( params, 'type', type );
+	setNonDefaultParam( params, 'value', value );
+	setNonDefaultParam(
+		params,
+		'created_from',
+		isValidLocalDate( from ) ? from : ''
+	);
+	setNonDefaultParam(
+		params,
+		'created_to',
+		isValidLocalDate( to ) ? to : ''
+	);
+	setNonDefaultParam( params, 'paged', String( view.page ?? 1 ), '1' );
+	setNonDefaultParam(
 		params,
 		'orderby',
 		view.sort?.field ?? DEFAULT_SORT_FIELD,
 		DEFAULT_SORT_FIELD
 	);
-	setParam(
+	setNonDefaultParam(
 		params,
 		'order',
 		view.sort?.direction ?? DEFAULT_SORT_DIRECTION,
@@ -276,29 +236,11 @@ function navParams( view: View ): URLSearchParams {
 }
 
 function serializeNav( view: View ): string {
-	const params = navParams( view );
-	params.sort();
-	return params.toString();
+	return serializeCanonicalQuery( navParams( view ) );
 }
 
 function urlNav( params: URLSearchParams ): string {
 	return serializeNav( viewFromParams( params, {} ) );
-}
-
-function listAdminPath( view: View ): string {
-	const query: Record< string, string > = {};
-	navParams( view ).forEach( ( value, key ) => {
-		query[ key ] = value;
-	} );
-	return getFraudProtectionRoute( '/rules', query );
-}
-
-function prefsFromView( view: View ): DisplayPrefs {
-	return sanitizePrefs( {
-		fields: view.fields,
-		perPage: view.perPage,
-		layout: view.layout,
-	} );
 }
 
 export const getQueryFromView = ( view: View ): RulesQuery => {
@@ -399,7 +341,7 @@ export function RulesPage() {
 	const [ searchParams ] = useSearchParams();
 	const [ deletingRule, setDeletingRule ] = useState< Rule | undefined >();
 	const [ view, setView ] = useState< View >( () =>
-		viewFromParams( searchParams, loadPrefs() )
+		viewFromParams( searchParams, preferenceStore.load() )
 	);
 	const { closeRuleForm, isOpen, openCreateRule, openEditRule, ruleId } =
 		useRuleFormDrawer();
@@ -435,13 +377,7 @@ export function RulesPage() {
 	);
 	const loadErrorMessage = getLoadErrorMessage( error );
 	const commitToUrl = useCallback( ( nextView: View, replace = false ) => {
-		const history = getHistory();
-		const path = listAdminPath( nextView );
-		if ( replace ) {
-			history.replace( path );
-		} else {
-			history.push( path );
-		}
+		writeAdminListPath( '/rules', navParams( nextView ), replace );
 	}, [] );
 	const onChangeView = useCallback(
 		( changedView: View ) => {
@@ -452,7 +388,7 @@ export function RulesPage() {
 				? { ...changedView, page: 1 }
 				: changedView;
 			setView( nextView );
-			savePrefs( prefsFromView( nextView ) );
+			preferenceStore.save( preferenceStore.fromView( nextView ) );
 			if ( serializeNav( nextView ) !== serializeNav( view ) ) {
 				commitToUrl( nextView );
 			}
@@ -465,7 +401,7 @@ export function RulesPage() {
 			return;
 		}
 		setView( ( previous ) =>
-			viewFromParams( searchParams, prefsFromView( previous ) )
+			viewFromParams( searchParams, preferenceStore.fromView( previous ) )
 		);
 	}, [ searchParams, view ] );
 
@@ -484,8 +420,8 @@ export function RulesPage() {
 			return;
 		}
 		const current = view.page ?? 1;
-		const target = totalPages >= 1 ? Math.min( current, totalPages ) : 1;
-		if ( target !== current ) {
+		const target = getCorrectedPage( current, totalPages );
+		if ( target !== null ) {
 			const nextView = { ...view, page: target };
 			setView( nextView );
 			commitToUrl( nextView, true );
