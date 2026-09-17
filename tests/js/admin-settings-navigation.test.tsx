@@ -48,13 +48,21 @@ jest.mock( '@woocommerce/navigation', () => ( {
 	getNewPath: mockGetNewPath,
 } ) );
 
-// The real checkout attempts page renders DataViews; it is bundled and heavy,
-// and these tests cover the app's routing rather than the list, so it is
-// replaced with a no-op. Its Tabs still render and need a ResizeObserver. The
-// list imports DataViews from the `/wp` runtime entry point, so mock that.
+// The real checkout attempts and rules pages render DataViews; it is bundled
+// and heavy, and these tests cover the app's routing rather than the lists, so
+// it is replaced with a no-op (its composition parts included). The pages'
+// Tabs still render and need a ResizeObserver. The lists import DataViews from
+// the `/wp` runtime entry point, so mock that.
 jest.mock( '@wordpress/dataviews/wp', () => ( {
 	__esModule: true,
-	DataViews: () => null,
+	DataViews: Object.assign( () => null, {
+		Search: () => null,
+		FiltersToggle: () => null,
+		FiltersToggled: () => null,
+		ViewConfig: () => null,
+		Layout: () => null,
+		Footer: () => null,
+	} ),
 	DataForm: () => null,
 	useFormValidity: () => ( { validity: undefined, isValid: true } ),
 } ) );
@@ -237,6 +245,32 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
 			parse: false,
 		} );
+	} );
+
+	it( 'opens the create-rule drawer on the rules page from the settings card', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+				page: 1,
+				perPage: 20,
+			} );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'link', { name: 'Create rule' } )
+		);
+
+		expect( mockHistory.location.pathname ).toBe( '/rules' );
+		expect(
+			await screen.findByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+		// The create intent is consumed on arrival: the history entry no longer
+		// carries it, so Back/Forward or a reload will not reopen the drawer.
+		await waitFor( () => expect( mockHistory.location.state ).toBeFalsy() );
+		expect( mockHistory.location.pathname ).toBe( '/rules' );
 	} );
 
 	it( 'keeps settings open when checkout-attempt navigation is cancelled', async () => {

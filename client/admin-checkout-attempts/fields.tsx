@@ -1,22 +1,13 @@
-import { dateI18n, getSettings as getDateSettings } from '@wordpress/date';
 import { __ } from '@wordpress/i18n';
 import type { Field } from '@wordpress/dataviews';
 
+import { formatDateTime } from './dates';
 import { OutcomeBadge, getOutcomeOptions } from './outcomes';
 import { getPaymentMethodElements } from './payment-method-elements';
 import { RuleChip } from './rule-chip';
 import type { CheckoutAttemptsConfig, Session } from './types';
 
 const EMPTY = '—';
-
-function formatRecordedAt( value: string ): string {
-	// The value is a GMT time with no offset; mark it UTC so dateI18n renders
-	// it in the site timezone.
-	const formats = getDateSettings().formats;
-	const format = formats.datetimeAbbreviated || formats.datetime;
-
-	return dateI18n( format, `${ value }Z` );
-}
 
 export function getFields(
 	config: CheckoutAttemptsConfig,
@@ -47,7 +38,7 @@ export function getFields(
 			label: __( 'Date and time', 'woocommerce-fraud-protection' ),
 			enableGlobalSearch: false,
 			getValue: ( { item } ) => item.recorded_at_gmt,
-			render: ( { item } ) => formatRecordedAt( item.recorded_at_gmt ),
+			render: ( { item } ) => formatDateTime( item.recorded_at_gmt ),
 			filterBy: false,
 		},
 		{

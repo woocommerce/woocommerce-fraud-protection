@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
 import {
@@ -97,6 +97,14 @@ const findVisibleText = async ( text: string ) => {
 	return visibleMatches[ 0 ];
 };
 
+// Records the router location after each navigation the page triggers, so a
+// test can assert where a link led and the state it carried.
+const lastLocation = jest.fn();
+function LocationSpy() {
+	lastLocation( useLocation() );
+	return null;
+}
+
 const renderSettings = () => {
 	const registry = createRegistry();
 	registry.register( settingsStore );
@@ -107,6 +115,7 @@ const renderSettings = () => {
 		<MemoryRouter>
 			<RegistryProvider value={ registry }>
 				<FraudProtectionSettingsPage />
+				<LocationSpy />
 			</RegistryProvider>
 		</MemoryRouter>
 	);
@@ -147,7 +156,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			'https://woocommerce.com/document/fraud-protection/'
 		);
 		expect(
-			rules.getByRole( 'button', { name: 'Create rule' } )
+			rules.getByRole( 'link', { name: 'Create rule' } )
 		).toBeVisible();
 		expect(
 			rules.getByRole( 'link', { name: 'View rules' } )
@@ -155,96 +164,29 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( rules.queryByText( /^\d+ rules?$/ ) ).not.toBeInTheDocument();
 	} );
 
-	it( 'creates a rule from the Rules card and refreshes with a success toast', async () => {
-		mockedApiFetch
-			.mockResolvedValueOnce( settingsResponse( false ) )
-			.mockResolvedValueOnce( {
-				id: 18,
-				action: 'allow',
-				type: 'email',
-				value: 'card@example.com',
-				created_at: '2026-09-15T12:00:00Z',
-				updated_at: null,
-			} );
+	it( 'sends Create rule to the rules page with the create intent', async () => {
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
 		renderSettings();
 
-		await userEvent.click(
-			await screen.findByRole( 'button', { name: 'Create rule' } )
-		);
-		const drawer = await screen.findByRole( 'dialog', {
+		const createRule = await screen.findByRole( 'link', {
 			name: 'Create rule',
 		} );
-		await userEvent.type(
-			within( drawer ).getByLabelText( 'Value' ),
-			'card@example.com'
+		expect( createRule ).toHaveAttribute(
+			'href',
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Frules'
 		);
-		await userEvent.click(
-			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
-		);
+		// No drawer opens here: the rule is created on the rules page.
+		await userEvent.click( createRule );
+		expect(
+			screen.queryByRole( 'dialog', { name: 'Create rule' } )
+		).not.toBeInTheDocument();
 
-		await waitFor( () =>
-			expect(
-				screen.queryByRole( 'dialog', { name: 'Create rule' } )
-			).not.toBeInTheDocument()
+		const location = lastLocation.mock.lastCall?.[ 0 ];
+		expect( location.pathname ).toBe( '/wp-admin/admin.php' );
+		expect( location.search ).toBe(
+			'?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Frules'
 		);
-		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
-			path: '/wc-fraud-protection/v1/rules',
-			method: 'POST',
-			data: {
-				action: 'allow',
-				type: 'email',
-				value: 'card@example.com',
-				origin: 'rules',
-			},
-		} );
-		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-			'Rule created successfully.',
-			{ type: 'snackbar' }
-		);
-	} );
-
-	it( 'opens an existing duplicate rule in the Edit drawer', async () => {
-		const duplicate = {
-			id: 17,
-			action: 'allow',
-			type: 'email',
-			value: 'duplicate@example.com',
-			created_at: '2026-09-15T12:00:00Z',
-			updated_at: null,
-		};
-		mockedApiFetch
-			.mockResolvedValueOnce( settingsResponse( false ) )
-			.mockRejectedValueOnce( {
-				code: 'woocommerce_fraud_protection_duplicate_rule',
-				message: 'This email is already allowed by a rule.',
-				data: { rule_id: duplicate.id },
-			} )
-			.mockResolvedValueOnce( duplicate );
-		renderSettings();
-
-		await userEvent.click(
-			await screen.findByRole( 'button', { name: 'Create rule' } )
-		);
-		let drawer = await screen.findByRole( 'dialog', {
-			name: 'Create rule',
-		} );
-		await userEvent.type(
-			within( drawer ).getByLabelText( 'Value' ),
-			duplicate.value
-		);
-		await userEvent.click(
-			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
-		);
-		await userEvent.click(
-			await within( drawer ).findByRole( 'button', {
-				name: 'Edit existing rule',
-			} )
-		);
-
-		drawer = await screen.findByRole( 'dialog', { name: 'Edit rule' } );
-		expect( within( drawer ).getByLabelText( 'Value' ) ).toHaveValue(
-			duplicate.value
-		);
+		expect( location.state ).toEqual( { openCreateRule: true } );
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {

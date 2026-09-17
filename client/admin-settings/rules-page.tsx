@@ -1,4 +1,4 @@
-import { useMemo, useState } from '@wordpress/element';
+import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import {
 	Button,
@@ -13,17 +13,18 @@ import {
 import { notAllowed, published } from '@wordpress/icons';
 import { DataViews } from '@wordpress/dataviews/wp';
 import type { Action, Field, View } from '@wordpress/dataviews';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import type { Rule, RulesQuery } from './data/rules-store';
 import { useRules } from './hooks/use-rules';
 import { useRuleFormDrawer } from './hooks/use-rule-form-drawer';
-import { getFraudProtectionRoute } from './navigation';
+import { getFraudProtectionRoute, shouldOpenCreateRule } from './navigation';
 import { formatRuleDate, getUtcDateFilterBound } from './rule-date';
 import { RuleFormDrawer } from './components/rule-form-drawer';
 import { RuleDeleteDialog } from './components/rule-delete-dialog';
 
 const rootSettingsHref = getFraudProtectionRoute( '/' );
+const rulesHref = getFraudProtectionRoute( '/rules' );
 const ruleActions = [
 	{ value: 'allow', label: __( 'Allow', 'woocommerce-fraud-protection' ) },
 	{ value: 'block', label: __( 'Block', 'woocommerce-fraud-protection' ) },
@@ -208,6 +209,21 @@ export function RulesPage() {
 	} );
 	const { closeRuleForm, isOpen, openCreateRule, openEditRule, ruleId } =
 		useRuleFormDrawer();
+	const location = useLocation();
+	const navigate = useNavigate();
+
+	// Arriving from the settings card's "Create rule" link opens the create
+	// drawer here. The intent is consumed once: the history entry is replaced
+	// without it, so Back/Forward or a reload do not reopen the drawer.
+	const openCreateOnArrival = shouldOpenCreateRule( location.state );
+	useEffect( () => {
+		if ( ! openCreateOnArrival ) {
+			return;
+		}
+		openCreateRule();
+		navigate( rulesHref, { replace: true } );
+	}, [ openCreateOnArrival, openCreateRule, navigate ] );
+
 	const query = useMemo( () => getQueryFromView( view ), [ view ] );
 	const { error, isLoading, rules, totalItems, totalPages } =
 		useRules( query );
@@ -296,7 +312,7 @@ export function RulesPage() {
 			) }
 			<DataViews
 				data={ rules }
-				actions={ isInitialLoading ? [] : actions }
+				actions={ actions }
 				fields={ fields }
 				view={ view }
 				onChangeView={ setView }
@@ -364,7 +380,7 @@ export function RulesPage() {
 							<DataViews.ViewConfig />
 						</Stack>
 					</Stack>
-					<DataViews.FiltersToggled />
+					<DataViews.FiltersToggled className="dataviews-filters__container" />
 					<Tabs.Panel value="all">
 						{ actionTab === 'all' && <DataViews.Layout /> }
 					</Tabs.Panel>

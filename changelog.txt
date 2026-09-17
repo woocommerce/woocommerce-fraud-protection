@@ -1,6 +1,11 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 2026-xx-xx - version 0.2.6
+* Updated - Checkout attempt dates now display in the browser's time zone.
+* Updated - The checkout attempts list places search, filters and view options beside the status tabs, and its column headers align with their values.
+* Updated - Creating a rule from Fraud prevention settings now opens the rules page.
+* Updated - The Inbox invitation's Learn more link now opens in a new tab.
+* Fixed - The rules list keeps its actions column while it refreshes.
 * Fixed - Manual rule feedback now identifies the rule action and matching field.
 
 2026-09-16 - version 0.2.5

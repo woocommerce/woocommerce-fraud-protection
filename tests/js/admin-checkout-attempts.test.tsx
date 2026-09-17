@@ -22,6 +22,10 @@ import {
 import type { View } from '@wordpress/dataviews';
 
 import { buildActions } from '../../client/admin-checkout-attempts/actions';
+import {
+	formatDate,
+	formatDateTime,
+} from '../../client/admin-checkout-attempts/dates';
 import { getFields } from '../../client/admin-checkout-attempts/fields';
 import {
 	getOutcomeLabel,
@@ -229,6 +233,42 @@ describe( 'checkout attempts outcomes', () => {
 			await screen.findByText(
 				'Blocked automatically by fraud prevention.'
 			)
+		).toBeInTheDocument();
+	} );
+} );
+
+describe( 'checkout attempts dates', () => {
+	// The test process runs in America/New_York (see jest-global-setup), which
+	// is four hours behind UTC in April, while the date settings default to a
+	// UTC site. The recorded GMT values must render in the browser's zone.
+	it( 'renders the recorded time in the browser time zone', () => {
+		expect( formatDateTime( '2026-04-22T09:23:00' ) ).toBe(
+			'Apr 22, 2026 5:23 am'
+		);
+		// Crossing midnight moves the date too.
+		expect( formatDateTime( '2026-04-22T02:30:00' ) ).toBe(
+			'Apr 21, 2026 10:30 pm'
+		);
+	} );
+
+	it( 'renders tooltip dates in the browser time zone without the time', () => {
+		expect( formatDate( '2026-04-01T10:00:00' ) ).toBe( 'Apr 1, 2026' );
+		expect( formatDate( '2026-04-01T02:30:00' ) ).toBe( 'Mar 31, 2026' );
+	} );
+
+	it( 'formats the Date and time column with the browser time zone', () => {
+		const field = getFields( {
+			automaticProtection: false,
+			automaticProtectionEnabledAt: null,
+			settingsUrl: '',
+		} ).find( ( candidate ) => candidate.id === 'recorded_at' );
+		const Render = field!.render as unknown as ComponentType< {
+			item: Session;
+		} >;
+		render( <Render item={ aSession() } /> );
+
+		expect(
+			screen.getByText( 'Apr 22, 2026 5:23 am' )
 		).toBeInTheDocument();
 	} );
 } );

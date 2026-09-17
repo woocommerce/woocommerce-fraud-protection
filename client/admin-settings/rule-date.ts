@@ -1,6 +1,7 @@
 import { dateI18n } from '@wordpress/date';
 
-const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+// Rule and checkout-attempt dates are shown in the merchant's own time zone.
+export const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export const formatRuleDate = ( timestamp: string ): string =>
 	dateI18n( 'j M Y', timestamp, browserTimeZone );

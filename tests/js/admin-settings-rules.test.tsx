@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import type { MemoryRouterProps } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
 import { createRegistry, RegistryProvider } from '@wordpress/data';
@@ -72,12 +73,14 @@ function collectionResponse(
 	} as unknown as Response;
 }
 
-function renderRules() {
+function renderRules(
+	initialEntry: MemoryRouterProps[ 'initialEntries' ] = [ '/rules' ]
+) {
 	const registry = createRegistry();
 	registry.register( rulesStore );
 	registry.register( noticesStore );
 	const result = render(
-		<MemoryRouter>
+		<MemoryRouter initialEntries={ initialEntry }>
 			<RegistryProvider value={ registry }>
 				<RulesPage />
 			</RegistryProvider>
@@ -209,6 +212,48 @@ describe( 'RulesPage', () => {
 				parse: false,
 			} )
 		);
+	} );
+
+	it( 'keeps the row actions while a new query loads', async () => {
+		// The second (filtered) request never settles: the list keeps showing
+		// the previous rows while it loads, and their action menus must stay.
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() as never )
+			.mockReturnValueOnce( new Promise( () => undefined ) as never );
+		renderRules();
+		const row = ( await screen.findByText( rule.value ) ).closest( 'tr' );
+		expect(
+			within( row as HTMLElement ).getByRole( 'button', {
+				name: 'Actions',
+			} )
+		).toBeInTheDocument();
+
+		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
+
+		await waitFor( () =>
+			expect( mockedApiFetch ).toHaveBeenLastCalledWith(
+				expect.objectContaining( {
+					path: expect.stringContaining( 'action=block' ),
+				} )
+			)
+		);
+		const loadingRow = screen.getByText( rule.value ).closest( 'tr' );
+		expect(
+			within( loadingRow as HTMLElement ).getByRole( 'button', {
+				name: 'Actions',
+			} )
+		).toBeInTheDocument();
+	} );
+
+	it( 'opens the create drawer when arriving with the create intent', async () => {
+		renderRules( [
+			{ pathname: '/rules', state: { openCreateRule: true } },
+		] );
+
+		expect(
+			await screen.findByRole( 'dialog', { name: 'Create rule' } )
+		).toBeInTheDocument();
+		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( '' );
 	} );
 
 	it( 'keeps all four columns sortable with Created descending as default', async () => {
