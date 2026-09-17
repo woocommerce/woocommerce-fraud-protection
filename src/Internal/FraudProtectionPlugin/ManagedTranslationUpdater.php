@@ -136,7 +136,7 @@ class ManagedTranslationUpdater {
 		$body = wp_json_encode(
 			array(
 				'locales' => $locales,
-				'plugins' => array( self::PLUGIN_SLUG => array( 'version' => WC_FRAUD_PROTECTION_VERSION ) ),
+				'plugins' => array( self::PLUGIN_SLUG => array( 'version' => 'latest' ) ),
 			)
 		);
 		if ( ! is_string( $body ) ) {
@@ -165,10 +165,11 @@ class ManagedTranslationUpdater {
 				return array();
 			}
 			$locale        = $package['wp_locale'] ?? null;
+			$version       = $package['version'] ?? null;
 			$url           = $package['package'] ?? null;
 			$last_modified = $package['last_modified'] ?? null;
 			if ( ! is_string( $locale ) || ! in_array( $locale, $locales, true ) || isset( $packages[ $locale ] )
-				|| WC_FRAUD_PROTECTION_VERSION !== ( $package['version'] ?? null ) || ! is_string( $url ) || ! $this->is_trusted_url( $url )
+				|| ! is_string( $version ) || '' === $version || ! is_string( $url ) || ! $this->is_trusted_url( $url )
 				|| ! is_string( $last_modified ) || false === strtotime( $last_modified ) ) {
 				return array();
 			}

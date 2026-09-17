@@ -181,7 +181,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A valid pt_BR pack uses the exact request, replaces catalogs, removes stale files, and then skips equal and older revisions.
+	 * @testdox A valid pt_BR pack uses the latest request, accepts the resolved version, replaces catalogs, removes stale files, and then skips equal and older revisions.
 	 */
 	public function test_successful_update_and_revision_skip(): void {
 		$this->write_file( $this->catalog_path( '.po' ), $this->po_contents( '2026-09-16 12:00:00+00:00' ) );
@@ -203,7 +203,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 		$this->assertSame(
 			array(
 				'locales' => array( self::LOCALE, 'de_DE' ),
-				'plugins' => array( 'woocommerce-fraud-protection' => array( 'version' => WC_FRAUD_PROTECTION_VERSION ) ),
+				'plugins' => array( 'woocommerce-fraud-protection' => array( 'version' => 'latest' ) ),
 			),
 			json_decode( $this->request['args']['body'], true )
 		);
@@ -355,22 +355,25 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 
 	/** @return array<string, array{array<string, mixed>}> */
 	public function invalid_responses(): array {
-		$package                  = $this->package_metadata();
-		$wrong_version            = $package;
-		$wrong_version['version'] = '0.0.0';
-		$untrusted                = $package;
-		$untrusted['package']     = 'https://example.com/package.zip';
-		$credentialed             = $package;
-		$credentialed['package']  = 'https://user@translate.wordpress.com/package.zip';
-		$custom_port              = $package;
-		$custom_port['package']   = 'https://translate.wordpress.com:443/package.zip';
-		$fragment                 = $package;
-		$fragment['package']      = 'https://translate.wordpress.com/package.zip#catalog';
+		$package         = $this->package_metadata();
+		$missing_version = $package;
+		unset( $missing_version['version'] );
+		$invalid_version            = $package;
+		$invalid_version['version'] = '';
+		$untrusted                  = $package;
+		$untrusted['package']       = 'https://example.com/package.zip';
+		$credentialed               = $package;
+		$credentialed['package']    = 'https://user@translate.wordpress.com/package.zip';
+		$custom_port                = $package;
+		$custom_port['package']     = 'https://translate.wordpress.com:443/package.zip';
+		$fragment                   = $package;
+		$fragment['package']        = 'https://translate.wordpress.com/package.zip#catalog';
 
 		return array(
 			'API failure'          => array( array( 'success' => false ) ),
 			'wrong response owner' => array( array( 'data' => array( 'other-plugin' => array( $package ) ) ) ),
-			'wrong version'        => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $wrong_version ) ) ) ),
+			'missing version'      => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $missing_version ) ) ) ),
+			'invalid version'      => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $invalid_version ) ) ) ),
 			'untrusted host'       => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $untrusted ) ) ) ),
 			'URL credentials'      => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $credentialed ) ) ) ),
 			'custom port'          => array( array( 'data' => array( 'woocommerce-fraud-protection' => array( $custom_port ) ) ) ),
@@ -478,7 +481,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 	private function package_metadata(): array {
 		return array(
 			'wp_locale'     => self::LOCALE,
-			'version'       => WC_FRAUD_PROTECTION_VERSION,
+			'version'       => 'v0_2_5',
 			'package'       => 'https://translate.wordpress.com/packages/wcfp-pt_BR.zip',
 			'last_modified' => self::REVISION,
 		);
