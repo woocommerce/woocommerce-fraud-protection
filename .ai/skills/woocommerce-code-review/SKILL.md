@@ -78,6 +78,19 @@ Consult the `woocommerce-backend-dev` skill for details. Flag:
 - ❌ **No test for the fail-open path** of a new error branch
 - ❌ **Tests that only repeat WooCommerce behavior** or assert implementation details without protecting a contract
 
+### Front-End Code (`client/`, `tests/js/`)
+
+Consult the `woocommerce-frontend-dev` skill and go through its [review-checklist.md](../woocommerce-frontend-dev/review-checklist.md). The blockers reviewers have applied:
+
+- ❌ **Tooltip where a Popover is needed** (content with a link, or a non-focusable trigger), **tabs whose panels do not contain the content**, or **icon buttons without accessible names** ([ui-components.md](../woocommerce-frontend-dev/ui-components.md))
+- ❌ **Settings read from a PHP-injected global or a one-time page load** instead of the shared store, or **controls shown while the setting is unknown** ([data-and-state.md](../woocommerce-frontend-dev/data-and-state.md))
+- ❌ **Navigation state in `localStorage`, or the bare router pathname pushed to the history** instead of a full admin URL through `getHistory()` ([dataviews.md](../woocommerce-frontend-dev/dataviews.md))
+- ❌ **UI state corrected from a failed request**, or **stale responses applied** ([data-and-state.md](../woocommerce-frontend-dev/data-and-state.md))
+- ❌ **`DataViews` imported from the package root** instead of `@wordpress/dataviews/wp`, **sorting by a value the merchant does not see**, or **one empty message for every cause** ([dataviews.md](../woocommerce-frontend-dev/dataviews.md))
+- ❌ **Local SVGs, hand-rolled controls, hard-coded colours, or left/right paddings** instead of `@wordpress/icons`, `@wordpress/ui`, tokens, and logical properties ([styling.md](../woocommerce-frontend-dev/styling.md))
+- ❌ **A drawer or dialog that Escape can close while a save is in flight** ([ui-components.md](../woocommerce-frontend-dev/ui-components.md))
+- ❌ **Missing text domain or untranslated strings** in TSX ([js-i18n-patterns.md](../woocommerce-dev-cycle/js-i18n-patterns.md))
+
 ### Pull Request Hygiene (`AGENTS.md`, "Issues and pull requests")
 
 - ❌ **Missing `changelog.txt` entry** under the placeholder release for a merchant-facing or developer-facing change (tests, CI, documentation, and internal refactoring are exempt)
@@ -117,5 +130,5 @@ Fix: [Brief explanation or example]
 ## Notes
 
 - `AGENTS.md` is the source of truth for the safety, logging, and process rules; the skills carry the coding conventions
-- All detailed conventions are in the `woocommerce-backend-dev`, `woocommerce-dev-cycle`, and `woocommerce-copy-guidelines` skills
+- All detailed conventions are in the `woocommerce-backend-dev`, `woocommerce-frontend-dev`, `woocommerce-dev-cycle`, and `woocommerce-copy-guidelines` skills
 - When in doubt, refer to the specific document linked above

@@ -37,8 +37,8 @@ The standard development workflow:
 ## Repository Layout for Front-End Code
 
 - `assets/js/`: plain browser scripts (Blocks and shortcode checkout, pay-for-order, add-payment-method, PayPal, Blackbox init). They are served as-is with no build step and contain no user-facing text. Tested in `tests/js/*.test.js`.
-- `client/`: the React + TypeScript admin settings application (`admin-settings/`, `admin-checkout-attempts/`), built with `wp-scripts` into `build/`. Run `npm start` while developing it or `npm run build` before loading the settings page. It uses `@wordpress/components`, `@wordpress/ui`, `@wordpress/dataviews`, and `@wordpress/data`. Tested in `tests/js/*.test.tsx`.
-- `build/` is generated. Changes under `assets/` need no build.
+- `client/`: the React + TypeScript admin settings application (`admin-settings/`, `admin-checkout-attempts/`), built with `wp-scripts` into `build/`. Run `npm start` while developing it or `npm run build` before loading the settings page. It uses `@wordpress/ui`, `@wordpress/dataviews`, and `@wordpress/data`. Tested in `tests/js/*.test.tsx`. The `woocommerce-frontend-dev` skill covers its architecture and conventions; invoke it before changing anything under `client/` or `tests/js/`.
+- `build/` is generated and gitignored. Changes under `assets/` need no build.
 
 ## Key Principles
 
