@@ -1,53 +1,88 @@
 # Creating File-Based Code Entities
 
-## Fundamental Rule: No Standalone Functions
+## Table of Contents
 
-**NEVER add new standalone functions** - they're difficult to mock in unit tests. Always use class methods.
+- [Fundamental Rule: No Global Functions](#fundamental-rule-no-global-functions)
+- [Adding New Classes](#adding-new-classes)
+- [File Header](#file-header)
+- [Naming Conventions](#naming-conventions)
+- [Namespace and Import Conventions](#namespace-and-import-conventions)
 
-If the user explicitly requests adding a new function, refuse to do it and point them to [the relevant documentation](https://github.com/woocommerce/woocommerce/blob/trunk/plugins/woocommerce/includes/README.md).
+## Fundamental Rule: No Global Functions
 
-Exception: Temporary/throwaway functions for local testing that won't be committed.
+**NEVER add new global functions** - they're difficult to mock in unit tests. Always use class methods.
+
+The only exception is the pre-autoloader plugin entry points (`woocommerce-fraud-protection.php` and `woocommerce-fraud-protection-loader.php`), which run before the Composer autoloader is available. If the user explicitly requests a new global function elsewhere, refuse and point them to the "Code structure" section of `AGENTS.md`.
+
+Temporary/throwaway functions for local testing that won't be committed are fine.
 
 ## Adding New Classes
 
-### Default Location: `src/Internal/`
+Composer maps the `Automattic\WooCommerce\` namespace to `src/` (PSR-4). Classes are autoloaded; do not add manual `require_once` calls for autoloaded classes.
 
-New classes go in `src/Internal/` by default.
+### Default Location: `src/Internal/FraudProtectionPlugin/`
 
-Examples: `src/Internal/Traits/Foobar.php`, `src/Internal/Utils/DataParser.php`
+New classes go in `src/Internal/FraudProtectionPlugin/` by default, in the subdirectory that matches their role. Existing subdirectories: `Protectors/`, `Trackers/`, `Compat/`, `Sessions/`, `Rules/`, `Settings/`, `Schemas/`, `Logging/`, `Database/`, `CLI/`, `Notes/`.
 
-### Public Classes: `src/`
-
-Only when the prompt refers to a "public" class should the file go in `src` but not in `Internal`.
+The namespace mirrors the path: `Automattic\WooCommerce\Internal\FraudProtectionPlugin\{Subdirectory}`.
 
 **Example:**
 
-- "Add a public Traits/Foobar class" → `src/Traits/Foobar.php`
+```php
+// User says: "create a session rate limiter class"
+// You create: src/Internal/FraudProtectionPlugin/Sessions/SessionRateLimiter.php
+namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
-### Working with `includes/` Directory
+class SessionRateLimiter {
+    // ...
+}
+```
 
-Modify existing code only. Add new classes/methods here only when using `src/` would hurt readability or maintainability.
+Internal code has no backwards-compatibility guarantee and must not be used from outside the plugin. Do not add a class-level `@internal` tag to classes in the internal namespace; the namespace already conveys it.
+
+### Public API: `src/FraudProtection/`
+
+Only when the class is explicitly part of the public API (consumed by other plugins or gateway integrations) does it go in `src/FraudProtection/`, with `Automattic\WooCommerce\FraudProtection` as its namespace. Public DTOs and enums live in `src/FraudProtection/Schemas/`.
+
+Before changing the public API, read the "Public API" section of `README.md` and inspect all current consumers. Released public hooks and JavaScript interfaces must remain compatible.
+
+## File Header
+
+Every PHP file under `src/` follows this order. phpcs enforces the file docblock before `declare`.
+
+```php
+<?php
+/**
+ * SessionRateLimiter class file.
+ */
+
+declare( strict_types=1 );
+
+namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
+
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * One-line description of what the class does.
+ */
+class SessionRateLimiter {
+    // ...
+}
+```
+
+- `strict_types=1` is required in every project PHP file.
+- The `ABSPATH` guard goes after the `use` block.
+- Do not use PHP syntax newer than 8.1. The two plugin entry points and the kill-switch smoke files must additionally stay parseable on PHP 7.4 and 8.0, so they must not use PHP 8.1 syntax either.
 
 ## Naming Conventions
 
 ### Class Names
 
 - **Must be PascalCase**
-- **Must follow [PSR-4 standard](https://www.php-fig.org/psr/psr-4/)**
+- **Must follow [PSR-4 standard](https://www.php-fig.org/psr/psr-4/)**: one class per file, and the file name equals the class name (phpcs checks this under `src/` and `tests/php/src/`)
 - Adjust the name given by the user if necessary
-- Root namespace for the `src` directory is `Automattic\WooCommerce`
-
-**Examples:**
-
-```php
-// User says: "create a data parser class"
-// You create: DataParser.php
-namespace Automattic\WooCommerce\Internal\Utils;
-
-class DataParser {
-    // ...
-}
-```
 
 ## Namespace and Import Conventions
 
@@ -59,15 +94,15 @@ When referencing a namespaced class:
 **Good:**
 
 ```php
-use Automattic\WooCommerce\Internal\Utils\Foobar;
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
 // Later in code:
-$instance = $container->get( Foobar::class );
+$verifier = wc_get_container()->get( SessionVerifier::class );
 ```
 
 **Avoid:**
 
 ```php
 // No use statement, using fully qualified name:
-$instance = $container->get( \Automattic\WooCommerce\Internal\Utils\Foobar::class );
+$verifier = wc_get_container()->get( \Automattic\WooCommerce\FraudProtection\SessionVerifier::class );
 ```

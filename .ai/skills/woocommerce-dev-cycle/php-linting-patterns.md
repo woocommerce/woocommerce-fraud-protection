@@ -1,14 +1,15 @@
 # PHP Linting Patterns and Common Issues
 
-> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && pnpm lint:php:changes`).
+> **IMPORTANT:** Run `nvm use` before any `npm` or `npx` command. phpcs itself runs from `vendor/bin/` after `composer install`.
 
 ## Table of Contents
 
-- [Critical Rule: Lint Only Specific Files](#critical-rule-lint-only-specific-files)
+- [Lint Scope](#lint-scope)
 - [Common PHP Linting Issues & Fixes](#common-php-linting-issues--fixes)
 - [Translators Comment Placement](#translators-comment-placement)
-- [PSR-12 File Header Order](#psr-12-file-header-order)
-- [Mock Classes with Intentional Violations](#mock-classes-with-intentional-violations)
+- [File Header Order](#file-header-order)
+- [Inline phpcs Ignores](#inline-phpcs-ignores)
+- [Stubs and Mock Classes with Intentional Violations](#stubs-and-mock-classes-with-intentional-violations)
 - [Multi-line Condition Alignment](#multi-line-condition-alignment)
 - [Unused Closure Parameters](#unused-closure-parameters)
 - [Array and Operator Alignment](#array-and-operator-alignment)
@@ -16,25 +17,22 @@
 - [Workflow for Fixing PHP Linting Issues](#workflow-for-fixing-php-linting-issues)
 - [Quick Command Reference](#quick-command-reference)
 
-## Critical Rule: Lint Only Specific Files
+## Lint Scope
 
-**NEVER run linting on the entire codebase.** Always lint specific files, changed files or staged files only.
+CI runs `composer phpcs` over the whole repository, so every file must pass. While iterating, lint only the files you touched to keep the output readable, then run the full command once before handoff.
 
 ```bash
-# ✅ CORRECT: Check only changed files at the branch level
-pnpm lint:php:changes
+# ✅ Quick: lint the files you changed
+vendor/bin/phpcs src/Internal/FraudProtectionPlugin/Rules/RuleStore.php tests/php/src/Internal/FraudProtectionPlugin/Rules/RuleStoreTest.php
 
-# ✅ CORRECT: Check only changed files that are staged
-pnpm lint:php:changes:staged
+# ✅ Quick: lint every PHP file changed on the branch
+git diff --name-only trunk... -- '*.php' | xargs vendor/bin/phpcs
 
-# ✅ CORRECT: Lint specific file
-pnpm lint:php -- path/to/file.php
-pnpm lint:php:fix -- path/to/file.php
-
-# ❌ WRONG: Lints entire codebase
-pnpm lint:php
-pnpm lint:php:fix
+# ✅ Before handoff: the full run CI performs
+npm run lint:php
 ```
+
+Do not fix unrelated files in the same pull request unless asked.
 
 ## Common PHP Linting Issues & Fixes
 
@@ -42,11 +40,13 @@ pnpm lint:php:fix
 
 | Issue | Wrong | Correct |
 |-------|-------|---------|
-| **Translators comment** | Before return | Before function call |
-| **File docblock (PSR-12)** | After `declare()` | Before `declare()` |
+| **Translators comment** | Before return | Before the translation function call |
+| **File docblock** | After `declare()` | Before `declare()` |
+| **Text domain** | `'woocommerce'` | `'woocommerce-fraud-protection'` |
 | **Indentation** | Spaces | Tabs only |
 | **Array alignment** | Inconsistent | Align `=>` with context |
 | **Equals alignment** | Inconsistent | Match surrounding style |
+| **Missing `@throws`** | Method throws without a tag | Add `@throws` to the docblock (required under `src/`) |
 
 ## Translators Comment Placement
 
@@ -55,10 +55,10 @@ Translators comments must be placed **immediately before the translation functio
 ### Wrong - Comment Before Return
 
 ```php
-/* translators: %s: Gateway name. */
+/* translators: %s: Payment method title. */
 return sprintf(
-    esc_html__( '%s is not supported.', 'woocommerce' ),
-    'Gateway'
+    esc_html__( '%s is not supported.', 'woocommerce-fraud-protection' ),
+    $title
 );
 ```
 
@@ -66,9 +66,9 @@ return sprintf(
 
 ```php
 return sprintf(
-    /* translators: %s: Gateway name. */
-    esc_html__( '%s is not supported.', 'woocommerce' ),
-    'Gateway'
+    /* translators: %s: Payment method title. */
+    esc_html__( '%s is not supported.', 'woocommerce-fraud-protection' ),
+    $title
 );
 ```
 
@@ -76,16 +76,16 @@ return sprintf(
 
 ```php
 return sprintf(
-    /* translators: 1: Gateway name, 2: Country code. */
-    esc_html__( '%1$s is not available in %2$s.', 'woocommerce' ),
-    $gateway_name,
-    $country_code
+    /* translators: 1: Installed schema version, 2: Required schema version. */
+    esc_html__( 'Schema version %1$s is installed; version %2$s is required.', 'woocommerce-fraud-protection' ),
+    $installed_version,
+    $required_version
 );
 ```
 
-## PSR-12 File Header Order
+## File Header Order
 
-File docblocks must come **before** the `declare()` statement, not after.
+The file docblock comes **before** the `declare()` statement. Files under `src/` and `tests/php/` do not need a `@package` tag; the existing convention is a one-line `{ClassName} class file.` docblock.
 
 ### Wrong - Docblock After declare()
 
@@ -94,9 +94,7 @@ File docblocks must come **before** the `declare()` statement, not after.
 declare( strict_types=1 );
 
 /**
- * File docblock
- *
- * @package WooCommerce
+ * RuleStore class file.
  */
 ```
 
@@ -105,17 +103,34 @@ declare( strict_types=1 );
 ```php
 <?php
 /**
- * File docblock
- *
- * @package WooCommerce
+ * RuleStore class file.
  */
 
 declare( strict_types=1 );
+
+namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules;
 ```
 
-## Mock Classes with Intentional Violations
+## Inline phpcs Ignores
 
-When creating mock classes that must match external class names, use phpcs:disable comments:
+Use a targeted `phpcs:ignore` naming the sniff and giving a reason, as the existing code does:
+
+```php
+// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
+$request_data = $this->build_request_data( $_POST );
+```
+
+```php
+protected function assertLogged( string $level, string $substring ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.
+```
+
+Never disable a sniff for a whole file without a reason. `PluginInitializer` uses a targeted ignore for its pre-logger `error_log()` call; do not copy that into code that can use `FraudProtectionController::log()`.
+
+## Stubs and Mock Classes with Intentional Violations
+
+Stubs of third-party or global classes used by tests live in `tests/php/stubs/` (for example the Square gateway stub) and test doubles live in `tests/php/Support/`. PHPStan stubs for the same classes live in `stubs/` at the repository root. Follow the header of the existing files there.
+
+When a class must carry a name that violates the naming sniffs (for example a stub for a global `WC_` class), guard it with `class_exists()` and disable the specific sniffs in its docblock:
 
 ```php
 if ( ! class_exists( 'WC_Payments_Utils' ) ) {
@@ -123,7 +138,6 @@ if ( ! class_exists( 'WC_Payments_Utils' ) ) {
      * Mock class for testing.
      *
      * phpcs:disable Squiz.Classes.ClassFileName.NoMatch
-     * phpcs:disable Suin.Classes.PSR4.IncorrectClassName
      * phpcs:disable Squiz.Classes.ValidClassName.NotCamelCaps
      */
     class WC_Payments_Utils {
@@ -189,11 +203,9 @@ When creating closures with parameters required by signature but unused, use `un
 
 ### Common Scenarios
 
-- Mock method callbacks in PHPUnit tests
-- Array/filter callbacks where signature is fixed
+- Mock method callbacks in PHPUnit tests (`willReturnCallback()`)
+- Hook callbacks that receive arguments they do not need; alternatively register the callback with `0` accepted arguments, as the plugin does for `before_woocommerce_pay_form`
 - Interface implementations with unused parameters
-
-**Reference:** `tests/php/src/Internal/Admin/Settings/PaymentsRestControllerIntegrationTest.php:1647-1655`
 
 ## Array and Operator Alignment
 
@@ -203,10 +215,10 @@ Align `=>` arrows consistently within each array context:
 
 ```php
 // Correct - aligned arrows
-$options = array(
-    'gateway_id'   => 'stripe',
-    'enabled'      => true,
-    'country_code' => 'US',
+$context = array(
+    'session_id'   => $session_id,
+    'source'       => $source,
+    'decision'     => $decision->value,
 );
 
 // Also correct - no alignment for short arrays
@@ -222,14 +234,14 @@ Match the surrounding code style:
 
 ```php
 // When surrounding code aligns, align:
-$gateway_id     = 'stripe';
-$enabled        = true;
-$country_code   = 'US';
+$session_id   = 'abc';
+$source       = 'blocks_checkout';
+$order_id     = 42;
 
 // When surrounding code doesn't align, don't align:
-$gateway_id = 'stripe';
-$enabled = true;
-$country_code = 'US';
+$session_id = 'abc';
+$source = 'blocks_checkout';
+$order_id = 42;
 ```
 
 ## Indentation Rules
@@ -238,69 +250,66 @@ $country_code = 'US';
 
 ```php
 // ✅ Correct - tabs for indentation
-public function process_payment( $order_id ) {
-→   $order = wc_get_order( $order_id );
+public function verify_and_block( \WC_Order $order ): void {
+→   $decision = $this->session_verifier->verify_session( $session_id, self::SOURCE, $order->get_id(), $request_data );
 →
-→   if ( ! $order ) {
-→   →   return false;
+→   if ( FraudDecision::Block === $decision ) {
+→   →   wc_add_notice( $message, 'error' );
 →   }
-→
-→   return true;
 }
 
 // ❌ Wrong - spaces for indentation
-public function process_payment( $order_id ) {
-    $order = wc_get_order( $order_id );
+public function verify_and_block( \WC_Order $order ): void {
+    $decision = $this->session_verifier->verify_session( $session_id, self::SOURCE, $order->get_id(), $request_data );
 
-    if ( ! $order ) {
-        return false;
+    if ( FraudDecision::Block === $decision ) {
+        wc_add_notice( $message, 'error' );
     }
-
-    return true;
 }
 ```
 
 ## Workflow for Fixing PHP Linting Issues
 
-1. **Run linting on changed files:**
+1. **Lint the changed files:**
 
    ```bash
-   pnpm lint:php:changes
+   vendor/bin/phpcs -s path/to/file.php
    ```
 
 2. **Auto-fix what you can:**
 
    ```bash
-   pnpm lint:php:fix -- path/to/file.php
+   vendor/bin/phpcbf path/to/file.php
    ```
 
 3. **Review remaining errors** - Common issues that require manual fixing:
    - Translators comment placement
-   - File docblock order (PSR-12)
+   - File docblock order
+   - Missing `@throws` tags
    - Unused closure parameters (add `unset()`)
 
 4. **Address remaining issues manually**
 
-5. **Verify the output is clean:**
+5. **Verify the output is clean, then run the full lint before handoff:**
 
    ```bash
-   pnpm lint:php -- path/to/file.php
+   vendor/bin/phpcs path/to/file.php
+   npm run lint:php
    ```
-
-6. **Commit**
 
 ## Quick Command Reference
 
 ```bash
-# Check changed files
-pnpm lint:php:changes
+# Check specific files
+vendor/bin/phpcs src/Internal/FraudProtectionPlugin/Rules/RuleStore.php
 
-# Check specific file
-pnpm lint:php -- src/Internal/Admin/ClassName.php
+# Check with sniff codes
+vendor/bin/phpcs -s path/to/file.php
 
 # Fix specific file
-pnpm lint:php:fix -- src/Internal/Admin/ClassName.php
+vendor/bin/phpcbf path/to/file.php
 
-# Check with error details
-vendor/bin/phpcs -s path/to/file.php
+# Whole repository (CI)
+npm run lint:php
+npm run lint:php:autofix
 ```

@@ -20,23 +20,23 @@ Sentence case means only the first word and proper nouns are capitalized.
 
 ### Correct - Sentence Case
 
-- "Payment provider options"
-- "Complete setup"
-- "Add new gateway"
-- "Configure payment settings"
+- "Fraud prevention"
+- "Checkout attempts"
+- "Block this email address"
+- "Allow this IP address"
+- "Turn on automatic fraud prevention"
 - "Save changes"
 - "View documentation"
-- "Enable test mode"
 
 ### Incorrect - Title Case
 
-- "Payment Provider Options"
-- "Complete Setup"
-- "Add New Gateway"
-- "Configure Payment Settings"
+- "Fraud Prevention"
+- "Checkout Attempts"
+- "Block This Email Address"
+- "Allow This IP Address"
+- "Turn On Automatic Fraud Prevention"
 - "Save Changes"
 - "View Documentation"
-- "Enable Test Mode"
 
 ## Exceptions
 
@@ -59,9 +59,9 @@ Always capitalize acronyms:
 
 **Correct:**
 
+- "Block this IP address"
 - "Configure API settings"
 - "Enter URL"
-- "Set up SSL certificate"
 - "Generate CSV export"
 
 ### 3. Brand Names

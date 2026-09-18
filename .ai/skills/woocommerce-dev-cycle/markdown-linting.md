@@ -1,97 +1,57 @@
 # Markdown Linting
 
-> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && npm install -g markdownlint-cli`).
-
 ## Table of Contents
 
-- [Critical Rule](#critical-rule)
-- [Installation](#installation)
-- [Basic Commands](#basic-commands)
-- [Important: Always Run from Repository Root](#important-always-run-from-repository-root)
-- [Recommended Workflow](#recommended-workflow)
-- [Common Markdown Linting Issues](#common-markdown-linting-issues)
+- [Current State](#current-state)
+- [Optional: Running markdownlint](#optional-running-markdownlint)
 - [Character Encoding in Markdown Files](#character-encoding-in-markdown-files)
-- [Examples](#examples)
 - [Notes](#notes)
 
-## Critical Rule
+## Current State
 
-**ALWAYS lint markdown files after changes.** They must pass markdownlint validation.
+This repository has no markdownlint configuration and no markdown lint step in CI. Keep markdown consistent with the existing files (`README.md`, `AGENTS.md`, the skill files under `.ai/skills/`, and the pull request template) by following the `woocommerce-markdown` skill:
 
-## Installation
+- ATX headings (`#`), one H1 per file, no skipped levels
+- `-` for unordered lists, 4 spaces for nested items
+- Blank lines around headings, lists, and code blocks
+- Fenced code blocks always declare a language
+- Files end with a single newline, no trailing whitespace
 
-If markdownlint is not available:
+## Optional: Running markdownlint
 
-```bash
-npm install -g markdownlint-cli
-```
-
-## Basic Commands
-
-```bash
-# Check markdown file (run from repo root)
-markdownlint plugins/woocommerce/CLAUDE.md
-
-# RECOMMENDED: Auto-fix issues first (handles most errors)
-markdownlint --fix plugins/woocommerce/CLAUDE.md
-
-# Check multiple files
-markdownlint packages/js/CLAUDE.md plugins/woocommerce/CLAUDE.md
-
-# Lint all CLAUDE.md files
-markdownlint packages/js/CLAUDE.md plugins/woocommerce/CLAUDE.md \
-  plugins/woocommerce/client/admin/CLAUDE.md
-```
-
-## Important: Always Run from Repository Root
-
-**CRITICAL:** Always run markdownlint from the repository root so the `.markdownlint.json` config file is loaded.
-
-Using absolute paths bypasses the config and may show incorrect errors.
+If you want an automated check, run markdownlint-cli through `npx` with its default rules. Do not add a configuration file or a dependency for it unless asked.
 
 ```bash
-# ✅ CORRECT - run from repo root
-cd /path/to/woocommerce
-markdownlint plugins/woocommerce/CLAUDE.md
+# Auto-fix most issues
+npx markdownlint-cli --fix --disable MD013 -- path/to/file.md
 
-# ❌ WRONG - bypasses config
-markdownlint /absolute/path/to/plugins/woocommerce/CLAUDE.md
+# Report what remains
+npx markdownlint-cli --disable MD013 -- path/to/file.md
 ```
 
-## Recommended Workflow
+`MD013` (line length) is disabled in these examples because the existing files use long lines freely; do not rewrap prose to satisfy it.
 
-1. Make markdown changes
-2. Run `markdownlint --fix path/to/file.md` (auto-fixes most issues)
-3. Check remaining: `markdownlint path/to/file.md`
-4. Manually fix what remains (language specs, long lines)
-5. Verify clean, then commit
+Issues that usually need a manual fix:
 
-## Common Markdown Linting Issues
-
-| Code | Issue | Description | Fix |
-|------|-------|-------------|-----|
-| **MD007** | List indentation | Wrong indentation level | Use 4 spaces for nested items |
-| **MD013** | Line length limit | Line exceeds 80 chars | Break into multiple lines |
-| **MD031** | Code blocks need blank lines | Missing blank lines | Add blank above/below code blocks |
-| **MD032** | Lists need blank lines | Missing blank lines | Add blank before/after lists |
-| **MD036** | Emphasis as heading | Using bold instead of heading | Use `###` not bold |
-| **MD040** | Code needs language | Missing language spec | Add: \`\`\`bash, \`\`\`php, etc. |
-| **MD047** | Need trailing newline | File doesn't end with newline | File must end with newline |
+| Code | Issue | Fix |
+|------|-------|-----|
+| **MD007** | List indentation | Use 4 spaces for nested items |
+| **MD031** | Code blocks need blank lines | Add a blank line above and below the fence |
+| **MD032** | Lists need blank lines | Add a blank line before and after the list |
+| **MD036** | Emphasis used as a heading | Use a real heading |
+| **MD040** | Code block without language | Add `bash`, `php`, `typescript`, `json`, `text`, ... |
+| **MD047** | Missing trailing newline | End the file with one newline |
 
 ## Character Encoding in Markdown Files
 
-### Critical: Use Proper UTF-8 Characters
+**Never allow control characters or null bytes into markdown files.**
 
-**NEVER allow control characters or null bytes into markdown files.**
-
-### Directory Trees
-
-Use UTF-8 box-drawing characters, not spaces, tabs, or ASCII art:
+Use UTF-8 box-drawing characters for directory trees, not ASCII art:
 
 ```markdown
 ✅ CORRECT - UTF-8 box-drawing:
 .ai/skills/
-├── woocommerce-backend/
+├── woocommerce-backend-dev/
 │   ├── SKILL.md
 │   └── file-entities.md
 └── woocommerce-dev-cycle/
@@ -99,16 +59,11 @@ Use UTF-8 box-drawing characters, not spaces, tabs, or ASCII art:
 
 ❌ WRONG - ASCII art or spaces:
 .ai/skills/
-+-- woocommerce-backend/
++-- woocommerce-backend-dev/
 |   +-- SKILL.md
-    +-- file-entities.md
 ```
 
-### Avoiding File Corruption
-
-**NEVER use Edit tool after `markdownlint --fix`** if the file contains directory trees.
-
-**Always check file encoding first:**
+Check the encoding after editing a file that contains such characters:
 
 ```bash
 file path/to/file.md
@@ -116,89 +71,15 @@ file path/to/file.md
 # NEVER: "data"
 ```
 
-### Fixing Corrupted Files
-
 If a file becomes corrupted (shows as "data" instead of text):
 
 ```bash
 # Remove control characters and null bytes
 tr -d '\000-\037' < file.md > file.clean.md && mv file.clean.md file.md
-
-# Verify encoding after fix
 file file.md
 ```
 
-## Examples
-
-### Adding Language Specs to Code Blocks
-
-**Before:**
-
-````markdown
-```
-pnpm test:php:env
-```
-````
-
-**After:**
-
-````markdown
-```bash
-pnpm test:php:env
-```
-````
-
-Common language specs:
-
-- `bash` - Shell commands
-- `php` - PHP code
-- `javascript` or `js` - JavaScript
-- `typescript` or `ts` - TypeScript
-- `json` - JSON data
-- `markdown` or `md` - Markdown examples
-
-### Breaking Long Lines
-
-**Before:**
-
-```markdown
-This is a very long line that exceeds the 80 character limit and needs to be broken into multiple lines for better readability.
-```
-
-**After:**
-
-```markdown
-This is a very long line that exceeds the 80 character limit and needs to be
-broken into multiple lines for better readability.
-```
-
-### Blank Lines Around Code Blocks
-
-**Before:**
-
-````markdown
-Some text here
-```bash
-command here
-```
-More text
-````
-
-**After:**
-
-````markdown
-Some text here
-
-```bash
-command here
-```
-
-More text
-````
-
 ## Notes
 
-- `markdownlint --fix` automatically handles most issues
-- CLAUDE.md files are AI assistant documentation and must be well-formatted for optimal parsing
-- Only a few issues require manual fixing (language specs, long lines)
-- Always verify encoding after edits to prevent corruption
+- `changelog.txt` is plain text in the WooCommerce extension format, not markdown; see the `woocommerce-markdown` skill for its format
+- `AGENTS.md` is the agent-facing source of truth; keep it terse and update it instead of duplicating rules into skill files

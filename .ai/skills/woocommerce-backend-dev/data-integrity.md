@@ -1,5 +1,9 @@
 # Data Integrity Guidelines
 
+In this plugin the persistent data are merchant rules (`Rules/RuleStore`), recorded session events (`Sessions/SessionEventStore`), the plugin's options, and order meta. The examples below use WooCommerce orders and carts for illustration; apply the same checks to the plugin's own stores. Merchant-facing REST controllers authorize with the `manage_woocommerce` capability, which is the custom capability declared in `phpcs.xml`.
+
+Verdict-derived state has its own rules: see "Preserve each attempt's decision" in `AGENTS.md` before persisting anything derived from a fraud decision.
+
 ## Table of Contents
 
 - [Preventing Accidental Data Loss](#preventing-accidental-data-loss)
@@ -111,8 +115,8 @@ Before implementing code that modifies or deletes data:
 - [ ] Check for race conditions
 - [ ] Consider using soft delete (trash) instead of hard delete
 - [ ] Add appropriate error handling
-- [ ] Log sensitive operations for audit trail
-- [ ] Add capability checks (`current_user_can()`)
+- [ ] Log sensitive operations for audit trail (with `FraudProtectionController::log()`; keep user data in structured context, not in the message)
+- [ ] Add capability checks (`current_user_can( 'manage_woocommerce' )` for merchant-facing operations)
 
 ## Common Pitfalls to Avoid
 
