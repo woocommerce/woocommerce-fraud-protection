@@ -207,7 +207,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 			),
 			json_decode( $this->request['args']['body'], true )
 		);
-		$this->assertSame( array( 'Content-Type: application/json' ), $this->request['args']['headers'] );
+		$this->assertSame( array( 'Content-Type' => 'application/json' ), $this->request['args']['headers'] );
 		$this->assertSame( 30, $this->request['args']['timeout'] );
 		$this->assertSame( 'new runtime', file_get_contents( $this->catalog_path( '.mo' ) ) );
 		$this->assertFileExists( $this->catalog_path( '-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json' ) );

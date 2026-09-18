@@ -147,7 +147,7 @@ class ManagedTranslationUpdater {
 			self::ENDPOINT,
 			array(
 				'body'    => $body,
-				'headers' => array( 'Content-Type: application/json' ),
+				'headers' => array( 'Content-Type' => 'application/json' ),
 				'timeout' => self::REQUEST_TIMEOUT,
 			)
 		);
