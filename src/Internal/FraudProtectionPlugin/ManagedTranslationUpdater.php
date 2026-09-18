@@ -467,6 +467,6 @@ class ManagedTranslationUpdater {
 
 	/** Get the managed translation directory. */
 	private function get_translation_dir(): string {
-		return untrailingslashit( WP_LANG_DIR . '/mu-plugins' );
+		return untrailingslashit( WP_LANG_DIR . '/woocommerce-fraud-protection' );
 	}
 }

@@ -203,10 +203,10 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 
 		$locale = determine_locale();
 		$this->assertSame(
-			array( 'woocommerce-fraud-protection', WP_LANG_DIR . '/mu-plugins/woocommerce-fraud-protection-' . $locale . '.mo', $locale ),
+			array( 'woocommerce-fraud-protection', WP_LANG_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection-' . $locale . '.mo', $locale ),
 			$loaded
 		);
-		$this->assertSame( WP_LANG_DIR . '/mu-plugins', PluginInitializer::get_script_translation_dir() );
+		$this->assertSame( WP_LANG_DIR . '/woocommerce-fraud-protection', PluginInitializer::get_script_translation_dir() );
 	}
 
 	/**

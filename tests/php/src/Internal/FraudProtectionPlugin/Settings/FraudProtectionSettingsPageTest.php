@@ -238,7 +238,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
 
 		$script = wp_scripts()->registered[ self::ASSET_HANDLE ];
-		$this->assertSame( WP_LANG_DIR . '/mu-plugins', $script->translations_path );
+		$this->assertSame( WP_LANG_DIR . '/woocommerce-fraud-protection', $script->translations_path );
 	}
 
 	/**
