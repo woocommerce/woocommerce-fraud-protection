@@ -8,6 +8,7 @@
 * Updated - Rules list filters, sorting, paging, and display preferences now persist across navigation and visits.
 * Fixed - The rules list keeps its actions column while it refreshes.
 * Fixed - Manual rule feedback now identifies the rule action and matching field.
+* Fixed - Managed installations now load available Fraud Protection translations for PHP and settings screens.
 
 2026-09-16 - version 0.2.5
 * Added - Checkout attempts list on the Fraud prevention settings page showing recent attempts and how each was handled, with filtering, sorting and search.
