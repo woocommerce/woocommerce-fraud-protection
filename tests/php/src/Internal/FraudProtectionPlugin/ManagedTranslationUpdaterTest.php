@@ -547,7 +547,7 @@ class ManagedTranslationUpdaterTest extends FraudProtectionUnitTestCase {
 
 	/** Return the managed translation directory. */
 	private function translation_dir(): string {
-		return WP_LANG_DIR . '/mu-plugins';
+		return WP_LANG_DIR . '/woocommerce-fraud-protection';
 	}
 
 	/** Create the filesystem cleanup fake. */

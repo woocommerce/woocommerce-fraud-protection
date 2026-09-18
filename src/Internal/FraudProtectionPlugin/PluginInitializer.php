@@ -42,7 +42,7 @@ class PluginInitializer {
 	 * @return void
 	 */
 	public static function run( string $plugin_file ): void {
-		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.5' );
+		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.6' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', $plugin_file );
 
 		self::register_managed_textdomain();
@@ -117,7 +117,7 @@ class PluginInitializer {
 		$locale = determine_locale();
 		load_textdomain(
 			'woocommerce-fraud-protection',
-			WP_LANG_DIR . '/mu-plugins/woocommerce-fraud-protection-' . $locale . '.mo',
+			WP_LANG_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection-' . $locale . '.mo',
 			$locale
 		);
 	}
@@ -129,7 +129,7 @@ class PluginInitializer {
 	 */
 	public static function get_script_translation_dir(): string {
 		return self::is_managed_install()
-			? WP_LANG_DIR . '/mu-plugins'
+			? WP_LANG_DIR . '/woocommerce-fraud-protection'
 			: dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages';
 	}
 
