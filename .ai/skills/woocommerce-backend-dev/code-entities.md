@@ -6,7 +6,8 @@
 - [Method Visibility](#method-visibility)
 - [Static Methods](#static-methods)
 - [Docblock Requirements](#docblock-requirements)
-    - [Public, Protected Methods, and Hooks](#public-protected-methods-and-hooks)
+    - [`@since` Annotations](#since-annotations)
+    - [`@throws` Annotations](#throws-annotations)
     - [Private Methods and Internal Callbacks](#private-methods-and-internal-callbacks)
     - [@internal Annotation Placement](#internal-annotation-placement)
 - [Hook Docblocks](#hook-docblocks)
@@ -19,8 +20,8 @@ Use snake_case for methods, variables, and hooks (not camelCase or PascalCase).
 
 ```php
 // Correct
-public function calculate_order_total() { }
-private $order_items;
+public function verify_session() { }
+private $session_verifier;
 ```
 
 ## Method Visibility
@@ -29,20 +30,20 @@ New class methods should be `private` by default.
 
 **Use `protected`** only if it's clear the method will be used in derived classes.
 
-**Use `public`** only if the method will be called from outside the class.
+**Use `public`** only if the method will be called from outside the class. Hook callbacks and the `init()` dependency method must be public; mark them `@internal` (see below) so they are not treated as public API.
 
 **Examples:**
 
 ```php
-class OrderProcessor {
+class RuleEvaluator {
     // Default: private for internal helpers
-    private function validate_items( array $items ) { }
+    private function normalize_value( string $value ): string { }
 
     // Protected: for use in child classes
-    protected function get_tax_rate( string $country ) { }
+    protected function get_operator( string $name ): ConditionOperator { }
 
-    // Public: external API
-    public function process_order( int $order_id ) { }
+    // Public: called from other classes
+    public function evaluate( array $session_data ): ?Rule { }
 }
 ```
 
@@ -53,18 +54,13 @@ Pure methods (output depends only on inputs, no external dependencies) must be `
 **Examples of pure methods (should be static):**
 
 ```php
-// Mathematical calculations
-public static function calculate_percentage( float $amount, float $percent ) {
-    return $amount * ( $percent / 100 );
-}
-
 // String manipulations
-public static function format_product_sku( string $sku ) {
-    return strtoupper( trim( $sku ) );
+public static function normalize_email( string $email ): string {
+    return strtolower( trim( $email ) );
 }
 
 // Data transformations
-public static function normalize_address( array $address ) {
+public static function normalize_address( array $address ): array {
     return array_map( 'trim', $address );
 }
 ```
@@ -73,91 +69,100 @@ public static function normalize_address( array $address ) {
 
 ```php
 // Depends on database
-public function get_order_total( int $order_id ) { }
+public function find_rule( string $value ): ?Rule { }
 
 // Depends on system time
-public function is_order_recent( int $order_id ) { }
+public function is_recent( int $timestamp ): bool { }
 
 // Uses object state
-public function calculate_with_tax( float $amount ) {
-    return $amount * $this->tax_rate;
+public function verify_session( string $session_id ): FraudDecision {
+    return $this->api_client->verify( $session_id );
 }
 ```
 
-**Exception:** Non-pure methods should not be `static` unless there's a specific architectural reason (e.g., singleton pattern, factory methods).
+**Exception:** Non-pure methods should not be `static` unless there's a specific architectural reason. The plugin's own example is the `FraudProtectionController::log()` facade.
 
 ## Docblock Requirements
 
 Add concise docblocks to all hooks and methods. One line is ideal.
 
-### Public, Protected Methods, and Hooks
+### `@since` Annotations
 
-Must include a `@since` annotation with the next WooCommerce version number.
+WooCommerce Core requires `@since` on every public method. This plugin applies it only to its public contract:
 
-The `@since` annotation must be:
+- Public hooks (actions and filters fired by the plugin)
+- The public API in `src/FraudProtection/` (classes, public methods, constructors, enum cases)
+
+Internal classes and their methods do not carry `@since`, and phpcs does not require it here (the `MissingSinceComment` sniff is excluded in `phpcs.xml`).
+
+When present on a method, the `@since` annotation must be:
 
 - The last line in the docblock
 - Preceded by a blank comment line
-- Use the version from `includes/class-woocommerce.php` on trunk, removing the `-dev` suffix
-  (e.g., if trunk shows `10.4.0-dev`, use `@since 10.4.0`)
+- The plugin version from the placeholder release block in `changelog.txt` (see "Version Information" in [SKILL.md](SKILL.md))
+
+Hook docblocks in this plugin place the `@since` lines before the `@param` list instead; see [hooks.md](hooks.md).
 
 **Good - Concise:**
 
 ```php
 /**
- * Process the order and update status.
+ * The effective session ID of the last completed verification.
  *
- * @param int $order_id The order ID.
- * @return bool True if successful.
+ * @return string The response session ID, or an empty string.
  *
- * @since 9.5.0
+ * @since 0.2.6
  */
-public function process_order( int $order_id ) { }
-
-/**
- * Fires after an order is processed.
- *
- * @param int $order_id The order ID.
- *
- * @since 9.5.0
- */
-do_action( 'woocommerce_order_processed', $order_id );
+public function last_verified_session_id(): string { }
 ```
 
 **Avoid - Over-explained:**
 
 ```php
 /**
- * This method processes the order by validating the order data,
- * checking inventory levels, processing payment, and then updating
- * the order status to reflect the successful processing.
+ * This method returns the session ID that was resolved by the last verification,
+ * which is the identifier that the verification persisted and to which the
+ * outcome of that verification is attached, so callers can use it as a key.
  *
- * @param int $order_id The unique identifier for the order that needs to be processed.
- * @return bool Returns true if the order was processed successfully, false otherwise.
+ * @return string Returns the session identifier string resolved by the last verification, or an empty string if there was none.
  *
- * @since 9.5.0
+ * @since 0.2.6
  */
 ```
 
-For hooks, aim for a single descriptive line whenever possible.
+### `@throws` Annotations
+
+phpcs requires a `@throws` tag on every method under `src/` that throws (the sniff is relaxed only for tests). Name the exception class and say when it is thrown.
+
+```php
+/**
+ * Store a rule.
+ *
+ * @param Rule $rule The rule to store.
+ * @return int The stored rule ID.
+ *
+ * @throws DuplicateRuleException When an active rule with the same value already exists.
+ */
+public function save( Rule $rule ): int { }
+```
 
 ### Private Methods and Internal Callbacks
 
 Do NOT require a `@since` annotation if they are:
 
 - Private methods
-- Internal callbacks (marked with `@internal`)
+- Hook callbacks and `init()` methods (marked with `@internal`)
 
 **Example:**
 
 ```php
 /**
- * Internal helper to validate order items.
+ * Internal helper to validate rule values.
  *
- * @param array $items The items to validate.
+ * @param string $value The value to validate.
  * @return bool
  */
-private function validate_items( array $items ) { }
+private function is_valid_value( string $value ): bool { }
 ```
 
 ### @internal Annotation Placement
@@ -172,13 +177,14 @@ When an `@internal` annotation is added, it must be:
 
 ```php
 /**
- * Handle the woocommerce_init hook.
+ * Verify the session and block the payment on a Block decision.
  *
  * @internal
  *
- * @param array $args Hook arguments.
+ * @param \WC_Order $order The order being paid for.
+ * @return void
  */
-public function handle_woocommerce_init( array $args ) { }
+public function verify_and_block( \WC_Order $order ): void { }
 ```
 
 ## Hook Docblocks
