@@ -615,16 +615,16 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function express_payment_type_provider(): array {
 		return array(
-			'Apple Pay'           => array( 'applePay', 'apple_pay' ),
-			'Apple Pay canonical' => array( 'apple_pay', 'apple_pay' ),
-			'Google Pay'          => array( 'googlePay', 'google_pay' ),
-			'Google Pay canonical'=> array( 'google_pay', 'google_pay' ),
-			'Amazon Pay'          => array( 'amazonPay', 'amazon_pay' ),
-			'Amazon Pay canonical'=> array( 'amazon_pay', 'amazon_pay' ),
-			'PayPal'              => array( 'paypal', 'paypal' ),
-			'Link'                => array( 'link', 'link' ),
-			'Cash App Pay'        => array( 'cashapp', 'cash_app_pay' ),
-			'Cash App canonical'  => array( 'cash_app_pay', 'cash_app_pay' ),
+			'Apple Pay'            => array( 'applePay', 'apple_pay' ),
+			'Apple Pay canonical'  => array( 'apple_pay', 'apple_pay' ),
+			'Google Pay'           => array( 'googlePay', 'google_pay' ),
+			'Google Pay canonical' => array( 'google_pay', 'google_pay' ),
+			'Amazon Pay'           => array( 'amazonPay', 'amazon_pay' ),
+			'Amazon Pay canonical' => array( 'amazon_pay', 'amazon_pay' ),
+			'PayPal'               => array( 'paypal', 'paypal' ),
+			'Link'                 => array( 'link', 'link' ),
+			'Cash App Pay'         => array( 'cashapp', 'cash_app_pay' ),
+			'Cash App canonical'   => array( 'cash_app_pay', 'cash_app_pay' ),
 		);
 	}
 
@@ -680,9 +680,9 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Provider card wallet takes priority over the request fallback.
 	 */
 	public function test_provider_card_wallet_takes_priority_over_request_fallback(): void {
-		$response                      = $this->create_card_response();
-		$response->card->wallet        = new \stdClass();
-		$response->card->wallet->type  = 'apple_pay';
+		$response                     = $this->create_card_response();
+		$response->card->wallet       = new \stdClass();
+		$response->card->wallet->type = 'apple_pay';
 		\WC_Stripe_API::set_mock_response( $response );
 
 		$array = $this->sut->resolve(

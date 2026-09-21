@@ -355,7 +355,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			$resolved,
 			array(
 				'wc-square-credit-card-payment-token' => 'token_123',
-				'wc-square-digital-wallet-type'        => 'GOOGLE_PAY',
+				'wc-square-digital-wallet-type'       => 'GOOGLE_PAY',
 			)
 		)->to_array();
 

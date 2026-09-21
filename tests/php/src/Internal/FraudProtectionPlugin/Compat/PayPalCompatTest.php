@@ -213,7 +213,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function create_order_funding_source_provider(): array {
 		return array(
-			'creates payment data'          => array(
+			'creates payment data'         => array(
 				array(
 					'funding_source' => 'paypal',
 					'context'        => 'product',
@@ -224,7 +224,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 					'payment_data'   => array( 'funding_source' => 'paypal' ),
 				),
 			),
-			'preserves other payment data'  => array(
+			'preserves other payment data' => array(
 				array(
 					'funding_source' => 'venmo',
 					'payment_data'   => array( 'gateway_token' => 'tokenized-value' ),
@@ -239,7 +239,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 					'context'        => 'cart',
 				),
 			),
-			'keeps nested funding source'   => array(
+			'keeps nested funding source'  => array(
 				array(
 					'funding_source' => 'paypal',
 					'payment_data'   => array( 'funding_source' => 'apple_pay' ),
@@ -249,7 +249,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 					'payment_data'   => array( 'funding_source' => 'apple_pay' ),
 				),
 			),
-			'keeps malformed payment data'  => array(
+			'keeps malformed payment data' => array(
 				array(
 					'funding_source' => 'googlepay',
 					'payment_data'   => 'invalid',

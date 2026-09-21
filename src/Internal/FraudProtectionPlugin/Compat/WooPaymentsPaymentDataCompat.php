@@ -151,9 +151,9 @@ class WooPaymentsPaymentDataCompat {
 			return $this->with_wallet_if_empty( $resolved, $request_wallet );
 		}
 
-		$type       = $pm_details['type'];
-		$instrument = $this->build_instrument( $type, $pm_details );
-		$result     = new PaymentMethodData(
+		$type            = $pm_details['type'];
+		$instrument      = $this->build_instrument( $type, $pm_details );
+		$result          = new PaymentMethodData(
 			$resolved->get_gateway(),
 			$type,
 			$is_saved,
@@ -190,6 +190,11 @@ class WooPaymentsPaymentDataCompat {
 		}
 
 		try {
+			/**
+			 * Filters whether WooPayments authenticated the current request as WooPay.
+			 *
+			 * @param bool $is_woopay_request Whether the request is authenticated as WooPay.
+			 */
 			return true === apply_filters( 'wcpay_is_woopay_store_api_request', false );
 		} catch ( \Throwable $e ) {
 			return false;

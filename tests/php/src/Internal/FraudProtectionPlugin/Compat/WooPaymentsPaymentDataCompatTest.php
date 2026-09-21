@@ -687,7 +687,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_maps_provider_payment_type_to_wallet( string $payment_type, string $expected ): void {
 		$this->mock_api_response(
 			array(
-				'type'          => $payment_type,
+				'type'        => $payment_type,
 				$payment_type => array(),
 			)
 		);
@@ -752,7 +752,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	/** @testdox Raw WooPay request claims do not produce a wallet label. */
 	public function test_raw_woopay_claims_are_not_trusted(): void {
 		\WC_Payments_Features::set_woopay_enabled( true );
-		$previous_user_agent       = $_SERVER['HTTP_USER_AGENT'] ?? null;
+		$previous_user_agent        = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : null;
 		$_SERVER['HTTP_USER_AGENT'] = 'WooPay';
 
 		try {

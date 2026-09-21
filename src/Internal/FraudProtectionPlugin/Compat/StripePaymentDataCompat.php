@@ -71,8 +71,8 @@ class StripePaymentDataCompat {
 
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
-		$request_wallet       = $this->normalize_wallet( $checkout_payment_fields['express_payment_type'] ?? null );
-		$resolved             = $resolved
+		$request_wallet      = $this->normalize_wallet( $checkout_payment_fields['express_payment_type'] ?? null );
+		$resolved            = $resolved
 			->with_transaction_mode( $transaction_mode )
 			->with_merchant_identifier( $merchant_identifier, 'account' );
 
