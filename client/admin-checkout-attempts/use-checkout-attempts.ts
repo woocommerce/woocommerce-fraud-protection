@@ -17,6 +17,10 @@ export type CheckoutAttemptsState = {
 	refresh: () => void;
 };
 
+type RequestState = Omit< CheckoutAttemptsState, 'refresh' > & {
+	path: string | null;
+};
+
 function filterValues( view: View, field: string ): string[] {
 	const filter = ( view.filters ?? [] ).find(
 		( candidate ) => candidate.field === field
@@ -54,14 +58,13 @@ export function useCheckoutAttempts(
 	view: View,
 	finalStatus: FinalStatus | null
 ): CheckoutAttemptsState {
-	const [ state, setState ] = useState<
-		Omit< CheckoutAttemptsState, 'refresh' >
-	>( {
+	const [ state, setState ] = useState< RequestState >( {
 		sessions: [],
 		totalItems: 0,
 		totalPages: 0,
 		isLoading: true,
 		error: null,
+		path: null,
 	} );
 	const [ requestVersion, setRequestVersion ] = useState( 0 );
 	const refresh = useCallback(
@@ -78,6 +81,7 @@ export function useCheckoutAttempts(
 			...previous,
 			isLoading: true,
 			error: null,
+			path,
 		} ) );
 
 		( apiFetch( { path, parse: false } ) as Promise< Response > )
@@ -100,6 +104,7 @@ export function useCheckoutAttempts(
 					),
 					isLoading: false,
 					error: null,
+					path,
 				} );
 			} )
 			.catch( ( error: unknown ) => {
@@ -119,6 +124,7 @@ export function useCheckoutAttempts(
 									'The checkout attempts could not be loaded.',
 									'woocommerce-fraud-protection'
 							  ),
+					path,
 				} );
 			} );
 
@@ -127,5 +133,12 @@ export function useCheckoutAttempts(
 		};
 	}, [ path, requestVersion ] );
 
-	return { ...state, refresh };
+	const { path: resultPath, ...result } = state;
+	const isCurrentPath = resultPath === path;
+	return {
+		...result,
+		isLoading: ! isCurrentPath || result.isLoading,
+		error: isCurrentPath ? result.error : null,
+		refresh,
+	};
 }

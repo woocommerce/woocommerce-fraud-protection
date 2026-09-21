@@ -1,22 +1,46 @@
-import { dateI18n, getSettings as getDateSettings } from '@wordpress/date';
 import { __ } from '@wordpress/i18n';
 import type { Field } from '@wordpress/dataviews';
 
+import { formatDateTime } from './dates';
 import { OutcomeBadge, getOutcomeOptions } from './outcomes';
 import { getPaymentMethodElements } from './payment-method-elements';
 import { RuleChip } from './rule-chip';
 import type { CheckoutAttemptsConfig, Session } from './types';
+import { defineEnumFilter, defineListFilter } from '../list-state';
 
 const EMPTY = '—';
 
-function formatRecordedAt( value: string ): string {
-	// The value is a GMT time with no offset; mark it UTC so dateI18n renders
-	// it in the site timezone.
-	const formats = getDateSettings().formats;
-	const format = formats.datetimeAbbreviated || formats.datetime;
+export const providerFilter = defineListFilter( {
+	field: 'payment_method',
+	operator: 'isAny',
+	param: 'provider',
+} );
 
-	return dateI18n( format, `${ value }Z` );
-}
+export const rulesFilter = defineEnumFilter( {
+	field: 'rules',
+	operator: 'is',
+	param: 'rules',
+	values: [
+		{
+			value: 'with',
+			label: __( 'With matching rules', 'woocommerce-fraud-protection' ),
+		},
+		{
+			value: 'without',
+			label: __(
+				'Without matching rules',
+				'woocommerce-fraud-protection'
+			),
+		},
+	],
+} );
+
+export const outcomeFilter = defineListFilter( {
+	field: 'outcome',
+	operator: 'isAny',
+	param: 'outcome',
+	values: getOutcomeOptions(),
+} );
 
 export function getFields(
 	config: CheckoutAttemptsConfig,
@@ -28,7 +52,7 @@ export function getFields(
 
 	return [
 		{
-			id: 'payment_method',
+			id: providerFilter.field,
 			label: __( 'Provider', 'woocommerce-fraud-protection' ),
 			enableHiding: false,
 			enableGlobalSearch: false,
@@ -40,14 +64,14 @@ export function getFields(
 			render: ( { item } ) =>
 				item.payment_method.title || item.payment_method.id || EMPTY,
 			getElements: getPaymentMethodElements,
-			filterBy: { operators: [ 'isAny' ] },
+			filterBy: { operators: [ providerFilter.operator ] },
 		},
 		{
 			id: 'recorded_at',
 			label: __( 'Date and time', 'woocommerce-fraud-protection' ),
 			enableGlobalSearch: false,
 			getValue: ( { item } ) => item.recorded_at_gmt,
-			render: ( { item } ) => formatRecordedAt( item.recorded_at_gmt ),
+			render: ( { item } ) => formatDateTime( item.recorded_at_gmt ),
 			filterBy: false,
 		},
 		{
@@ -137,7 +161,7 @@ export function getFields(
 			// Filter-only field (not shown as a column): whether an active
 			// merchant rule currently targets the attempt's email or IP. A
 			// single-select operator renders it as a radio-style filter.
-			id: 'rules',
+			id: rulesFilter.field,
 			label: __( 'Merchant rule', 'woocommerce-fraud-protection' ),
 			enableSorting: false,
 			enableGlobalSearch: false,
@@ -153,26 +177,11 @@ export function getFields(
 							'Without matching rules',
 							'woocommerce-fraud-protection'
 					  ),
-			elements: [
-				{
-					value: 'with',
-					label: __(
-						'With matching rules',
-						'woocommerce-fraud-protection'
-					),
-				},
-				{
-					value: 'without',
-					label: __(
-						'Without matching rules',
-						'woocommerce-fraud-protection'
-					),
-				},
-			],
-			filterBy: { operators: [ 'is' ] },
+			elements: rulesFilter.values,
+			filterBy: { operators: [ rulesFilter.operator ] },
 		},
 		{
-			id: 'outcome',
+			id: outcomeFilter.field,
 			label: __( 'Outcome', 'woocommerce-fraud-protection' ),
 			enableSorting: false,
 			enableGlobalSearch: false,
@@ -187,8 +196,8 @@ export function getFields(
 					settingsUrl={ config.settingsUrl }
 				/>
 			),
-			elements: getOutcomeOptions(),
-			filterBy: { operators: [ 'isAny' ] },
+			elements: outcomeFilter.values,
+			filterBy: { operators: [ outcomeFilter.operator ] },
 		},
 	];
 }

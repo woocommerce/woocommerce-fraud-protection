@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 
 defined( 'ABSPATH' ) || exit;
@@ -124,7 +125,7 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			$asset['version'],
 			array( 'in_footer' => true )
 		);
-		wp_set_script_translations( self::SCRIPT_HANDLE, 'woocommerce-fraud-protection', dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages' );
+		wp_set_script_translations( self::SCRIPT_HANDLE, 'woocommerce-fraud-protection', PluginInitializer::get_script_translation_dir() );
 		$this->maybe_preload_settings_data();
 	}
 

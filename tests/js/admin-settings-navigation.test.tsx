@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory } from 'history';
 
@@ -48,15 +48,22 @@ jest.mock( '@woocommerce/navigation', () => ( {
 	getNewPath: mockGetNewPath,
 } ) );
 
-// The real checkout attempts page renders DataViews; it is bundled and heavy,
-// and these tests cover the app's routing rather than the list, so it is
-// replaced with a no-op. Its Tabs still render and need a ResizeObserver. The
-// list imports DataViews from the `/wp` runtime entry point, so mock that.
+// The real checkout attempts and rules pages render DataViews; it is bundled
+// and heavy, and these tests cover the app's routing rather than the lists, so
+// it is replaced with a no-op (its composition parts included). The rule
+// drawer's DataForm stays real so a rule can be created through it. The pages'
+// Tabs still render and need a ResizeObserver. The lists import DataViews from
+// the `/wp` runtime entry point, so mock that.
 jest.mock( '@wordpress/dataviews/wp', () => ( {
-	__esModule: true,
-	DataViews: () => null,
-	DataForm: () => null,
-	useFormValidity: () => ( { validity: undefined, isValid: true } ),
+	...jest.requireActual( '@wordpress/dataviews/wp' ),
+	DataViews: Object.assign( () => null, {
+		Search: () => null,
+		FiltersToggle: () => null,
+		FiltersToggled: () => null,
+		ViewConfig: () => null,
+		Layout: () => null,
+		Footer: () => null,
+	} ),
 } ) );
 
 if ( ! window.ResizeObserver ) {
@@ -237,6 +244,54 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
 			parse: false,
 		} );
+	} );
+
+	it( 'moves to the rules page once a rule is created from the settings card', async () => {
+		mockedApiFetch.mockImplementation( ( options: unknown ) => {
+			const { path, method } = ( options ?? {} ) as {
+				path?: string;
+				method?: string;
+			};
+			if (
+				path === '/wc-fraud-protection/v1/rules' &&
+				method === 'POST'
+			) {
+				return Promise.resolve( {
+					id: 18,
+					action: 'allow',
+					type: 'email',
+					value: 'card@example.com',
+					created_at: '2026-09-15T12:00:00Z',
+					updated_at: null,
+				} );
+			}
+			return apiFetchImplementation( options );
+		} );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		// The drawer opens on the settings page itself.
+		expect( mockHistory.location.pathname ).toBe( '/' );
+
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'card@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () =>
+			expect( mockHistory.location.pathname ).toBe( '/rules' )
+		);
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
 	} );
 
 	it( 'keeps settings open when checkout-attempt navigation is cancelled', async () => {

@@ -2,7 +2,7 @@ import { Icon, notAllowed, published } from '@wordpress/icons';
 import { Tooltip } from '@wordpress/ui';
 import { __, sprintf } from '@wordpress/i18n';
 
-import { formatSiteDate } from './dates';
+import { formatDate } from './dates';
 import type { RuleReference } from './types';
 
 // A read-only indicator of the rule that currently targets a value (email or
@@ -38,7 +38,7 @@ export function RuleChip( {
 	// A rule that was edited after creation shows its last-update date; one that
 	// was never edited shows its creation date.
 	const updated = null !== rule.updated_at;
-	const date = formatSiteDate( rule.updated_at ?? rule.created_at );
+	const date = formatDate( rule.updated_at ?? rule.created_at );
 
 	// The accessible label always names the rule type and whether the date is a
 	// creation or an update, so screen-reader users get the full context.

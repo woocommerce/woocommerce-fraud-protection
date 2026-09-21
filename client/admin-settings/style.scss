@@ -116,12 +116,15 @@
 	}
 
 	&__toolbar {
-		flex-wrap: wrap;
+
+		@include settings-list-page.toolbar;
 	}
 
 	&__view-controls {
 		margin-inline-start: auto;
 	}
+
+	@include settings-list-page.dataviews;
 
 	&__delete-button {
 		--wp-ui-button-background-color: var(--wpds-color-background-interactive-error-strong);
@@ -130,15 +133,6 @@
 		--wp-ui-button-foreground-color: var(--wpds-color-foreground-interactive-error-strong);
 		--wp-ui-button-foreground-color-active: var(--wpds-color-foreground-interactive-error-strong-active);
 		--wp-ui-button-foreground-color-disabled: var(--wpds-color-foreground-interactive-error-strong-disabled);
-	}
-
-	.dataviews-filters__container,
-	.dataviews-footer {
-		padding-inline: 0;
-	}
-
-	.dataviews-filters__container {
-		margin-block-start: var(--wpds-dimension-gap-md);
 	}
 
 	&__action--allow &__action-icon {

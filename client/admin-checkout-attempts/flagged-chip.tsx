@@ -2,7 +2,7 @@ import { Badge } from '@wordpress/ui';
 import { createInterpolateElement } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
-import { formatSiteDate } from './dates';
+import { formatDate } from './dates';
 import { OutcomeInfo } from './outcome-info';
 
 // Shown in the Outcome cell next to the "Allowed" badge for an attempt that was
@@ -34,7 +34,7 @@ export function getFlaggedExplanation( {
 						'Flagged as suspicious but allowed because automatic protection was off. Enabled %s.',
 						'woocommerce-fraud-protection'
 					),
-					formatSiteDate( enabledAt )
+					formatDate( enabledAt )
 			  )
 			: __(
 					'Flagged as suspicious but allowed because automatic fraud prevention was off.',

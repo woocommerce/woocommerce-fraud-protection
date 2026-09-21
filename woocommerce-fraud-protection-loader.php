@@ -40,4 +40,12 @@ if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
 	return;
 }
 
+if ( ! defined( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL' ) ) {
+	define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
+}
+
 require_once $woocommerce_fraud_protection_target;
+
+if ( class_exists( '\Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer', false ) ) {
+	\Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer::register_managed_textdomain();
+}

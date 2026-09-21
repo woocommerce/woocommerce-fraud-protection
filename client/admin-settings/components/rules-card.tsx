@@ -1,7 +1,7 @@
-import { createInterpolateElement } from '@wordpress/element';
+import { createInterpolateElement, useCallback } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { Button, Card, LinkButton, Stack, Text } from '@wordpress/ui';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { useRuleFormDrawer } from '../hooks/use-rule-form-drawer';
 import { getFraudProtectionRoute } from '../navigation';
@@ -12,6 +12,12 @@ const rulesHref = getFraudProtectionRoute( '/rules' );
 export function RulesCard() {
 	const { closeRuleForm, isOpen, openCreateRule, openEditRule, ruleId } =
 		useRuleFormDrawer();
+	const navigate = useNavigate();
+
+	// A saved rule (a new one, or an existing duplicate the merchant went on to
+	// edit from this drawer) leads to the rules list, where it now appears.
+	// Cancelling, or a failed save, keeps the merchant on this page.
+	const goToRules = useCallback( () => navigate( rulesHref ), [ navigate ] );
 
 	return (
 		<>
@@ -76,6 +82,7 @@ export function RulesCard() {
 				open={ isOpen }
 				ruleId={ ruleId }
 				onClose={ closeRuleForm }
+				onSuccess={ goToRules }
 				onViewRule={ openEditRule }
 			/>
 		</>
