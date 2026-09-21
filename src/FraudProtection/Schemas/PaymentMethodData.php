@@ -98,6 +98,29 @@ class PaymentMethodData {
 	}
 
 	/**
+	 * Return a copy with the payment instrument wallet.
+	 *
+	 * @param string $wallet Normalized wallet type.
+	 * @return self
+	 *
+	 * @since 0.2.7
+	 */
+	public function with_instrument_wallet( string $wallet ): self {
+		$instrument_data           = $this->instrument->to_array();
+		$instrument_data['wallet'] = $wallet;
+
+		return new self(
+			$this->gateway,
+			$this->payment_type,
+			$this->is_saved_payment_method,
+			PaymentInstrumentData::from_array( $instrument_data ),
+			$this->transaction_mode,
+			$this->merchant_identifier,
+			$this->merchant_identifier_type
+		);
+	}
+
+	/**
 	 * Serialize to array.
 	 *
 	 * @return array

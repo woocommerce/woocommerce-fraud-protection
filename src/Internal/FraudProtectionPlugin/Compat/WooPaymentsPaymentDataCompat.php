@@ -34,6 +34,21 @@ class WooPaymentsPaymentDataCompat {
 	private const GATEWAY_ID = 'woocommerce_payments';
 
 	/**
+	 * Wallet names accepted from WooPayments request and provider data.
+	 *
+	 * @var array<string, string>
+	 */
+	private const WALLET_MAP = array(
+		'apple_pay'    => 'apple_pay',
+		'google_pay'   => 'google_pay',
+		'amazon_pay'   => 'amazon_pay',
+		'paypal'       => 'paypal',
+		'link'         => 'link',
+		'cashapp'      => 'cash_app_pay',
+		'cash_app_pay' => 'cash_app_pay',
+	);
+
+	/**
 	 * Map Stripe verification check values to normalized CheckResult cases.
 	 *
 	 * @var array<string, CheckResult>
@@ -68,19 +83,26 @@ class WooPaymentsPaymentDataCompat {
 			return $resolved;
 		}
 
+		$request_wallet = $this->normalize_wallet( $checkout_payment_fields['express_payment_type'] ?? null );
+
 		if ( ! class_exists( '\WC_Payments' ) ) {
-			return $resolved;
+			return $this->with_wallet_if_empty( $resolved, $request_wallet );
 		}
 
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
+		$resolved            = $resolved
+			->with_transaction_mode( $transaction_mode )
+			->with_merchant_identifier( $merchant_identifier, 'account' );
+
+		if ( $this->is_authenticated_woopay_request() ) {
+			return $resolved->with_instrument_wallet( 'woopay' );
+		}
 
 		// When WooPay is enabled, pm_ IDs are platform-scoped and cannot be
 		// resolved through the connected account API. Resolve mode and merchant identifier.
 		if ( $this->is_woopay_enabled() ) {
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $this->with_wallet_if_empty( $resolved, $request_wallet );
 		}
 
 		$token_key   = 'wc-' . $resolved->get_gateway() . '-payment-token';
@@ -97,16 +119,12 @@ class WooPaymentsPaymentDataCompat {
 		}
 
 		if ( empty( $pm_id ) ) {
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $this->with_wallet_if_empty( $resolved, $request_wallet );
 		}
 
 		$api_client = \WC_Payments::get_payments_api_client();
 		if ( null === $api_client ) {
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $this->with_wallet_if_empty( $resolved, $request_wallet );
 		}
 
 		try {
@@ -126,21 +144,16 @@ class WooPaymentsPaymentDataCompat {
 					$e->getMessage()
 				)
 			);
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $this->with_wallet_if_empty( $resolved, $request_wallet );
 		}
 
 		if ( ! isset( $pm_details['type'] ) ) {
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $this->with_wallet_if_empty( $resolved, $request_wallet );
 		}
 
 		$type       = $pm_details['type'];
 		$instrument = $this->build_instrument( $type, $pm_details );
-
-		return new PaymentMethodData(
+		$result     = new PaymentMethodData(
 			$resolved->get_gateway(),
 			$type,
 			$is_saved,
@@ -149,6 +162,73 @@ class WooPaymentsPaymentDataCompat {
 			$merchant_identifier,
 			'account'
 		);
+		$existing_wallet = $this->get_wallet( $resolved );
+
+		if ( null !== $existing_wallet ) {
+			return $result->with_instrument_wallet( $existing_wallet );
+		}
+
+		$provider_type_wallet = $this->normalize_wallet( $type );
+
+		return $this->with_wallet_if_empty( $result, $provider_type_wallet ?? $request_wallet );
+	}
+
+	/**
+	 * Check whether WooPayments authenticated the current request as WooPay.
+	 *
+	 * @return bool
+	 */
+	private function is_authenticated_woopay_request(): bool {
+		$proof_callback = array( '\WCPay\WooPay\WooPay_Session', 'is_request_vouched_by_woopay' );
+
+		if ( is_callable( $proof_callback ) ) {
+			try {
+				return true === $proof_callback();
+			} catch ( \Throwable $e ) {
+				return false;
+			}
+		}
+
+		try {
+			return true === apply_filters( 'wcpay_is_woopay_store_api_request', false );
+		} catch ( \Throwable $e ) {
+			return false;
+		}
+	}
+
+	/**
+	 * Normalize a supported WooPayments wallet value.
+	 *
+	 * @param mixed $wallet Raw wallet value.
+	 * @return ?string Normalized wallet value.
+	 */
+	private function normalize_wallet( $wallet ): ?string {
+		return is_string( $wallet ) ? ( self::WALLET_MAP[ $wallet ] ?? null ) : null;
+	}
+
+	/**
+	 * Add a wallet when the current payment data has none.
+	 *
+	 * @param PaymentMethodData $resolved Resolved payment data.
+	 * @param ?string           $wallet   Normalized wallet value.
+	 * @return PaymentMethodData
+	 */
+	private function with_wallet_if_empty( PaymentMethodData $resolved, ?string $wallet ): PaymentMethodData {
+		return null !== $wallet && null === $this->get_wallet( $resolved )
+			? $resolved->with_instrument_wallet( $wallet )
+			: $resolved;
+	}
+
+	/**
+	 * Read a non-empty wallet from resolved payment data.
+	 *
+	 * @param PaymentMethodData $resolved Resolved payment data.
+	 * @return ?string Current wallet value.
+	 */
+	private function get_wallet( PaymentMethodData $resolved ): ?string {
+		$wallet = $resolved->to_array()['instrument']['wallet'] ?? null;
+
+		return is_string( $wallet ) && '' !== $wallet ? $wallet : null;
 	}
 
 	/**

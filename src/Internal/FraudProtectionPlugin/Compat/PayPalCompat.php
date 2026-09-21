@@ -114,11 +114,35 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function verify_and_block_create_order( $data ): void {
-		$request_data         = is_array( $data ) ? $data : array();
+		$request_data         = is_array( $data ) ? $this->prepare_create_order_payment_data( $data ) : array();
 		$submitted_session_id = $request_data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
 		$can_store_result     = '' !== $this->session_id_normalizer->normalize_stored( $submitted_session_id );
 
 		$this->verify_and_block_paypal_request( $request_data, PayPalDecisionReuse::ORDER_CREATION_SOURCE, $can_store_result );
+	}
+
+	/**
+	 * Make PayPal create-order funding data available to payment resolution.
+	 *
+	 * @param array $data PayPal create-order data.
+	 * @return array Verification data.
+	 */
+	private function prepare_create_order_payment_data( array $data ): array {
+		if ( ! array_key_exists( 'funding_source', $data ) ) {
+			return $data;
+		}
+
+		if ( ! array_key_exists( 'payment_data', $data ) ) {
+			$data['payment_data'] = array();
+		}
+
+		if ( ! is_array( $data['payment_data'] ) || array_key_exists( 'funding_source', $data['payment_data'] ) ) {
+			return $data;
+		}
+
+		$data['payment_data']['funding_source'] = $data['funding_source'];
+
+		return $data;
 	}
 
 	/**

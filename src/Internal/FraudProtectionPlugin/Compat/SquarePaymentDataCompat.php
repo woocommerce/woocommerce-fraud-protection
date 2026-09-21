@@ -22,6 +22,18 @@ defined( 'ABSPATH' ) || exit;
 class SquarePaymentDataCompat {
 
 	/**
+	 * Wallet names accepted from Square payment data.
+	 *
+	 * @var array<string, string>
+	 */
+	private const WALLET_MAP = array(
+		'APPLE_PAY'  => 'apple_pay',
+		'apple_pay'  => 'apple_pay',
+		'GOOGLE_PAY' => 'google_pay',
+		'google_pay' => 'google_pay',
+	);
+
+	/**
 	 * Register the filter callback.
 	 *
 	 * @return void
@@ -55,18 +67,21 @@ class SquarePaymentDataCompat {
 			? (int) $checkout_payment_fields['wc-square-credit-card-exp-year']
 			: null;
 		$postcode    = $checkout_payment_fields['wc-square-credit-card-payment-postcode'] ?? null;
+		$wallet      = $this->normalize_wallet( $checkout_payment_fields['wc-square-digital-wallet-type'] ?? null );
 
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
 
 		// Saved cards have empty card keys — pass through the token-based data.
 		if ( empty( $brand ) && empty( $last4 ) ) {
-			return $resolved
+			$result = $resolved
 				->with_transaction_mode( $transaction_mode )
 				->with_merchant_identifier( $merchant_identifier, 'location' );
+
+			return $this->with_wallet_if_empty( $result, $wallet );
 		}
 
-		return new PaymentMethodData(
+		$result = new PaymentMethodData(
 			'square_credit_card',
 			'card',
 			$is_saved,
@@ -83,6 +98,43 @@ class SquarePaymentDataCompat {
 			$merchant_identifier,
 			'location'
 		);
+
+		return $this->with_wallet_if_empty( $result, $this->get_wallet( $resolved ) ?? $wallet );
+	}
+
+	/**
+	 * Normalize a supported Square wallet value.
+	 *
+	 * @param mixed $wallet Raw wallet value.
+	 * @return ?string Normalized wallet value.
+	 */
+	private function normalize_wallet( $wallet ): ?string {
+		return is_string( $wallet ) ? ( self::WALLET_MAP[ $wallet ] ?? null ) : null;
+	}
+
+	/**
+	 * Add a wallet when the current payment data has none.
+	 *
+	 * @param PaymentMethodData $resolved Resolved payment data.
+	 * @param ?string           $wallet   Normalized wallet value.
+	 * @return PaymentMethodData
+	 */
+	private function with_wallet_if_empty( PaymentMethodData $resolved, ?string $wallet ): PaymentMethodData {
+		return null !== $wallet && null === $this->get_wallet( $resolved )
+			? $resolved->with_instrument_wallet( $wallet )
+			: $resolved;
+	}
+
+	/**
+	 * Read a non-empty wallet from resolved payment data.
+	 *
+	 * @param PaymentMethodData $resolved Resolved payment data.
+	 * @return ?string Current wallet value.
+	 */
+	private function get_wallet( PaymentMethodData $resolved ): ?string {
+		$wallet = $resolved->to_array()['instrument']['wallet'] ?? null;
+
+		return is_string( $wallet ) && '' !== $wallet ? $wallet : null;
 	}
 
 	/**

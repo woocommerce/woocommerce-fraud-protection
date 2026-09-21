@@ -183,8 +183,8 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function saved_wallet_token_provider(): array {
 		return array(
-			'PayPal'    => array( 'PayPal', 'paypal', 'payer@example.com', null ),
-			'Venmo'     => array( 'Venmo', 'venmo', 'payer@example.com', null ),
+			'PayPal'    => array( 'PayPal', 'paypal', 'payer@example.com', 'paypal' ),
+			'Venmo'     => array( 'Venmo', 'venmo', 'payer@example.com', 'venmo' ),
 			'Apple Pay' => array( 'ApplePay', 'card', null, 'apple_pay' ),
 		);
 	}
@@ -232,7 +232,9 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		)->to_array();
 
 		$this->assertTrue( $array['is_saved_payment_method'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$expected_instrument           = PaymentInstrumentData::empty()->to_array();
+		$expected_instrument['wallet'] = 'paypal';
+		$this->assertSame( $expected_instrument, $array['instrument'] );
 	}
 
 	/**
@@ -351,6 +353,127 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertSame( 'paypal', $array['payment_type'] );
 		$this->assertTrue( $array['is_saved_payment_method'] );
+	}
+
+	/**
+	 * @testdox Resolves wallet from a dedicated PayPal Payments gateway.
+	 *
+	 * @dataProvider dedicated_wallet_gateway_provider
+	 *
+	 * @param string $gateway Gateway ID.
+	 * @param string $expected_wallet Expected wallet value.
+	 */
+	public function test_resolves_dedicated_wallet_gateway( string $gateway, string $expected_wallet ): void {
+		$array = $this->sut->resolve( new PaymentMethodData( $gateway ) )->to_array();
+
+		$this->assertSame( $expected_wallet, $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Dedicated PayPal Payments wallet gateways.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function dedicated_wallet_gateway_provider(): array {
+		return array(
+			'Apple Pay'  => array( 'ppcp-applepay', 'apple_pay' ),
+			'Google Pay' => array( 'ppcp-googlepay', 'google_pay' ),
+		);
+	}
+
+	/**
+	 * @testdox Normalizes accepted PayPal funding sources.
+	 *
+	 * @dataProvider funding_source_provider
+	 *
+	 * @param string $funding_source Submitted funding source.
+	 * @param string $expected_wallet Expected wallet value.
+	 */
+	public function test_normalizes_funding_source( string $funding_source, string $expected_wallet ): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'funding_source' => $funding_source )
+		)->to_array();
+
+		$this->assertSame( $expected_wallet, $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Accepted PayPal funding sources.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function funding_source_provider(): array {
+		return array(
+			'PayPal'     => array( 'paypal', 'paypal' ),
+			'Venmo'      => array( 'venmo', 'venmo' ),
+			'Apple Pay'  => array( 'apple_pay', 'apple_pay' ),
+			'Google Pay' => array( 'googlepay', 'google_pay' ),
+		);
+	}
+
+	/**
+	 * @testdox Dedicated gateway takes priority over a request fallback.
+	 */
+	public function test_dedicated_gateway_takes_priority_over_request_fallback(): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-applepay' ),
+			array( 'funding_source' => 'venmo' )
+		)->to_array();
+
+		$this->assertSame( 'apple_pay', $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * @testdox Preserves an existing wallet and instrument data over request values.
+	 */
+	public function test_preserves_existing_wallet_and_instrument_data(): void {
+		$resolved = new PaymentMethodData(
+			'ppcp-gateway',
+			'paypal',
+			false,
+			PaymentInstrumentData::from_array(
+				array(
+					'wallet'      => 'existing_wallet',
+					'payer_email' => 'payer@example.com',
+				)
+			)
+		);
+
+		$array = $this->sut->resolve( $resolved, array( 'funding_source' => 'venmo' ) )->to_array();
+
+		$this->assertSame( 'existing_wallet', $array['instrument']['wallet'] );
+		$this->assertSame( 'payer@example.com', $array['instrument']['payer_email'] );
+	}
+
+	/**
+	 * @testdox Ignores unsupported or malformed PayPal funding sources.
+	 *
+	 * @dataProvider invalid_funding_source_provider
+	 *
+	 * @param mixed $funding_source Submitted funding source.
+	 */
+	public function test_ignores_invalid_funding_source( $funding_source ): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'ppcp-gateway' ),
+			array( 'funding_source' => $funding_source )
+		)->to_array();
+
+		$this->assertNull( $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Invalid PayPal funding sources.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function invalid_funding_source_provider(): array {
+		return array(
+			'unknown' => array( 'pay_later' ),
+			'empty'   => array( '' ),
+			'array'   => array( array( 'paypal' ) ),
+			'object'  => array( new \stdClass() ),
+		);
 	}
 
 	/**

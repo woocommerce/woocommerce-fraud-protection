@@ -298,4 +298,127 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertNull( $array['merchant_identifier'] );
 		$this->assertSame( 'location', $array['merchant_identifier_type'] );
 	}
+
+	/**
+	 * @testdox Normalizes Square digital wallet values on full card data.
+	 *
+	 * @dataProvider digital_wallet_provider
+	 *
+	 * @param string $submitted_wallet Submitted Square value.
+	 * @param string $expected_wallet Expected wallet value.
+	 */
+	public function test_normalizes_digital_wallet_on_full_card_data( string $submitted_wallet, string $expected_wallet ): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'square_credit_card' ),
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+				'wc-square-digital-wallet-type'   => $submitted_wallet,
+			)
+		)->to_array();
+
+		$this->assertSame( $expected_wallet, $array['instrument']['wallet'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+	}
+
+	/**
+	 * Supported Square wallet values.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function digital_wallet_provider(): array {
+		return array(
+			'Apple Pay'            => array( 'APPLE_PAY', 'apple_pay' ),
+			'Apple Pay canonical'  => array( 'apple_pay', 'apple_pay' ),
+			'Google Pay'           => array( 'GOOGLE_PAY', 'google_pay' ),
+			'Google Pay canonical' => array( 'google_pay', 'google_pay' ),
+		);
+	}
+
+	/**
+	 * @testdox Adds a Square wallet while preserving saved token data.
+	 */
+	public function test_adds_wallet_to_preserved_saved_token_data(): void {
+		$resolved = new PaymentMethodData(
+			'square_credit_card',
+			'card',
+			true,
+			PaymentInstrumentData::from_array(
+				array(
+					'brand' => 'visa',
+					'last4' => '4242',
+				)
+			)
+		);
+
+		$array = $this->sut->resolve(
+			$resolved,
+			array(
+				'wc-square-credit-card-payment-token' => 'token_123',
+				'wc-square-digital-wallet-type'        => 'GOOGLE_PAY',
+			)
+		)->to_array();
+
+		$this->assertTrue( $array['is_saved_payment_method'] );
+		$this->assertSame( 'visa', $array['instrument']['brand'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * @testdox Preserves an existing Square wallet over submitted data.
+	 */
+	public function test_preserves_existing_wallet(): void {
+		$resolved = new PaymentMethodData(
+			'square_credit_card',
+			'card',
+			false,
+			PaymentInstrumentData::from_array( array( 'wallet' => 'existing_wallet' ) )
+		);
+
+		$array = $this->sut->resolve(
+			$resolved,
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+				'wc-square-digital-wallet-type'   => 'APPLE_PAY',
+			)
+		)->to_array();
+
+		$this->assertSame( 'existing_wallet', $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * @testdox Ignores unsupported or malformed Square wallet values.
+	 *
+	 * @dataProvider invalid_digital_wallet_provider
+	 *
+	 * @param mixed $submitted_wallet Submitted Square value.
+	 */
+	public function test_ignores_invalid_digital_wallet( $submitted_wallet ): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'square_credit_card' ),
+			array(
+				'wc-square-credit-card-card-type' => 'visa',
+				'wc-square-credit-card-last-four' => '4242',
+				'wc-square-digital-wallet-type'   => $submitted_wallet,
+			)
+		)->to_array();
+
+		$this->assertNull( $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Invalid Square wallet values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function invalid_digital_wallet_provider(): array {
+		return array(
+			'unknown' => array( 'SAMSUNG_PAY' ),
+			'empty'   => array( '' ),
+			'array'   => array( array( 'APPLE_PAY' ) ),
+			'object'  => array( new \stdClass() ),
+		);
+	}
 }
