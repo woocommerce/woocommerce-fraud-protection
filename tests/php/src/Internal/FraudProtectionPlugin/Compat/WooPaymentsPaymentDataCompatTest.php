@@ -746,10 +746,14 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_legacy_woopay_proof_requires_strict_true(): void {
 		\WC_Payments_Features::set_woopay_enabled( true );
 		add_filter( 'wcpay_is_woopay_store_api_request', '__return_true' );
+		$request = array(
+			'express_payment_type' => 'google_pay',
+			'wcpay-payment-method' => 'pm_platform_scoped',
+		);
 
 		$trusted = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'express_payment_type' => 'google_pay' )
+			$request
 		);
 
 		remove_filter( 'wcpay_is_woopay_store_api_request', '__return_true' );
@@ -757,11 +761,12 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$untrusted = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'express_payment_type' => 'google_pay' )
+			$request
 		);
 
 		$this->assertSame( 'woopay', $trusted->to_array()['instrument']['wallet'] );
 		$this->assertSame( 'google_pay', $untrusted->to_array()['instrument']['wallet'] );
+		$this->assertSame( 0, WC_Payments_API_Client_Stub::get_payment_method_calls() );
 	}
 
 	/** @testdox Raw WooPay request claims do not produce a wallet label. */
