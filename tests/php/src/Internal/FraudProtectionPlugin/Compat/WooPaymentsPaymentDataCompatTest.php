@@ -138,12 +138,26 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 	/** WooPayments API client test stub. */
 	class WC_Payments_API_Client_Stub {
+		/** @var int Payment method lookup call count. */
+		private static int $payment_method_calls = 0;
+
+		/** Reset the payment method lookup call count. */
+		public static function reset(): void {
+			self::$payment_method_calls = 0;
+		}
+
+		/** Return the payment method lookup call count. */
+		public static function get_payment_method_calls(): int {
+			return self::$payment_method_calls;
+		}
+
 		/**
 		 * Provide the get_payment_method() test stub.
 		 *
 		 * @param string $payment_method_id Test value.
 		 */
 		public function get_payment_method( string $payment_method_id ): array {
+			++self::$payment_method_calls;
 			unset( $payment_method_id );
 			return array();
 		}
@@ -340,6 +354,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		remove_all_filters( 'wcpay_is_woopay_store_api_request' );
 		remove_filter( 'wp_doing_ajax', '__return_true' );
 		WC_Payments_Account_Service_Stub::reset();
+		WC_Payments_API_Client_Stub::reset();
 		parent::tearDown();
 	}
 
@@ -790,23 +805,30 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			}
 		);
 
+		$request = array(
+			'express_payment_type' => 'apple_pay',
+			'wcpay-payment-method' => 'pm_platform_scoped',
+		);
+
 		WooPay_Session_Stub::configure( true );
-		$trusted = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array( 'express_payment_type' => 'apple_pay' ) );
+		$trusted = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		WooPay_Session_Stub::configure( false );
-		$rejected = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array( 'express_payment_type' => 'apple_pay' ) );
+		$rejected = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		WooPay_Session_Stub::configure( '1' );
-		$non_boolean = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array( 'express_payment_type' => 'google_pay' ) );
+		$request['express_payment_type'] = 'google_pay';
+		$non_boolean                     = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		WooPay_Session_Stub::configure( false, true );
-		$failed = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array( 'express_payment_type' => 'google_pay' ) );
+		$failed = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		$this->assertSame( 'woopay', $trusted->to_array()['instrument']['wallet'] );
 		$this->assertSame( 'apple_pay', $rejected->to_array()['instrument']['wallet'] );
 		$this->assertSame( 'google_pay', $non_boolean->to_array()['instrument']['wallet'] );
 		$this->assertSame( 'google_pay', $failed->to_array()['instrument']['wallet'] );
 		$this->assertSame( 0, $legacy_filter_calls );
+		$this->assertSame( 0, WC_Payments_API_Client_Stub::get_payment_method_calls() );
 	}
 
 	// --- Bank types ---
