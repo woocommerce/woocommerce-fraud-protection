@@ -23,4 +23,5 @@ Follow these guidelines when writing any user-facing text:
 - Keep copy concise and action-oriented
 - Use clear, simple language
 - Be consistent with existing plugin copy: search `client/` and `src/` for the current wording before introducing a new term
+- Compare changed copy with the approved design, including accessibility text, loading, empty and error states, zero/singular/plural forms, and punctuation. Record intentional differences instead of silently changing them.
 - Follow WooCommerce Core copy patterns where the plugin has no precedent

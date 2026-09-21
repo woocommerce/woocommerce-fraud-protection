@@ -45,6 +45,7 @@ These are the checks reviewers applied to the checkout attempts list (#142), the
 ## Components and Styles
 
 - [ ] `@wordpress/ui` components and `@wordpress/icons` glyphs; no local SVGs, no components from `@wordpress/components`.
+- [ ] Component props and the component's default layout are used before custom CSS; required package styles and stylesheet dependencies are loaded.
 - [ ] Drawers and dialogs cancel Escape and backdrop dismissal while saving (`eventDetails.cancel()`), disable the close icon, show errors inline, reset on open, and route every close path through one function.
 - [ ] Portal z-index variables are set for every drawer, dialog, and popover.
 - [ ] DataViews overrides are minimal, scoped under the page root, use logical properties, reuse the shared mixins, and say why in a comment.
@@ -57,11 +58,13 @@ These are the checks reviewers applied to the checkout attempts list (#142), the
 
 - [ ] All strings are translated with `__()` or `_n()` and the `woocommerce-fraud-protection` domain. `sprintf()` only formats an already translated string, as in `sprintf( __( '...', 'woocommerce-fraud-protection' ), value )`, and every placeholder has a translators comment.
 - [ ] Sentence case; terminology matches the rest of the plugin, including the CLI and the tests ("automatic fraud prevention", "allow rule", "block rule", "checkout attempts").
+- [ ] Every changed string is compared with the approved design, including labels, accessibility names, loading, empty and error states, zero/singular/plural forms, and punctuation; intentional differences are recorded.
 - [ ] Nothing reveals how fraud detection scores or correlates attempts.
 
 ## Tests
 
 - [ ] Row-action eligibility, query building, URL state, empty states, error paths, the safe default, drawer behaviour, and stale-response handling are covered (see testing.md).
+- [ ] Integrated DataViews and form flows use the real components with accessible queries and `userEvent`; browser shims are added only after a test demonstrates that one is required.
 - [ ] Fixtures for storage are built from the exported helpers, not from private keys.
 - [ ] Request counts are asserted per endpoint.
 - [ ] Assertions use the merchant-facing strings and were updated with the copy.
@@ -71,5 +74,8 @@ These are the checks reviewers applied to the checkout attempts list (#142), the
 - [ ] `npm run lint:js`, `npm run lint:types`, `npm run lint:css`, and `npm run test:js` pass; `npm run build` produced a working page in wp-env.
 - [ ] `changelog.txt` has an entry under the placeholder release for merchant-facing changes.
 - [ ] The description matches the final behaviour (update it after review changes) and its manual steps can be run on a generic test site.
+- [ ] Screenshots from the production build match the approved design for components, copy, spacing, colour, alignment, responsive behavior, and all important states.
+- [ ] Manual testing covers complete flows, useful filter combinations, loading, empty, error, cancellation, retry, duplicate, Back/Forward, reload, and deep-link behavior; browser and PHP logs were checked for hidden errors.
+- [ ] The final branch was checked against current `trunk` for duplicated behavior and tested with the current supported WordPress and WooCommerce versions.
 - [ ] Seed scripts under `bin/` produce data that satisfies the same invariants as production writes.
 - [ ] No stray files: build output, lockfiles for other package managers, local configuration.

@@ -108,13 +108,23 @@ Consult the `woocommerce-copy-guidelines` skill. Flag:
 - ❌ **Customer-facing messages other than the generic wording** produced by `BlockedSessionMessage`
 - ❌ **"Positive/negative list" or "whitelist/blacklist" wording** in merchant-facing text; the plugin uses allow rules and block rules
 
+## Scope and Reuse
+
+- Compare the branch with current `trunk`, especially when it has been open for a while. Check whether merged work already provides the store, component, helper, query, or behavior the change needs.
+- Prefer extending the existing path over adding parallel state, configuration, requests, or abstractions. Do not redesign working `trunk` code unless the requested behavior requires it; put wider refactors in a follow-up issue.
+- Challenge new locks, retries, helpers, services, and compatibility layers. Keep them only when they prevent a demonstrated failure that the existing code cannot handle simply.
+- For a feature-gated change, trace every changed runtime path. Report which code still runs when the gate is off and whether it can affect existing stores.
+
 ## Review Approach
 
 1. **Read the diff against the safety rules first**, then structure, then style
-2. **Cite the `AGENTS.md` section or skill file** when flagging issues
-3. **Provide correct examples** from the skill documentation
-4. **Group related issues** for clarity
-5. **Be constructive** - explain why the standard exists when relevant
+2. **Compare the change with current `trunk`** and check whether existing code already provides the required behavior
+3. **Validate each finding before posting it** by reproducing the behavior or tracing the exact failure path; omit speculative concerns without practical impact
+4. **Use the most relevant changed line as the anchor**
+5. **Cite the `AGENTS.md` section or skill file** when flagging issues
+6. **Provide correct examples** from the skill documentation
+7. **Group related issues** for clarity
+8. **Be constructive** - explain why the standard exists when relevant
 
 ## Output Format
 

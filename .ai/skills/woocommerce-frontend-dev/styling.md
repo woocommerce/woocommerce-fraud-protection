@@ -50,8 +50,9 @@ Add a mixin there when a second page needs the same rule; do not copy blocks bet
 
 ## Overriding DataViews and WooCommerce Chrome
 
-- Keep DataViews' defaults unless the design needs a specific adjustment. Its class names are internal, so every override is a maintenance risk; a set of spacing overrides that duplicated what DataViews already supplied was removed in review.
+- Start with the component's props and default styles, and confirm that its required stylesheets and dependencies are loaded. Add CSS only for a difference confirmed in the browser against the approved design. Its class names are internal, so every override is a maintenance risk; a set of spacing overrides that duplicated what DataViews already supplied was removed in review.
 - When an override is needed: scope it under the page root, use logical properties, use the `dataviews` mixin for the shared part, and explain the cause in a comment. The header-alignment block in the checkout attempts styles is the model: it states which DataViews compensation it repeats and why each selector exists, including the compact-density variants.
+- Fix the cause of overflow, clipping, or displaced WooCommerce chrome. Do not hide it with `overflow`, a fixed width or height, or another broad page rule unless that dimension is the intended component contract.
 - WooCommerce settings chrome that sits outside the app's mount (the tab bar's bottom margin, the breadcrumb `nav` margin) is adjusted with route-scoped selectors such as `#mainform:has( .wc-fraud-protection-rules ) nav.nav-tab-wrapper { margin-bottom: 0; }`, so the tweak applies only while that route is active.
 
 ## Portaled Content

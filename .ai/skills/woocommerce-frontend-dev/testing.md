@@ -37,6 +37,8 @@ Hooks with their own state machine are tested with `renderHook` and `act` (`use-
 
 Declare these at the top of the file with `jest.mock`; they are the boundaries the app talks through.
 
+Use the real DataViews, DataForm, and `@wordpress/ui` components for integrated merchant flows. Mock a component only when the test covers consumer wiring and the component contract is outside its scope. Do not keep a mock only to avoid following the real menu, validation, focus, or event behavior. Add a JSDOM shim only after a failing test shows which browser API is missing.
+
 | Module | Mock | Notes |
 | ------ | ---- | ----- |
 | `@wordpress/api-fetch` | `{ __esModule: true, default: jest.fn() }` | `mockResolvedValue( object )` for JSON requests; a `Response`-like `{ json: async () => items, headers: { get: ( name ) => ... } }` for `parse: false` collections, returning `X-WP-Total` and `X-WP-TotalPages`. Implement by `options.path` (and `method`) when a page issues several requests. `mockReset()` in `beforeEach`. |
@@ -84,6 +86,13 @@ For a new list, drawer, or setting, tests exist for:
 - keyboard reachability and accessible names of popover and tooltip triggers, dialogs, and tabs.
 
 Update the existing tests when copy changes; assertions use the merchant-facing strings on purpose.
+
+## Manual Verification
+
+- Build the production bundle and test it with the current supported WordPress and WooCommerce versions.
+- Exercise the complete changed flow, not only each control alone. Cover useful filter combinations, loading, empty, error, cancellation, retry, duplicate, Back/Forward, reload, deep links, and the feature gate on and off when relevant.
+- Check the browser console, PHP logs, and database errors while testing. Investigate slow tests and unexpected page delays instead of increasing timeouts without finding the cause.
+- Compare screenshots with the approved design for component choice, copy, spacing, colour, alignment, responsive behavior, and every important state.
 
 ## Browser Scripts
 
