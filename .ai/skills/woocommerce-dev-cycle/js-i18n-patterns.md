@@ -209,11 +209,11 @@ createInterpolateElement(
 
 ### Curly Apostrophes
 
-Existing strings may use curly apostrophes (`'` U+2019) instead of straight apostrophes (`'` U+0027). When editing, preserve the original character so the string keeps matching its translations:
+Existing strings may use curly apostrophes (`’` U+2019) instead of straight apostrophes (`'` U+0027). When editing, preserve the original character so the string keeps matching its translations:
 
 ```typescript
 // Original uses curly apostrophe - preserve it
-__( 'We couldn't save the rule.', 'woocommerce-fraud-protection' )
+__( 'We couldn’t save the rule.', 'woocommerce-fraud-protection' )
 //           ^ This is U+2019, not U+0027
 ```
 

@@ -25,8 +25,10 @@ CI runs `composer phpcs` over the whole repository, so every file must pass. Whi
 # ✅ Quick: lint the files you changed
 vendor/bin/phpcs src/Internal/FraudProtectionPlugin/Rules/RuleStore.php tests/php/src/Internal/FraudProtectionPlugin/Rules/RuleStoreTest.php
 
-# ✅ Quick: lint every PHP file changed on the branch
-git diff --name-only trunk... -- '*.php' | xargs vendor/bin/phpcs
+# ✅ Quick: lint every PHP file added or changed on the branch.
+# --diff-filter excludes deleted files, which phpcs cannot open, and
+# xargs -r skips phpcs when nothing matches, so it does not lint the whole tree.
+git diff --name-only --diff-filter=ACMRT trunk... -- '*.php' | xargs -r vendor/bin/phpcs
 
 # ✅ Before handoff: the full run CI performs
 npm run lint:php

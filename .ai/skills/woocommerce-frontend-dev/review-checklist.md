@@ -55,7 +55,7 @@ These are the checks reviewers applied to the checkout attempts list (#142), the
 
 ## Copy and Internationalization
 
-- [ ] All strings use `__()` / `_n()` / `sprintf()` with the `woocommerce-fraud-protection` domain and a translators comment for placeholders.
+- [ ] All strings are translated with `__()` or `_n()` and the `woocommerce-fraud-protection` domain. `sprintf()` only formats an already translated string, as in `sprintf( __( '...', 'woocommerce-fraud-protection' ), value )`, and every placeholder has a translators comment.
 - [ ] Sentence case; terminology matches the rest of the plugin, including the CLI and the tests ("automatic fraud prevention", "allow rule", "block rule", "checkout attempts").
 - [ ] Nothing reveals how fraud detection scores or correlates attempts.
 

@@ -1,6 +1,6 @@
 # Data Integrity Guidelines
 
-In this plugin the persistent data are merchant rules (`Rules/RuleStore`), recorded session events (`Sessions/SessionEventStore`), the plugin's options, and order meta. The examples below use WooCommerce orders and carts for illustration; apply the same checks to the plugin's own stores. Merchant-facing REST controllers authorize with the `manage_woocommerce` capability, which is the custom capability declared in `phpcs.xml`.
+In this plugin the persistent data are merchant rules (`Rules/RuleStore`), recorded session events (`Sessions/SessionEventStore`), the plugin's options, and order meta. The examples below use WooCommerce orders and carts for illustration; apply the same checks to the plugin's own stores. Merchant-facing REST controllers authorize with the `manage_woocommerce` capability, which WooCommerce registers and grants at runtime. Separately, `phpcs.xml` allowlists that name for the `WordPress.WP.Capabilities` sniff so phpcs does not report it as unknown; the allowlist has no effect on authorization.
 
 Verdict-derived state has its own rules: see "Preserve each attempt's decision" in `AGENTS.md` before persisting anything derived from a fraud decision.
 

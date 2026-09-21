@@ -19,15 +19,17 @@ This repository has no markdownlint configuration and no markdown lint step in C
 
 ## Optional: Running markdownlint
 
-If you want an automated check, run markdownlint-cli through `npx` with its default rules. Do not add a configuration file or a dependency for it unless asked.
+If you want an automated check, run the markdownlint-cli that `@wordpress/scripts` already installs (it is pinned in `package-lock.json` as a transitive dependency, not declared in `package.json`), with its default rules. Do not add a configuration file or a direct dependency for it unless asked.
 
 ```bash
 # Auto-fix most issues
-npx markdownlint-cli --fix --disable MD013 -- path/to/file.md
+npx --no-install markdownlint-cli --fix --disable MD013 -- path/to/file.md
 
 # Report what remains
-npx markdownlint-cli --disable MD013 -- path/to/file.md
+npx --no-install markdownlint-cli --disable MD013 -- path/to/file.md
 ```
+
+`--no-install` makes the command fail when the local copy is missing (run `npm install`) instead of downloading an unpinned package from the registry.
 
 `MD013` (line length) is disabled in these examples because the existing files use long lines freely; do not rewrap prose to satisfy it.
 
