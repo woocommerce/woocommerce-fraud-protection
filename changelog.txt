@@ -1,6 +1,6 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-YYYY-xx-xx - version 0.2.7
+2026-09-22 - version 0.2.7
 * Updated - Verification payment data now identifies supported express and digital wallet methods.
 
 2026-09-18 - version 0.2.6
