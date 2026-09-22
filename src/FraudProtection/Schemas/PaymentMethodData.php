@@ -121,6 +121,35 @@ class PaymentMethodData {
 	}
 
 	/**
+	 * Get the payment instrument wallet.
+	 *
+	 * @return ?string Wallet type, or null when absent.
+	 *
+	 * @since 0.2.7
+	 */
+	public function get_instrument_wallet(): ?string {
+		$wallet = $this->instrument->to_array()['wallet'] ?? null;
+
+		return is_string( $wallet ) && '' !== $wallet ? $wallet : null;
+	}
+
+	/**
+	 * Return a copy with the wallet when the instrument has none.
+	 *
+	 * @param ?string $wallet Wallet type, or null to keep the current data.
+	 * @return self
+	 *
+	 * @since 0.2.7
+	 */
+	public function with_instrument_wallet_if_empty( ?string $wallet ): self {
+		if ( null !== $this->get_instrument_wallet() || null === $wallet || '' === $wallet ) {
+			return $this;
+		}
+
+		return $this->with_instrument_wallet( $wallet );
+	}
+
+	/**
 	 * Serialize to array.
 	 *
 	 * @return array

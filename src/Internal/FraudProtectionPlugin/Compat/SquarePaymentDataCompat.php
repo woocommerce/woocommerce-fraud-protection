@@ -71,7 +71,7 @@ class SquarePaymentDataCompat {
 				->with_transaction_mode( $transaction_mode )
 				->with_merchant_identifier( $merchant_identifier, 'location' );
 
-			return $this->with_wallet_if_empty( $result, 'cash_app_pay' );
+			return $result->with_instrument_wallet_if_empty( 'cash_app_pay' );
 		}
 
 		$token_value = $checkout_payment_fields['wc-square-credit-card-payment-token'] ?? '';
@@ -93,7 +93,7 @@ class SquarePaymentDataCompat {
 				->with_transaction_mode( $transaction_mode )
 				->with_merchant_identifier( $merchant_identifier, 'location' );
 
-			return $this->with_wallet_if_empty( $result, $wallet );
+			return $result->with_instrument_wallet_if_empty( $wallet );
 		}
 
 		$result = new PaymentMethodData(
@@ -114,7 +114,7 @@ class SquarePaymentDataCompat {
 			'location'
 		);
 
-		return $this->with_wallet_if_empty( $result, $this->get_wallet( $resolved ) ?? $wallet );
+		return $result->with_instrument_wallet_if_empty( $resolved->get_instrument_wallet() ?? $wallet );
 	}
 
 	/**
@@ -125,31 +125,6 @@ class SquarePaymentDataCompat {
 	 */
 	private function normalize_wallet( $wallet ): ?string {
 		return is_string( $wallet ) ? ( self::WALLET_MAP[ strtolower( $wallet ) ] ?? null ) : null;
-	}
-
-	/**
-	 * Add a wallet when the current payment data has none.
-	 *
-	 * @param PaymentMethodData $resolved Resolved payment data.
-	 * @param ?string           $wallet   Normalized wallet value.
-	 * @return PaymentMethodData
-	 */
-	private function with_wallet_if_empty( PaymentMethodData $resolved, ?string $wallet ): PaymentMethodData {
-		return null !== $wallet && null === $this->get_wallet( $resolved )
-			? $resolved->with_instrument_wallet( $wallet )
-			: $resolved;
-	}
-
-	/**
-	 * Read a non-empty wallet from resolved payment data.
-	 *
-	 * @param PaymentMethodData $resolved Resolved payment data.
-	 * @return ?string Current wallet value.
-	 */
-	private function get_wallet( PaymentMethodData $resolved ): ?string {
-		$wallet = $resolved->to_array()['instrument']['wallet'] ?? null;
-
-		return is_string( $wallet ) && '' !== $wallet ? $wallet : null;
 	}
 
 	/**

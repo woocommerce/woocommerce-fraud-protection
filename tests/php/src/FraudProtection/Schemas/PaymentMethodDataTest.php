@@ -225,4 +225,18 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( $expected, $original->with_instrument_wallet( 'google_pay' )->to_array() );
 		$this->assertSame( 'apple_pay', $original->to_array()['instrument']['wallet'] );
 	}
+
+	/**
+	 * @testdox Instrument wallet helpers read the wallet and add only when absent.
+	 */
+	public function test_instrument_wallet_helpers_preserve_existing_wallet(): void {
+		$without_wallet = new PaymentMethodData( 'stripe', 'card' );
+		$with_wallet    = $without_wallet->with_instrument_wallet_if_empty( 'apple_pay' );
+
+		$this->assertNull( $without_wallet->get_instrument_wallet() );
+		$this->assertSame( 'apple_pay', $with_wallet->get_instrument_wallet() );
+		$this->assertSame( $with_wallet, $with_wallet->with_instrument_wallet_if_empty( 'google_pay' ) );
+		$this->assertSame( $without_wallet, $without_wallet->with_instrument_wallet_if_empty( null ) );
+		$this->assertSame( $without_wallet, $without_wallet->with_instrument_wallet_if_empty( '' ) );
+	}
 }

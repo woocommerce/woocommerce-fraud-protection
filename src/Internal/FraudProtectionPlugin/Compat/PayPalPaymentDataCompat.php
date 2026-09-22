@@ -75,7 +75,7 @@ class PayPalPaymentDataCompat {
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
 		$token               = $this->resolve_saved_token( $resolved->get_gateway(), $checkout_payment_fields );
-		$existing_wallet     = $this->get_wallet( $resolved );
+		$existing_wallet     = $resolved->get_instrument_wallet();
 		$token_wallet        = null;
 
 		if ( null !== $token ) {
@@ -115,36 +115,11 @@ class PayPalPaymentDataCompat {
 		$gateway_wallet = self::GATEWAY_WALLET_MAP[ $resolved->get_gateway() ] ?? null;
 		$funding_source = $checkout_payment_fields['funding_source'] ?? null;
 		$request_wallet = is_string( $funding_source ) ? ( self::FUNDING_SOURCE_WALLET_MAP[ strtolower( $funding_source ) ] ?? null ) : null;
-		$resolved       = $this->with_wallet_if_empty( $resolved, $existing_wallet ?? $token_wallet ?? $gateway_wallet ?? $request_wallet );
+		$resolved       = $resolved->with_instrument_wallet_if_empty( $existing_wallet ?? $token_wallet ?? $gateway_wallet ?? $request_wallet );
 
 		return $resolved
 			->with_transaction_mode( $transaction_mode )
 			->with_merchant_identifier( $merchant_identifier, 'account' );
-	}
-
-	/**
-	 * Add a wallet when the current payment data has none.
-	 *
-	 * @param PaymentMethodData $resolved Resolved payment data.
-	 * @param ?string           $wallet   Normalized wallet value.
-	 * @return PaymentMethodData
-	 */
-	private function with_wallet_if_empty( PaymentMethodData $resolved, ?string $wallet ): PaymentMethodData {
-		return null !== $wallet && null === $this->get_wallet( $resolved )
-			? $resolved->with_instrument_wallet( $wallet )
-			: $resolved;
-	}
-
-	/**
-	 * Read a non-empty wallet from resolved payment data.
-	 *
-	 * @param PaymentMethodData $resolved Resolved payment data.
-	 * @return ?string Current wallet value.
-	 */
-	private function get_wallet( PaymentMethodData $resolved ): ?string {
-		$wallet = $resolved->to_array()['instrument']['wallet'] ?? null;
-
-		return is_string( $wallet ) && '' !== $wallet ? $wallet : null;
 	}
 
 	/**

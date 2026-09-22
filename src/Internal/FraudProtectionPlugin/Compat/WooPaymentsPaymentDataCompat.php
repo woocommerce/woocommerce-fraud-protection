@@ -88,7 +88,7 @@ class WooPaymentsPaymentDataCompat {
 		$request_wallet = $this->normalize_wallet( $checkout_payment_fields['express_payment_type'] ?? null );
 
 		if ( ! class_exists( '\WC_Payments' ) ) {
-			return $this->with_wallet_if_empty( $resolved, $request_wallet );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		$transaction_mode    = $this->resolve_transaction_mode();
@@ -104,7 +104,7 @@ class WooPaymentsPaymentDataCompat {
 		// When WooPay is enabled, pm_ IDs are platform-scoped and cannot be
 		// resolved through the connected account API. Resolve mode and merchant identifier.
 		if ( $this->is_woopay_enabled() ) {
-			return $this->with_wallet_if_empty( $resolved, $request_wallet );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		$token_key   = 'wc-' . $resolved->get_gateway() . '-payment-token';
@@ -121,12 +121,12 @@ class WooPaymentsPaymentDataCompat {
 		}
 
 		if ( empty( $pm_id ) ) {
-			return $this->with_wallet_if_empty( $resolved, $request_wallet );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		$api_client = \WC_Payments::get_payments_api_client();
 		if ( null === $api_client ) {
-			return $this->with_wallet_if_empty( $resolved, $request_wallet );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		try {
@@ -146,11 +146,11 @@ class WooPaymentsPaymentDataCompat {
 					$e->getMessage()
 				)
 			);
-			return $this->with_wallet_if_empty( $resolved, $request_wallet );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		if ( ! isset( $pm_details['type'] ) ) {
-			return $this->with_wallet_if_empty( $resolved, $request_wallet );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		$type            = $pm_details['type'];
@@ -164,7 +164,7 @@ class WooPaymentsPaymentDataCompat {
 			$merchant_identifier,
 			'account'
 		);
-		$existing_wallet = $this->get_wallet( $resolved );
+		$existing_wallet = $resolved->get_instrument_wallet();
 
 		if ( null !== $existing_wallet ) {
 			return $result->with_instrument_wallet( $existing_wallet );
@@ -172,7 +172,7 @@ class WooPaymentsPaymentDataCompat {
 
 		$provider_type_wallet = $this->normalize_wallet( $type );
 
-		return $this->with_wallet_if_empty( $result, $provider_type_wallet ?? $request_wallet );
+		return $result->with_instrument_wallet_if_empty( $provider_type_wallet ?? $request_wallet );
 	}
 
 	/**
@@ -211,31 +211,6 @@ class WooPaymentsPaymentDataCompat {
 	 */
 	private function normalize_wallet( $wallet ): ?string {
 		return is_string( $wallet ) ? ( self::WALLET_MAP[ strtolower( $wallet ) ] ?? null ) : null;
-	}
-
-	/**
-	 * Add a wallet when the current payment data has none.
-	 *
-	 * @param PaymentMethodData $resolved Resolved payment data.
-	 * @param ?string           $wallet   Normalized wallet value.
-	 * @return PaymentMethodData
-	 */
-	private function with_wallet_if_empty( PaymentMethodData $resolved, ?string $wallet ): PaymentMethodData {
-		return null !== $wallet && null === $this->get_wallet( $resolved )
-			? $resolved->with_instrument_wallet( $wallet )
-			: $resolved;
-	}
-
-	/**
-	 * Read a non-empty wallet from resolved payment data.
-	 *
-	 * @param PaymentMethodData $resolved Resolved payment data.
-	 * @return ?string Current wallet value.
-	 */
-	private function get_wallet( PaymentMethodData $resolved ): ?string {
-		$wallet = $resolved->to_array()['instrument']['wallet'] ?? null;
-
-		return is_string( $wallet ) && '' !== $wallet ? $wallet : null;
 	}
 
 	/**
