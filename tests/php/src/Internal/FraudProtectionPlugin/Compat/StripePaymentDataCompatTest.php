@@ -245,11 +245,12 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_returns_resolved_for_missing_pm_id(): void {
 		$resolved = new PaymentMethodData( 'stripe' );
 
-		$result = $this->sut->resolve( $resolved, array() );
+		$result = $this->sut->resolve( $resolved, array( 'express_payment_type' => 'google_pay' ) );
 
 		$array = $result->to_array();
 		$this->assertSame( 'stripe', $array['gateway'] );
 		$this->assertNull( $array['payment_type'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**

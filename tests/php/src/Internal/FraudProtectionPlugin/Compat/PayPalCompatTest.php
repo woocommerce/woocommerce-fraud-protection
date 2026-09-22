@@ -249,6 +249,13 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 					'payment_data'   => array( 'funding_source' => 'apple_pay' ),
 				),
 			),
+			'copies top-level Apple Pay'   => array(
+				array( 'funding_source' => 'apple_pay' ),
+				array(
+					'funding_source' => 'apple_pay',
+					'payment_data'   => array( 'funding_source' => 'apple_pay' ),
+				),
+			),
 			'keeps malformed payment data' => array(
 				array(
 					'funding_source' => 'googlepay',

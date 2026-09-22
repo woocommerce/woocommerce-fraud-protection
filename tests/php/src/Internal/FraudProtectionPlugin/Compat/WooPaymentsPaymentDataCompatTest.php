@@ -785,21 +785,12 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	/** @testdox Raw WooPay request claims do not produce a wallet label. */
 	public function test_raw_woopay_claims_are_not_trusted(): void {
 		\WC_Payments_Features::set_woopay_enabled( true );
-		$previous_user_agent        = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : null;
-		$_SERVER['HTTP_USER_AGENT'] = 'WooPay';
+		$this->set_server_variables( array( 'HTTP_USER_AGENT' => 'WooPay' ) );
 
-		try {
-			$result = $this->sut->resolve(
-				new PaymentMethodData( 'woocommerce_payments' ),
-				array( 'is_woopay' => '1' )
-			);
-		} finally {
-			if ( null === $previous_user_agent ) {
-				unset( $_SERVER['HTTP_USER_AGENT'] );
-			} else {
-				$_SERVER['HTTP_USER_AGENT'] = $previous_user_agent;
-			}
-		}
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array( 'is_woopay' => '1' )
+		);
 
 		$this->assertNull( $result->to_array()['instrument']['wallet'] );
 	}
@@ -1140,20 +1131,20 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	// --- Fail-open ---
 
 	/**
-	 * @testdox Returns mode only when PM ID is missing from payment data.
+	 * @testdox Returns mode and the request wallet when the PM ID is missing.
 	 */
 	public function test_returns_mode_only_when_pm_id_missing(): void {
 		\WC_Payments::set_live( false );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array()
+			array( 'express_payment_type' => 'google_pay' )
 		);
 
 		$array = $result->to_array();
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
