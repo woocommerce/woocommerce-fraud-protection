@@ -42,7 +42,7 @@ class PluginInitializer {
 	 * @return void
 	 */
 	public static function run( string $plugin_file ): void {
-		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.7' );
+		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.8' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', $plugin_file );
 
 		self::register_managed_textdomain();
