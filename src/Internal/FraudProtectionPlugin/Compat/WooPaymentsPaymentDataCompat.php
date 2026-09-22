@@ -45,7 +45,6 @@ class WooPaymentsPaymentDataCompat {
 		'paypal'       => 'paypal',
 		'link'         => 'link',
 		'cashapp'      => 'cash_app_pay',
-		'cash_app_pay' => 'cash_app_pay',
 	);
 
 	/**

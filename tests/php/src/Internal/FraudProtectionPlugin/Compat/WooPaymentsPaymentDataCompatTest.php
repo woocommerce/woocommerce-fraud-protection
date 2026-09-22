@@ -685,10 +685,11 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{mixed}> */
 	public function unsupported_wallet_provider(): array {
 		return array(
-			'unknown' => array( 'future_wallet' ),
-			'empty'   => array( '' ),
-			'array'   => array( array( 'apple_pay' ) ),
-			'object'  => array( new \stdClass() ),
+			'normalized output' => array( 'cash_app_pay' ),
+			'unknown'           => array( 'future_wallet' ),
+			'empty'             => array( '' ),
+			'array'             => array( array( 'apple_pay' ) ),
+			'object'            => array( new \stdClass() ),
 		);
 	}
 

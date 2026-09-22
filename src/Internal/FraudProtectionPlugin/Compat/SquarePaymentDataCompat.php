@@ -27,10 +27,10 @@ class SquarePaymentDataCompat {
 	 * @var array<string, string>
 	 */
 	private const WALLET_MAP = array(
+		'Apple Pay'  => 'apple_pay',
 		'APPLE_PAY'  => 'apple_pay',
-		'apple_pay'  => 'apple_pay',
+		'Google Pay' => 'google_pay',
 		'GOOGLE_PAY' => 'google_pay',
-		'google_pay' => 'google_pay',
 	);
 
 	/**

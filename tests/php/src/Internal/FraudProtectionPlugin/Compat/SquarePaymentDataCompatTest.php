@@ -328,10 +328,10 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function digital_wallet_provider(): array {
 		return array(
-			'Apple Pay'            => array( 'APPLE_PAY', 'apple_pay' ),
-			'Apple Pay canonical'  => array( 'apple_pay', 'apple_pay' ),
-			'Google Pay'           => array( 'GOOGLE_PAY', 'google_pay' ),
-			'Google Pay canonical' => array( 'google_pay', 'google_pay' ),
+			'Apple Pay current'  => array( 'Apple Pay', 'apple_pay' ),
+			'Apple Pay legacy'   => array( 'APPLE_PAY', 'apple_pay' ),
+			'Google Pay current' => array( 'Google Pay', 'google_pay' ),
+			'Google Pay legacy'  => array( 'GOOGLE_PAY', 'google_pay' ),
 		);
 	}
 
@@ -355,7 +355,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			$resolved,
 			array(
 				'wc-square-credit-card-payment-token' => 'token_123',
-				'wc-square-digital-wallet-type'       => 'GOOGLE_PAY',
+				'wc-square-digital-wallet-type'       => 'Google Pay',
 			)
 		)->to_array();
 
@@ -415,10 +415,12 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function invalid_digital_wallet_provider(): array {
 		return array(
-			'unknown' => array( 'SAMSUNG_PAY' ),
-			'empty'   => array( '' ),
-			'array'   => array( array( 'APPLE_PAY' ) ),
-			'object'  => array( new \stdClass() ),
+			'normalized Apple Pay'  => array( 'apple_pay' ),
+			'normalized Google Pay' => array( 'google_pay' ),
+			'unknown'               => array( 'SAMSUNG_PAY' ),
+			'empty'                 => array( '' ),
+			'array'                 => array( array( 'APPLE_PAY' ) ),
+			'object'                => array( new \stdClass() ),
 		);
 	}
 }

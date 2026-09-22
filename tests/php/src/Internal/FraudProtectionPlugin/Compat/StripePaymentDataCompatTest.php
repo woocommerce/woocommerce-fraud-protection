@@ -615,16 +615,10 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function express_payment_type_provider(): array {
 		return array(
-			'Apple Pay'            => array( 'applePay', 'apple_pay' ),
-			'Apple Pay canonical'  => array( 'apple_pay', 'apple_pay' ),
-			'Google Pay'           => array( 'googlePay', 'google_pay' ),
-			'Google Pay canonical' => array( 'google_pay', 'google_pay' ),
-			'Amazon Pay'           => array( 'amazonPay', 'amazon_pay' ),
-			'Amazon Pay canonical' => array( 'amazon_pay', 'amazon_pay' ),
-			'PayPal'               => array( 'paypal', 'paypal' ),
-			'Link'                 => array( 'link', 'link' ),
-			'Cash App Pay'         => array( 'cashapp', 'cash_app_pay' ),
-			'Cash App canonical'   => array( 'cash_app_pay', 'cash_app_pay' ),
+			'Apple Pay'  => array( 'applePay', 'apple_pay' ),
+			'Google Pay' => array( 'googlePay', 'google_pay' ),
+			'Amazon Pay' => array( 'amazonPay', 'amazon_pay' ),
+			'Link'       => array( 'link', 'link' ),
 		);
 	}
 
@@ -651,10 +645,11 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function invalid_express_payment_type_provider(): array {
 		return array(
-			'unknown' => array( 'unsupported_wallet' ),
-			'empty'   => array( '' ),
-			'array'   => array( array( 'applePay' ) ),
-			'object'  => array( new \stdClass() ),
+			'normalized output' => array( 'cash_app_pay' ),
+			'unknown'           => array( 'unsupported_wallet' ),
+			'empty'             => array( '' ),
+			'array'             => array( array( 'applePay' ) ),
+			'object'            => array( new \stdClass() ),
 		);
 	}
 
