@@ -34,11 +34,8 @@ class StripePaymentDataCompat {
 	 * @var array<string, string>
 	 */
 	private const WALLET_MAP = array(
-		'applePay'   => 'apple_pay',
 		'apple_pay'  => 'apple_pay',
-		'googlePay'  => 'google_pay',
 		'google_pay' => 'google_pay',
-		'amazonPay'  => 'amazon_pay',
 		'amazon_pay' => 'amazon_pay',
 		'paypal'     => 'paypal',
 		'link'       => 'link',
@@ -111,7 +108,7 @@ class StripePaymentDataCompat {
 		}
 
 		$postcode        = $pm_details->billing_details->address->postal_code ?? null;
-		$provider_wallet = $this->normalize_wallet( $pm_details->card->wallet->type ?? null );
+		$provider_wallet = $this->normalize_provider_wallet( $pm_details->card->wallet->type ?? null );
 
 		$result = new PaymentMethodData(
 			$resolved->get_gateway(),
@@ -144,7 +141,21 @@ class StripePaymentDataCompat {
 	 * @return ?string Normalized wallet value.
 	 */
 	private function normalize_wallet( $wallet ): ?string {
-		return is_string( $wallet ) ? ( self::WALLET_MAP[ $wallet ] ?? null ) : null;
+		return is_string( $wallet ) ? ( self::WALLET_MAP[ strtolower( $wallet ) ] ?? null ) : null;
+	}
+
+	/**
+	 * Normalize a Stripe provider wallet and preserve new provider values.
+	 *
+	 * @param mixed $wallet Raw provider wallet value.
+	 * @return ?string Wallet value.
+	 */
+	private function normalize_provider_wallet( $wallet ): ?string {
+		if ( ! is_string( $wallet ) || '' === $wallet ) {
+			return null;
+		}
+
+		return $this->normalize_wallet( $wallet ) ?? $wallet;
 	}
 
 	/**

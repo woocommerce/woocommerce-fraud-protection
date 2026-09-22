@@ -328,11 +328,32 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function digital_wallet_provider(): array {
 		return array(
-			'Apple Pay current'  => array( 'Apple Pay', 'apple_pay' ),
-			'Apple Pay legacy'   => array( 'APPLE_PAY', 'apple_pay' ),
-			'Google Pay current' => array( 'Google Pay', 'google_pay' ),
-			'Google Pay legacy'  => array( 'GOOGLE_PAY', 'google_pay' ),
+			'Apple Pay current'    => array( 'Apple Pay', 'apple_pay' ),
+			'Apple Pay uppercase'  => array( 'APPLE PAY', 'apple_pay' ),
+			'Google Pay current'   => array( 'Google Pay', 'google_pay' ),
+			'Google Pay lowercase' => array( 'google pay', 'google_pay' ),
 		);
+	}
+
+	/** @testdox Resolves the dedicated Cash App Pay gateway and preserves resolved data. */
+	public function test_resolves_cash_app_pay_gateway(): void {
+		\WC_Square_Settings_Stub::set_sandbox( true );
+		\WC_Square_Settings_Stub::set_location_id( 'location_123' );
+		$resolved = new PaymentMethodData(
+			'square_cash_app_pay',
+			'cash_app_pay',
+			false,
+			PaymentInstrumentData::from_array( array( 'payer_email' => 'payer@example.com' ) )
+		);
+
+		$array = $this->sut->resolve( $resolved, array() )->to_array();
+
+		$this->assertSame( 'cash_app_pay', $array['payment_type'] );
+		$this->assertSame( 'cash_app_pay', $array['instrument']['wallet'] );
+		$this->assertSame( 'payer@example.com', $array['instrument']['payer_email'] );
+		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+		$this->assertSame( 'location_123', $array['merchant_identifier'] );
+		$this->assertSame( 'location', $array['merchant_identifier_type'] );
 	}
 
 	/**
@@ -381,7 +402,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			array(
 				'wc-square-credit-card-card-type' => 'visa',
 				'wc-square-credit-card-last-four' => '4242',
-				'wc-square-digital-wallet-type'   => 'APPLE_PAY',
+				'wc-square-digital-wallet-type'   => 'APPLE PAY',
 			)
 		)->to_array();
 
@@ -415,12 +436,12 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function invalid_digital_wallet_provider(): array {
 		return array(
-			'normalized Apple Pay'  => array( 'apple_pay' ),
-			'normalized Google Pay' => array( 'google_pay' ),
-			'unknown'               => array( 'SAMSUNG_PAY' ),
-			'empty'                 => array( '' ),
-			'array'                 => array( array( 'APPLE_PAY' ) ),
-			'object'                => array( new \stdClass() ),
+			'Apple Pay enum name'  => array( 'APPLE_PAY' ),
+			'Google Pay enum name' => array( 'GOOGLE_PAY' ),
+			'unknown'              => array( 'SAMSUNG_PAY' ),
+			'empty'                => array( '' ),
+			'array'                => array( array( 'Apple Pay' ) ),
+			'object'               => array( new \stdClass() ),
 		);
 	}
 }

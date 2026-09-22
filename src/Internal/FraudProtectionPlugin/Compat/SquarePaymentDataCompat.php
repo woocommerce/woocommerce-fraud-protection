@@ -22,15 +22,20 @@ defined( 'ABSPATH' ) || exit;
 class SquarePaymentDataCompat {
 
 	/**
+	 * Cash App Pay gateway ID.
+	 *
+	 * @var string
+	 */
+	private const CASH_APP_PAY_GATEWAY_ID = 'square_cash_app_pay';
+
+	/**
 	 * Wallet names accepted from Square payment data.
 	 *
 	 * @var array<string, string>
 	 */
 	private const WALLET_MAP = array(
-		'Apple Pay'  => 'apple_pay',
-		'APPLE_PAY'  => 'apple_pay',
-		'Google Pay' => 'google_pay',
-		'GOOGLE_PAY' => 'google_pay',
+		'apple pay'  => 'apple_pay',
+		'google pay' => 'google_pay',
 	);
 
 	/**
@@ -52,8 +57,21 @@ class SquarePaymentDataCompat {
 	 * @return PaymentMethodData Resolved data, or pass-through.
 	 */
 	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
-		if ( 'square_credit_card' !== $resolved->get_gateway() ) {
+		$gateway = $resolved->get_gateway();
+
+		if ( 'square_credit_card' !== $gateway && self::CASH_APP_PAY_GATEWAY_ID !== $gateway ) {
 			return $resolved;
+		}
+
+		$transaction_mode    = $this->resolve_transaction_mode();
+		$merchant_identifier = $this->resolve_merchant_identifier();
+
+		if ( self::CASH_APP_PAY_GATEWAY_ID === $gateway ) {
+			$result = $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'location' );
+
+			return $this->with_wallet_if_empty( $result, 'cash_app_pay' );
 		}
 
 		$token_value = $checkout_payment_fields['wc-square-credit-card-payment-token'] ?? '';
@@ -68,9 +86,6 @@ class SquarePaymentDataCompat {
 			: null;
 		$postcode    = $checkout_payment_fields['wc-square-credit-card-payment-postcode'] ?? null;
 		$wallet      = $this->normalize_wallet( $checkout_payment_fields['wc-square-digital-wallet-type'] ?? null );
-
-		$transaction_mode    = $this->resolve_transaction_mode();
-		$merchant_identifier = $this->resolve_merchant_identifier();
 
 		// Saved cards have empty card keys — pass through the token-based data.
 		if ( empty( $brand ) && empty( $last4 ) ) {
@@ -109,7 +124,7 @@ class SquarePaymentDataCompat {
 	 * @return ?string Normalized wallet value.
 	 */
 	private function normalize_wallet( $wallet ): ?string {
-		return is_string( $wallet ) ? ( self::WALLET_MAP[ $wallet ] ?? null ) : null;
+		return is_string( $wallet ) ? ( self::WALLET_MAP[ strtolower( $wallet ) ] ?? null ) : null;
 	}
 
 	/**

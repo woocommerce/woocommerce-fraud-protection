@@ -615,10 +615,16 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function express_payment_type_provider(): array {
 		return array(
-			'Apple Pay'  => array( 'applePay', 'apple_pay' ),
-			'Google Pay' => array( 'googlePay', 'google_pay' ),
-			'Amazon Pay' => array( 'amazonPay', 'amazon_pay' ),
-			'Link'       => array( 'link', 'link' ),
+			'Apple Pay'            => array( 'apple_pay', 'apple_pay' ),
+			'Apple Pay uppercase'  => array( 'APPLE_PAY', 'apple_pay' ),
+			'Google Pay'           => array( 'google_pay', 'google_pay' ),
+			'Google Pay uppercase' => array( 'GOOGLE_PAY', 'google_pay' ),
+			'Amazon Pay'           => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase' => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'               => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'     => array( 'PAYPAL', 'paypal' ),
+			'Link'                 => array( 'link', 'link' ),
+			'Link uppercase'       => array( 'LINK', 'link' ),
 		);
 	}
 
@@ -645,11 +651,14 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function invalid_express_payment_type_provider(): array {
 		return array(
-			'normalized output' => array( 'cash_app_pay' ),
-			'unknown'           => array( 'unsupported_wallet' ),
-			'empty'             => array( '' ),
-			'array'             => array( array( 'applePay' ) ),
-			'object'            => array( new \stdClass() ),
+			'Apple Pay configuration key'  => array( 'applePay' ),
+			'Google Pay configuration key' => array( 'googlePay' ),
+			'Amazon Pay configuration key' => array( 'amazonPay' ),
+			'normalized output'            => array( 'cash_app_pay' ),
+			'unknown'                      => array( 'unsupported_wallet' ),
+			'empty'                        => array( '' ),
+			'array'                        => array( array( 'apple_pay' ) ),
+			'object'                       => array( new \stdClass() ),
 		);
 	}
 
@@ -663,7 +672,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			new PaymentMethodData( 'stripe', 'card' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_123',
-				'express_payment_type'     => 'googlePay',
+				'express_payment_type'     => 'google_pay',
 			)
 		)->to_array();
 
@@ -684,7 +693,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			new PaymentMethodData( 'stripe' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_123',
-				'express_payment_type'     => 'googlePay',
+				'express_payment_type'     => 'google_pay',
 			)
 		)->to_array();
 
@@ -720,10 +729,54 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function provider_payment_type_provider(): array {
 		return array(
-			'Amazon Pay'   => array( 'amazon_pay', 'amazon_pay' ),
-			'PayPal'       => array( 'paypal', 'paypal' ),
-			'Link'         => array( 'link', 'link' ),
-			'Cash App Pay' => array( 'cashapp', 'cash_app_pay' ),
+			'Amazon Pay'             => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase'   => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'                 => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'       => array( 'PAYPAL', 'paypal' ),
+			'Link'                   => array( 'link', 'link' ),
+			'Link uppercase'         => array( 'LINK', 'link' ),
+			'Cash App Pay'           => array( 'cashapp', 'cash_app_pay' ),
+			'Cash App Pay uppercase' => array( 'CASHAPP', 'cash_app_pay' ),
+		);
+	}
+
+	/**
+	 * @testdox Preserves all supported Stripe card wallet values.
+	 *
+	 * @dataProvider provider_card_wallet_provider
+	 *
+	 * @param string $provider_wallet Stripe card wallet value.
+	 * @param string $expected_wallet Expected wallet value.
+	 */
+	public function test_preserves_provider_card_wallet( string $provider_wallet, string $expected_wallet ): void {
+		$response                     = $this->create_card_response();
+		$response->card->wallet       = new \stdClass();
+		$response->card->wallet->type = $provider_wallet;
+		\WC_Stripe_API::set_mock_response( $response );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array( 'wc-stripe-payment-method' => 'pm_123' )
+		)->to_array();
+
+		$this->assertSame( $expected_wallet, $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Stripe card wallet values.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function provider_card_wallet_provider(): array {
+		return array(
+			'American Express Checkout' => array( 'amex_express_checkout', 'amex_express_checkout' ),
+			'Apple Pay'                 => array( 'apple_pay', 'apple_pay' ),
+			'Google Pay'                => array( 'google_pay', 'google_pay' ),
+			'Link'                      => array( 'link', 'link' ),
+			'Masterpass'                => array( 'masterpass', 'masterpass' ),
+			'Samsung Pay'               => array( 'samsung_pay', 'samsung_pay' ),
+			'Visa Checkout'             => array( 'visa_checkout', 'visa_checkout' ),
+			'new provider value'        => array( 'future_wallet', 'future_wallet' ),
 		);
 	}
 
@@ -747,7 +800,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			$resolved,
 			array(
 				'wc-stripe-payment-method' => 'pm_123',
-				'express_payment_type'     => 'googlePay',
+				'express_payment_type'     => 'google_pay',
 			)
 		)->to_array();
 

@@ -405,10 +405,14 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	public function funding_source_provider(): array {
 		return array(
-			'PayPal'     => array( 'paypal', 'paypal' ),
-			'Venmo'      => array( 'venmo', 'venmo' ),
-			'Apple Pay'  => array( 'apple_pay', 'apple_pay' ),
-			'Google Pay' => array( 'googlepay', 'google_pay' ),
+			'PayPal'               => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'     => array( 'PAYPAL', 'paypal' ),
+			'Venmo'                => array( 'venmo', 'venmo' ),
+			'Venmo uppercase'      => array( 'VENMO', 'venmo' ),
+			'Apple Pay'            => array( 'apple_pay', 'apple_pay' ),
+			'Apple Pay uppercase'  => array( 'APPLE_PAY', 'apple_pay' ),
+			'Google Pay'           => array( 'googlepay', 'google_pay' ),
+			'Google Pay uppercase' => array( 'GOOGLEPAY', 'google_pay' ),
 		);
 	}
 

@@ -207,7 +207,7 @@ class WooPaymentsPaymentDataCompat {
 	 * @return ?string Normalized wallet value.
 	 */
 	private function normalize_wallet( $wallet ): ?string {
-		return is_string( $wallet ) ? ( self::WALLET_MAP[ $wallet ] ?? null ) : null;
+		return is_string( $wallet ) ? ( self::WALLET_MAP[ strtolower( $wallet ) ] ?? null ) : null;
 	}
 
 	/**

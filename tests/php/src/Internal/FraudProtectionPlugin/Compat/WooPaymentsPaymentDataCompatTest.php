@@ -657,11 +657,16 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string, string}> */
 	public function express_request_wallet_provider(): array {
 		return array(
-			'Apple Pay'  => array( 'apple_pay', 'apple_pay' ),
-			'Google Pay' => array( 'google_pay', 'google_pay' ),
-			'Amazon Pay' => array( 'amazon_pay', 'amazon_pay' ),
-			'PayPal'     => array( 'paypal', 'paypal' ),
-			'Link'       => array( 'link', 'link' ),
+			'Apple Pay'            => array( 'apple_pay', 'apple_pay' ),
+			'Apple Pay uppercase'  => array( 'APPLE_PAY', 'apple_pay' ),
+			'Google Pay'           => array( 'google_pay', 'google_pay' ),
+			'Google Pay uppercase' => array( 'GOOGLE_PAY', 'google_pay' ),
+			'Amazon Pay'           => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase' => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'               => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'     => array( 'PAYPAL', 'paypal' ),
+			'Link'                 => array( 'link', 'link' ),
+			'Link uppercase'       => array( 'LINK', 'link' ),
 		);
 	}
 
@@ -719,10 +724,14 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	/** @return array<string, array{string, string}> */
 	public function provider_payment_type_wallet_provider(): array {
 		return array(
-			'Amazon Pay'   => array( 'amazon_pay', 'amazon_pay' ),
-			'PayPal'       => array( 'paypal', 'paypal' ),
-			'Link'         => array( 'link', 'link' ),
-			'Cash App Pay' => array( 'cashapp', 'cash_app_pay' ),
+			'Amazon Pay'             => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase'   => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'                 => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'       => array( 'PAYPAL', 'paypal' ),
+			'Link'                   => array( 'link', 'link' ),
+			'Link uppercase'         => array( 'LINK', 'link' ),
+			'Cash App Pay'           => array( 'cashapp', 'cash_app_pay' ),
+			'Cash App Pay uppercase' => array( 'CASHAPP', 'cash_app_pay' ),
 		);
 	}
 
