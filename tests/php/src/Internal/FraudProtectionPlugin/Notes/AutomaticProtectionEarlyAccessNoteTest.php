@@ -43,14 +43,14 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox Resetting the merchant gate removes an active invitation immediately.
+	 * @testdox Resetting the merchant gate preserves an active invitation under the enabled default.
 	 */
-	public function test_resetting_merchant_gate_removes_note(): void {
+	public function test_resetting_merchant_gate_preserves_note(): void {
 		$this->sut->maybe_add_note();
 		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 	}
 
 	/**

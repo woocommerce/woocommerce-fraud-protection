@@ -201,11 +201,11 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Settings telemetry registers while merchant-facing settings stay disabled by default.
+	 * @testdox Settings telemetry registers while an explicit override hides merchant surfaces.
 	 */
-	public function test_default_gate_registers_telemetry_without_merchant_surfaces(): void {
+	public function test_disabled_gate_registers_telemetry_without_merchant_surfaces(): void {
 		$container = wc_get_container();
-		$container->get( MerchantFacingFeaturesGate::class )->reset();
+		$container->get( MerchantFacingFeaturesGate::class )->set_enabled( false );
 
 		$this->sut->handle_init();
 
@@ -219,12 +219,12 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Enabling merchant-facing features registers the page and settings endpoint.
+	 * @testdox Merchant-facing features register the page and settings endpoint by default.
 	 */
-	public function test_enabled_gate_registers_page_and_endpoint(): void {
+	public function test_default_gate_registers_page_and_endpoint(): void {
 		$container = wc_get_container();
 		$feature   = $container->get( MerchantFacingFeaturesGate::class );
-		$feature->set_enabled( true );
+		$feature->reset();
 
 		$this->sut->handle_init();
 
