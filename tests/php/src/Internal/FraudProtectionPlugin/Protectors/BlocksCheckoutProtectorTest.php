@@ -454,6 +454,65 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Store API checkout routes preserve wallet input, other payment data, and extensions.
+	 *
+	 * @dataProvider store_api_checkout_route_provider
+	 *
+	 * @param string $route Store API route.
+	 */
+	public function test_store_api_checkout_routes_preserve_wallet_input_and_existing_data( string $route ): void {
+		$request = new \WP_REST_Request( 'POST', $route );
+		$request->set_param( 'payment_method', 'woocommerce_payments' );
+		$request->set_param(
+			'payment_data',
+			array(
+				array(
+					'key'   => 'express_payment_type',
+					'value' => 'apple_pay',
+				),
+				array(
+					'key'   => 'gateway_reference',
+					'value' => 'preserved-value',
+				),
+			)
+		);
+		$request->set_param(
+			'extensions',
+			array(
+				'woocommerce/fraud-protection' => array( 'blackbox_session_id' => 'session-900' ),
+				'example/existing-extension'   => array( 'value' => 'preserved-extension' ),
+			)
+		);
+
+		$this->sut->extract_request_data( $this->create_mock_order( 900 ), $request );
+
+		$request_data = $this->get_request_data();
+
+		$this->assertSame( 'woocommerce_payments', $request_data['payment_method'] );
+		$this->assertSame(
+			array(
+				'express_payment_type' => 'apple_pay',
+				'gateway_reference'    => 'preserved-value',
+			),
+			$request_data['payment_data']
+		);
+		$this->assertSame( 'session-900', $request_data['extensions']['woocommerce/fraud-protection']['blackbox_session_id'] );
+		$this->assertSame( 'preserved-extension', $request_data['extensions']['example/existing-extension']['value'] );
+	}
+
+	/**
+	 * Store API checkout routes.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public function store_api_checkout_route_provider(): array {
+		return array(
+			'new order'      => array( '/wc/store/v1/checkout' ),
+			'existing order' => array( '/wc/store/v1/checkout/900' ),
+		);
+	}
+
+	/**
 	 * @testdox extract_request_data() applies Store API payment data normalization.
 	 *
 	 * @dataProvider payment_data_normalization_provider

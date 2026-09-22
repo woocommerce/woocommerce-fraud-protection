@@ -28,6 +28,28 @@ class PayPalPaymentDataCompat {
 	private const GATEWAY_PREFIX = 'ppcp-';
 
 	/**
+	 * Wallet names resolved from dedicated PayPal Payments gateways.
+	 *
+	 * @var array<string, string>
+	 */
+	private const GATEWAY_WALLET_MAP = array(
+		'ppcp-applepay'  => 'apple_pay',
+		'ppcp-googlepay' => 'google_pay',
+	);
+
+	/**
+	 * Wallet names accepted from PayPal create-order data.
+	 *
+	 * @var array<string, string>
+	 */
+	private const FUNDING_SOURCE_WALLET_MAP = array(
+		'paypal'    => 'paypal',
+		'venmo'     => 'venmo',
+		'apple_pay' => 'apple_pay',
+		'googlepay' => 'google_pay',
+	);
+
+	/**
 	 * Register the filter callback.
 	 *
 	 * @return void
@@ -53,24 +75,30 @@ class PayPalPaymentDataCompat {
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
 		$token               = $this->resolve_saved_token( $resolved->get_gateway(), $checkout_payment_fields );
+		$existing_wallet     = $resolved->get_instrument_wallet();
+		$token_wallet        = null;
 
 		if ( null !== $token ) {
 			$payment_type = null;
 			$instrument   = null;
+			$token_type   = $token->get_type();
 
 			// Card tokens are resolved by PaymentDataResolver; this switch handles PayPal wallet tokens.
-			switch ( $token->get_type() ) {
-				case 'PayPal':
+			switch ( is_string( $token_type ) ? strtolower( $token_type ) : '' ) {
+				case 'paypal':
 					$payment_type = 'paypal';
 					$instrument   = $this->resolve_payer_email( $token );
+					$token_wallet = 'paypal';
 					break;
-				case 'Venmo':
+				case 'venmo':
 					$payment_type = 'venmo';
 					$instrument   = $this->resolve_payer_email( $token );
+					$token_wallet = 'venmo';
 					break;
-				case 'ApplePay':
+				case 'applepay':
 					$payment_type = 'card';
 					$instrument   = PaymentInstrumentData::from_array( array( 'wallet' => 'apple_pay' ) );
+					$token_wallet = 'apple_pay';
 					break;
 			}
 
@@ -83,6 +111,11 @@ class PayPalPaymentDataCompat {
 				);
 			}
 		}
+
+		$gateway_wallet = self::GATEWAY_WALLET_MAP[ $resolved->get_gateway() ] ?? null;
+		$funding_source = $checkout_payment_fields['funding_source'] ?? null;
+		$request_wallet = is_string( $funding_source ) ? ( self::FUNDING_SOURCE_WALLET_MAP[ strtolower( $funding_source ) ] ?? null ) : null;
+		$resolved       = $resolved->with_instrument_wallet_if_empty( $existing_wallet ?? $token_wallet ?? $gateway_wallet ?? $request_wallet );
 
 		return $resolved
 			->with_transaction_mode( $transaction_mode )

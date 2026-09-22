@@ -152,6 +152,8 @@ Use a stable application-defined ASCII source identifier of 32 characters or few
 
 The remaining public classes are used directly: `BlockedSessionMessage`, `PaymentMethodData`, and `SuppliedDecision` have public constructors (`new`), while the other DTOs have private constructors and are built via their static factories (`ReportContextData::from_array()`, `PaymentInstrumentData::from_array()` / `::empty()`). The enums are used as cases (e.g. `MessageContext::Purchase`). `LearningModeContext` remains available for source compatibility but is deprecated because the learning-mode filter no longer runs.
 
+`PaymentMethodData::get_instrument_wallet()` reads the current wallet. `with_instrument_wallet()` returns an immutable copy with the supplied wallet, and `with_instrument_wallet_if_empty()` adds one only when the instrument has none. These methods preserve all other payment data. The wallet is an open string so gateway and extension values remain compatible. Built-in gateway integrations normalize recognized values to `woopay`, `apple_pay`, `google_pay`, `amazon_pay`, `paypal`, `venmo`, `link`, `cash_app_pay`, `alipay`, `grabpay`, and `wechat_pay`.
+
 ### Extension filters
 
 Two hooks let an extension (e.g. a payment gateway with a non-standard checkout flow) integrate with the fraud check. Callback errors in both hooks fail open.

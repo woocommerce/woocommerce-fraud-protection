@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.2.7
+* Updated - Verification payment data now identifies supported express and digital wallet methods.
+
 2026-09-18 - version 0.2.6
 * Added - Managed installations now load available Fraud Protection translations for PHP and settings screens.
 * Updated - Checkout attempt dates now display in the browser's time zone.

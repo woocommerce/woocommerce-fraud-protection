@@ -184,6 +184,91 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/**
+	 * @testdox Create-order verification copies top-level funding source without changing the hook data.
+	 *
+	 * @dataProvider create_order_funding_source_provider
+	 *
+	 * @param array<string, mixed> $data Original create-order hook data.
+	 * @param array<string, mixed> $expected_verification_data Expected verification data.
+	 */
+	public function test_create_order_funding_source_is_available_only_to_verification( array $data, array $expected_verification_data ): void {
+		$original_data = $data;
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( '', 'paypal_express_order_creation', 0, $expected_verification_data )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block_create_order( $data );
+
+		$this->assertSame( $original_data, $data );
+	}
+
+	/**
+	 * Create-order funding-source request shapes.
+	 *
+	 * @return array<string, array{array<string, mixed>, array<string, mixed>}>
+	 */
+	public function create_order_funding_source_provider(): array {
+		return array(
+			'creates payment data'         => array(
+				array(
+					'funding_source' => 'paypal',
+					'context'        => 'product',
+				),
+				array(
+					'funding_source' => 'paypal',
+					'context'        => 'product',
+					'payment_data'   => array( 'funding_source' => 'paypal' ),
+				),
+			),
+			'preserves other payment data' => array(
+				array(
+					'funding_source' => 'venmo',
+					'payment_data'   => array( 'gateway_token' => 'tokenized-value' ),
+					'context'        => 'cart',
+				),
+				array(
+					'funding_source' => 'venmo',
+					'payment_data'   => array(
+						'gateway_token'  => 'tokenized-value',
+						'funding_source' => 'venmo',
+					),
+					'context'        => 'cart',
+				),
+			),
+			'keeps nested funding source'  => array(
+				array(
+					'funding_source' => 'paypal',
+					'payment_data'   => array( 'funding_source' => 'apple_pay' ),
+				),
+				array(
+					'funding_source' => 'paypal',
+					'payment_data'   => array( 'funding_source' => 'apple_pay' ),
+				),
+			),
+			'copies top-level Apple Pay'   => array(
+				array( 'funding_source' => 'apple_pay' ),
+				array(
+					'funding_source' => 'apple_pay',
+					'payment_data'   => array( 'funding_source' => 'apple_pay' ),
+				),
+			),
+			'keeps malformed payment data' => array(
+				array(
+					'funding_source' => 'googlepay',
+					'payment_data'   => 'invalid',
+				),
+				array(
+					'funding_source' => 'googlepay',
+					'payment_data'   => 'invalid',
+				),
+			),
+		);
+	}
+
 	/** @testdox A verified request associates only the first created PayPal order. */
 	public function test_association_covers_only_the_one_order_a_request_creates(): void {
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );

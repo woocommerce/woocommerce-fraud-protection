@@ -98,6 +98,58 @@ class PaymentMethodData {
 	}
 
 	/**
+	 * Return a copy with the payment instrument wallet.
+	 *
+	 * @param string $wallet Normalized wallet type.
+	 * @return self
+	 *
+	 * @since 0.2.7
+	 */
+	public function with_instrument_wallet( string $wallet ): self {
+		$instrument_data           = $this->instrument->to_array();
+		$instrument_data['wallet'] = $wallet;
+
+		return new self(
+			$this->gateway,
+			$this->payment_type,
+			$this->is_saved_payment_method,
+			PaymentInstrumentData::from_array( $instrument_data ),
+			$this->transaction_mode,
+			$this->merchant_identifier,
+			$this->merchant_identifier_type
+		);
+	}
+
+	/**
+	 * Get the payment instrument wallet.
+	 *
+	 * @return ?string Wallet type, or null when absent.
+	 *
+	 * @since 0.2.7
+	 */
+	public function get_instrument_wallet(): ?string {
+		$wallet = $this->instrument->to_array()['wallet'] ?? null;
+
+		return is_string( $wallet ) && '' !== $wallet ? $wallet : null;
+	}
+
+	/**
+	 * Return a copy with the wallet when the instrument has none.
+	 *
+	 * @param ?string $wallet Wallet type, or null to keep the current data.
+	 * @return self
+	 *
+	 * @since 0.2.7
+	 */
+	public function with_instrument_wallet_if_empty( ?string $wallet ): self {
+		if ( null !== $this->get_instrument_wallet() || null === $wallet || '' === $wallet ) {
+			return $this;
+		}
+
+		return $this->with_instrument_wallet( $wallet );
+	}
+
+	/**
 	 * Serialize to array.
 	 *
 	 * @return array

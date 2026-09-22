@@ -22,6 +22,23 @@ defined( 'ABSPATH' ) || exit;
 class SquarePaymentDataCompat {
 
 	/**
+	 * Cash App Pay gateway ID.
+	 *
+	 * @var string
+	 */
+	private const CASH_APP_PAY_GATEWAY_ID = 'square_cash_app_pay';
+
+	/**
+	 * Wallet names accepted from Square payment data.
+	 *
+	 * @var array<string, string>
+	 */
+	private const WALLET_MAP = array(
+		'apple pay'  => 'apple_pay',
+		'google pay' => 'google_pay',
+	);
+
+	/**
 	 * Register the filter callback.
 	 *
 	 * @return void
@@ -40,8 +57,21 @@ class SquarePaymentDataCompat {
 	 * @return PaymentMethodData Resolved data, or pass-through.
 	 */
 	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
-		if ( 'square_credit_card' !== $resolved->get_gateway() ) {
+		$gateway = $resolved->get_gateway();
+
+		if ( 'square_credit_card' !== $gateway && self::CASH_APP_PAY_GATEWAY_ID !== $gateway ) {
 			return $resolved;
+		}
+
+		$transaction_mode    = $this->resolve_transaction_mode();
+		$merchant_identifier = $this->resolve_merchant_identifier();
+
+		if ( self::CASH_APP_PAY_GATEWAY_ID === $gateway ) {
+			$result = $resolved
+				->with_transaction_mode( $transaction_mode )
+				->with_merchant_identifier( $merchant_identifier, 'location' );
+
+			return $result->with_instrument_wallet_if_empty( 'cash_app_pay' );
 		}
 
 		$token_value = $checkout_payment_fields['wc-square-credit-card-payment-token'] ?? '';
@@ -55,18 +85,18 @@ class SquarePaymentDataCompat {
 			? (int) $checkout_payment_fields['wc-square-credit-card-exp-year']
 			: null;
 		$postcode    = $checkout_payment_fields['wc-square-credit-card-payment-postcode'] ?? null;
-
-		$transaction_mode    = $this->resolve_transaction_mode();
-		$merchant_identifier = $this->resolve_merchant_identifier();
+		$wallet      = $this->normalize_wallet( $checkout_payment_fields['wc-square-digital-wallet-type'] ?? null );
 
 		// Saved cards have empty card keys — pass through the token-based data.
 		if ( empty( $brand ) && empty( $last4 ) ) {
-			return $resolved
+			$result = $resolved
 				->with_transaction_mode( $transaction_mode )
 				->with_merchant_identifier( $merchant_identifier, 'location' );
+
+			return $result->with_instrument_wallet_if_empty( $wallet );
 		}
 
-		return new PaymentMethodData(
+		$result = new PaymentMethodData(
 			'square_credit_card',
 			'card',
 			$is_saved,
@@ -83,6 +113,18 @@ class SquarePaymentDataCompat {
 			$merchant_identifier,
 			'location'
 		);
+
+		return $result->with_instrument_wallet_if_empty( $resolved->get_instrument_wallet() ?? $wallet );
+	}
+
+	/**
+	 * Normalize a supported Square wallet value.
+	 *
+	 * @param mixed $wallet Raw wallet value.
+	 * @return ?string Normalized wallet value.
+	 */
+	private function normalize_wallet( $wallet ): ?string {
+		return is_string( $wallet ) ? ( self::WALLET_MAP[ strtolower( $wallet ) ] ?? null ) : null;
 	}
 
 	/**
