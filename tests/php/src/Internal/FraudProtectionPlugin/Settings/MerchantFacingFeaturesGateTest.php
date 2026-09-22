@@ -35,12 +35,12 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An absent override follows the disabled code default.
+	 * @testdox An absent override follows the enabled code default.
 	 */
-	public function test_absent_override_is_disabled_by_default(): void {
-		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
-		$this->assertSame( SettingStatus::Disabled, $this->sut->get_default() );
-		$this->assertFalse( $this->sut->is_enabled() );
+	public function test_absent_override_is_enabled_by_default(): void {
+		$this->assertSame( SettingStatus::DefaultEnabled, $this->sut->get_status() );
+		$this->assertSame( SettingStatus::Enabled, $this->sut->get_default() );
+		$this->assertTrue( $this->sut->is_enabled() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
 	}
 
@@ -65,19 +65,19 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 	public function test_invalid_value_follows_code_default(): void {
 		update_option( self::OPTION_NAME, array( 'invalid' ) );
 
-		$this->assertSame( SettingStatus::DefaultDisabled, $this->sut->get_status() );
-		$this->assertFalse( $this->sut->is_enabled() );
+		$this->assertSame( SettingStatus::DefaultEnabled, $this->sut->get_status() );
+		$this->assertTrue( $this->sut->is_enabled() );
 
-		$enabled_default = new class() extends MerchantFacingFeaturesGate {
+		$disabled_default = new class() extends MerchantFacingFeaturesGate {
 			/**
 			 * Provide the get_default() test stub.
 			 */
 			public function get_default(): SettingStatus {
-				return SettingStatus::Enabled;
+				return SettingStatus::Disabled;
 			}
 		};
-		$this->assertSame( SettingStatus::DefaultEnabled, $enabled_default->get_status() );
-		$this->assertTrue( $enabled_default->is_enabled() );
+		$this->assertSame( SettingStatus::DefaultDisabled, $disabled_default->get_status() );
+		$this->assertFalse( $disabled_default->is_enabled() );
 	}
 
 	/**
@@ -98,5 +98,6 @@ class MerchantFacingFeaturesGateTest extends FraudProtectionUnitTestCase {
 
 		$this->assertTrue( $this->sut->reset() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
+		$this->assertSame( SettingStatus::DefaultEnabled, $this->sut->get_status() );
 	}
 }

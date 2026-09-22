@@ -41,7 +41,9 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	/** Set up test fixtures. */
 	public function setUp(): void {
 		parent::setUp();
-		$this->schema_manager = new SchemaManager();
+		$this->server              = new \WP_REST_Server();
+		$GLOBALS['wp_rest_server'] = $this->server;
+		$this->schema_manager      = new SchemaManager();
 		$this->schema_manager->init( new MerchantListsFeature(), wc_get_container()->get( LegacyProxy::class ), wc_get_container()->get( FraudProtectionLogger::class ) );
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $this->schema_manager->get_rules_table_schema() );

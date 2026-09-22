@@ -2,6 +2,7 @@
 
 2026-xx-xx - version 0.2.8
 * Updated - IP location is now hidden by default in the checkout attempts list and remains available in view options.
+* Updated - Fraud prevention settings, checkout attempts, and rules are now available by default.
 
 2026-09-22 - version 0.2.7
 * Updated - Verification payment data now identifies supported express and digital wallet methods.

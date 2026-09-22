@@ -49,7 +49,9 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		$this->setting = new AutomaticProtectionSetting();
+		$this->server              = new \WP_REST_Server();
+		$GLOBALS['wp_rest_server'] = $this->server;
+		$this->setting             = new AutomaticProtectionSetting();
 		$this->setting->reset();
 		$this->performance_counts = array(
 			'flagged_by_fraud_prevention' => 0,
