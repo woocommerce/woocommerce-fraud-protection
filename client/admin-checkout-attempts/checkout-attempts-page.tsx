@@ -50,11 +50,10 @@ const DEFAULT_FIELDS = [
 	'recorded_at',
 	'email',
 	'ip',
-	'ip_country',
 	'billing_country',
 	'outcome',
 ];
-const SUPPORTED_FIELDS = [ ...DEFAULT_FIELDS, 'rules' ];
+const SUPPORTED_FIELDS = [ ...DEFAULT_FIELDS, 'ip_country', 'rules' ];
 const SUPPORTED_PER_PAGE = [ 10, 20, 50, 100 ];
 const SUPPORTED_DENSITIES = [ 'compact', 'balanced', 'comfortable' ];
 const STORAGE_KEY = 'wc-fraud-protection-checkout-attempts-prefs';

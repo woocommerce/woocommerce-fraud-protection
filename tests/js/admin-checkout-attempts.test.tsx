@@ -1299,6 +1299,29 @@ describe( 'CheckoutAttemptsPage', () => {
 		expect( listPaths()[ 0 ] ).not.toContain( 'final_status' );
 	} );
 
+	it( 'hides IP location by default and restores an explicit preference', async () => {
+		mockApi( { sessions: listResponse( [ aSession() ], 1 ) } );
+
+		const { unmount } = renderPage();
+		await screen.findByText( 'shopper@example.com' );
+		expect(
+			screen.queryByRole( 'button', { name: 'IP location' } )
+		).not.toBeInTheDocument();
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'View options' } )
+		);
+		expect(
+			screen.getByRole( 'button', { name: 'IP location' } )
+		).toBeInTheDocument();
+
+		unmount();
+		savePrefs( { fields: [ 'email', 'ip_country' ] } );
+		renderPage();
+		expect(
+			await screen.findByRole( 'button', { name: 'IP location' } )
+		).toBeInTheDocument();
+	} );
+
 	it( 'opens contextual create drawers for email and IP with the inverse action', async () => {
 		const allowed = aSession( { id: 21 } );
 		const blocked = aSession( {
