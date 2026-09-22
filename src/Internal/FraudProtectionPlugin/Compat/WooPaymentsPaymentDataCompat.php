@@ -39,12 +39,12 @@ class WooPaymentsPaymentDataCompat {
 	 * @var array<string, string>
 	 */
 	private const WALLET_MAP = array(
-		'apple_pay'    => 'apple_pay',
-		'google_pay'   => 'google_pay',
-		'amazon_pay'   => 'amazon_pay',
-		'paypal'       => 'paypal',
-		'link'         => 'link',
-		'cashapp'      => 'cash_app_pay',
+		'apple_pay'  => 'apple_pay',
+		'google_pay' => 'google_pay',
+		'amazon_pay' => 'amazon_pay',
+		'paypal'     => 'paypal',
+		'link'       => 'link',
+		'cashapp'    => 'cash_app_pay',
 	);
 
 	/**

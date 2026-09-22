@@ -34,15 +34,15 @@ class StripePaymentDataCompat {
 	 * @var array<string, string>
 	 */
 	private const WALLET_MAP = array(
-		'applePay'     => 'apple_pay',
-		'apple_pay'    => 'apple_pay',
-		'googlePay'    => 'google_pay',
-		'google_pay'   => 'google_pay',
-		'amazonPay'    => 'amazon_pay',
-		'amazon_pay'   => 'amazon_pay',
-		'paypal'       => 'paypal',
-		'link'         => 'link',
-		'cashapp'      => 'cash_app_pay',
+		'applePay'   => 'apple_pay',
+		'apple_pay'  => 'apple_pay',
+		'googlePay'  => 'google_pay',
+		'google_pay' => 'google_pay',
+		'amazonPay'  => 'amazon_pay',
+		'amazon_pay' => 'amazon_pay',
+		'paypal'     => 'paypal',
+		'link'       => 'link',
+		'cashapp'    => 'cash_app_pay',
 	);
 
 	/**
