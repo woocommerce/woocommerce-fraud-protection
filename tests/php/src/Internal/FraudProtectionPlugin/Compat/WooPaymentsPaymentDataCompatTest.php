@@ -1148,7 +1148,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Returns mode only when API client is null.
+	 * @testdox Returns mode and the request wallet when the API client is null.
 	 */
 	public function test_returns_mode_only_when_api_client_null(): void {
 		\WC_Payments::set_live( false );
@@ -1157,17 +1157,20 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'wcpay-payment-method' => 'pm_123' )
+			array(
+				'wcpay-payment-method' => 'pm_123',
+				'express_payment_type' => 'google_pay',
+			)
 		);
 
 		$array = $result->to_array();
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
-	 * @testdox Returns mode only when API throws an exception.
+	 * @testdox Returns mode and the request wallet when the API throws an exception.
 	 */
 	public function test_returns_mode_only_when_api_throws(): void {
 		\WC_Payments::set_live( true );
@@ -1176,17 +1179,20 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'wcpay-payment-method' => 'pm_123' )
+			array(
+				'wcpay-payment-method' => 'pm_123',
+				'express_payment_type' => 'google_pay',
+			)
 		);
 
 		$array = $result->to_array();
 		$this->assertSame( PaymentMode::Live->value, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
-	 * @testdox Returns mode only when API response is missing type key.
+	 * @testdox Returns mode and the request wallet when the API response is invalid.
 	 */
 	public function test_returns_mode_only_when_response_invalid(): void {
 		$this->mock_api_response(
@@ -1195,12 +1201,15 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'wcpay-payment-method' => 'pm_123' )
+			array(
+				'wcpay-payment-method' => 'pm_123',
+				'express_payment_type' => 'google_pay',
+			)
 		);
 
 		$array = $result->to_array();
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
