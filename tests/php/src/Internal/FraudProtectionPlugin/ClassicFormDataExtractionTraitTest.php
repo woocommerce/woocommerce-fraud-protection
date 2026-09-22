@@ -289,14 +289,14 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 		$_POST = array(
 			'payment_method'                => 'square_credit_card',
 			'billing_first_name'            => 'Jane',
-			'wc-square-digital-wallet-type' => 'GOOGLE_PAY',
+			'wc-square-digital-wallet-type' => 'Google Pay',
 			'wc-square-payment-token'       => 'square-token',
 			'other_gateway_reference'       => 'preserved-value',
 		);
 
 		$payment_data = $this->sut->test_extract_payment_data();
 
-		$this->assertSame( 'GOOGLE_PAY', $payment_data['wc-square-digital-wallet-type'] );
+		$this->assertSame( 'Google Pay', $payment_data['wc-square-digital-wallet-type'] );
 		$this->assertSame( 'square-token', $payment_data['wc-square-payment-token'] );
 		$this->assertSame( 'preserved-value', $payment_data['other_gateway_reference'] );
 		$this->assertArrayNotHasKey( 'billing_first_name', $payment_data );
