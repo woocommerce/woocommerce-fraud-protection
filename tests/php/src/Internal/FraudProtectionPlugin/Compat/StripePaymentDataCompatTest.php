@@ -737,6 +737,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			'Link uppercase'         => array( 'LINK', 'link' ),
 			'Cash App Pay'           => array( 'cashapp', 'cash_app_pay' ),
 			'Cash App Pay uppercase' => array( 'CASHAPP', 'cash_app_pay' ),
+			'WeChat Pay'             => array( 'wechat_pay', 'wechat_pay' ),
 		);
 	}
 

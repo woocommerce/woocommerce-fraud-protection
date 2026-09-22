@@ -732,6 +732,9 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			'Link uppercase'         => array( 'LINK', 'link' ),
 			'Cash App Pay'           => array( 'cashapp', 'cash_app_pay' ),
 			'Cash App Pay uppercase' => array( 'CASHAPP', 'cash_app_pay' ),
+			'Alipay'                 => array( 'alipay', 'alipay' ),
+			'GrabPay'                => array( 'grabpay', 'grabpay' ),
+			'WeChat Pay'             => array( 'wechat_pay', 'wechat_pay' ),
 		);
 	}
 

@@ -45,6 +45,9 @@ class WooPaymentsPaymentDataCompat {
 		'paypal'     => 'paypal',
 		'link'       => 'link',
 		'cashapp'    => 'cash_app_pay',
+		'alipay'     => 'alipay',
+		'grabpay'    => 'grabpay',
+		'wechat_pay' => 'wechat_pay',
 	);
 
 	/**
