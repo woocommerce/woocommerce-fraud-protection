@@ -179,6 +179,13 @@
 
 .wc-fraud-protection-rule-form__drawer-portal {
 	--wp-ui-drawer-z-index: #{z-index('.components-modal__screen-overlay')};
+
+	// Chromium's user-agent stylesheet dims disabled selects with opacity on
+	// top of the disabled text colour, which SelectControl does not reset.
+	// Without this, a locked select looks lighter than a locked text input.
+	.components-select-control__input:disabled {
+		opacity: 1;
+	}
 }
 
 .wc-fraud-protection-rules__dialog-portal {
