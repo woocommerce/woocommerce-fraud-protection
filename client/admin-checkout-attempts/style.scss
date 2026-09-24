@@ -267,4 +267,11 @@
 
 .wc-fraud-protection-checkout-attempts__outcome-popover {
 	max-width: 320px;
+
+	// Opening the popover by click moves focus to its link, and wp-admin's
+	// `a:focus` rule draws a focus ring even for mouse focus. Keep the ring for
+	// keyboard focus only.
+	a:focus:not(:focus-visible) {
+		box-shadow: none;
+	}
 }
