@@ -13,6 +13,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProt
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\TrustedProxyEntry;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -66,6 +68,13 @@ class FraudProtectionCommands {
 	private AutomaticProtectionSettingUpdater $automatic_protection_updater;
 
 	/**
+	 * Visitor IP resolver.
+	 *
+	 * @var VisitorIpResolver
+	 */
+	private VisitorIpResolver $visitor_ip_resolver;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -76,6 +85,7 @@ class FraudProtectionCommands {
 	 * @param MerchantFacingFeaturesGate        $merchant_facing_features_gate Merchant-facing features gate.
 	 * @param AutomaticProtectionSetting        $automatic_protection         Automatic-protection setting.
 	 * @param AutomaticProtectionSettingUpdater $automatic_protection_updater Automatic-protection setting updater.
+	 * @param VisitorIpResolver                 $visitor_ip_resolver          Visitor IP resolver.
 	 */
 	final public function init(
 		SchemaManager $schema_manager,
@@ -83,7 +93,8 @@ class FraudProtectionCommands {
 		LegacyProxy $legacy_proxy,
 		MerchantFacingFeaturesGate $merchant_facing_features_gate,
 		AutomaticProtectionSetting $automatic_protection,
-		AutomaticProtectionSettingUpdater $automatic_protection_updater
+		AutomaticProtectionSettingUpdater $automatic_protection_updater,
+		VisitorIpResolver $visitor_ip_resolver
 	): void {
 		$this->schema_manager                = $schema_manager;
 		$this->session_event_pruner          = $session_event_pruner;
@@ -91,6 +102,7 @@ class FraudProtectionCommands {
 		$this->merchant_facing_features_gate = $merchant_facing_features_gate;
 		$this->automatic_protection          = $automatic_protection;
 		$this->automatic_protection_updater  = $automatic_protection_updater;
+		$this->visitor_ip_resolver           = $visitor_ip_resolver;
 	}
 
 	/**
@@ -226,6 +238,89 @@ class FraudProtectionCommands {
 		$this->write_line( __( 'Database default collation', 'woocommerce-fraud-protection' ), self::value_or_unavailable( $database_defaults['collation'] ?? null ) );
 		$next_pruning_action = $this->session_event_pruner->get_next_scheduled_action();
 		$this->write_line( __( 'Next session pruning action', 'woocommerce-fraud-protection' ), true === $next_pruning_action ? __( 'In progress', 'woocommerce-fraud-protection' ) : $this->format_timestamp( $next_pruning_action, __( 'Not scheduled', 'woocommerce-fraud-protection' ) ) );
+		$this->write_trusted_proxy_status();
+	}
+
+	/**
+	 * Write the trusted-proxy configuration status.
+	 *
+	 * @return void
+	 */
+	private function write_trusted_proxy_status(): void {
+		$config = $this->visitor_ip_resolver->get_trusted_proxy_config();
+
+		if ( ! $config->provided ) {
+			$status = __( 'Not configured', 'woocommerce-fraud-protection' );
+		} elseif ( $config->is_active() ) {
+			$status = __( 'Active', 'woocommerce-fraud-protection' );
+		} else {
+			$status = __( 'Inactive (invalid configuration)', 'woocommerce-fraud-protection' );
+		}
+
+		$this->write_line( __( 'Trusted proxy configuration', 'woocommerce-fraud-protection' ), $status );
+		if ( ! $config->provided ) {
+			return;
+		}
+
+		if ( ! $config->valid_shape ) {
+			$this->write_line( __( 'Trusted proxy configuration error', 'woocommerce-fraud-protection' ), __( 'The configuration must be an array', 'woocommerce-fraud-protection' ) );
+			return;
+		}
+
+		foreach ( $config->entries as $index => $entry ) {
+			$this->write_trusted_proxy_entry_status( $index + 1, $entry );
+		}
+	}
+
+	/**
+	 * Write the status of one trusted-proxy entry.
+	 *
+	 * @param int               $number Entry number, starting at 1.
+	 * @param TrustedProxyEntry $entry  Validated entry.
+	 * @return void
+	 */
+	private function write_trusted_proxy_entry_status( int $number, TrustedProxyEntry $entry ): void {
+		/* translators: %d: Trusted proxy entry number. */
+		$label = sprintf( __( 'Trusted proxy entry %d', 'woocommerce-fraud-protection' ), $number );
+
+		if ( ! $entry->valid_shape ) {
+			$this->write_line( $label, __( 'Ignored (the entry must be an array)', 'woocommerce-fraud-protection' ) );
+			return;
+		}
+
+		$this->write_line( $label, $entry->is_usable() ? __( 'Active', 'woocommerce-fraud-protection' ) : __( 'Ignored (invalid entry)', 'woocommerce-fraud-protection' ) );
+
+		$this->write_line(
+			/* translators: %d: Trusted proxy entry number. */
+			sprintf( __( 'Trusted proxy entry %d addresses', 'woocommerce-fraud-protection' ), $number ),
+			array() === $entry->addresses ? __( 'None', 'woocommerce-fraud-protection' ) : implode( ', ', $entry->addresses )
+		);
+
+		if ( array() !== $entry->invalid_addresses ) {
+			$this->write_line(
+				/* translators: %d: Trusted proxy entry number. */
+				sprintf( __( 'Trusted proxy entry %d ignored addresses', 'woocommerce-fraud-protection' ), $number ),
+				implode( ', ', $entry->invalid_addresses )
+			);
+		}
+
+		if ( null !== $entry->header ) {
+			$header = $entry->header;
+		} elseif ( null !== $entry->invalid_header ) {
+			$header = sprintf(
+				/* translators: %s: Unsupported header value. */
+				__( 'Unsupported (%s)', 'woocommerce-fraud-protection' ),
+				$entry->invalid_header
+			);
+		} else {
+			$header = __( 'Missing', 'woocommerce-fraud-protection' );
+		}
+
+		$this->write_line(
+			/* translators: %d: Trusted proxy entry number. */
+			sprintf( __( 'Trusted proxy entry %d client IP header', 'woocommerce-fraud-protection' ), $number ),
+			$header
+		);
 	}
 
 	/**
