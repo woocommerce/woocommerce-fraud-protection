@@ -236,6 +236,25 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( window.scrollTo ).toHaveBeenCalledTimes( 3 );
 	} );
 
+	it( 'keeps the scroll position when only the list state in the URL changes', async () => {
+		renderApp( '/checkout-attempts' );
+		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
+		const requestsBefore = mockedApiFetch.mock.calls.length;
+
+		// The lists push their tab, filters and page to the URL on the same route.
+		act( () => mockHistory.push( '/checkout-attempts?status=blocked' ) );
+		// Let the list request for the new URL settle.
+		await waitFor( () =>
+			expect( mockedApiFetch.mock.calls.length ).toBeGreaterThan(
+				requestsBefore
+			)
+		);
+		await act( async () => {} );
+
+		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
+		expect( window.scrollTo ).not.toHaveBeenCalled();
+	} );
+
 	it( 'loads settings only after returning from a direct checkout-attempt visit', async () => {
 		renderApp( '/checkout-attempts' );
 
