@@ -17,6 +17,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProt
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsChangeChannel;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 
@@ -112,7 +113,16 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->automatic_protection          = $this->createMock( AutomaticProtectionSetting::class );
 		$this->automatic_protection_updater  = $this->createMock( AutomaticProtectionSettingUpdater::class );
 		$this->sut                           = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, new VisitorIpResolver() );
+	}
+
+	/**
+	 * Tear down test fixtures.
+	 */
+	public function tearDown(): void {
+		remove_all_filters( VisitorIpResolver::TRUSTED_PROXY_CONFIG_FILTER );
+		delete_transient( 'wc_fraud_protection_trusted_proxy_config_log' );
+		parent::tearDown();
 	}
 
 	/**
@@ -308,7 +318,116 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertStringContainsString( 'Database default charset:', $output );
 		$this->assertStringContainsString( 'Database default collation:', $output );
 		$this->assertStringContainsString( 'Next session pruning action:', $output );
+		$this->assertStringContainsString( 'Trusted proxy configuration: Not configured', $output );
+		$this->assertStringNotContainsString( 'Trusted proxy addresses:', $output );
 		$this->assertEmpty( $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox Status reports the trusted-proxy configuration and its ignored entries.
+	 * @dataProvider trusted_proxy_status_provider
+	 *
+	 * @param mixed    $config         Filtered trusted-proxy configuration.
+	 * @param string[] $expected_lines Lines expected in the status output.
+	 */
+	public function test_status_reports_trusted_proxy_config( $config, array $expected_lines ): void {
+		$this->mock_default_settings_status();
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->method( 'get_next_scheduled_action' )->willReturn( false );
+		add_filter( VisitorIpResolver::TRUSTED_PROXY_CONFIG_FILTER, fn() => $config );
+
+		$this->sut->status();
+
+		foreach ( $expected_lines as $expected_line ) {
+			$this->assertContains( $expected_line, $this->wp_cli_lines );
+		}
+	}
+
+	/**
+	 * Trusted-proxy configurations and their expected status lines.
+	 *
+	 * @return array<string, array{mixed, string[]}>
+	 */
+	public function trusted_proxy_status_provider(): array {
+		return array(
+			'single entry'         => array(
+				array(
+					'addresses' => array( '10.0.0.0/8', '192.0.2.1' ),
+					'header'    => 'x-forwarded-for',
+				),
+				array(
+					'Trusted proxy configuration: Active',
+					'Trusted proxy entry 1: Active',
+					'Trusted proxy entry 1 addresses: 10.0.0.0/8, 192.0.2.1',
+					'Trusted proxy entry 1 client IP header: x-forwarded-for',
+				),
+			),
+			'list of entries'      => array(
+				array(
+					array(
+						'addresses' => array( '10.0.0.0/8' ),
+						'header'    => 'X-Forwarded-For',
+					),
+					array(
+						'addresses' => array( '173.245.48.0/20', 'nope', 12 ),
+						'header'    => 'CF-Connecting-IP',
+					),
+				),
+				array(
+					'Trusted proxy configuration: Active',
+					'Trusted proxy entry 1: Active',
+					'Trusted proxy entry 1 addresses: 10.0.0.0/8',
+					'Trusted proxy entry 1 client IP header: X-Forwarded-For',
+					'Trusted proxy entry 2: Active',
+					'Trusted proxy entry 2 addresses: 173.245.48.0/20',
+					'Trusted proxy entry 2 ignored addresses: nope, int',
+					'Trusted proxy entry 2 client IP header: CF-Connecting-IP',
+				),
+			),
+			'non-array list entry' => array(
+				array(
+					'10.0.0.1',
+					array(
+						'addresses' => array( '10.0.0.0/8' ),
+						'header'    => 'X-Real-IP',
+					),
+				),
+				array(
+					'Trusted proxy configuration: Active',
+					'Trusted proxy entry 1: Ignored (the entry must be an array)',
+					'Trusted proxy entry 2: Active',
+				),
+			),
+			'unsupported header'   => array(
+				array(
+					'addresses' => array( '10.0.0.0/8' ),
+					'header'    => 'Forwarded',
+				),
+				array(
+					'Trusted proxy configuration: Inactive (invalid configuration)',
+					'Trusted proxy entry 1: Ignored (invalid entry)',
+					'Trusted proxy entry 1 client IP header: Unsupported (Forwarded)',
+				),
+			),
+			'missing header'       => array(
+				array( 'addresses' => array( '10.0.0.0/8' ) ),
+				array(
+					'Trusted proxy configuration: Inactive (invalid configuration)',
+					'Trusted proxy entry 1 client IP header: Missing',
+				),
+			),
+			'no valid addresses'   => array(
+				array(
+					'addresses' => array( 'nope' ),
+					'header'    => 'X-Real-IP',
+				),
+				array(
+					'Trusted proxy configuration: Inactive (invalid configuration)',
+					'Trusted proxy entry 1 addresses: None',
+					'Trusted proxy entry 1 ignored addresses: nope',
+				),
+			),
+		);
 	}
 
 	/**

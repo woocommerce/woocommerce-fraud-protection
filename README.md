@@ -133,6 +133,51 @@ The test environment uses port 8889 by default. Add a gitignored `.wp-env.phpuni
 
 Use `npm run test:php` to run PHPUnit directly against an existing WordPress test installation. Set `WC_DIR` to an existing WooCommerce plugin directory when the bootstrap cannot locate it. This path requires the WordPress test library, a MySQL database, and the WooCommerce test framework. The CI workflows prepare these dependencies with `tests/bin/install-wp-tests.sh`.
 
+## Trusted proxies
+
+By default, the plugin uses the direct peer address (`REMOTE_ADDR`) as the visitor IP and ignores forwarding headers. A store behind a reverse proxy, load balancer, or CDN can declare its proxies in `wp-config.php`:
+
+```php
+define(
+	'WC_FRAUD_PROTECTION_TRUSTED_PROXY_CONFIG',
+	array(
+		'addresses' => array( '10.0.0.0/8', '192.0.2.10', '2001:db8::/32' ),
+		'header'    => 'X-Forwarded-For',
+	)
+);
+```
+
+- `addresses` lists the IP addresses and CIDR ranges of the proxies. Invalid entries are ignored.
+- `header` names the header those proxies set with the client address, such as `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`, or `Fastly-Client-IP`. Names are case-insensitive and may contain only letters, digits, and single dashes between them. `Forwarded` is not supported.
+
+When different proxies set different headers, define a list of entries instead:
+
+```php
+define(
+	'WC_FRAUD_PROTECTION_TRUSTED_PROXY_CONFIG',
+	array(
+		array(
+			'addresses' => array( '10.0.0.0/8' ),
+			'header'    => 'X-Forwarded-For',
+		),
+		array(
+			'addresses' => array( '173.245.48.0/20', '2400:cb00::/32' ),
+			'header'    => 'CF-Connecting-IP',
+		),
+	)
+);
+```
+
+A header is read only when `REMOTE_ADDR` belongs to an entry, and the first such entry decides which header is read. An entry without a supported header or a valid address is ignored. Every header is read as a comma-separated list from right to left, so a header with one address works the same way: addresses trusted by any entry are skipped, and the first untrusted address is the visitor IP. If every address in the list is trusted, the leftmost one is used. The proxy must overwrite or append to the header; a header that the proxy passes through unchanged can be set by the client. A missing header, an invalid address in the header, or no matching entry keeps `REMOTE_ADDR`. The selected address is used for verification, merchant IP rules, and recorded checkout attempts.
+
+Many web servers can already replace `REMOTE_ADDR` with the client address, for example with Apache's `mod_remoteip` or nginx's `real_ip` module. When the server does this, the plugin needs no trusted-proxy configuration.
+
+Trust a shared CDN's ranges only when the origin accepts traffic from nothing but that CDN. Otherwise, a request sent through another account on the same CDN can supply any client address.
+
+`wp wc fraud-protection status` shows each entry and any ignored values. An invalid configuration is also logged as a warning in the WooCommerce log, at most once a day for the same problem.
+
+The `woocommerce_fraud_protection_trusted_proxy_config` filter receives the constant value, or an empty array when the constant is not defined, and returns a configuration in either form. A non-array return or a throwing callback keeps the unfiltered value.
+
 ## Public API
 
 The public code API for this plugin consists of the classes inside the `src/FraudProtection/` directory (`Automattic\WooCommerce\FraudProtection` as the root namespace).
