@@ -1000,6 +1000,28 @@ describe( 'RulesPage', () => {
 		expect( onViewRule ).toHaveBeenCalledWith( 17 );
 	} );
 
+	it( 'caps a value pasted over a duplicate error at 254 characters', async () => {
+		const user = userEvent.setup();
+		mockedApiFetch.mockRejectedValueOnce( {
+			code: 'woocommerce_fraud_protection_duplicate_rule',
+			message: 'This email is already allowed by a rule.',
+			data: { rule_id: 17 },
+		} );
+		renderDrawer();
+		await user.type( screen.getByLabelText( 'Value' ), 'dup@example.com' );
+		await user.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await screen.findByText( 'This email is already allowed by a rule.' );
+
+		await user.tripleClick( screen.getByLabelText( 'Value' ) );
+		await user.paste( `${ 'a'.repeat( 250 ) }@b.com` );
+
+		expect(
+			( screen.getByLabelText( 'Value' ) as HTMLInputElement ).value
+		).toHaveLength( 254 );
+	} );
+
 	it( 'updates a loaded rule and shows the update snackbar', async () => {
 		const updatedRule: Rule = { ...rule, action: 'block' };
 		mockedApiFetch

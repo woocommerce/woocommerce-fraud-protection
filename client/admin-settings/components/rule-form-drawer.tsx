@@ -135,6 +135,7 @@ function RuleValueEditControl( {
 					onValueChange={ onValueChange }
 					hideLabelFromVision={ hideLabelFromVision }
 					disabled={ disabled }
+					maxLength={ maxLength }
 				/>
 				<Stack direction="row" align="center" gap="xs">
 					<ValidityIndicator
