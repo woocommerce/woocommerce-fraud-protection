@@ -1,6 +1,6 @@
 import { createInterpolateElement } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { Card, Notice, Stack } from '@wordpress/ui';
+import { Card, Link as UiLink, Notice, Stack } from '@wordpress/ui';
 import { Link } from 'react-router-dom';
 
 import { getFraudProtectionRoute } from '../navigation';
@@ -93,7 +93,18 @@ export function AutomaticProtectionCard( {
 						>
 							<Notice.Description>
 								{ createInterpolateElement( noticeText, {
-									a: <Link to={ checkoutAttemptsHref } />,
+									// Match the neutral tone of the "Learn more"
+									// action link below.
+									a: (
+										<UiLink
+											tone="neutral"
+											render={
+												<Link
+													to={ checkoutAttemptsHref }
+												/>
+											}
+										/>
+									),
 								} ) }
 							</Notice.Description>
 							{ ! optedOut && (
