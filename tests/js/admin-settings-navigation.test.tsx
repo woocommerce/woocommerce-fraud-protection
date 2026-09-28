@@ -146,6 +146,8 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
 		mockedApiFetch.mockImplementation( apiFetchImplementation );
+		// jsdom does not implement scrolling.
+		jest.spyOn( window, 'scrollTo' ).mockImplementation( () => {} );
 	} );
 
 	afterEach( () => {
@@ -178,6 +180,60 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 			screen.getByRole( 'heading', { name: 'Performance' } )
 		).toBeVisible();
 		expect( confirm ).not.toHaveBeenCalled();
+	} );
+
+	it( 'marks the mount as a drill-down page only while a list page is shown', async () => {
+		const mount = document.createElement( 'div' );
+		mount.id = 'wc-fraud-protection-settings';
+		document.body.appendChild( mount );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'link', {
+				name: 'View checkout attempts',
+			} )
+		);
+		expect( mount ).toHaveClass( 'is-drill-down' );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
+		await screen.findByRole( 'heading', { name: 'Performance' } );
+		expect( mount ).not.toHaveClass( 'is-drill-down' );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'View rules' } )
+		);
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
+		expect( mount ).toHaveClass( 'is-drill-down' );
+
+		mount.remove();
+	} );
+
+	it( 'opens each page at the top, and leaves Back to the browser', async () => {
+		renderApp();
+		await screen.findByRole( 'heading', { name: 'Performance' } );
+		expect( window.scrollTo ).not.toHaveBeenCalled();
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+		);
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 1 );
+		expect( window.scrollTo ).toHaveBeenCalledWith( 0, 0 );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'link', { name: 'View rules' } )
+		);
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 3 );
+
+		act( () => mockHistory.back() );
+		expect( mockHistory.location.pathname ).toBe( '/' );
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 3 );
 	} );
 
 	it( 'loads settings only after returning from a direct checkout-attempt visit', async () => {
