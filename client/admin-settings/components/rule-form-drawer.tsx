@@ -6,6 +6,7 @@ import {
 	useState,
 } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
+import { SelectControl } from '@wordpress/components';
 import { DataForm, useFormValidity } from '@wordpress/dataviews/wp';
 import type { DataFormControlProps, Field, Form } from '@wordpress/dataviews';
 import {
@@ -14,13 +15,15 @@ import {
 	InputControl,
 	Notice,
 	Stack,
-	Spinner,
 	Text,
-	ValidatedInputControl,
-	ValidityIndicator,
 	VisuallyHidden,
 } from '@wordpress/ui';
 
+import {
+	Spinner,
+	ValidatedInputControl,
+	ValidityIndicator,
+} from '../../ui-compat';
 import type { CreateRuleRequest, Rule } from '../data/rules-store';
 import { useRule } from '../hooks/use-rules';
 import {
@@ -67,16 +70,45 @@ type RuleFormDrawerProps = {
 	ruleId?: number;
 };
 
+// DataViews' built-in select can't be disabled, so the rule form renders its own.
+function RuleSelectEditControl( {
+	data,
+	field,
+	onChange,
+	hideLabelFromVision,
+	disabled,
+}: DataFormControlProps< RuleFormData > & { disabled: boolean } ) {
+	return (
+		<SelectControl
+			__next40pxDefaultSize
+			__nextHasNoMarginBottom
+			className="wc-fraud-protection-rule-form__select"
+			label={ field.label }
+			hideLabelFromVision={ hideLabelFromVision }
+			value={ field.getValue( { item: data } ) }
+			options={ field.elements ?? [] }
+			disabled={ disabled }
+			onChange={ ( newValue: string ) =>
+				onChange( field.setValue( { item: data, value: newValue } ) )
+			}
+		/>
+	);
+}
+
 function RuleValueEditControl( {
 	data,
 	field,
 	onChange,
 	hideLabelFromVision,
 	validity,
+	disabled,
+	maxLength,
 	duplicateError,
 	duplicateRuleId,
 	onViewRule,
 }: DataFormControlProps< RuleFormData > & {
+	disabled: boolean;
+	maxLength?: number;
 	duplicateError?: string;
 	duplicateRuleId?: number;
 	onViewRule?: ( id: number ) => void;
@@ -93,6 +125,7 @@ function RuleValueEditControl( {
 		return (
 			<Stack direction="column" gap="xs">
 				<InputControl
+					className="wc-fraud-protection-rule-form__value"
 					aria-describedby={ duplicateMessageId }
 					aria-invalid="true"
 					required={ Boolean( field.isValid.required ) }
@@ -101,7 +134,7 @@ function RuleValueEditControl( {
 					value={ value ?? '' }
 					onValueChange={ onValueChange }
 					hideLabelFromVision={ hideLabelFromVision }
-					disabled={ field.isDisabled( { item: data, field } ) }
+					disabled={ disabled }
 				/>
 				<Stack direction="row" align="center" gap="xs">
 					<ValidityIndicator
@@ -128,6 +161,7 @@ function RuleValueEditControl( {
 
 	return (
 		<ValidatedInputControl
+			className="wc-fraud-protection-rule-form__value"
 			required={ Boolean( field.isValid.required ) }
 			markWhenOptional={ true }
 			customValidity={ validity?.custom }
@@ -136,9 +170,9 @@ function RuleValueEditControl( {
 			value={ value ?? '' }
 			onValueChange={ onValueChange }
 			hideLabelFromVision={ hideLabelFromVision }
-			disabled={ field.isDisabled( { item: data, field } ) }
+			disabled={ disabled }
 			type={ field.type === 'email' ? 'email' : 'text' }
-			maxLength={ field.isValid.maxLength?.constraint }
+			maxLength={ maxLength }
 		/>
 	);
 }
@@ -219,7 +253,9 @@ export const getRuleFormFields = ( {
 		id: 'action',
 		label: __( 'Action', 'woocommerce-fraud-protection' ),
 		type: 'text',
-		Edit: 'select',
+		Edit: ( props ) => (
+			<RuleSelectEditControl { ...props } disabled={ disabled } />
+		),
 		elements: [
 			{
 				value: 'allow',
@@ -230,14 +266,18 @@ export const getRuleFormFields = ( {
 				label: __( 'Block', 'woocommerce-fraud-protection' ),
 			},
 		],
-		isDisabled: disabled,
 		isValid: { elements: true },
 	},
 	{
 		id: 'type',
 		label: __( 'Rule type', 'woocommerce-fraud-protection' ),
 		type: 'text',
-		Edit: 'select',
+		Edit: ( props ) => (
+			<RuleSelectEditControl
+				{ ...props }
+				disabled={ disabled || matchFieldsDisabled }
+			/>
+		),
 		elements: [
 			{
 				value: 'email',
@@ -248,7 +288,6 @@ export const getRuleFormFields = ( {
 				label: __( 'IP address', 'woocommerce-fraud-protection' ),
 			},
 		],
-		isDisabled: disabled || matchFieldsDisabled,
 		isValid: { elements: true },
 	},
 	{
@@ -258,17 +297,18 @@ export const getRuleFormFields = ( {
 		Edit: ( props ) => (
 			<RuleValueEditControl
 				{ ...props }
+				disabled={ disabled || matchFieldsDisabled }
+				maxLength={ type === 'email' ? 254 : undefined }
 				duplicateError={ duplicateError }
 				duplicateRuleId={ duplicateRuleId }
 				onViewRule={ onViewRule }
 			/>
 		),
 		placeholder: getRuleValuePlaceholder( type ),
-		isDisabled: disabled || matchFieldsDisabled,
 		isValid: {
 			required: true,
 			...( type === 'email'
-				? { maxLength: 254 }
+				? {}
 				: {
 						custom: ( item ) => {
 							const value = item.value.trim();

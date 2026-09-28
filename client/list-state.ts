@@ -1,4 +1,4 @@
-import type { View } from '@wordpress/dataviews';
+import type { View, ViewTable } from '@wordpress/dataviews';
 import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
 import { getHistory } from '@woocommerce/navigation';
 import { useSearchParams } from 'react-router-dom';
@@ -37,6 +37,9 @@ type RangeFilterDefinition = {
 	kind: 'range';
 	field: string;
 	operator: ViewFilter[ 'operator' ];
+	// Single-value operators for a range with only its start or its end.
+	fromOperator: ViewFilter[ 'operator' ];
+	toOperator: ViewFilter[ 'operator' ];
 	params: readonly [ string, string ];
 	validate: ( value: string ) => boolean;
 };
@@ -98,6 +101,10 @@ export type ListUrlCodec< State extends string > = {
 	normalizeState: ( value: string ) => State | undefined;
 };
 
+// Only table views have a layout in the bundled DataViews version.
+const withTableLayout = ( view: View, layout: ViewTable[ 'layout' ] ): View =>
+	layout && view.type === 'table' ? { ...view, layout } : view;
+
 function getFilter( view: View, field: string ): ViewFilter | undefined {
 	return ( view.filters ?? [] ).find( ( filter ) => filter.field === field );
 }
@@ -127,13 +134,23 @@ function readFilter(
 		const to = params.get( definition.params[ 1 ] ) ?? '';
 		const validFrom = definition.validate( from );
 		const validTo = definition.validate( to );
-		return validFrom || validTo
-			? {
-					field: definition.field,
-					operator: definition.operator,
-					value: [ validFrom ? from : '', validTo ? to : '' ],
-			  }
-			: null;
+		if ( validFrom && validTo ) {
+			return {
+				field: definition.field,
+				operator: definition.operator,
+				value: [ from, to ],
+			};
+		}
+		if ( validFrom || validTo ) {
+			return {
+				field: definition.field,
+				operator: validFrom
+					? definition.fromOperator
+					: definition.toOperator,
+				value: validFrom ? from : to,
+			};
+		}
+		return null;
 	}
 
 	const raw = params.get( definition.param ) ?? '';
@@ -189,7 +206,14 @@ function writeFilter(
 	}
 
 	if ( definition.kind === 'range' ) {
-		const values = Array.isArray( filter.value ) ? filter.value : [];
+		let values: unknown[] = [];
+		if ( filter.operator === definition.operator ) {
+			values = Array.isArray( filter.value ) ? filter.value : [];
+		} else if ( filter.operator === definition.fromOperator ) {
+			values = [ filter.value ];
+		} else if ( filter.operator === definition.toOperator ) {
+			values = [ '', filter.value ];
+		}
 		values.slice( 0, 2 ).forEach( ( value, index ) => {
 			const scalar = String( value ?? '' );
 			if ( definition.validate( scalar ) ) {
@@ -263,35 +287,43 @@ export function createListUrlCodec< State extends string = string >( {
 	): DecodedListState< State > => {
 		const orderby = params.get( 'orderby' );
 		const order = params.get( 'order' );
+		const defaultLayout =
+			defaultView.type === 'table' ? defaultView.layout : undefined;
 		const layout =
-			defaultView.layout || prefs.layout
-				? { ...defaultView.layout, ...prefs.layout }
+			defaultLayout || prefs.layout
+				? { ...defaultLayout, ...prefs.layout }
 				: undefined;
 
 		return {
-			view: {
-				...defaultView,
-				page: parsePositivePage( params.get( 'paged' ) ),
-				perPage: prefs.perPage ?? defaultView.perPage,
-				sort: {
-					field:
-						orderby && isAllowed( orderby, supportedSortFields )
-							? orderby
-							: defaultView.sort?.field ?? '',
-					direction:
-						order === 'asc' || order === 'desc'
-							? order
-							: defaultView.sort?.direction ?? 'desc',
+			view: withTableLayout(
+				{
+					...defaultView,
+					page: parsePositivePage( params.get( 'paged' ) ),
+					perPage: prefs.perPage ?? defaultView.perPage,
+					sort: {
+						field:
+							orderby && isAllowed( orderby, supportedSortFields )
+								? orderby
+								: defaultView.sort?.field ?? '',
+						direction:
+							order === 'asc' || order === 'desc'
+								? order
+								: defaultView.sort?.direction ?? 'desc',
+					},
+					...( search
+						? { search: params.get( 'search' ) ?? '' }
+						: {} ),
+					filters: filters
+						.map( ( definition ) =>
+							readFilter( definition, params )
+						)
+						.filter( ( filter ): filter is ViewFilter =>
+							Boolean( filter )
+						),
+					fields: prefs.fields ?? defaultView.fields,
 				},
-				...( search ? { search: params.get( 'search' ) ?? '' } : {} ),
-				filters: filters
-					.map( ( definition ) => readFilter( definition, params ) )
-					.filter( ( filter ): filter is ViewFilter =>
-						Boolean( filter )
-					),
-				fields: prefs.fields ?? defaultView.fields,
-				...( layout ? { layout } : {} ),
-			},
+				layout
+			),
 			state: stateDefinition
 				? normalizeState( params.get( stateDefinition.param ) ?? '' )
 				: undefined,

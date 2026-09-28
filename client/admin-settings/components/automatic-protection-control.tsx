@@ -1,7 +1,10 @@
 import type { ReactElement, ReactNode } from 'react';
 
+import { CheckboxControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import { Checkbox, Spinner, Stack, Text } from '@wordpress/ui';
+import { Stack, Text } from '@wordpress/ui';
+
+import { Spinner } from '../../ui-compat';
 
 type AutomaticProtectionControlProps = {
 	id: string;
@@ -52,22 +55,17 @@ export function AutomaticProtectionControl( {
 						</span>
 					</>
 				) : (
-					<>
-						<Checkbox
-							id={ id }
-							checked={ checked }
-							disabled={ disabled }
-							onCheckedChange={ onChange }
-						/>
-						<label htmlFor={ id }>
-							<Text variant="body-md">
-								{ __(
-									'Automatically block checkout attempts flagged by fraud prevention.',
-									'woocommerce-fraud-protection'
-								) }
-							</Text>
-						</label>
-					</>
+					<CheckboxControl
+						__nextHasNoMarginBottom
+						id={ id }
+						checked={ checked }
+						disabled={ disabled }
+						onChange={ onChange }
+						label={ __(
+							'Automatically block checkout attempts flagged by fraud prevention.',
+							'woocommerce-fraud-protection'
+						) }
+					/>
 				) }
 			</Stack>
 		</>

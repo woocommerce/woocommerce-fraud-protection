@@ -158,6 +158,8 @@ describe( 'shared list state', () => {
 		const dates = defineRangeFilter( {
 			field: 'dates',
 			operator: 'between',
+			fromOperator: 'afterInc',
+			toOperator: 'beforeInc',
 			params: [ 'from', 'to' ],
 			validate: ( value ) => /^\d{4}-\d{2}-\d{2}$/.test( value ),
 		} );
@@ -193,13 +195,37 @@ describe( 'shared list state', () => {
 				{ field: 'tags', operator: 'isAny', value: [ 'first' ] },
 				{
 					field: 'dates',
-					operator: 'between',
-					value: [ '2026-09-01', '' ],
+					operator: 'afterInc',
+					value: '2026-09-01',
 				},
 			],
 		} );
 		expect( codec.encode( decoded.view, decoded.state ).toString() ).toBe(
 			'value=exact&tags=first&from=2026-09-01&paged=2'
+		);
+		const endOnly = codec.decode(
+			new URLSearchParams( 'to=2026-09-30' ),
+			{}
+		);
+		expect( endOnly.view.filters ).toEqual( [
+			{ field: 'dates', operator: 'beforeInc', value: '2026-09-30' },
+		] );
+		expect( codec.encode( endOnly.view ).toString() ).toBe(
+			'to=2026-09-30'
+		);
+		const bothEnds = codec.decode(
+			new URLSearchParams( 'from=2026-09-01&to=2026-09-30' ),
+			{}
+		);
+		expect( bothEnds.view.filters ).toEqual( [
+			{
+				field: 'dates',
+				operator: 'between',
+				value: [ '2026-09-01', '2026-09-30' ],
+			},
+		] );
+		expect( codec.encode( bothEnds.view ).toString() ).toBe(
+			'from=2026-09-01&to=2026-09-30'
 		);
 		expect(
 			codec
@@ -1224,7 +1250,7 @@ const openAttemptActions = async ( value: string ) => {
 	if ( ! row ) {
 		throw new Error( `Checkout-attempt row not found for ${ value }.` );
 	}
-	fireEvent.mouseDown(
+	await userEvent.click(
 		within( row ).getByRole( 'button', { name: 'Actions' } )
 	);
 };
@@ -1311,7 +1337,7 @@ describe( 'CheckoutAttemptsPage', () => {
 			screen.getByRole( 'button', { name: 'View options' } )
 		);
 		expect(
-			screen.getByRole( 'button', { name: 'IP location' } )
+			screen.getByRole( 'button', { name: 'Show IP location' } )
 		).toBeInTheDocument();
 
 		unmount();

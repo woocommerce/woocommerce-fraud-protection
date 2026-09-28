@@ -1,5 +1,9 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.2.9
+* Added - The rules list can now be filtered by rules created on or after, or on or before, a single date.
+* Updated - Fraud prevention settings, rules, and checkout attempts now use the same WordPress interface component versions as WooCommerce, with small visual differences.
+
 2026-09-22 - version 0.2.8
 * Updated - IP location is now hidden by default in the checkout attempts list and remains available in view options.
 * Updated - Fraud prevention settings, checkout attempts, and rules are now available by default.
