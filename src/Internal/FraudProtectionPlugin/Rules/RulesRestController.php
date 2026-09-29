@@ -17,15 +17,28 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventS
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\RuleStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
+use Automattic\WooCommerce\Internal\RestApiControllerBase;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Provides the merchant rules management endpoints.
  */
-class RulesRestController extends \WP_REST_Controller {
+class RulesRestController extends RestApiControllerBase {
 
-	private const REST_NAMESPACE = 'wc-fraud-protection/v1';
+	/**
+	 * The root namespace for the JSON REST API endpoints.
+	 *
+	 * @var non-falsy-string
+	 */
+	protected string $route_namespace = 'wc-admin';
+
+	/**
+	 * Route base.
+	 *
+	 * @var string
+	 */
+	protected string $rest_base = 'fraud-protection/rules';
 
 	/**
 	 * Rule persistence.
@@ -89,8 +102,6 @@ class RulesRestController extends \WP_REST_Controller {
 		SessionIdNormalizer $session_id_normalizer,
 		SettingsTelemetry $telemetry
 	): void {
-		$this->namespace             = self::REST_NAMESPACE;
-		$this->rest_base             = 'rules';
 		$this->rule_store            = $rule_store;
 		$this->schema_manager        = $schema_manager;
 		$this->event_store           = $event_store;
@@ -100,10 +111,12 @@ class RulesRestController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Register the route.
+	 * Get the WooCommerce REST API namespace for the class.
+	 *
+	 * @return string
 	 */
-	public function register(): void {
-		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+	protected function get_rest_api_namespace(): string {
+		return 'wc-admin-fraud-protection-rules';
 	}
 
 	/**
@@ -113,67 +126,56 @@ class RulesRestController extends \WP_REST_Controller {
 	 */
 	public function register_routes(): void {
 		register_rest_route(
-			self::REST_NAMESPACE,
+			$this->route_namespace,
 			'/' . $this->rest_base,
 			array(
 				array(
 					'methods'             => \WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_items' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->get_items( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 					'args'                => $this->get_collection_params(),
 				),
 				array(
 					'methods'             => \WP_REST_Server::CREATABLE,
-					'callback'            => array( $this, 'create_item' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->create_item( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 					'args'                => $this->get_create_request_args(),
 				),
-				'schema' => array( $this, 'get_public_item_schema' ),
+				'schema' => fn() => $this->get_item_schema(),
 			)
 		);
 		register_rest_route(
-			self::REST_NAMESPACE,
+			$this->route_namespace,
 			'/' . $this->rest_base . '/(?P<id>[\d]+)',
 			array(
 				array(
 					'methods'             => \WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_item' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->get_item( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 				),
 				array(
 					'methods'             => \WP_REST_Server::EDITABLE,
-					'callback'            => array( $this, 'update_item' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->update_item( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 					'args'                => $this->get_update_request_args(),
 				),
 				array(
 					'methods'             => \WP_REST_Server::DELETABLE,
-					'callback'            => array( $this, 'delete_item' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->delete_item( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 				),
-				'schema' => array( $this, 'get_public_item_schema' ),
+				'schema' => fn() => $this->get_item_schema(),
 			)
 		);
-	}
-
-	/**
-	 * Check access to merchant rules.
-	 *
-	 * @internal
-	 */
-	public function permissions_check(): bool {
-		return current_user_can( 'manage_woocommerce' );
 	}
 
 	/**
 	 * Return a filtered page of active rules.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function get_items( $request ): \WP_REST_Response|\WP_Error {
+	private function get_items( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
@@ -228,12 +230,10 @@ class RulesRestController extends \WP_REST_Controller {
 	/**
 	 * Create an active exact-value rule.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function create_item( $request ): \WP_REST_Response|\WP_Error {
+	private function create_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
@@ -344,12 +344,10 @@ class RulesRestController extends \WP_REST_Controller {
 	/**
 	 * Return one active rule.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function get_item( $request ): \WP_REST_Response|\WP_Error {
+	private function get_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
@@ -365,12 +363,10 @@ class RulesRestController extends \WP_REST_Controller {
 	/**
 	 * Update one active rule.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function update_item( $request ): \WP_REST_Response|\WP_Error {
+	private function update_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
@@ -434,12 +430,10 @@ class RulesRestController extends \WP_REST_Controller {
 	/**
 	 * Soft-delete one active rule.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function delete_item( $request ): \WP_REST_Response|\WP_Error {
+	private function delete_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
@@ -621,7 +615,7 @@ class RulesRestController extends \WP_REST_Controller {
 	 *
 	 * @return array<string, array<string, mixed>>
 	 */
-	public function get_collection_params(): array {
+	private function get_collection_params(): array {
 		return array(
 			'page'     => array(
 				'type'    => 'integer',
@@ -725,11 +719,11 @@ class RulesRestController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Get the public response schema.
+	 * Get the response schema.
 	 *
 	 * @return array<string, mixed>
 	 */
-	public function get_public_item_schema(): array {
+	private function get_item_schema(): array {
 		return array(
 			'$schema'    => 'http://json-schema.org/draft-04/schema#',
 			'title'      => 'woocommerce_fraud_protection_rule',
