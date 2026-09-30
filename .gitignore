@@ -69,6 +69,7 @@ build/
 .DS_Store
 
 # Claude local config files
+CLAUDE.local.md
 .claude/*local*.json
 .idea/.gitignore
 .idea/laravel-idea.xml
