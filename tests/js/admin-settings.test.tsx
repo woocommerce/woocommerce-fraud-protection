@@ -59,7 +59,7 @@ const settingsFetchCount = () =>
 	mockedApiFetch.mock.calls.filter(
 		( [ options ] ) =>
 			( options as { path?: string } )?.path ===
-			'/wc-fraud-protection/v1/settings'
+			'/wc-admin/fraud-protection/settings'
 	).length;
 
 const zeroPerformance: Performance = {
@@ -207,7 +207,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			).not.toBeInTheDocument()
 		);
 		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
-			path: '/wc-fraud-protection/v1/rules',
+			path: '/wc-admin/fraud-protection/rules',
 			method: 'POST',
 			data: {
 				action: 'allow',
@@ -382,7 +382,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toBeInTheDocument();
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/settings',
+				path: '/wc-admin/fraud-protection/settings',
 			} );
 		} );
 		// Save is disabled while loading, so this click must not start a save request.
@@ -591,7 +591,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/settings',
+				path: '/wc-admin/fraud-protection/settings',
 				method: 'POST',
 				data: { automatic_protection: true },
 			} );
@@ -708,7 +708,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenCalledTimes( 3 );
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/settings',
+				path: '/wc-admin/fraud-protection/settings',
 				method: 'POST',
 				data: { automatic_protection: false },
 			} );
@@ -873,7 +873,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 			await waitFor( () => {
 				expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-					path: '/wc-fraud-protection/v1/settings/opt-out',
+					path: '/wc-admin/fraud-protection/settings/opt-out',
 					method: 'POST',
 					data: { source },
 				} );

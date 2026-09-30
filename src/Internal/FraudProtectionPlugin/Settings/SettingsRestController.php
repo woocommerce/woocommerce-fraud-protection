@@ -8,15 +8,33 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
+use Automattic\WooCommerce\Internal\RestApiControllerBase;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Provides the merchant settings endpoint.
  */
-class SettingsRestController extends \WP_REST_Controller {
+class SettingsRestController extends RestApiControllerBase {
 
-	private const REST_NAMESPACE = 'wc-fraud-protection/v1';
+	/**
+	 * Settings endpoint route, relative to the REST API root.
+	 */
+	public const SETTINGS_ROUTE = '/wc-admin/fraud-protection/settings';
+
+	/**
+	 * The root namespace for the JSON REST API endpoints.
+	 *
+	 * @var non-falsy-string
+	 */
+	protected string $route_namespace = 'wc-admin';
+
+	/**
+	 * Route base.
+	 *
+	 * @var string
+	 */
+	protected string $rest_base = 'fraud-protection/settings';
 
 	/**
 	 * Automatic-protection setting.
@@ -49,18 +67,18 @@ class SettingsRestController extends \WP_REST_Controller {
 	 * @param SessionEventStore                 $event_store          Session event store.
 	 */
 	final public function init( AutomaticProtectionSetting $automatic_protection, AutomaticProtectionSettingUpdater $updater, SessionEventStore $event_store ): void {
-		$this->namespace            = self::REST_NAMESPACE;
-		$this->rest_base            = 'settings';
 		$this->automatic_protection = $automatic_protection;
 		$this->updater              = $updater;
 		$this->event_store          = $event_store;
 	}
 
 	/**
-	 * Register the route.
+	 * Get the WooCommerce REST API namespace for the class.
+	 *
+	 * @return string
 	 */
-	public function register(): void {
-		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+	protected function get_rest_api_namespace(): string {
+		return 'wc-admin-fraud-protection-settings';
 	}
 
 	/**
@@ -70,18 +88,18 @@ class SettingsRestController extends \WP_REST_Controller {
 	 */
 	public function register_routes(): void {
 		register_rest_route(
-			self::REST_NAMESPACE,
+			$this->route_namespace,
 			'/' . $this->rest_base,
 			array(
 				array(
 					'methods'             => \WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_settings' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn() => $this->get_settings(),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 				),
 				array(
 					'methods'             => \WP_REST_Server::EDITABLE,
-					'callback'            => array( $this, 'update_settings' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->update_settings( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 					'args'                => array(
 						'automatic_protection' => array(
 							'type'              => 'boolean',
@@ -91,18 +109,18 @@ class SettingsRestController extends \WP_REST_Controller {
 						),
 					),
 				),
-				'schema' => array( $this, 'get_public_item_schema' ),
+				'schema' => fn() => $this->get_item_schema(),
 			)
 		);
 
 		register_rest_route(
-			self::REST_NAMESPACE,
+			$this->route_namespace,
 			'/' . $this->rest_base . '/opt-out',
 			array(
 				array(
 					'methods'             => \WP_REST_Server::EDITABLE,
-					'callback'            => array( $this, 'opt_out' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->opt_out( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 					'args'                => array(
 						'source' => array(
 							'type'     => 'string',
@@ -116,22 +134,11 @@ class SettingsRestController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Check access to merchant settings.
-	 *
-	 * @internal
-	 */
-	public function permissions_check(): bool {
-		return current_user_can( 'manage_woocommerce' );
-	}
-
-	/**
 	 * Read the effective settings.
-	 *
-	 * @internal
 	 *
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function get_settings(): \WP_REST_Response|\WP_Error {
+	private function get_settings(): \WP_REST_Response|\WP_Error {
 		try {
 			$performance = $this->event_store->get_performance_counts();
 		} catch ( \RuntimeException ) {
@@ -151,12 +158,10 @@ class SettingsRestController extends \WP_REST_Controller {
 	/**
 	 * Update allowlisted settings.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function update_settings( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+	private function update_settings( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		$enabled = true === $request->get_param( 'automatic_protection' );
 
 		if ( ! $this->updater->set_enabled( $enabled, SettingsChangeChannel::Settings ) ) {
@@ -169,12 +174,10 @@ class SettingsRestController extends \WP_REST_Controller {
 	/**
 	 * Store an automatic-enrollment opt-out.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function opt_out( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+	private function opt_out( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		$source = 'inbox' === $request->get_param( 'source' ) ? 'inbox' : 'settings';
 
 		if ( ! $this->updater->opt_out( $source ) ) {
@@ -185,11 +188,11 @@ class SettingsRestController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Get the public response schema.
+	 * Get the response schema.
 	 *
 	 * @return array<string, mixed>
 	 */
-	public function get_public_item_schema(): array {
+	private function get_item_schema(): array {
 		return array(
 			'$schema'    => 'http://json-schema.org/draft-04/schema#',
 			'title'      => 'woocommerce_fraud_protection_settings',
