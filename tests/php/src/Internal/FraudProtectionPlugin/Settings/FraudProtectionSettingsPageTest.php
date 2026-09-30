@@ -136,6 +136,40 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The React mount is marked as a drill-down page only on routes with their own header.
+	 *
+	 * @dataProvider mount_routes
+	 *
+	 * @param mixed $path       Requested route path.
+	 * @param bool  $drill_down Whether the route is a drill-down page.
+	 */
+	public function test_output_marks_drill_down_routes( $path, bool $drill_down ): void {
+		$_GET['path'] = $path;
+
+		ob_start();
+		$this->sut->output();
+		$output = (string) ob_get_clean();
+
+		$classes = 'wc-settings-prevent-change-event' . ( $drill_down ? ' is-drill-down' : '' );
+		$this->assertSame( '<div id="wc-fraud-protection-settings" class="' . $classes . '"></div>', $output );
+	}
+
+	/**
+	 * Route paths and whether each one is a drill-down page.
+	 *
+	 * @return array<string, array{mixed, bool}>
+	 */
+	public function mount_routes(): array {
+		return array(
+			'settings'          => array( '/', false ),
+			'rules'             => array( '/rules', true ),
+			'checkout attempts' => array( '/checkout-attempts', true ),
+			'unknown route'     => array( '/unknown', false ),
+			'non-string route'  => array( array( '/rules' ), false ),
+		);
+	}
+
+	/**
 	 * @testdox A classic page save has no fields and preserves an absent automatic-protection option.
 	 */
 	public function test_classic_save_preserves_absent_setting(): void {

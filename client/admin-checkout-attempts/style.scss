@@ -219,15 +219,6 @@
 	margin: 0;
 }
 
-// WooCommerce leaves a 24px grey gap below the settings tab bar (the nav's
-// margin-bottom on the grey #mainform). On the checkout-attempts route, drop it
-// so the white content meets the tab bar's ruler like the Payments screen. The
-// nav sits outside our page wrapper, so this is scoped with :has() to the route
-// and only clears the bottom gap — the tab bar stays full-width.
-#mainform:has( .wc-fraud-protection-checkout-attempts__page ) nav.nav-tab-wrapper {
-	margin-bottom: 0;
-}
-
 // The "Turn on automatic fraud prevention" row action renders inside the
 // DataViews actions menu, which portals outside the page wrapper — so this rule
 // is intentionally unscoped. It reads as a regular (black) menu item rather than
@@ -267,4 +258,11 @@
 
 .wc-fraud-protection-checkout-attempts__outcome-popover {
 	max-width: 320px;
+
+	// Opening the popover by click moves focus to its link, and wp-admin's
+	// `a:focus` rule draws a focus ring even for mouse focus. Keep the ring for
+	// keyboard focus only.
+	a:focus:not(:focus-visible) {
+		box-shadow: none;
+	}
 }
