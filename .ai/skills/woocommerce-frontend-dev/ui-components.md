@@ -27,7 +27,8 @@ The UI is built with `@wordpress/ui` (the WordPress design-system components) an
 | `LinkButton` | A button-styled router link: `render={ <Link to={ href } /> }` |
 | `Notice.Root` and children | Inline messages: `intent="error"`, `warning`, `info`; `Notice.Description`, `Notice.Actions`, `Notice.ActionButton`, `Notice.ActionLink`, `Notice.CloseIcon` |
 | `Badge` | Outcome and rule badges: `intent="stable"`, `medium`, `high`, ... |
-| `Checkbox` | `onCheckedChange`; label with `htmlFor` pointing at the checkbox `id` |
+| `CheckboxControl` | A checkbox with its `label`; `onCheckedChange`. It keeps the checkbox level with the first line of a wrapping label, which a `Checkbox` and a separate `<label>` in a centred `Stack` do not |
+| `Link` | Styled text links; `tone="neutral"` matches `Notice.ActionLink`. For an in-app link inside a sentence, `render={ <Link to={ href } /> }` with the router `Link` |
 | `Tabs.Root`, `Tabs.List`, `Tabs.Tab`, `Tabs.Panel` | Status tabs; `Tabs.List variant="minimal"` |
 | `EmptyState.Root`, `EmptyState.Title`, `EmptyState.Description` | List empty states |
 | `Drawer.*`, `Dialog.*`, `Popover.*`, `Tooltip.*` | See the sections below |

@@ -47,9 +47,12 @@ There is one webpack entry, `admin-settings`, and one bundle. A new feature area
 <div id="wc-fraud-protection-settings" class="wc-settings-prevent-change-event"></div>
 ```
 
-It sets `$GLOBALS['hide_save_button']` because the app renders its own Save button, and the `wc-settings-prevent-change-event` class keeps WooCommerce's own unsaved-changes prompt away from the app's inputs. The asset file is validated before use; a missing or invalid build logs an error through the plugin logger and renders a generic notice instead of a broken page.
+It sets `$GLOBALS['hide_save_button']` because the app renders its own Save button, and the `wc-settings-prevent-change-event` class keeps WooCommerce's own unsaved-changes prompt away from the app's inputs. On the drill-down routes (`/rules` and `/checkout-attempts`, listed in `DRILL_DOWN_ROUTES`), the mount also gets the `is-drill-down` class, which hides the WooCommerce settings header and tabs from the first paint (see styling.md). The asset file is validated before use; a missing or invalid build logs an error through the plugin logger and renders a generic notice instead of a broken page.
 
-**Router.** The app uses `react-router-dom` with `unstable_HistoryRouter` over `getHistory()` from `@woocommerce/navigation`, so it shares the WooCommerce admin history object. Routes are `/`, `/rules`, and `/checkout-attempts`; anything else redirects to `/`.
+**Router.** The app uses `react-router-dom` with `unstable_HistoryRouter` over `getHistory()` from `@woocommerce/navigation`, so it shares the WooCommerce admin history object. Routes are `/`, `/rules`, and `/checkout-attempts`; anything else redirects to `/`. In `client/admin-settings/index.tsx`:
+
+- A route with its own breadcrumb header is wrapped in `DrillDownPage`, which keeps the mount's `is-drill-down` class in sync on client-side navigation. A new drill-down route also goes into `DRILL_DOWN_ROUTES` in `FraudProtectionSettingsPage`.
+- `ScrollToTopOnRouteChange` opens each newly pushed route at the top of the window. It reacts to route changes only, because the lists also write their state to the URL, and it leaves Back and Forward to the browser's scroll restoration.
 
 **URLs.** The browser URL is always `admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=<route>[&...state]`. Never push the bare router pathname (for example `/checkout-attempts?status=blocked`) into the history: a reload of that URL is a 404. Instead:
 
