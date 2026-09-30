@@ -11,6 +11,7 @@ Before changing code:
 - Read [README.md](README.md) for setup, local testing, and the public API.
 - Read the private `woo-fraud-protection-docs` repository for architecture, roadmap, or cross-repository contracts.
 - Use WooCommerce Core as a read-only reference. Do not modify Core files for work in this repository.
+- Load the matching project skill from `.ai/skills/`. Load `woocommerce-backend-dev` before writing PHP code or PHP tests, `woocommerce-frontend-dev` before writing code under `client/` or `tests/js/`, `woocommerce-copy-guidelines` for user-facing text, and `woocommerce-markdown` for documentation.
 - For a new feature, evaluate whether operators need a supported WP-CLI diagnostic or maintenance command.
 
 ## Runtime and commands
@@ -22,15 +23,35 @@ Common commands:
 - `npm run test:php:env -- --filter <ClassName>` — focused PHP test in the isolated wp-env environment
 - `npm run test:js` — JavaScript tests
 - `npm run test` — smoke, PHP, and JavaScript tests
-- `npm run lint` — PHP, JavaScript, and CSS linting
+- `npm run lint` — PHP, JavaScript, CSS, and TypeScript type checks
+- `npm run lint:php:autofix` — fix PHP coding-standard violations
 - `npm run phpstan` — PHP static analysis
+- `npm start` — rebuild the `client/` admin UI on change
+- `npm run build` — development build of the `client/` admin UI
 - `npm run build:release` — production build and plugin ZIP
 
 Use the isolated `wp-env` store for the current checkout or worktree. Follow [README.md](README.md#local-dev-site-wp-env) for setup and ports. Use the live-service process only when the change requires an end-to-end service check because it sends real traffic.
 
-Assets under `assets/` are served directly. Most development changes do not require a build.
+Files under `assets/` are served directly and need no build. The admin UI in `client/` is compiled into `build/`. After changing it, run `npm start` or `npm run build` before loading the settings pages.
 
 ## Code structure
+
+Layout:
+
+- `src/FraudProtection/` — public API
+- `src/Internal/FraudProtectionPlugin/` — internal code; top-level classes hold the bootstrap, controller, service client, and decision handling
+    - `Protectors/` — checkout, pay-for-order, and add-payment-method surfaces
+    - `Trackers/` — cart, checkout, order, and payment-method events
+    - `Compat/` — payment gateway and WooCommerce Subscriptions compatibility
+    - `Rules/` — merchant rule storage, evaluation, and REST routes
+    - `Sessions/` — checkout attempt recording, storage, pruning, and REST routes
+    - `Settings/` — settings page, automatic protection setting, and REST routes
+    - `Database/`, `CLI/`, `Logging/`, `Notes/`, `Schemas/` — schema management, WP-CLI commands, logger, admin notes, and internal DTOs
+- `assets/` — browser scripts and styles served without a build
+- `client/` — React and TypeScript admin UI, compiled into `build/`
+- `tests/php/`, `tests/js/` — PHPUnit and Jest tests; `tests/php/smoke/` holds the kill-switch smoke files
+
+Rules:
 
 - All project PHP files must declare `strict_types=1`. WP-CLI `eval-file` scripts under `bin/` and `tests/bootstrap.php` are the exceptions.
 - PHP 7.4 and 8.0 are parseability targets only for the two plugin entry points and the kill-switch smoke files; they are not supported plugin runtimes. Do not add PHP 8.1 syntax to those files.
@@ -98,16 +119,7 @@ Forwarded context passes through `LogContextSanitizer`. It keeps only reviewed, 
 
 The message is forwarded without sanitization. Do not include form fields, raw payment data, personal data, full payloads or responses, or user-controlled third-party exception text in a forwarded message. Pass reviewed values as structured context instead.
 
-Do not change the forwarded line format without confirming the host PHP-errors parser contract and updating its tests. The required form is:
-
-`PHP Warning: [woo-fraud-protection <level>] <message>[ <sanitized-json>] in <plugin-main-file> on line <code>`
-
-- Keep the literal `PHP Warning:` prefix. The host parser maps it to `severity:"Warning"`.
-- Keep the `[woo-fraud-protection <level>]` tag. The application level remains in this tag.
-- Append sanitized JSON only when at least one allowed context value remains. Do not append empty braces.
-- Keep `in <plugin-main-file> on line <code>` as the final segment because the parser match is end-anchored.
-- Use the fixed `woocommerce-fraud-protection.php` marker path. It identifies the plugin for host filtering; it is not the call site.
-- Encode application severity in the line code: warning `-10`, error `-20`, critical `-30`, alert `-40`, and emergency `-50`. An unmapped level uses `-10`.
+The forwarded line format is a contract with the host PHP-errors parser, and `FraudProtectionControllerTest` covers it. Do not change the format without confirming that contract and updating the test.
 
 Use the error mechanism for the active WooCommerce flow:
 
