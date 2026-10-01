@@ -413,7 +413,7 @@ describe( 'checkout attempts provider filter', () => {
 			{ value: 'cod', label: 'cod' },
 		] );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/sessions/payment-methods',
+			path: '/wc-admin/fraud-protection/sessions/payment-methods',
 		} );
 	} );
 } );
@@ -1092,10 +1092,10 @@ const mockApi = ( {
 			data?: { automatic_protection?: boolean };
 		} ) => {
 			const path = String( options.path );
-			if ( path.includes( '/wc-fraud-protection/v1/sessions' ) ) {
+			if ( path.includes( '/wc-admin/fraud-protection/sessions' ) ) {
 				return Promise.resolve( nextSessions( path ) );
 			}
-			if ( path.includes( '/wc-fraud-protection/v1/settings' ) ) {
+			if ( path.includes( '/wc-admin/fraud-protection/settings' ) ) {
 				if ( 'POST' === options.method ) {
 					const value = options.data?.automatic_protection ?? false;
 					onPost?.( value );
@@ -1137,15 +1137,15 @@ const mockRuleApi = ( {
 			data?: Partial< Rule > & { automatic_protection?: boolean };
 		} ) => {
 			const path = String( options.path );
-			if ( path.includes( '/wc-fraud-protection/v1/sessions' ) ) {
+			if ( path.includes( '/wc-admin/fraud-protection/sessions' ) ) {
 				return Promise.resolve(
 					listResponse( mutated ? after : before )
 				);
 			}
-			if ( path.includes( '/wc-fraud-protection/v1/settings' ) ) {
+			if ( path.includes( '/wc-admin/fraud-protection/settings' ) ) {
 				return Promise.resolve( settingsResponse() );
 			}
-			if ( path === '/wc-fraud-protection/v1/rules' ) {
+			if ( path === '/wc-admin/fraud-protection/rules' ) {
 				if ( createError ) {
 					return Promise.reject( createError );
 				}
@@ -1160,7 +1160,7 @@ const mockRuleApi = ( {
 				);
 			}
 			const ruleMatch = path.match(
-				/\/wc-fraud-protection\/v1\/rules\/(\d+)/
+				/\/wc-admin\/fraud-protection\/rules\/(\d+)/
 			);
 			if ( ruleMatch ) {
 				const id = Number( ruleMatch[ 1 ] );
@@ -1213,7 +1213,7 @@ const ruleMutationRequests = () =>
 		.filter(
 			( options: { method?: string; path?: string } ) =>
 				String( options.path ).includes(
-					'/wc-fraud-protection/v1/rules'
+					'/wc-admin/fraud-protection/rules'
 				) &&
 				[ 'POST', 'PUT', 'DELETE' ].indexOf( options.method ?? '' ) !==
 					-1
@@ -1294,7 +1294,7 @@ describe( 'CheckoutAttemptsPage', () => {
 			screen.getByRole( 'searchbox', { name: 'Search by email or IP' } )
 		).toBeInTheDocument();
 		expect( listPaths()[ 0 ] ).toContain(
-			'/wc-fraud-protection/v1/sessions'
+			'/wc-admin/fraud-protection/sessions'
 		);
 		expect( listPaths()[ 0 ] ).not.toContain( 'final_status' );
 	} );
@@ -1389,7 +1389,7 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules',
+				path: '/wc-admin/fraud-protection/rules',
 				method: 'POST',
 				data: {
 					action: 'block',
@@ -1474,7 +1474,7 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules/701',
+				path: '/wc-admin/fraud-protection/rules/701',
 				method: 'PUT',
 				data: {
 					action: 'allow',
@@ -1521,7 +1521,7 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules/802?origin=checkout_attempts',
+				path: '/wc-admin/fraud-protection/rules/802?origin=checkout_attempts',
 				method: 'DELETE',
 			} )
 		);
@@ -1579,7 +1579,7 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules/17',
+				path: '/wc-admin/fraud-protection/rules/17',
 				method: 'PUT',
 				data: {
 					action: 'block',
@@ -1980,7 +1980,7 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/settings',
+				path: '/wc-admin/fraud-protection/settings',
 				method: 'POST',
 				data: { automatic_protection: true },
 			} )

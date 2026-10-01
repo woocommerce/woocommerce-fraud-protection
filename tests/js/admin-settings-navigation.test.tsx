@@ -85,14 +85,14 @@ const settingsResponse = {
 	},
 };
 
-const SETTINGS_PATH = '/wc-fraud-protection/v1/settings';
+const SETTINGS_PATH = '/wc-admin/fraud-protection/settings';
 
 // The settings data is fetched as a plain object; the checkout attempts list is
 // fetched with `parse: false` and reads a Response. Answer each in kind so the
 // real list page mounts without error while the routing is exercised.
 const apiFetchImplementation = ( options: unknown ) => {
 	const { path } = ( options ?? {} ) as { path?: string };
-	if ( path && path.startsWith( '/wc-fraud-protection/v1/rules' ) ) {
+	if ( path && path.startsWith( '/wc-admin/fraud-protection/rules' ) ) {
 		return Promise.resolve( {
 			json: () => Promise.resolve( [] ),
 			headers: {
@@ -103,7 +103,7 @@ const apiFetchImplementation = ( options: unknown ) => {
 			},
 		} );
 	}
-	if ( path && path.startsWith( '/wc-fraud-protection/v1/sessions' ) ) {
+	if ( path && path.startsWith( '/wc-admin/fraud-protection/sessions' ) ) {
 		return Promise.resolve( {
 			json: () => Promise.resolve( [] ),
 			headers: { get: () => '0' },
@@ -146,6 +146,8 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
 		mockedApiFetch.mockImplementation( apiFetchImplementation );
+		// jsdom does not implement scrolling.
+		jest.spyOn( window, 'scrollTo' ).mockImplementation( () => {} );
 	} );
 
 	afterEach( () => {
@@ -180,6 +182,79 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( confirm ).not.toHaveBeenCalled();
 	} );
 
+	it( 'marks the mount as a drill-down page only while a list page is shown', async () => {
+		const mount = document.createElement( 'div' );
+		mount.id = 'wc-fraud-protection-settings';
+		document.body.appendChild( mount );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'link', {
+				name: 'View checkout attempts',
+			} )
+		);
+		expect( mount ).toHaveClass( 'is-drill-down' );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
+		await screen.findByRole( 'heading', { name: 'Performance' } );
+		expect( mount ).not.toHaveClass( 'is-drill-down' );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'View rules' } )
+		);
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
+		expect( mount ).toHaveClass( 'is-drill-down' );
+
+		mount.remove();
+	} );
+
+	it( 'opens each page at the top, and leaves Back to the browser', async () => {
+		renderApp();
+		await screen.findByRole( 'heading', { name: 'Performance' } );
+		expect( window.scrollTo ).not.toHaveBeenCalled();
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+		);
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 1 );
+		expect( window.scrollTo ).toHaveBeenCalledWith( 0, 0 );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'link', { name: 'View rules' } )
+		);
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 3 );
+
+		act( () => mockHistory.back() );
+		expect( mockHistory.location.pathname ).toBe( '/' );
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 3 );
+	} );
+
+	it( 'keeps the scroll position when only the list state in the URL changes', async () => {
+		renderApp( '/checkout-attempts' );
+		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
+		const requestsBefore = mockedApiFetch.mock.calls.length;
+
+		// The lists push their tab, filters and page to the URL on the same route.
+		act( () => mockHistory.push( '/checkout-attempts?status=blocked' ) );
+		// Let the list request for the new URL settle.
+		await waitFor( () =>
+			expect( mockedApiFetch.mock.calls.length ).toBeGreaterThan(
+				requestsBefore
+			)
+		);
+		await act( async () => {} );
+
+		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
+		expect( window.scrollTo ).not.toHaveBeenCalled();
+	} );
+
 	it( 'loads settings only after returning from a direct checkout-attempt visit', async () => {
 		renderApp( '/checkout-attempts' );
 
@@ -196,7 +271,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( await screen.findByRole( 'checkbox' ) ).not.toBeChecked();
 		expect( settingsFetchCount() ).toBe( 1 );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/settings',
+			path: '/wc-admin/fraud-protection/settings',
 		} );
 	} );
 
@@ -215,7 +290,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		).toBeVisible();
 		expect( mockHistory.location.pathname ).toBe( '/rules' );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
 			parse: false,
 		} );
 	} );
@@ -241,7 +316,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
 		).toBeVisible();
 		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
-			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
 			parse: false,
 		} );
 	} );
@@ -253,7 +328,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 				method?: string;
 			};
 			if (
-				path === '/wc-fraud-protection/v1/rules' &&
+				path === '/wc-admin/fraud-protection/rules' &&
 				method === 'POST'
 			) {
 				return Promise.resolve( {

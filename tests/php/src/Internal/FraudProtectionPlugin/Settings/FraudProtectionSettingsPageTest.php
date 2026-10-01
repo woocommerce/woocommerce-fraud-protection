@@ -136,6 +136,40 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The React mount is marked as a drill-down page only on routes with their own header.
+	 *
+	 * @dataProvider mount_routes
+	 *
+	 * @param mixed $path       Requested route path.
+	 * @param bool  $drill_down Whether the route is a drill-down page.
+	 */
+	public function test_output_marks_drill_down_routes( $path, bool $drill_down ): void {
+		$_GET['path'] = $path;
+
+		ob_start();
+		$this->sut->output();
+		$output = (string) ob_get_clean();
+
+		$classes = 'wc-settings-prevent-change-event' . ( $drill_down ? ' is-drill-down' : '' );
+		$this->assertSame( '<div id="wc-fraud-protection-settings" class="' . $classes . '"></div>', $output );
+	}
+
+	/**
+	 * Route paths and whether each one is a drill-down page.
+	 *
+	 * @return array<string, array{mixed, bool}>
+	 */
+	public function mount_routes(): array {
+		return array(
+			'settings'          => array( '/', false ),
+			'rules'             => array( '/rules', true ),
+			'checkout attempts' => array( '/checkout-attempts', true ),
+			'unknown route'     => array( '/unknown', false ),
+			'non-string route'  => array( array( '/rules' ), false ),
+		);
+	}
+
+	/**
 	 * @testdox A classic page save has no fields and preserves an absent automatic-protection option.
 	 */
 	public function test_classic_save_preserves_absent_setting(): void {
@@ -187,7 +221,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
 		$rest_requests          = array();
 		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
-			if ( '/wc-fraud-protection/v1/settings' !== $request->get_route() ) {
+			if ( '/wc-admin/fraud-protection/settings' !== $request->get_route() ) {
 				return $result;
 			}
 
@@ -200,7 +234,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
 		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
-		$this->assertSame( array( array( 'GET', '/wc-fraud-protection/v1/settings' ) ), $rest_requests );
+		$this->assertSame( array( array( 'GET', '/wc-admin/fraud-protection/settings' ) ), $rest_requests );
 		$this->assertTrue( wp_style_is( 'wp-components', 'enqueued' ) );
 		$this->assertTrue( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
@@ -220,7 +254,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertIsArray( $before );
 		$before_script = implode( "\n", $before );
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
-		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
+		$this->assertStringContainsString( '"/wc-admin/fraud-protection/settings"', $before_script );
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
 		$this->assertStringNotContainsString( 'window.wcFraudProtectionSettings', $before_script );
 	}
@@ -250,7 +284,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$_GET['path']           = '/checkout-attempts';
 		$rest_requests          = 0;
 		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
-			if ( '/wc-fraud-protection/v1/settings' === $request->get_route() ) {
+			if ( '/wc-admin/fraud-protection/settings' === $request->get_route() ) {
 				++$rest_requests;
 			}
 

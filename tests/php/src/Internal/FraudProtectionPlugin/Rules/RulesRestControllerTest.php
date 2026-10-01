@@ -92,7 +92,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$this->set_created_at( $rule->id, '2026-09-14 12:00:00' );
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' ) );
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( '1', $response->get_headers()['X-WP-Total'] );
@@ -143,7 +143,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->set_created_at( $inside_end->id, '2026-09-16 02:59:59' );
 		$this->set_created_at( $after->id, '2026-09-16 03:00:00' );
 
-		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 		$request->set_query_params(
 			array(
 				'from'     => '2026-09-15T03:00:00Z',
@@ -246,7 +246,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @param array<string, mixed> $params Request parameters.
 	 */
 	private function dispatch_create( array $params ): \WP_REST_Response {
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params( $params );
 
 		return $this->server->dispatch( $request );
@@ -278,7 +278,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			)
 		);
 
-		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 		$request->set_query_params(
 			array(
 				'action' => 'block',
@@ -306,7 +306,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			)
 		);
 
-		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 		$request->set_query_params(
 			array(
 				'type'  => 'email',
@@ -341,7 +341,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			)
 		);
 
-		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 		$request->set_query_params(
 			array(
 				'orderby' => 'value',
@@ -371,7 +371,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 				)
 			);
 		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->createMock( SettingsTelemetry::class ) );
-		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 		$request->set_query_params(
 			array(
 				'action'  => 'allow',
@@ -390,7 +390,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox Collection sort arguments accept all supported values and reject other values.
 	 */
 	public function test_get_rules_validates_sort_arguments(): void {
-		$params = $this->sut->get_collection_params();
+		$params = $this->server->get_routes()['/wc-admin/fraud-protection/rules'][0]['args'];
 
 		$this->assertSame( RuleStore::SORTABLE_COLUMNS, $params['orderby']['enum'] );
 		$this->assertSame( 'created_at', $params['orderby']['default'] );
@@ -398,13 +398,13 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 'desc', $params['order']['default'] );
 
 		foreach ( array( 'unknown', array( 'value' ) ) as $orderby ) {
-			$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+			$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 			$request->set_query_params( array( 'orderby' => $orderby ) );
 			$response = $this->server->dispatch( $request );
 			$this->assertSame( 'rest_invalid_param', $response->as_error()->get_error_code() );
 		}
 
-		$request = new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 		$request->set_query_params( array( 'order' => 'sideways' ) );
 		$response = $this->server->dispatch( $request );
 		$this->assertSame( 'rest_invalid_param', $response->as_error()->get_error_code() );
@@ -416,7 +416,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	public function test_get_rules_returns_503_when_schema_is_unavailable(): void {
 		update_option( SchemaManager::DB_VERSION_OPTION, 0 );
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' ) );
 		$error    = $response->as_error();
 
 		$this->assertSame( 503, $response->get_status() );
@@ -441,7 +441,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			wc_get_container()->get( SettingsTelemetry::class )
 		);
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' ) );
 		$error    = $response->as_error();
 
 		$this->assertSame( 500, $response->get_status() );
@@ -467,7 +467,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			new SessionIdNormalizer(),
 			$telemetry
 		);
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -495,7 +495,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
 		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -605,7 +605,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$telemetry
 		);
 
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -623,27 +623,26 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox A direct create call normalizes an unexpected origin to API.
+	 * @testdox A delete request normalizes an unexpected origin to API.
 	 */
-	public function test_direct_create_normalizes_unexpected_origin(): void {
-		$telemetry = $this->createMock( SettingsTelemetry::class );
-		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'created', FraudDecision::Allow, 'email', 'api' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
-		$request->set_body_params(
+	public function test_delete_normalizes_unexpected_origin(): void {
+		$rule      = $this->rule_store->create_rule(
+			FraudDecision::Allow,
 			array(
-				'action' => 'allow',
-				'type'   => 'email',
-				'value'  => 'direct@example.com',
-				'origin' => 'unexpected',
+				'field'    => 'email',
+				'operator' => 'equals',
+				'value'    => 'direct@example.com',
 			)
 		);
+		$telemetry = $this->createMock( SettingsTelemetry::class );
+		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Allow, 'email', 'api' );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$request = new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id );
+		$request->set_query_params( array( 'origin' => 'unexpected' ) );
 
-		$response = $this->sut->create_item( $request );
+		$response = $this->server->dispatch( $request );
 
-		$this->assertSame( 200, $response->get_status() );
-		$rule = $this->rule_store->get_rule( (int) $response->get_data()['id'] );
-		$this->assertSame( 'api', $rule->source_meta['origin'] );
+		$this->assertSame( 204, $response->get_status() );
 	}
 
 	/**
@@ -662,7 +661,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$event_id = $this->record_event( array( 'session_id' => '' ) );
 
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action'              => 'allow',
@@ -694,7 +693,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$event_id = $this->record_event();
 
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action'              => 'allow',
@@ -757,7 +756,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 				'value'    => '203.0.113.10',
 			)
 		);
-		$request  = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request  = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -859,7 +858,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
 		$event_id = (int) $wpdb->get_var( 'SELECT MAX(id) FROM ' . $this->schema_manager->get_sessions_table_name() );
-		$request  = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request  = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action'              => 'allow',
@@ -920,7 +919,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$event_id = $this->record_event( array( 'final_status' => 'allowed' ) );
 
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/rules' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
 				'action'              => 'block',
@@ -965,7 +964,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			)
 		);
 		$this->set_updated_at( $rule->id, '2026-09-15 13:30:00' );
-		$path   = '/wc-fraud-protection/v1/rules/' . $rule->id;
+		$path   = '/wc-admin/fraud-protection/rules/' . $rule->id;
 		$active = $this->server->dispatch( new \WP_REST_Request( 'GET', $path ) );
 
 		$this->assertSame( 200, $active->get_status() );
@@ -974,7 +973,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertTrue( $this->rule_store->delete_rule( $rule->id ) );
 
 		$deleted = $this->server->dispatch( new \WP_REST_Request( 'GET', $path ) );
-		$list    = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$list    = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' ) );
 		$this->assertSame( 404, $deleted->get_status() );
 		$this->assertSame( 'woocommerce_fraud_protection_rule_not_found', $deleted->as_error()->get_error_code() );
 		$this->assertSame( '0', $list->get_headers()['X-WP-Total'] );
@@ -999,7 +998,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 				'value'    => 'read-error@example.com',
 			)
 		);
-		$request = new \WP_REST_Request( $method, '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( $method, '/wc-admin/fraud-protection/rules/' . $rule->id );
 		if ( 'PUT' === $method ) {
 			$request->set_body_params(
 				array(
@@ -1058,7 +1057,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'updated', FraudDecision::Allow, 'email', 'rules' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -1099,7 +1098,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $target->id );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $target->id );
 		$request->set_body_params(
 			array(
 				'action' => 'block',
@@ -1134,7 +1133,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -1182,7 +1181,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			return $query;
 		};
 		add_filter( 'query', $filter );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -1229,7 +1228,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			return $query;
 		};
 		add_filter( 'query', $filter );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
 				'action' => 'allow',
@@ -1265,7 +1264,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Block, 'ip', 'rules' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_query_params( array( 'origin' => 'rules' ) );
 
 		$response = $this->server->dispatch( $request );
@@ -1292,7 +1291,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id ) );
 
 		$this->assertSame( 404, $response->get_status() );
 		$this->assertSame( RuleStatus::Disabled, $this->rule_store->get_rule( $rule->id )->status );
@@ -1323,7 +1322,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Allow, 'email', 'rules' );
 		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/42' );
+		$request = new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/42' );
 		$request->set_query_params( array( 'origin' => 'rules' ) );
 
 		$response = $this->server->dispatch( $request );
@@ -1346,7 +1345,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
 				'action'   => 'block',
@@ -1385,7 +1384,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
 		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
 				'action' => 'block',
@@ -1415,7 +1414,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$rule_store->expects( $this->never() )->method( 'get_rule' );
 		$rule_store->expects( $this->never() )->method( 'update_rule_with_result' );
 		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->createMock( SettingsTelemetry::class ) );
-		$request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/1' );
+		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/1' );
 		$request->set_body_params( $params );
 
 		$response = $this->server->dispatch( $request );
@@ -1465,22 +1464,22 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			'value'  => 'customer@example.com',
 		);
 		wp_set_current_user( 0 );
-		$unauthenticated_update_request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$unauthenticated_update_request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$unauthenticated_update_request->set_body_params( $params );
-		$unauthenticated        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$unauthenticated        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' ) );
 		$unauthenticated_create = $this->dispatch_create( $params );
-		$unauthenticated_detail = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+		$unauthenticated_detail = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules/' . $rule->id ) );
 		$unauthenticated_update = $this->server->dispatch( $unauthenticated_update_request );
-		$unauthenticated_delete = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+		$unauthenticated_delete = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id ) );
 		$customer_id            = wc_create_new_customer( 'rules-customer@example.com', 'rules-customer', 'password' );
 		wp_set_current_user( $customer_id );
-		$unauthorized_update_request = new \WP_REST_Request( 'PUT', '/wc-fraud-protection/v1/rules/' . $rule->id );
+		$unauthorized_update_request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$unauthorized_update_request->set_body_params( $params );
-		$unauthorized        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules' ) );
+		$unauthorized        = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' ) );
 		$unauthorized_create = $this->dispatch_create( $params );
-		$unauthorized_detail = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+		$unauthorized_detail = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules/' . $rule->id ) );
 		$unauthorized_update = $this->server->dispatch( $unauthorized_update_request );
-		$unauthorized_delete = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-fraud-protection/v1/rules/' . $rule->id ) );
+		$unauthorized_delete = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id ) );
 
 		$this->assertSame( 401, $unauthenticated->get_status() );
 		$this->assertSame( 401, $unauthenticated_create->get_status() );

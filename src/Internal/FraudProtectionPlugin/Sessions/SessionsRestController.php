@@ -14,6 +14,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionOutcome;
+use Automattic\WooCommerce\Internal\RestApiControllerBase;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -23,12 +24,21 @@ defined( 'ABSPATH' ) || exit;
  * Exposes the retained session events as a paginated, sortable and
  * filterable list. Risk scores are never exposed.
  */
-class SessionsRestController extends \WP_REST_Controller {
+class SessionsRestController extends RestApiControllerBase {
 
 	/**
-	 * REST namespace.
+	 * The root namespace for the JSON REST API endpoints.
+	 *
+	 * @var non-falsy-string
 	 */
-	private const REST_NAMESPACE = 'wc-fraud-protection/v1';
+	protected string $route_namespace = 'wc-admin';
+
+	/**
+	 * Route base.
+	 *
+	 * @var string
+	 */
+	protected string $rest_base = 'fraud-protection/sessions';
 
 	/**
 	 * Default rows per page.
@@ -74,8 +84,6 @@ class SessionsRestController extends \WP_REST_Controller {
 	 * @param PaymentMethodTitleResolver $payment_method_titles The payment method title resolver instance.
 	 */
 	final public function init( SchemaManager $schema_manager, SessionEventStore $event_store, SessionRuleFinder $rule_finder, PaymentMethodTitleResolver $payment_method_titles ): void {
-		$this->namespace             = self::REST_NAMESPACE;
-		$this->rest_base             = 'sessions';
 		$this->schema_manager        = $schema_manager;
 		$this->event_store           = $event_store;
 		$this->rule_finder           = $rule_finder;
@@ -83,10 +91,12 @@ class SessionsRestController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Register the routes.
+	 * Get the WooCommerce REST API namespace for the class.
+	 *
+	 * @return string
 	 */
-	public function register(): void {
-		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+	protected function get_rest_api_namespace(): string {
+		return 'wc-admin-fraud-protection-sessions';
 	}
 
 	/**
@@ -96,50 +106,39 @@ class SessionsRestController extends \WP_REST_Controller {
 	 */
 	public function register_routes(): void {
 		register_rest_route(
-			self::REST_NAMESPACE,
+			$this->route_namespace,
 			'/' . $this->rest_base,
 			array(
 				array(
 					'methods'             => \WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_items' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn( \WP_REST_Request $request ) => $this->get_items( $request ),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 					'args'                => $this->get_collection_params(),
 				),
-				'schema' => array( $this, 'get_public_item_schema' ),
+				'schema' => fn() => $this->get_item_schema(),
 			)
 		);
 
 		register_rest_route(
-			self::REST_NAMESPACE,
+			$this->route_namespace,
 			'/' . $this->rest_base . '/payment-methods',
 			array(
 				array(
 					'methods'             => \WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_payment_methods' ),
-					'permission_callback' => array( $this, 'permissions_check' ),
+					'callback'            => fn() => $this->get_payment_methods(),
+					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
 				),
 			)
 		);
-	}
-
-	/**
-	 * Check access to the recorded checkout attempts.
-	 *
-	 * @internal
-	 */
-	public function permissions_check(): bool {
-		return current_user_can( 'manage_woocommerce' );
 	}
 
 	/**
 	 * List the retained checkout attempts.
 	 *
-	 * @internal
-	 *
 	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function get_items( $request ): \WP_REST_Response|\WP_Error {
+	private function get_items( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		$per_page = (int) $request->get_param( 'per_page' );
 		$page     = (int) $request->get_param( 'page' );
 
@@ -222,14 +221,9 @@ class SessionsRestController extends \WP_REST_Controller {
 	 * retained attempts only runs when the list needs the options rather than on
 	 * every settings-page load.
 	 *
-	 * @internal
-	 *
-	 * @param \WP_REST_Request $request REST request.
 	 * @return \WP_REST_Response
 	 */
-	public function get_payment_methods( $request ): \WP_REST_Response {
-		unset( $request );
-
+	private function get_payment_methods(): \WP_REST_Response {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
 			return new \WP_REST_Response( array() );
 		}
@@ -258,7 +252,7 @@ class SessionsRestController extends \WP_REST_Controller {
 	 *
 	 * @return array<string, array<string, mixed>>
 	 */
-	public function get_collection_params(): array {
+	private function get_collection_params(): array {
 		$string_list = array(
 			'type'              => 'array',
 			'items'             => array(
@@ -348,7 +342,7 @@ class SessionsRestController extends \WP_REST_Controller {
 	 *
 	 * @return array<string, mixed>
 	 */
-	public function get_item_schema(): array {
+	private function get_item_schema(): array {
 		$country = array(
 			'type'       => array( 'object', 'null' ),
 			'properties' => array(

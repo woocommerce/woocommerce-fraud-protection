@@ -12,13 +12,21 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdenti
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 
 /**
  * Tests for the FraudProtectionController class.
  */
 class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
+
+	private const MERCHANT_REST_ROUTES = array(
+		'/wc-admin/fraud-protection/settings',
+		'/wc-admin/fraud-protection/settings/opt-out',
+		'/wc-admin/fraud-protection/rules',
+		'/wc-admin/fraud-protection/rules/(?P<id>[\\d]+)',
+		'/wc-admin/fraud-protection/sessions',
+		'/wc-admin/fraud-protection/sessions/payment-methods',
+	);
 
 	/**
 	 * The System Under Test.
@@ -206,32 +214,34 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	public function test_disabled_gate_registers_telemetry_without_merchant_surfaces(): void {
 		$container = wc_get_container();
 		$container->get( MerchantFacingFeaturesGate::class )->set_enabled( false );
+		$this->remove_rest_controller_registrations();
 
 		$this->sut->handle_init();
 
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( $container->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
 		$this->assertNotFalse( has_filter( 'woocommerce_tracks_event_properties', array( $container->get( SettingsTelemetry::class ), 'add_settings_view_source' ) ) );
 		$this->assertNull( AutomaticProtectionEarlyAccessNote::get_note() );
-		$this->assertFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+		$this->assertEmpty( array_intersect( self::MERCHANT_REST_ROUTES, $this->get_registered_rest_routes() ) );
 		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
 		$this->assertFalse( has_filter( 'woocommerce_admin_get_user_data_fields', array( $this->sut, 'add_user_data_fields' ) ) );
 	}
 
 	/**
-	 * @testdox Merchant-facing features register the page and settings endpoint by default.
+	 * @testdox Merchant-facing features register the page and the wc-admin REST routes by default.
 	 */
 	public function test_default_gate_registers_page_and_endpoint(): void {
 		$container = wc_get_container();
 		$feature   = $container->get( MerchantFacingFeaturesGate::class );
 		$feature->reset();
+		$this->remove_rest_controller_registrations();
 
 		$this->sut->handle_init();
 
 		$this->assertNotFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
 		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'maybe_add_note' ) ) );
-		$this->assertNotFalse( has_action( 'rest_api_init', array( $container->get( SettingsRestController::class ), 'register_routes' ) ) );
+		$this->assertEqualsCanonicalizing( self::MERCHANT_REST_ROUTES, array_intersect( self::MERCHANT_REST_ROUTES, $this->get_registered_rest_routes() ) );
 		$this->assertNotFalse( has_filter( 'woocommerce_admin_get_user_data_fields', array( $this->sut, 'add_user_data_fields' ) ) );
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		$pages = apply_filters( 'woocommerce_get_settings_pages', array() );
@@ -627,5 +637,26 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 			wp_json_encode( $captured ),
 			'the context WooCommerce renders must now encode'
 		);
+	}
+
+	/**
+	 * Remove the REST controller registrations made while the test site loaded,
+	 * so only the registrations of the current test remain.
+	 */
+	private function remove_rest_controller_registrations(): void {
+		remove_all_filters( 'woocommerce_rest_api_get_rest_namespaces' );
+	}
+
+	/**
+	 * Initialize a fresh REST server and get its registered routes.
+	 *
+	 * @return string[]
+	 */
+	private function get_registered_rest_routes(): array {
+		$GLOBALS['wp_rest_server'] = null;
+		$routes                    = array_keys( rest_get_server()->get_routes() );
+		$GLOBALS['wp_rest_server'] = null;
+
+		return $routes;
 	}
 }

@@ -25,7 +25,7 @@ use Automattic\WooCommerce\Proxies\LegacyProxy;
  */
 class SessionsRestControllerTest extends \WC_REST_Unit_Test_Case {
 
-	private const LIST_ROUTE = '/wc-fraud-protection/v1/sessions';
+	private const LIST_ROUTE = '/wc-admin/fraud-protection/sessions';
 
 	private const PAYMENT_METHODS_ROUTE = self::LIST_ROUTE . '/payment-methods';
 

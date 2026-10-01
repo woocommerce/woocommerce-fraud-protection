@@ -149,10 +149,16 @@
 	}
 }
 
-// WooCommerce leaves a gap below the settings tab bar. Remove it only when
-// the rules page is active so the white surfaces meet.
-#mainform:has( .wc-fraud-protection-rules ) nav.nav-tab-wrapper {
-	margin-bottom: 0;
+// The rules and checkout attempts pages show their own breadcrumb header, so
+// hide the WooCommerce "Settings" header and the settings tabs, as WooCommerce
+// does for its own drill-down settings pages. The server renders both outside
+// the React mount, so they are hidden through the mount's drill-down class.
+body:has( #wc-fraud-protection-settings.is-drill-down ) {
+
+	.woocommerce-layout__header,
+	#mainform nav.nav-tab-wrapper {
+		display: none;
+	}
 }
 
 .wc-fraud-protection-rule-form__metadata {
@@ -179,6 +185,13 @@
 
 .wc-fraud-protection-rule-form__drawer-portal {
 	--wp-ui-drawer-z-index: #{z-index('.components-modal__screen-overlay')};
+
+	// Chromium's user-agent stylesheet dims disabled selects with opacity on
+	// top of the disabled text colour, which SelectControl does not reset.
+	// Without this, a locked select looks lighter than a locked text input.
+	.components-select-control__input:disabled {
+		opacity: 1;
+	}
 }
 
 .wc-fraud-protection-rules__dialog-portal {

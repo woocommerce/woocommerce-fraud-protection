@@ -1,12 +1,13 @@
 import apiFetch from '@wordpress/api-fetch';
 import type { Option } from '@wordpress/dataviews';
 
+import { SESSION_PAYMENT_METHODS_PATH } from '../rest-api';
 import type { PaymentMethodOption } from './types';
 
-const PATH = '/wc-fraud-protection/v1/sessions/payment-methods';
-
 export async function getPaymentMethodElements(): Promise< Option[] > {
-	const methods = await apiFetch< PaymentMethodOption[] >( { path: PATH } );
+	const methods = await apiFetch< PaymentMethodOption[] >( {
+		path: SESSION_PAYMENT_METHODS_PATH,
+	} );
 
 	if ( ! Array.isArray( methods ) ) {
 		return [];

@@ -94,7 +94,7 @@ describe( 'rulesStore', () => {
 
 		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20',
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20',
 			parse: false,
 		} );
 		expect( registry.select( rulesStore ).getTotalItems( query ) ).toBe(

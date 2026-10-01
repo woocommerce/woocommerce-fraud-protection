@@ -22,6 +22,12 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	private const SCRIPT_HANDLE = 'wc-fraud-protection-admin-settings';
 
 	/**
+	 * Routes that show their own breadcrumb header instead of the WooCommerce
+	 * settings header and tabs.
+	 */
+	private const DRILL_DOWN_ROUTES = array( '/rules', '/checkout-attempts' );
+
+	/**
 	 * Logger instance.
 	 *
 	 * @var FraudProtectionLogger
@@ -81,7 +87,15 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			return;
 		}
 
-		echo '<div id="wc-fraud-protection-settings" class="wc-settings-prevent-change-event"></div>';
+		// The React app keeps the drill-down class in sync on client-side
+		// navigation. Setting it here hides the settings header and tabs from
+		// the first paint, before the app mounts.
+		$classes = 'wc-settings-prevent-change-event';
+		if ( in_array( $this->get_route_path(), self::DRILL_DOWN_ROUTES, true ) ) {
+			$classes .= ' is-drill-down';
+		}
+
+		echo '<div id="wc-fraud-protection-settings" class="' . esc_attr( $classes ) . '"></div>';
 	}
 
 	/**
@@ -138,13 +152,12 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 	 * where it is not needed.
 	 */
 	private function maybe_preload_settings_data(): void {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The route only controls which read-only data is preloaded.
-		$route_path = isset( $_GET['path'] ) ? sanitize_text_field( wp_unslash( $_GET['path'] ) ) : null;
+		$route_path = $this->get_route_path();
 		if ( null !== $route_path && '/' !== $route_path && '/checkout-attempts' !== $route_path ) {
 			return;
 		}
 
-		$preload_data = rest_preload_api_request( array(), '/wc-fraud-protection/v1/settings' );
+		$preload_data = rest_preload_api_request( array(), SettingsRestController::SETTINGS_ROUTE );
 		wp_add_inline_script(
 			self::SCRIPT_HANDLE,
 			sprintf(
@@ -153,5 +166,15 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			),
 			'before'
 		);
+	}
+
+	/**
+	 * Get the React route path requested in the URL.
+	 *
+	 * @return string|null The route path, or null when none is requested.
+	 */
+	private function get_route_path(): ?string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The route only selects read-only page output.
+		return isset( $_GET['path'] ) && is_string( $_GET['path'] ) ? sanitize_text_field( wp_unslash( $_GET['path'] ) ) : null;
 	}
 }

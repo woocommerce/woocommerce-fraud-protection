@@ -2,6 +2,8 @@ import apiFetch from '@wordpress/api-fetch';
 import { createReduxStore, register } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 
+import { RULES_PATH } from '../../rest-api';
+
 export type Rule = {
 	id: number;
 	action: 'allow' | 'block';
@@ -121,7 +123,7 @@ const getRulesPath = ( query: RulesQuery ): string => {
 		}
 	} );
 
-	return `/wc-fraud-protection/v1/rules?${ params.toString() }`;
+	return `${ RULES_PATH }?${ params.toString() }`;
 };
 
 const isRule = ( value: unknown ): value is Rule => {
@@ -227,7 +229,7 @@ const actions = {
 		( request: CreateRuleRequest ) =>
 		async ( { dispatch }: StoreCallback ) => {
 			const response = await apiFetch< unknown >( {
-				path: '/wc-fraud-protection/v1/rules',
+				path: RULES_PATH,
 				method: 'POST',
 				data: request,
 			} );
@@ -243,7 +245,7 @@ const actions = {
 		( id: number, request: UpdateRuleRequest ) =>
 		async ( { dispatch }: StoreCallback ) => {
 			const response = await apiFetch< unknown >( {
-				path: `/wc-fraud-protection/v1/rules/${ id }`,
+				path: `${ RULES_PATH }/${ id }`,
 				method: 'PUT',
 				data: request,
 			} );
@@ -259,7 +261,7 @@ const actions = {
 		( id: number, origin: UpdateRuleRequest[ 'origin' ] = 'api' ) =>
 		async ( { dispatch }: StoreCallback ) => {
 			await apiFetch( {
-				path: `/wc-fraud-protection/v1/rules/${ id }?origin=${ origin }`,
+				path: `${ RULES_PATH }/${ id }?origin=${ origin }`,
 				method: 'DELETE',
 			} );
 			dispatch.removeRule( id );
@@ -329,7 +331,7 @@ const resolvers = {
 		( id: number ) =>
 		async ( { dispatch }: StoreCallback ) => {
 			const response = await apiFetch< unknown >( {
-				path: `/wc-fraud-protection/v1/rules/${ id }`,
+				path: `${ RULES_PATH }/${ id }`,
 			} );
 			if ( ! isRule( response ) ) {
 				throw new Error( INVALID_RESPONSE_MESSAGE );
