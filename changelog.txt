@@ -1,5 +1,9 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.2.9
+* Updated - An active regular plugin installation now takes precedence over a managed must-use installation on the same site.
+* Updated - `wp wc fraud-protection status` now reports whether the plugin runs as a must-use or a regular plugin.
+
 2026-09-22 - version 0.2.8
 * Updated - IP location is now hidden by default in the checkout attempts list and remains available in view options.
 * Updated - Fraud prevention settings, checkout attempts, and rules are now available by default.

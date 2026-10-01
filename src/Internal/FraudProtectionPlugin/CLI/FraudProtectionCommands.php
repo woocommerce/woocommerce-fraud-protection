@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSettingUpdater;
@@ -199,6 +200,7 @@ class FraudProtectionCommands {
 		$database_defaults = is_array( $database_defaults ) ? $database_defaults : array();
 
 		$this->write_line( __( 'Plugin version', 'woocommerce-fraud-protection' ), defined( 'WC_FRAUD_PROTECTION_VERSION' ) ? (string) WC_FRAUD_PROTECTION_VERSION : __( 'Unknown', 'woocommerce-fraud-protection' ) );
+		$this->write_line( __( 'Installation type', 'woocommerce-fraud-protection' ), PluginInitializer::is_mu_plugin() ? __( 'Must-use plugin', 'woocommerce-fraud-protection' ) : __( 'Regular plugin', 'woocommerce-fraud-protection' ) );
 		$this->write_line( __( 'Merchant-facing features status', 'woocommerce-fraud-protection' ), $this->merchant_facing_features_gate->get_status()->value );
 		$this->write_line( __( 'Automatic fraud prevention status', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_status()->value );
 		$this->write_line( __( 'Automatic fraud prevention source', 'woocommerce-fraud-protection' ), $this->automatic_protection->get_source()->value );

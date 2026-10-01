@@ -34,14 +34,24 @@ class PluginInitializer {
 	private const MINIMUM_WC_VERSION = '9.8.0';
 
 	/**
+	 * Whether the running copy of the plugin was loaded as an MU-plugin.
+	 *
+	 * @var bool
+	 */
+	private static bool $is_mu_plugin = false;
+
+	/**
 	 * Bootstrap the plugin at load time (before WooCommerce loads).
 	 * Must be executed from the plugin main file.
 	 *
-	 * @param string $plugin_file Absolute path to the plugin's main file (pass `__FILE__`).
+	 * @param string $plugin_file  Absolute path to the plugin's main file (pass `__FILE__`).
+	 * @param bool   $is_mu_plugin Whether the plugin is being loaded as an MU-plugin.
 	 *
 	 * @return void
 	 */
-	public static function run( string $plugin_file ): void {
+	public static function run( string $plugin_file, bool $is_mu_plugin = false ): void {
+		self::$is_mu_plugin = $is_mu_plugin;
+
 		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.8' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', $plugin_file );
 
@@ -131,6 +141,18 @@ class PluginInitializer {
 		return self::is_managed_install()
 			? WP_LANG_DIR . '/woocommerce-fraud-protection'
 			: dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages';
+	}
+
+	/**
+	 * Check whether the running copy of the plugin was loaded as an MU-plugin.
+	 *
+	 * An MU-plugin copy yields to an active regular plugin copy, so a false result
+	 * also covers a site where both copies are installed.
+	 *
+	 * @return bool True for the MU-plugin copy, false for a regular or network-activated plugin.
+	 */
+	public static function is_mu_plugin(): bool {
+		return self::$is_mu_plugin;
 	}
 
 	/**
