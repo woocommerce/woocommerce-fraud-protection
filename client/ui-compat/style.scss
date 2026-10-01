@@ -93,10 +93,19 @@
 	}
 }
 
-
 // The @wordpress/components copy bundled in DataViews 10.1.7 does not reset
 // the WordPress admin select line-height (forms.css), so the text of its small
-// selects sits too low. Newer components versions set this same value.
-.wp-core-ui select.components-select-control__input {
-	line-height: 1.3;
+// selects sits too low. Newer components versions set this same value. The
+// filter and view option selects render in popovers outside the app's mount,
+// so the rule is scoped to the DataViews containers while the app is mounted.
+body:has(#wc-fraud-protection-settings) {
+
+	.dataviews-pagination,
+	.dataviews-view-config,
+	.dataviews-filters__summary-operators-container {
+
+		select.components-select-control__input {
+			line-height: 1.3;
+		}
+	}
 }
