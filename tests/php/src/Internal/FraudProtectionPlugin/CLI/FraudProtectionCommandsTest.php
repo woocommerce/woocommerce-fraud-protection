@@ -287,6 +287,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'sentinel' => true ), get_option( SchemaManager::DB_INSTALL_STATE_OPTION ), 'Status must not change the install state' );
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Plugin version:', $output );
+		$this->assertStringContainsString( 'Installation type: Regular plugin', $output );
 		$this->assertStringContainsString( 'Merchant-facing features status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic fraud prevention status: default_disabled', $output );
 		$this->assertStringContainsString( 'Automatic fraud prevention source: none', $output );

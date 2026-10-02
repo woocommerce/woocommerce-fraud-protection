@@ -4,6 +4,8 @@ YYYY-xx-xx - version 0.2.9
 * Added - The rules list can now be filtered by rules created on or after, or on or before, a single date.
 * Updated - Fraud prevention settings, rules, and checkout attempts now use the same WordPress interface component versions as WooCommerce, with small visual differences.
 * Updated - The rules and checkout attempts pages now show only their own breadcrumb header, without the WooCommerce settings header and tabs, and open at the top of the page.
+* Updated - An active regular plugin installation now takes precedence over a managed must-use installation on the same site.
+* Updated - `wp wc fraud-protection status` now reports whether the plugin runs as a must-use or a regular plugin.
 * Fixed - The automatic fraud prevention checkbox now lines up with the first line of its label.
 * Fixed - The checkout attempts link in the automatic fraud prevention notice now matches the notice's Learn more link.
 * Fixed - A locked rule type in the rule form now uses the same text color as the locked value.

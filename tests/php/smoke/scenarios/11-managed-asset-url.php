@@ -54,6 +54,11 @@ wfp_smoke_assert(
 	'Managed filter must preserve fragments. Got: ' . $fragment_url
 );
 
+wfp_smoke_assert(
+	\Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer::is_mu_plugin(),
+	'The managed loader must start the plugin as an MU-plugin.'
+);
+
 wfp_smoke_assert( ! defined( 'WC_FRAUD_PROTECTION_PLUGIN_URL' ), 'Managed loader must not define the obsolete URL constant.' );
 
 unlink( $target );
