@@ -259,18 +259,17 @@ class SessionDataCollectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Test wc_identity_id is retrieved from SessionIdentityManager.
+	 * @testdox The session data reports the identity from the identity cookie.
 	 */
 	public function test_session_id_retrieved_from_session_identity_manager(): void {
-		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, str_repeat( 'a', 70 ) );
+		$identity = '0123456789abcdef0123456789abcdef';
+		$_COOKIE[ SessionIdentityManager::IDENTITY_COOKIE_NAME ] = $identity;
+
 		$this->sut->collect();
 		$result = $this->sut->get_collected_data();
 
 		$this->assertArrayHasKey( 'wc_identity_id', $result['session'] );
-		// Session ID should be a string when session is available.
-		$this->assertIsString( $result['session']['wc_identity_id'] );
-		$this->assertNotEmpty( $result['session']['wc_identity_id'] );
-		$this->assertSame( str_repeat( 'a', 70 ), $result['session']['wc_identity_id'] );
+		$this->assertSame( $identity, $result['session']['wc_identity_id'] );
 	}
 
 	/**
