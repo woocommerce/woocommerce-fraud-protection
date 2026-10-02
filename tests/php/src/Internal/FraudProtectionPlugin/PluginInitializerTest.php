@@ -135,6 +135,36 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A regular plugin installation is not reported as an MU-plugin.
+	 */
+	public function test_regular_install_is_not_mu_plugin(): void {
+		$this->assertFalse( PluginInitializer::is_mu_plugin() );
+	}
+
+	/**
+	 * @testdox A bootstrap started as an MU-plugin is reported as an MU-plugin.
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_mu_plugin_bootstrap_is_mu_plugin(): void {
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Test captures constants already defined by bootstrap.
+		set_error_handler(
+			static fn( int $severity, string $message ): bool => E_WARNING === $severity && str_contains( $message, 'already defined' )
+		);
+
+		try {
+			PluginInitializer::run( WC_FRAUD_PROTECTION_PLUGIN_FILE, true );
+		} finally {
+			restore_error_handler();
+		}
+
+		$this->assertTrue( PluginInitializer::is_mu_plugin() );
+
+		remove_action( 'woocommerce_loaded', array( PluginInitializer::class, 'handle_woocommerce_loaded' ) );
+		remove_filter( 'woocommerce_feature_fraud_protection_enabled', '__return_false', 999 );
+	}
+
+	/**
 	 * @testdox Managed bootstrap registers text-domain loading at the start of init.
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled

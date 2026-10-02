@@ -31,6 +31,12 @@ $GLOBALS['wfp_smoke_hooks']      = array();
 $GLOBALS['wfp_smoke_options']    = array();
 $GLOBALS['wfp_smoke_transients'] = array();
 
+// Load state that scenarios can change: fired actions and active plugin file paths.
+$GLOBALS['wfp_smoke_did_actions']            = array();
+$GLOBALS['wfp_smoke_multisite']              = false;
+$GLOBALS['wfp_smoke_active_plugins']         = array();
+$GLOBALS['wfp_smoke_active_network_plugins'] = array();
+
 if ( ! function_exists( 'add_action' ) ) {
 	/**
 	 * Provide the add_action() test stub.
@@ -113,6 +119,44 @@ if ( ! function_exists( 'has_action' ) ) {
 	 */
 	function has_action( $hook, $callback = null ) {
 		return ! empty( $GLOBALS['wfp_smoke_hooks'][ $hook ] );
+	}
+}
+
+if ( ! function_exists( 'did_action' ) ) {
+	/**
+	 * Provide the did_action() test stub.
+	 *
+	 * @param mixed $hook Test value.
+	 */
+	function did_action( $hook ) {
+		return $GLOBALS['wfp_smoke_did_actions'][ $hook ] ?? 0;
+	}
+}
+
+if ( ! function_exists( 'is_multisite' ) ) {
+	/**
+	 * Provide the is_multisite() test stub.
+	 */
+	function is_multisite() {
+		return $GLOBALS['wfp_smoke_multisite'];
+	}
+}
+
+if ( ! function_exists( 'wp_get_active_and_valid_plugins' ) ) {
+	/**
+	 * Provide the wp_get_active_and_valid_plugins() test stub.
+	 */
+	function wp_get_active_and_valid_plugins() {
+		return $GLOBALS['wfp_smoke_active_plugins'];
+	}
+}
+
+if ( ! function_exists( 'wp_get_active_network_plugins' ) ) {
+	/**
+	 * Provide the wp_get_active_network_plugins() test stub.
+	 */
+	function wp_get_active_network_plugins() {
+		return $GLOBALS['wfp_smoke_active_network_plugins'];
 	}
 }
 
@@ -487,4 +531,58 @@ function wfp_smoke_capture_errors(): string {
 	ini_set( 'log_errors', '1' );
 	ini_set( 'error_log', $path );
 	return $path;
+}
+
+// The fixture helpers below create and remove temporary plugin copies before WordPress loads.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_mkdir, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
+
+/**
+ * Create a managed MU-plugin directory that links to this checkout and point WPMU_PLUGIN_DIR at it.
+ *
+ * @return string Fixture root, to remove with wfp_smoke_remove_dir().
+ */
+function wfp_smoke_create_managed_fixture(): string {
+	$managed_root = sys_get_temp_dir() . '/wfp-smoke-managed-' . uniqid();
+	mkdir( $managed_root . '/woocommerce-fraud-protection', 0777, true );
+	symlink( dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection.php', $managed_root . '/woocommerce-fraud-protection/woocommerce-fraud-protection.php' );
+	define( 'WPMU_PLUGIN_DIR', $managed_root );
+
+	return $managed_root;
+}
+
+/**
+ * Create a regular plugin copy with its own main file and initializer, separate from this checkout.
+ *
+ * @return string Path of the copy's main file. Remove the copy with wfp_smoke_remove_dir( dirname( $path, 2 ) ).
+ */
+function wfp_smoke_create_regular_copy(): string {
+	$plugin_dir      = sys_get_temp_dir() . '/wfp-smoke-plugins-' . uniqid() . '/woocommerce-fraud-protection';
+	$initializer_dir = $plugin_dir . '/src/Internal/FraudProtectionPlugin';
+	mkdir( $initializer_dir, 0777, true );
+	copy( dirname( __DIR__, 4 ) . '/woocommerce-fraud-protection.php', $plugin_dir . '/woocommerce-fraud-protection.php' );
+	copy( dirname( __DIR__, 4 ) . '/src/Internal/FraudProtectionPlugin/PluginInitializer.php', $initializer_dir . '/PluginInitializer.php' );
+
+	return realpath( $plugin_dir . '/woocommerce-fraud-protection.php' );
+}
+
+/**
+ * Recursively remove a fixture directory without following symbolic links.
+ *
+ * @param string $dir Directory to remove.
+ */
+function wfp_smoke_remove_dir( string $dir ): void {
+	foreach ( scandir( $dir ) as $entry ) {
+		if ( '.' === $entry || '..' === $entry ) {
+			continue;
+		}
+
+		$path = $dir . '/' . $entry;
+		if ( is_dir( $path ) && ! is_link( $path ) ) {
+			wfp_smoke_remove_dir( $path );
+		} else {
+			unlink( $path );
+		}
+	}
+
+	rmdir( $dir );
 }
