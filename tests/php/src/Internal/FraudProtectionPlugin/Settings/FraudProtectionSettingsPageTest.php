@@ -221,7 +221,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
 		$rest_requests          = array();
 		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
-			if ( '/wc-fraud-protection/v1/settings' !== $request->get_route() ) {
+			if ( '/wc-admin/fraud-protection/settings' !== $request->get_route() ) {
 				return $result;
 			}
 
@@ -234,7 +234,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
 		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
-		$this->assertSame( array( array( 'GET', '/wc-fraud-protection/v1/settings' ) ), $rest_requests );
+		$this->assertSame( array( array( 'GET', '/wc-admin/fraud-protection/settings' ) ), $rest_requests );
 		$this->assertTrue( wp_style_is( 'wp-components', 'enqueued' ) );
 		$this->assertTrue( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
@@ -254,7 +254,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertIsArray( $before );
 		$before_script = implode( "\n", $before );
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
-		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
+		$this->assertStringContainsString( '"/wc-admin/fraud-protection/settings"', $before_script );
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
 		$this->assertStringNotContainsString( 'window.wcFraudProtectionSettings', $before_script );
 	}
@@ -284,7 +284,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$_GET['path']           = '/checkout-attempts';
 		$rest_requests          = 0;
 		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
-			if ( '/wc-fraud-protection/v1/settings' === $request->get_route() ) {
+			if ( '/wc-admin/fraud-protection/settings' === $request->get_route() ) {
 				++$rest_requests;
 			}
 

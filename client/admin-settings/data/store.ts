@@ -1,6 +1,8 @@
 import apiFetch from '@wordpress/api-fetch';
 import { createReduxStore, register } from '@wordpress/data';
 
+import { SETTINGS_OPT_OUT_PATH, SETTINGS_PATH } from '../../rest-api';
+
 export type Settings = {
 	automatic_protection: boolean;
 	automatic_protection_opted_out: boolean;
@@ -170,7 +172,7 @@ const actions = {
 
 			try {
 				const response = await apiFetch< Settings >( {
-					path: '/wc-fraud-protection/v1/settings',
+					path: SETTINGS_PATH,
 					method: 'POST',
 					data: {
 						automatic_protection: automaticProtection,
@@ -207,7 +209,7 @@ const actions = {
 
 			try {
 				const response = await apiFetch< Settings >( {
-					path: '/wc-fraud-protection/v1/settings/opt-out',
+					path: SETTINGS_OPT_OUT_PATH,
 					method: 'POST',
 					data: { source },
 				} );
@@ -284,7 +286,7 @@ const resolvers = {
 		async ( { dispatch }: StoreCallback ) => {
 			try {
 				const response = await apiFetch< SettingsResponse >( {
-					path: '/wc-fraud-protection/v1/settings',
+					path: SETTINGS_PATH,
 				} );
 				dispatch.receiveSettingsResponse( response );
 			} catch ( error ) {

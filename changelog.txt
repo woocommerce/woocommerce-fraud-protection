@@ -8,6 +8,7 @@ YYYY-xx-xx - version 0.2.9
 * Fixed - The checkout attempts link in the automatic fraud prevention notice now matches the notice's Learn more link.
 * Fixed - A locked rule type in the rule form now uses the same text color as the locked value.
 * Fixed - The link in a flagged checkout attempt's explanation no longer shows a focus outline when opened with a mouse click.
+* Dev - The admin REST endpoints moved from the wc-fraud-protection/v1 namespace to wc-admin/fraud-protection; the old routes were removed.
 
 2026-09-22 - version 0.2.8
 * Updated - IP location is now hidden by default in the checkout attempts list and remains available in view options.

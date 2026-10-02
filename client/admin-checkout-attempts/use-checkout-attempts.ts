@@ -4,9 +4,8 @@ import { __ } from '@wordpress/i18n';
 import { addQueryArgs } from '@wordpress/url';
 import type { View } from '@wordpress/dataviews';
 
+import { SESSIONS_PATH } from '../rest-api';
 import type { FinalStatus, Session } from './types';
-
-const BASE_PATH = '/wc-fraud-protection/v1/sessions';
 
 export type CheckoutAttemptsState = {
 	sessions: Session[];
@@ -41,7 +40,7 @@ export function buildListPath(
 ): string {
 	const rules = filterValues( view, 'rules' )[ 0 ];
 
-	return addQueryArgs( BASE_PATH, {
+	return addQueryArgs( SESSIONS_PATH, {
 		page: view.page ?? 1,
 		per_page: view.perPage ?? 20,
 		orderby: view.sort?.field ?? 'recorded_at',

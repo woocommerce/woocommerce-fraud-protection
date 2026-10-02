@@ -157,7 +157,7 @@ class FraudProtectionSettingsPage extends \WC_Settings_Page {
 			return;
 		}
 
-		$preload_data = rest_preload_api_request( array(), '/wc-fraud-protection/v1/settings' );
+		$preload_data = rest_preload_api_request( array(), SettingsRestController::SETTINGS_ROUTE );
 		wp_add_inline_script(
 			self::SCRIPT_HANDLE,
 			sprintf(

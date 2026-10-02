@@ -85,14 +85,14 @@ const settingsResponse = {
 	},
 };
 
-const SETTINGS_PATH = '/wc-fraud-protection/v1/settings';
+const SETTINGS_PATH = '/wc-admin/fraud-protection/settings';
 
 // The settings data is fetched as a plain object; the checkout attempts list is
 // fetched with `parse: false` and reads a Response. Answer each in kind so the
 // real list page mounts without error while the routing is exercised.
 const apiFetchImplementation = ( options: unknown ) => {
 	const { path } = ( options ?? {} ) as { path?: string };
-	if ( path && path.startsWith( '/wc-fraud-protection/v1/rules' ) ) {
+	if ( path && path.startsWith( '/wc-admin/fraud-protection/rules' ) ) {
 		return Promise.resolve( {
 			json: () => Promise.resolve( [] ),
 			headers: {
@@ -103,7 +103,7 @@ const apiFetchImplementation = ( options: unknown ) => {
 			},
 		} );
 	}
-	if ( path && path.startsWith( '/wc-fraud-protection/v1/sessions' ) ) {
+	if ( path && path.startsWith( '/wc-admin/fraud-protection/sessions' ) ) {
 		return Promise.resolve( {
 			json: () => Promise.resolve( [] ),
 			headers: { get: () => '0' },
@@ -271,7 +271,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( await screen.findByRole( 'checkbox' ) ).not.toBeChecked();
 		expect( settingsFetchCount() ).toBe( 1 );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/settings',
+			path: '/wc-admin/fraud-protection/settings',
 		} );
 	} );
 
@@ -290,7 +290,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		).toBeVisible();
 		expect( mockHistory.location.pathname ).toBe( '/rules' );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
 			parse: false,
 		} );
 	} );
@@ -316,7 +316,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
 		).toBeVisible();
 		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
-			path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
 			parse: false,
 		} );
 	} );
@@ -328,7 +328,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 				method?: string;
 			};
 			if (
-				path === '/wc-fraud-protection/v1/rules' &&
+				path === '/wc-admin/fraud-protection/rules' &&
 				method === 'POST'
 			) {
 				return Promise.resolve( {

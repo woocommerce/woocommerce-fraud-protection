@@ -74,7 +74,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox An authorized read returns the disabled default without writing it.
 	 */
 	public function test_get_returns_effective_default_without_write(): void {
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame(
@@ -100,7 +100,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 			'blocked_by_rules'            => 5,
 		);
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( $this->performance_counts, $response->get_data()['performance'] );
@@ -154,7 +154,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$event_store->method( 'get_performance_counts' )->willThrowException( new \RuntimeException( 'Database details' ) );
 		$this->sut->init( $this->setting, $this->updater, $event_store );
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 
 		$this->assertSame( 500, $response->get_status() );
 		$this->assertSame( 'woocommerce_fraud_protection_settings_not_loaded', $response->get_data()['code'] );
@@ -272,13 +272,13 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->setting->set_enabled( true );
 
 		wp_set_current_user( 0 );
-		$unauthenticated_get     = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$unauthenticated_get     = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 		$unauthenticated_post    = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
 		$unauthenticated_opt_out = $this->server->dispatch( $this->opt_out_request( 'settings' ) );
 
 		$customer_id = wc_create_new_customer( 'settings-customer@example.com', 'settings-customer', 'password' );
 		wp_set_current_user( $customer_id );
-		$unauthorized_get     = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$unauthorized_get     = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 		$unauthorized_post    = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
 		$unauthorized_opt_out = $this->server->dispatch( $this->opt_out_request( 'settings' ) );
 
@@ -297,7 +297,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @param array<string, mixed> $data Request body.
 	 */
 	private function post_request( array $data ): \WP_REST_Request {
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/settings' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/settings' );
 		$request->set_header( 'Content-Type', 'application/json' );
 		$request->set_body( (string) wp_json_encode( $data ) );
 
@@ -310,7 +310,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @param mixed $source Request source.
 	 */
 	private function opt_out_request( $source ): \WP_REST_Request {
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/settings/opt-out' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/settings/opt-out' );
 		$request->set_header( 'Content-Type', 'application/json' );
 		$request->set_body( (string) wp_json_encode( null === $source ? array() : array( 'source' => $source ) ) );
 

@@ -258,7 +258,7 @@ describe( 'RulesPage', () => {
 		renderRules();
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+				path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
 				parse: false,
 			} )
 		);
@@ -266,7 +266,7 @@ describe( 'RulesPage', () => {
 		await userEvent.click( screen.getByRole( 'tab', { name: 'Block' } ) );
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&action=block&orderby=created_at&order=desc',
+				path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&action=block&orderby=created_at&order=desc',
 				parse: false,
 			} )
 		);
@@ -328,7 +328,7 @@ describe( 'RulesPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: `/wc-fraud-protection/v1/rules?page=3&per_page=50&action=block&type=ip&value=198.51.100.1&from=${ encodeURIComponent(
+				path: `/wc-admin/fraud-protection/rules?page=3&per_page=50&action=block&type=ip&value=198.51.100.1&from=${ encodeURIComponent(
 					getUtcDateFilterBound( '2026-09-01', false )!
 				) }&to=${ encodeURIComponent(
 					getUtcDateFilterBound( '2026-09-30', true )!
@@ -379,7 +379,7 @@ describe( 'RulesPage', () => {
 
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=created_at&order=desc',
+				path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
 				parse: false,
 			} )
 		);
@@ -475,7 +475,7 @@ describe( 'RulesPage', () => {
 		} );
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=created_at&order=desc',
+				path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&value=198.51.100.1&orderby=created_at&order=desc',
 				parse: false,
 			} )
 		);
@@ -491,7 +491,7 @@ describe( 'RulesPage', () => {
 		);
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
 				parse: false,
 			} )
 		);
@@ -503,7 +503,7 @@ describe( 'RulesPage', () => {
 		);
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				path: '/wc-admin/fraud-protection/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
 				parse: false,
 			} )
 		);
@@ -533,7 +533,7 @@ describe( 'RulesPage', () => {
 				callsBeforeBack
 			);
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&value=198.51.100.1&orderby=value&order=asc',
 				parse: false,
 			} );
 		} );
@@ -562,7 +562,7 @@ describe( 'RulesPage', () => {
 				callsBeforeForward
 			);
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
+				path: '/wc-admin/fraud-protection/rules?page=2&per_page=20&value=198.51.100.1&orderby=value&order=asc',
 				parse: false,
 			} );
 		} );
@@ -616,7 +616,7 @@ describe( 'RulesPage', () => {
 		);
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=2&per_page=20&orderby=created_at&order=desc',
+				path: '/wc-admin/fraud-protection/rules?page=2&per_page=20&orderby=created_at&order=desc',
 				parse: false,
 			} )
 		);
@@ -704,7 +704,7 @@ describe( 'RulesPage', () => {
 		);
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/rules?page=1&per_page=20&orderby=value&order=asc',
+				path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=value&order=asc',
 				parse: false,
 			} )
 		);
@@ -963,7 +963,7 @@ describe( 'RulesPage', () => {
 		);
 		await waitFor( () =>
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/rules',
+				path: '/wc-admin/fraud-protection/rules',
 				method: 'POST',
 				data: {
 					action: 'block',
@@ -1038,7 +1038,7 @@ describe( 'RulesPage', () => {
 		);
 		await waitFor( () => expect( onClose ).toHaveBeenCalled() );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: `/wc-fraud-protection/v1/rules/${ rule.id }`,
+			path: `/wc-admin/fraud-protection/rules/${ rule.id }`,
 			method: 'PUT',
 			data: {
 				action: 'block',
@@ -1116,7 +1116,7 @@ describe( 'RulesPage', () => {
 			).toBeNull()
 		);
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: `/wc-fraud-protection/v1/rules/${ rule.id }?origin=rules`,
+			path: `/wc-admin/fraud-protection/rules/${ rule.id }?origin=rules`,
 			method: 'DELETE',
 		} );
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
