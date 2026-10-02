@@ -153,7 +153,8 @@ export function CheckoutAttemptsPage() {
 		[ protectionOn, enabledAt ]
 	);
 
-	const isCompact = 'compact' === view.layout?.density;
+	const isCompact =
+		view.type === 'table' && 'compact' === view.layout?.density;
 	const fields = useMemo(
 		() => getFields( effectiveConfig, isCompact ),
 		[ effectiveConfig, isCompact ]

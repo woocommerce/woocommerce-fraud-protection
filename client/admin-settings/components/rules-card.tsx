@@ -1,8 +1,9 @@
 import { createInterpolateElement, useCallback } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { Button, Card, LinkButton, Stack, Text } from '@wordpress/ui';
+import { Button, Card, Stack, Text } from '@wordpress/ui';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { LinkButton } from '../../ui-compat';
 import { useRuleFormDrawer } from '../hooks/use-rule-form-drawer';
 import { getFraudProtectionRoute } from '../navigation';
 import { RuleFormDrawer } from './rule-form-drawer';

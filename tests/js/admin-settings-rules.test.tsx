@@ -118,7 +118,7 @@ async function chooseRuleAction( value: string, action: string ) {
 	if ( ! row ) {
 		throw new Error( `Rule row not found for ${ value }.` );
 	}
-	fireEvent.mouseDown(
+	await userEvent.click(
 		within( row ).getByRole( 'button', { name: 'Actions' } )
 	);
 	await userEvent.click(
@@ -201,6 +201,45 @@ describe( 'RulesPage', () => {
 			type: 'ip',
 			value: '198.51.100.1',
 			from: getUtcDateFilterBound( '2026-09-01', false ),
+			to: getUtcDateFilterBound( '2026-09-30', true ),
+		} );
+	} );
+
+	it( 'maps a one-sided created date to a single query bound', () => {
+		const view = {
+			type: 'table',
+			page: 1,
+			perPage: 20,
+			fields: [],
+		} as View;
+		expect(
+			getQueryFromView( {
+				...view,
+				filters: [
+					{
+						field: 'created_at',
+						operator: 'afterInc',
+						value: '2026-09-01',
+					},
+				],
+			} )
+		).toMatchObject( {
+			from: getUtcDateFilterBound( '2026-09-01', false ),
+			to: undefined,
+		} );
+		expect(
+			getQueryFromView( {
+				...view,
+				filters: [
+					{
+						field: 'created_at',
+						operator: 'beforeInc',
+						value: '2026-09-30',
+					},
+				],
+			} )
+		).toMatchObject( {
+			from: undefined,
 			to: getUtcDateFilterBound( '2026-09-30', true ),
 		} );
 	} );
@@ -442,7 +481,9 @@ describe( 'RulesPage', () => {
 		);
 		await userEvent.keyboard( '{Escape}' );
 
-		fireEvent.mouseDown( screen.getByRole( 'button', { name: 'Value' } ) );
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Value' } )
+		);
 		await userEvent.click(
 			await screen.findByRole( 'menuitemradio', {
 				name: 'Sort ascending',
@@ -454,6 +495,8 @@ describe( 'RulesPage', () => {
 				parse: false,
 			} )
 		);
+		// The column menu stays open after choosing a sort order.
+		await userEvent.keyboard( '{Escape}' );
 
 		await userEvent.click(
 			await screen.findByRole( 'button', { name: 'Next page' } )
@@ -651,7 +694,9 @@ describe( 'RulesPage', () => {
 				screen.getByRole( 'button', { name } )
 			).toBeInTheDocument();
 		}
-		fireEvent.mouseDown( screen.getByRole( 'button', { name: 'Value' } ) );
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Value' } )
+		);
 		await userEvent.click(
 			await screen.findByRole( 'menuitemradio', {
 				name: 'Sort ascending',
@@ -663,6 +708,8 @@ describe( 'RulesPage', () => {
 				parse: false,
 			} )
 		);
+		// The column menu stays open after choosing a sort order.
+		await userEvent.keyboard( '{Escape}' );
 		expect(
 			screen.getByRole( 'button', { name: 'View options' } )
 		).toBeInTheDocument();
@@ -951,6 +998,28 @@ describe( 'RulesPage', () => {
 			} )
 		);
 		expect( onViewRule ).toHaveBeenCalledWith( 17 );
+	} );
+
+	it( 'caps a value pasted over a duplicate error at 254 characters', async () => {
+		const user = userEvent.setup();
+		mockedApiFetch.mockRejectedValueOnce( {
+			code: 'woocommerce_fraud_protection_duplicate_rule',
+			message: 'This email is already allowed by a rule.',
+			data: { rule_id: 17 },
+		} );
+		renderDrawer();
+		await user.type( screen.getByLabelText( 'Value' ), 'dup@example.com' );
+		await user.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		await screen.findByText( 'This email is already allowed by a rule.' );
+
+		await user.tripleClick( screen.getByLabelText( 'Value' ) );
+		await user.paste( `${ 'a'.repeat( 250 ) }@b.com` );
+
+		expect(
+			( screen.getByLabelText( 'Value' ) as HTMLInputElement ).value
+		).toHaveLength( 254 );
 	} );
 
 	it( 'updates a loaded rule and shows the update snackbar', async () => {

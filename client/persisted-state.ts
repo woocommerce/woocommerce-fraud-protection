@@ -1,9 +1,9 @@
-import type { View } from '@wordpress/dataviews';
+import type { View, ViewTable } from '@wordpress/dataviews';
 
 export type DisplayPrefs = {
 	fields?: string[];
 	perPage?: number;
-	layout?: View[ 'layout' ];
+	layout?: ViewTable[ 'layout' ];
 };
 
 type PreferenceStoreConfig = {
@@ -115,7 +115,7 @@ export function createPreferenceStore( {
 			sanitize( {
 				fields: view.fields,
 				perPage: view.perPage,
-				layout: view.layout,
+				layout: view.type === 'table' ? view.layout : undefined,
 			} ),
 	};
 }

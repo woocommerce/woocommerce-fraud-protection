@@ -1,5 +1,5 @@
 import { useDispatch, useSelect } from '@wordpress/data';
-import { useCallback, useMemo } from '@wordpress/element';
+import { useCallback, useMemo, useRef } from '@wordpress/element';
 
 import {
 	getRulesErrorMessage,
@@ -14,7 +14,7 @@ export function useRules( query: RulesQuery ) {
 		[ query ]
 	);
 
-	return useSelect(
+	const result = useSelect(
 		( select ) => {
 			const store = select( rulesStore );
 			const resolverArgs = [ normalizedQuery ];
@@ -37,6 +37,22 @@ export function useRules( query: RulesQuery ) {
 		},
 		[ normalizedQuery ]
 	);
+
+	// The bundled DataViews version blanks the table when a query change
+	// empties its data, so keep the last loaded page on screen until the new
+	// one arrives.
+	const loaded = useRef( result );
+	if ( ! result.isLoading ) {
+		loaded.current = result;
+	}
+	return result.isLoading
+		? {
+				...result,
+				rules: loaded.current.rules,
+				totalItems: loaded.current.totalItems,
+				totalPages: loaded.current.totalPages,
+		  }
+		: result;
 }
 
 export function useRule( id?: number ) {
