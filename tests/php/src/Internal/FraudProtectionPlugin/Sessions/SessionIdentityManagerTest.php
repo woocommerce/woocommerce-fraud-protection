@@ -67,6 +67,7 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 	 * Runs after each test.
 	 */
 	public function tearDown(): void {
+		remove_filter( 'woocommerce_set_cookie_options', array( $this->sut, 'add_identity_cookie_same_site' ), 10 );
 		WC()->session = $this->original_session;
 		$_COOKIE      = $this->original_cookies;
 		parent::tearDown();
@@ -226,6 +227,49 @@ class SessionIdentityManagerTest extends FraudProtectionUnitTestCase {
 				'domain' => COOKIE_DOMAIN ? COOKIE_DOMAIN : '',
 			),
 			$this->sut->get_identity_cookie_settings()
+		);
+	}
+
+	/**
+	 * @testdox Registered hooks add SameSite=Lax to the options of the identity cookie.
+	 */
+	public function test_register_adds_same_site_to_identity_cookie_options(): void {
+		$this->sut->register();
+		$options = array(
+			'expires' => 0,
+			'path'    => '/',
+		);
+
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		$result = apply_filters( 'woocommerce_set_cookie_options', $options, SessionIdentityManager::IDENTITY_COOKIE_NAME, self::VALID_IDENTITY );
+
+		$this->assertSame( array_merge( $options, array( 'samesite' => 'Lax' ) ), $result );
+	}
+
+	/**
+	 * @testdox Registered hooks leave cookie options unchanged when they do not belong to the identity cookie or already set SameSite.
+	 * @dataProvider unchanged_cookie_options_provider
+	 *
+	 * @param mixed $options Cookie options.
+	 * @param mixed $name    Cookie name.
+	 */
+	public function test_register_leaves_other_cookie_options_unchanged( mixed $options, mixed $name ): void {
+		$this->sut->register();
+
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		$this->assertSame( $options, apply_filters( 'woocommerce_set_cookie_options', $options, $name, self::VALID_IDENTITY ) );
+	}
+
+	/**
+	 * Cookie options that must not receive the identity cookie's SameSite value.
+	 *
+	 * @return array<string, array{mixed, mixed}>
+	 */
+	public function unchanged_cookie_options_provider(): array {
+		return array(
+			'another cookie'        => array( array( 'path' => '/' ), 'woocommerce_items_in_cart' ),
+			'SameSite already set'  => array( array( 'samesite' => 'Strict' ), SessionIdentityManager::IDENTITY_COOKIE_NAME ),
+			'options are not array' => array( 'invalid', SessionIdentityManager::IDENTITY_COOKIE_NAME ),
 		);
 	}
 }

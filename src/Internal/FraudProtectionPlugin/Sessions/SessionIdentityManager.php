@@ -36,6 +36,16 @@ class SessionIdentityManager {
 	public const IDENTITY_COOKIE_NAME = 'wfp_id';
 
 	/**
+	 * Register hooks.
+	 *
+	 * @return void
+	 */
+	public function register(): void {
+		// wc_setcookie() has no SameSite argument.
+		add_filter( 'woocommerce_set_cookie_options', array( $this, 'add_identity_cookie_same_site' ), 10, 2 );
+	}
+
+	/**
 	 * Ensure cart and session are available.
 	 *
 	 * Loads cart if not already loaded, which initializes session for both
@@ -105,8 +115,9 @@ class SessionIdentityManager {
 	/**
 	 * Set the identity cookie for the current browser session.
 	 *
-	 * The cookie expires with the browser session and stays readable by the
-	 * Blackbox init script.
+	 * The cookie expires with the browser session, stays readable by the
+	 * Blackbox init script, and uses SameSite=Lax like the cookie that the
+	 * script creates.
 	 *
 	 * @param string $identity_id Identity ID.
 	 * @return void
@@ -119,6 +130,25 @@ class SessionIdentityManager {
 		}
 
 		wc_setcookie( self::IDENTITY_COOKIE_NAME, $identity_id, 0, is_ssl(), false );
+	}
+
+	/**
+	 * Add SameSite=Lax to the identity cookie options unless the site already set a SameSite value.
+	 *
+	 * @internal
+	 *
+	 * @param mixed $options Cookie options passed to setcookie().
+	 * @param mixed $name    Cookie name.
+	 * @return mixed The options, with SameSite added for the identity cookie.
+	 */
+	public function add_identity_cookie_same_site( mixed $options, mixed $name ): mixed {
+		if ( self::IDENTITY_COOKIE_NAME !== $name || ! is_array( $options ) || isset( $options['samesite'] ) ) {
+			return $options;
+		}
+
+		$options['samesite'] = 'Lax';
+
+		return $options;
 	}
 
 	/**

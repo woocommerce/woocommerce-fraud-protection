@@ -209,6 +209,17 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox handle_init() registers the SameSite option for the identity cookie.
+	 */
+	public function test_handle_init_registers_identity_cookie_options(): void {
+		$this->remove_rest_controller_registrations();
+
+		$this->sut->handle_init();
+
+		$this->assertNotFalse( has_filter( 'woocommerce_set_cookie_options', array( wc_get_container()->get( SessionIdentityManager::class ), 'add_identity_cookie_same_site' ) ) );
+	}
+
+	/**
 	 * @testdox Settings telemetry registers while an explicit override hides merchant surfaces.
 	 */
 	public function test_disabled_gate_registers_telemetry_without_merchant_surfaces(): void {
