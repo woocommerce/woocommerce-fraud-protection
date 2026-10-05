@@ -23,6 +23,8 @@ parameters:
 		- stubs/wc-paypal.stub
 		- stubs/wc-rest-api-controller-base.stub
 		- vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
+	dynamicConstantNames:
+		- COOKIEPATH
 	treatPhpDocTypesAsCertain: false
 	ignoreErrors:
 		- identifier: missingType.iterableValue

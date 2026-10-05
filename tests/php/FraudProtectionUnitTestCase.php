@@ -114,6 +114,9 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 		$this->restore_server_variables();
 		$this->remove_controller_logging_spy();
 
+		// Any flow that reaches SessionIdentityManager::get_identity_id() sets this cookie for the rest of the request.
+		unset( $_COOKIE[ \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager::IDENTITY_COOKIE_NAME ] );
+
 		$this->reset_woocommerce_cart_checkout_page_cache();
 		$this->reset_legacy_proxy_mocks();
 		WC()->session                  = $this->original_woocommerce_session;
@@ -231,7 +234,13 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	 */
 	protected function make_blackbox_script_handler(): \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler {
 		$session_manager = $this->createMock( \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager::class );
-		$session_manager->method( 'get_identity_id' )->willReturn( 'mock-session-id' );
+		$session_manager->method( 'get_identity_cookie_settings' )->willReturn(
+			array(
+				'name'   => 'wfp_id',
+				'path'   => '/',
+				'domain' => '',
+			)
+		);
 
 		$handler = new \Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler();
 		$handler->init( $session_manager );

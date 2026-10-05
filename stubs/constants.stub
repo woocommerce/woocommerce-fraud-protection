@@ -11,3 +11,6 @@
 define( 'WC_FRAUD_PROTECTION_VERSION', '' );
 define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', '' );
 define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
+
+// WordPress constant that phpstan-wordpress does not declare; it is listed in dynamicConstantNames.
+define( 'COOKIEPATH', '/' );
