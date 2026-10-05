@@ -104,8 +104,19 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 
 		$data = (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
 		$this->assertStringContainsString( '"apiKey":"woo:42"', $data );
-		$this->assertStringContainsString( '"identityCookie":{"name":"wfp_id","path":"/","domain":""}', $data );
 		$this->assertStringNotContainsString( 'identityKey', $data );
+		// Decode instead of matching the string: older WordPress versions escape "/" as "\/".
+		$this->assertSame( 1, preg_match( '/\Avar wcFraudProtection = (.*);\z/s', $data, $matches ) );
+		$localized = json_decode( $matches[1], true );
+		$this->assertIsArray( $localized );
+		$this->assertSame(
+			array(
+				'name'   => 'wfp_id',
+				'path'   => '/',
+				'domain' => '',
+			),
+			$localized['config']['identityCookie'] ?? null
+		);
 		$this->assertStringContainsString( '"timeout":3000', $data );
 		$this->assertStringContainsString( '"sessionIdField":"wc_fraud_protection_session_id"', $data );
 	}
