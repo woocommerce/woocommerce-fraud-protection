@@ -11,6 +11,8 @@
 const flushPromises = () =>
 	new Promise( jest.requireActual( 'timers' ).setImmediate );
 
+const EXISTING_IDENTITY = '0123456789abcdef0123456789abcdef';
+
 let mockConfigure;
 let mockInit;
 let mockGetSessionId;
@@ -19,6 +21,12 @@ let mockReset;
 beforeEach( () => {
 	delete window.Blackbox;
 	delete window.wcFraudProtection;
+	document.cookie.split( ';' ).forEach( ( part ) => {
+		const name = part.split( '=' )[ 0 ].trim();
+		if ( name ) {
+			document.cookie = `${ name }=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+		}
+	} );
 
 	jest.useFakeTimers();
 
@@ -30,15 +38,17 @@ beforeEach( () => {
 
 afterEach( () => {
 	jest.useRealTimers();
+	jest.restoreAllMocks();
 } );
 
-function setupAndLoad() {
+function setupAndLoad( configOverrides = {} ) {
 	window.wcFraudProtection = {
 		config: {
 			apiKey: 'test-key',
-			identityKey: 'test-identity',
+			identityCookie: { name: 'wfp_id', path: '/', domain: '' },
 			timeout: 3000,
 			sessionIdField: 'wc_fraud_protection_session_id',
+			...configOverrides,
 		},
 	};
 	window.Blackbox = {
@@ -55,12 +65,59 @@ function setupAndLoad() {
 
 describe( 'blackbox-init', () => {
 	describe( 'configure', () => {
-		it( 'calls Blackbox.configure with apiKey and identityKey from config', () => {
+		it( 'calls Blackbox.configure with apiKey and the identity from the cookie', () => {
+			document.cookie = `wfp_id=${ EXISTING_IDENTITY }; path=/`;
 			setupAndLoad();
 
 			expect( mockConfigure ).toHaveBeenCalledWith( {
 				apiKey: 'test-key',
-				identityKey: 'test-identity',
+				identityKey: EXISTING_IDENTITY,
+			} );
+		} );
+
+		it( 'creates a session cookie with a new identity when none exists', () => {
+			const cookieSetter = jest.spyOn( document, 'cookie', 'set' );
+			setupAndLoad();
+
+			const identity = mockConfigure.mock.calls[ 0 ][ 0 ].identityKey;
+			expect( identity ).toMatch( /^[a-f0-9]{32}$/ );
+			expect( document.cookie ).toContain( `wfp_id=${ identity }` );
+			expect( cookieSetter ).toHaveBeenCalledWith(
+				`wfp_id=${ identity }; path=/; SameSite=Lax`
+			);
+		} );
+
+		it.each( [
+			[ 'invalid', 'not-a-valid-identity' ],
+			[ 'Tracks-shaped', 'abcdefghijklmnopqrstuvwx' ],
+		] )(
+			'replaces an %s cookie value with a new identity',
+			( _, value ) => {
+				document.cookie = `wfp_id=${ value }; path=/`;
+				setupAndLoad();
+
+				const identity = mockConfigure.mock.calls[ 0 ][ 0 ].identityKey;
+				expect( identity ).toMatch( /^[a-f0-9]{32}$/ );
+				expect( document.cookie ).toContain( `wfp_id=${ identity }` );
+			}
+		);
+
+		it( 'ignores the tk_ai cookie', () => {
+			document.cookie = `tk_ai=${ EXISTING_IDENTITY }; path=/`;
+			setupAndLoad();
+
+			const identity = mockConfigure.mock.calls[ 0 ][ 0 ].identityKey;
+			expect( identity ).toMatch( /^[a-f0-9]{32}$/ );
+			expect( identity ).not.toBe( EXISTING_IDENTITY );
+		} );
+
+		it( 'configures without an identity when cookie settings are missing', () => {
+			setupAndLoad( { identityCookie: undefined } );
+
+			expect( document.cookie ).not.toContain( 'wfp_id=' );
+			expect( mockConfigure ).toHaveBeenCalledWith( {
+				apiKey: 'test-key',
+				identityKey: undefined,
 			} );
 		} );
 
@@ -91,7 +148,7 @@ describe( 'blackbox-init', () => {
 			window.wcFraudProtection = {
 				config: {
 					apiKey: 'test-key',
-					identityKey: 'test-identity',
+					identityCookie: { name: 'wfp_id', path: '/', domain: '' },
 					timeout: 3000,
 					sessionIdField: 'wc_fraud_protection_session_id',
 				},
@@ -108,7 +165,7 @@ describe( 'blackbox-init', () => {
 			window.wcFraudProtection = {
 				config: {
 					apiKey: 'test-key',
-					identityKey: 'test-identity',
+					identityCookie: { name: 'wfp_id', path: '/', domain: '' },
 					timeout: 3000,
 					sessionIdField: 'wc_fraud_protection_session_id',
 				},

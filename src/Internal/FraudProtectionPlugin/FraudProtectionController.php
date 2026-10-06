@@ -24,6 +24,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheck
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionsRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\FraudProtectionSettingsPage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
@@ -237,6 +238,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->checkout_event_tracker->register();
 		$this->payment_method_event_tracker->register();
 		$this->settings_telemetry->register();
+		wc_get_container()->get( SessionIdentityManager::class )->register();
 
 		// Register outside the merchant features gate to keep note cleanup active when it is disabled.
 		// The note eligibility check prevents creation when merchant-facing features are disabled.

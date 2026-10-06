@@ -114,15 +114,14 @@ class BlackboxScriptHandler {
 			array( 'in_footer' => true )
 		);
 
-		$wc_identity_id = $this->session_identity_manager->get_identity_id();
-
+		// The init script reads the identity from its cookie, so no per-visitor value is rendered into the page.
 		wp_localize_script(
 			'wc-fraud-protection-blackbox-init',
 			'wcFraudProtection',
 			array(
 				'config' => array(
 					'apiKey'         => self::API_KEY_PREFIX . ':' . $blog_id,
-					'identityKey'    => $wc_identity_id,
+					'identityCookie' => $this->session_identity_manager->get_identity_cookie_settings(),
 					'timeout'        => self::SESSION_ID_TIMEOUT_MS,
 					'sessionIdField' => SessionVerifier::SESSION_ID_FIELD,
 				),
