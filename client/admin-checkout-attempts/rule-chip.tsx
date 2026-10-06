@@ -112,6 +112,7 @@ export function RuleChip( {
 							className="wc-fraud-protection-checkout-attempts__rule-chip-icon"
 							icon={ isAllow ? published : notAllowed }
 							size={ 16 }
+							fill="currentColor"
 							aria-hidden="true"
 						/>
 						<span

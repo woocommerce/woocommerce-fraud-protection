@@ -27,6 +27,7 @@ export function OutcomeInfo( {
 							className="wc-fraud-protection-checkout-attempts__outcome-info-icon"
 							icon={ info }
 							size={ 24 }
+							fill="currentColor"
 							aria-hidden="true"
 						/>
 					</button>

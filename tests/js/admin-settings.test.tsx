@@ -394,7 +394,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		} );
 		const checkbox = await screen.findByRole( 'checkbox' );
 		expect( checkbox ).not.toBeChecked();
-		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect( checkbox ).toBeEnabled();
 		expect( screen.queryByRole( 'presentation' ) ).not.toBeInTheDocument();
 		expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
 		expect( screen.getAllByText( '0' ) ).toHaveLength( 4 );
@@ -414,7 +414,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 				name: 'Automatically block checkout attempts flagged by fraud prevention.',
 			} );
 			expect( checkbox ).toBeChecked();
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+			expect( checkbox ).toBeEnabled();
 		} );
 		expect(
 			screen.getByRole( 'button', { name: 'Save' } )
@@ -524,10 +524,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 				'The fraud prevention settings could not be loaded. Check your connection and try again.'
 			)
 		).toBeVisible();
-		expect( screen.getByRole( 'checkbox' ) ).toHaveAttribute(
-			'aria-disabled',
-			'true'
-		);
+		expect( screen.getByRole( 'checkbox' ) ).toBeDisabled();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
@@ -572,9 +569,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () =>
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
-		);
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
 		const performanceCard = screen
 			.getByRole( 'heading', { name: 'Performance' } )
@@ -632,16 +627,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () =>
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
-		);
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		await userEvent.click( save );
 
 		await waitFor( () => {
 			expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
-			expect( checkbox ).toHaveAttribute( 'aria-disabled', 'true' );
+			expect( checkbox ).toBeDisabled();
 		} );
 
 		resolveSave( {
@@ -666,9 +659,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () =>
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
-		);
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
 		const performanceCard = screen
 			.getByRole( 'heading', { name: 'Performance' } )
@@ -691,7 +682,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 				'The fraud prevention setting could not be saved. Try again later.'
 			)
 		).toBeVisible();
-		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect( checkbox ).toBeEnabled();
 		expect( save ).not.toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
 			within( performanceCard ).queryByText(

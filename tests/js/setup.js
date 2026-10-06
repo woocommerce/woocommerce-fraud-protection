@@ -30,6 +30,15 @@ if ( ! window.PointerEvent ) {
 	} );
 }
 
+// Ariakit dialogs in the bundled DataViews check CSS.supports, which jsdom lacks.
+if ( typeof window.CSS?.supports !== 'function' ) {
+	Object.defineProperty( window, 'CSS', {
+		configurable: true,
+		writable: true,
+		value: { ...window.CSS, supports: () => false },
+	} );
+}
+
 if ( ! window.ResizeObserver ) {
 	Object.defineProperty( window, 'ResizeObserver', {
 		configurable: true,

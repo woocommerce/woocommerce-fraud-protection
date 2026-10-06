@@ -83,6 +83,8 @@ function isValidLocalDate( value: string ): boolean {
 const createdFilter = defineRangeFilter( {
 	field: 'created_at',
 	operator: 'between',
+	fromOperator: 'afterInc',
+	toOperator: 'beforeInc',
 	params: [ 'created_from', 'created_to' ],
 	validate: isValidLocalDate,
 } );
@@ -136,6 +138,7 @@ const fields: Field< Rule >[] = [
 					icon={ item.action === 'allow' ? published : notAllowed }
 					aria-hidden="true"
 					size={ 18 }
+					fill="currentColor"
 				/>
 				{ item.action === 'allow'
 					? __( 'Allow', 'woocommerce-fraud-protection' )
@@ -173,7 +176,13 @@ const fields: Field< Rule >[] = [
 		label: __( 'Created', 'woocommerce-fraud-protection' ),
 		header: __( 'Created', 'woocommerce-fraud-protection' ),
 		type: 'date',
-		filterBy: { operators: [ createdFilter.operator ] },
+		filterBy: {
+			operators: [
+				createdFilter.operator,
+				createdFilter.fromOperator,
+				createdFilter.toOperator,
+			],
+		},
 		render: ( { item } ) => formatRuleDate( item.created_at ),
 	},
 ];
@@ -202,17 +211,23 @@ export const getQueryFromView = ( view: View ): RulesQuery => {
 		) {
 			query.value = filter.value;
 		}
-		if (
-			filter.field === createdFilter.field &&
-			Array.isArray( filter.value )
-		) {
+		if ( filter.field === createdFilter.field ) {
+			let from: unknown;
+			let to: unknown;
+			if ( filter.operator === createdFilter.fromOperator ) {
+				from = filter.value;
+			} else if ( filter.operator === createdFilter.toOperator ) {
+				to = filter.value;
+			} else if ( Array.isArray( filter.value ) ) {
+				[ from, to ] = filter.value;
+			}
 			query.from =
-				typeof filter.value[ 0 ] === 'string'
-					? getUtcDateFilterBound( filter.value[ 0 ], false )
+				typeof from === 'string'
+					? getUtcDateFilterBound( from, false )
 					: undefined;
 			query.to =
-				typeof filter.value[ 1 ] === 'string'
-					? getUtcDateFilterBound( filter.value[ 1 ], true )
+				typeof to === 'string'
+					? getUtcDateFilterBound( to, true )
 					: undefined;
 		}
 	} );

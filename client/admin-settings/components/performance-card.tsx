@@ -1,16 +1,9 @@
-import {
-	Card,
-	Icon,
-	LinkButton,
-	Skeleton,
-	Stack,
-	Text,
-	VisuallyHidden,
-} from '@wordpress/ui';
+import { Card, Icon, Stack, Text, VisuallyHidden } from '@wordpress/ui';
 import { caution } from '@wordpress/icons';
 import { __ } from '@wordpress/i18n';
 import { Link } from 'react-router-dom';
 
+import { LinkButton, Skeleton } from '../../ui-compat';
 import type { Performance } from '../data/store';
 import { getFraudProtectionRoute } from '../navigation';
 
@@ -119,6 +112,7 @@ export function PerformanceCard( {
 												<Icon
 													className="wc-fraud-protection-settings__performance-caution-icon"
 													icon={ caution }
+													fill="currentColor"
 												/>
 											) }
 										{ isLoading ? (
