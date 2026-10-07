@@ -7,6 +7,7 @@ YYYY-xx-xx - version 0.2.9
 * Updated - An active regular plugin installation now takes precedence over a managed must-use installation on the same site.
 * Updated - `wp wc fraud-protection status` now reports whether the plugin runs as a must-use or a regular plugin.
 * Updated - Fraud prevention now recognizes a shopper's browser with its own session cookie, `wfp_id`, and no longer uses or sets the `tk_ai` cookie.
+* Updated - Verification requests now include Fraud Protection and selected payment gateway plugin versions.
 * Fixed - The automatic fraud prevention checkbox now lines up with the first line of its label.
 * Fixed - The checkout attempts link in the automatic fraud prevention notice now matches the notice's Learn more link.
 * Fixed - A locked rule type in the rule form now uses the same text color as the locked value.

@@ -60,6 +60,109 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Resolves the active plugin that declares a payment gateway.
+	 */
+	public function test_resolves_declaring_plugin_version(): void {
+		$this->assert_gateway_plugin_version(
+			'bacs',
+			WC_VERSION,
+			array( plugin_basename( WC_PLUGIN_FILE ) )
+		);
+	}
+
+	/**
+	 * @testdox Does not resolve the declaring plugin when it is not active.
+	 */
+	public function test_does_not_resolve_inactive_declaring_plugin(): void {
+		$this->assert_gateway_plugin_version( 'bacs', '', array() );
+	}
+
+	/**
+	 * @testdox Does not treat an active entry nested inside the gateway plugin directory as the plugin main file.
+	 */
+	public function test_does_not_resolve_nested_active_entry(): void {
+		$this->assert_gateway_plugin_version(
+			'bacs',
+			'',
+			array( plugin_basename( WC_ABSPATH . 'includes/class-woocommerce.php' ) )
+		);
+	}
+
+	/**
+	 * @testdox Resolves a gateway declared by a network-active plugin.
+	 */
+	public function test_resolves_network_active_declaring_plugin(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'This test requires WordPress Multisite.' );
+		}
+
+		$plugin_file = plugin_basename( WC_PLUGIN_FILE );
+
+		$this->assert_gateway_plugin_version(
+			'bacs',
+			WC_VERSION,
+			array(),
+			array( $plugin_file => time() )
+		);
+	}
+
+	/**
+	 * @testdox Resolves a gateway declared by an active single-file plugin.
+	 */
+	public function test_resolves_single_file_declaring_plugin_version(): void {
+		$plugin_file       = 'wfp-test-single-file-gateway.php';
+		$plugin_path       = WP_PLUGIN_DIR . '/' . $plugin_file;
+		$payment_gateways  = WC()->payment_gateways();
+		$original_gateways = $payment_gateways->payment_gateways;
+
+		copy( __DIR__ . '/../../../stubs/single-file-gateway.php', $plugin_path );
+
+		try {
+			require_once $plugin_path;
+			$payment_gateways->payment_gateways[] = new \WC_Fraud_Protection_Test_Single_File_Gateway();
+
+			$this->assert_gateway_plugin_version( 'wfp_test_single_file', '1.2.3', array( $plugin_file ) );
+		} finally {
+			$payment_gateways->payment_gateways = $original_gateways;
+			wp_delete_file( $plugin_path );
+		}
+	}
+
+	/**
+	 * @testdox Returns an empty plugin version when the payment gateway is unavailable.
+	 */
+	public function test_returns_empty_plugin_version_for_unavailable_gateway(): void {
+		$this->assertSame( '', $this->sut->resolve_gateway_plugin_version( 'missing_gateway' ) );
+	}
+
+	/**
+	 * Assert the plugin version resolved for a payment gateway.
+	 *
+	 * @param string             $payment_method The gateway ID.
+	 * @param string             $expected_version Expected version.
+	 * @param array<int, string> $active_plugins Active site plugins.
+	 * @param array<string, int> $network_plugins Active network plugins.
+	 */
+	private function assert_gateway_plugin_version( string $payment_method, string $expected_version, array $active_plugins, array $network_plugins = array() ): void {
+		$original_active_plugins  = get_option( 'active_plugins', array() );
+		$original_network_plugins = is_multisite() ? get_site_option( 'active_sitewide_plugins', array() ) : array();
+
+		update_option( 'active_plugins', $active_plugins );
+		if ( is_multisite() ) {
+			update_site_option( 'active_sitewide_plugins', $network_plugins );
+		}
+
+		try {
+			$this->assertSame( $expected_version, $this->sut->resolve_gateway_plugin_version( $payment_method ) );
+		} finally {
+			update_option( 'active_plugins', $original_active_plugins );
+			if ( is_multisite() ) {
+				update_site_option( 'active_sitewide_plugins', $original_network_plugins );
+			}
+		}
+	}
+
+	/**
 	 * @testdox Returns PaymentMethodData when filter returns valid instance.
 	 */
 	public function test_returns_payment_method_data_from_filter(): void {

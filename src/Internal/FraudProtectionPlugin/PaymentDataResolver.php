@@ -29,6 +29,52 @@ defined( 'ABSPATH' ) || exit;
 class PaymentDataResolver {
 
 	/**
+	 * Resolve the version of the active plugin that declares a payment gateway.
+	 *
+	 * The plugin is identified by the directory that contains the gateway class,
+	 * following the same approach as WooCommerce's
+	 * PaymentsProviders::get_payment_gateway_plugin_file(), but limited to active plugins.
+	 * Unlike WooCommerce, a gateway class declared in a single-file plugin is also resolved.
+	 *
+	 * @param string $payment_method The gateway ID.
+	 * @return string The plugin version, or an empty string when unavailable.
+	 *
+	 * @since 0.2.4
+	 */
+	public function resolve_gateway_plugin_version( string $payment_method ): string {
+		if ( '' === $payment_method ) {
+			return '';
+		}
+
+		$gateway = WC()->payment_gateways()->payment_gateways()[ $payment_method ] ?? null;
+		if ( ! $gateway instanceof \WC_Payment_Gateway ) {
+			return '';
+		}
+
+		$gateway_file = ( new \ReflectionClass( $gateway ) )->getFileName();
+		if ( ! is_string( $gateway_file ) ) {
+			return '';
+		}
+
+		$gateway_plugin_directory = strtok( plugin_basename( $gateway_file ), '/' );
+
+		$active_plugins = wp_get_active_and_valid_plugins();
+		if ( is_multisite() ) {
+			$active_plugins = array_merge( $active_plugins, wp_get_active_network_plugins() );
+		}
+
+		foreach ( $active_plugins as $plugin_file ) {
+			$plugin_basename = plugin_basename( $plugin_file );
+			if ( dirname( $plugin_basename ) === $gateway_plugin_directory || $plugin_basename === $gateway_plugin_directory ) {
+				$version = get_file_data( $plugin_file, array( 'Version' => 'Version' ) )['Version'] ?? '';
+				return is_string( $version ) ? trim( $version ) : '';
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Resolve payment data into structured PaymentMethodData.
 	 *
 	 * @param string $payment_method        The gateway ID (e.g. 'woocommerce_payments', 'stripe').
