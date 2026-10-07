@@ -1,117 +1,90 @@
 # Code Quality Commands
 
-> **IMPORTANT:** Always run `nvm use` before any `pnpm`, `npm`, or `npx` commands. Prepend `nvm use &&` to all node-based commands (e.g., `nvm use && pnpm run lint:changes:branch:php`).
+> **IMPORTANT:** Run `nvm use` before any `npm` or `npx` command, e.g. `nvm use && npm run phpstan`. The repository uses npm, not pnpm.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [PHP Linting](#php-linting)
-- [JavaScript Linting](#javascript-linting)
-- [Markdown Linting](#markdown-linting)
+- [PHP Linting (phpcs)](#php-linting-phpcs)
+- [PHP Static Analysis (PHPStan)](#php-static-analysis-phpstan)
+- [JavaScript, TypeScript, and CSS](#javascript-typescript-and-css)
+- [Markdown](#markdown)
 - [Important Linting Guidelines](#important-linting-guidelines)
-- [Example Workflow](#example-workflow)
 - [Understanding Linting Output](#understanding-linting-output)
-- [Pre-Commit Checklist](#pre-commit-checklist)
-- [Integration with Development Cycle](#integration-with-development-cycle)
-- [Additional Linting Tools](#additional-linting-tools)
+- [Pre-Handoff Checklist](#pre-handoff-checklist)
 - [Troubleshooting](#troubleshooting)
-- [Notes](#notes)
 
 ## Overview
 
-When making changes to the WooCommerce codebase, run these commands to ensure code quality and adherence to coding standards.
+CI runs every check over the whole repository: `composer phpcs`, PHPStan, `npm run lint:js`, `npm run lint:css`, and `npm run lint:types`. The full tree must stay clean. Use file-scoped commands while iterating and the full commands before handoff.
 
 For detailed PHP linting patterns and common issues, see [php-linting-patterns.md](php-linting-patterns.md).
 
-For markdown linting rules and workflow, see [markdown-linting.md](markdown-linting.md).
-
-## PHP Linting
-
-### Check for PHP Linting Issues
+## PHP Linting (phpcs)
 
 ```bash
-pnpm run lint:changes:branch:php
-```
+# Whole repository (what CI runs)
+npm run lint:php
 
-Checks changed files for WordPress Coding Standards violations (read-only).
+# A single file or directory
+vendor/bin/phpcs src/Internal/FraudProtectionPlugin/Rules/RuleStore.php
+vendor/bin/phpcs tests/php/src/Internal/FraudProtectionPlugin/Rules/
 
-### Fix PHP Code Style Issues
-
-```bash
-# Automatically fix PHP code style issues
-pnpm run lint:php:fix
-```
-
-This command:
-
-- Automatically fixes code style violations where possible
-- Applies WordPress Coding Standards formatting
-- Modifies files in place
-- Should be run before committing
-
-### Advanced PHP Linting
-
-If you need more control, you can use phpcs and phpcbf directly:
-
-```bash
-# Check specific file or directory
-vendor/bin/phpcs path/to/file.php
-
-# Check with specific standard
-vendor/bin/phpcs --standard=WordPress path/to/file.php
-
-# Fix specific file
-vendor/bin/phpcbf path/to/file.php
-
-# Show all violations (including warnings)
+# Show the sniff code for each message
 vendor/bin/phpcs -s path/to/file.php
+
+# Auto-fix
+vendor/bin/phpcbf path/to/file.php
+npm run lint:php:autofix      # whole repository
 ```
 
-## JavaScript Linting
+`phpcs.xml` applies the `WooCommerce-Core` standard plus `PHPCompatibility` for PHP 8.1+, the `woocommerce-fraud-protection` text domain, `manage_woocommerce` as the custom capability, the `init` injection-method sniff under `src/`, and `@throws` requirements outside tests. The `MissingSinceComment` hook sniff is excluded.
 
-### Check for JS Linting Issues
+## PHP Static Analysis (PHPStan)
 
 ```bash
-# Run JS linting on changes in your branch
-pnpm run lint:changes:branch:js
+npm run phpstan
 ```
 
-This command:
+Level 8 over the main plugin file and `src/`, with third-party classes declared in `stubs/`. There is no baseline: new errors must be fixed or, for genuine false positives, ignored inline with an explanation (see type-annotations.md in the `woocommerce-backend-dev` skill). CI runs PHPStan on PHP 8.4 while `phpstan.neon` pins the analysed language level to 8.1; do not use newer syntax because the analysis happens to run on a newer interpreter.
 
-- Checks only JavaScript/TypeScript files changed in your current branch
-- Identifies code style and potential issues
-- Does not modify files
-
-For detailed JavaScript/TypeScript linting configuration and patterns, see `client/admin/CLAUDE.md`.
-
-## Markdown Linting
-
-Always lint markdown files after making changes. See [markdown-linting.md](markdown-linting.md) for complete details.
-
-**Quick commands:**
+## JavaScript, TypeScript, and CSS
 
 ```bash
-# Auto-fix most issues
-markdownlint --fix path/to/file.md
+# ESLint via wp-scripts over assets/js, client, and tests/js
+npm run lint:js
 
-# Check for remaining errors
-markdownlint path/to/file.md
+# A single file, with or without auto-fix
+npx wp-scripts lint-js client/admin-settings/rules-page.tsx
+npx wp-scripts lint-js --fix client/admin-settings/rules-page.tsx
+
+# TypeScript (tsc --noEmit over client/ and tests/js)
+npm run lint:types
+
+# Stylelint over assets/css and client/**/*.scss
+npm run lint:css
+
+# package.json format
+npm run lint:pkg-json
 ```
+
+Formatting follows the `@wordpress/scripts` ESLint and Prettier configuration (tabs, spaces inside parentheses and braces). Let `--fix` handle formatting instead of adjusting it by hand.
+
+## Markdown
+
+There is no markdown lint step in this repository. See [markdown-linting.md](markdown-linting.md).
 
 ## Important Linting Guidelines
 
-### Only Fix Code in Your Branch
+### Fix What You Touch
 
-**Important:** Only fix linting errors for code that has been added or modified in the branch you are working on.
-
-Do not fix linting errors in unrelated code unless specifically asked to do so.
+Fix linting errors in the code you add or modify. Do not reformat unrelated files in the same pull request unless specifically asked.
 
 **Why?**
 
 - Keeps pull requests focused on the actual changes
 - Avoids merge conflicts with other branches
 - Makes code review easier
-- Maintains clear git history
 
 ### Example Workflow
 
@@ -123,21 +96,21 @@ Do not fix linting errors in unrelated code unless specifically asked to do so.
 git status
 git diff
 
-# 3. Run linting on your changes
-pnpm run lint:changes:branch:php
+# 3. Lint the changed PHP files
+vendor/bin/phpcs src/path/to/Changed.php tests/php/src/path/to/ChangedTest.php
 
-# 4. Fix issues automatically
-pnpm run lint:php:fix
-
-# 5. Review the fixes
+# 4. Fix issues automatically, then review the fixes
+vendor/bin/phpcbf src/path/to/Changed.php
 git diff
 
-# 6. If needed, check JavaScript changes
-pnpm run lint:changes:branch:js
+# 5. Static analysis
+npm run phpstan
 
-# 7. Commit your changes
-git add .
-git commit -m "Your commit message"
+# 6. Front-end files, if you changed any
+npm run lint:js && npm run lint:types && npm run lint:css
+
+# 7. Full PHP lint before handoff (what CI runs)
+npm run lint:php
 ```
 
 ## Understanding Linting Output
@@ -145,20 +118,20 @@ git commit -m "Your commit message"
 ### PHP CodeSniffer Output
 
 ```text
-FILE: /path/to/file.php
+FILE: src/Internal/FraudProtectionPlugin/Rules/RuleStore.php
 ----------------------------------------------------------------------
 FOUND 2 ERRORS AFFECTING 2 LINES
 ----------------------------------------------------------------------
  12 | ERROR | [x] Expected 1 space after opening parenthesis;
     |       |     0 found
- 25 | ERROR | [ ] Variable "$orderID" is not in valid snake_case
+ 25 | ERROR | [ ] Variable "$ruleID" is not in valid snake_case
     |       |     format
 ----------------------------------------------------------------------
 ```
 
 **Legend:**
 
-- `[x]` - Can be fixed automatically with phpcbf/lint:php:fix
+- `[x]` - Can be fixed automatically with phpcbf
 - `[ ]` - Requires manual fixing
 
 ### Common PHP Issues
@@ -177,10 +150,10 @@ FOUND 2 ERRORS AFFECTING 2 LINES
 
    ```php
    // Wrong
-   $orderID
+   $ruleID
 
    // Right
-   $order_id
+   $rule_id
    ```
 
 3. **Yoda conditions** - Requires manual fix
@@ -193,83 +166,28 @@ FOUND 2 ERRORS AFFECTING 2 LINES
    if ( 'active' === $value )
    ```
 
-## Pre-Commit Checklist
+## Pre-Handoff Checklist
 
-Before committing your changes:
-
-- [ ] Run `pnpm run lint:changes:branch:php`
-- [ ] Run `pnpm run lint:php:fix` if issues found
-- [ ] Run `pnpm run lint:changes:branch:js` if you modified JS files
-- [ ] Review all automatic fixes with `git diff`
-- [ ] Address any remaining issues that can't be auto-fixed
-- [ ] Run tests to ensure fixes didn't break functionality
-
-## Integration with Development Cycle
-
-Code quality checks fit into the overall development workflow:
-
-1. Make code changes
-2. Run relevant tests (see running-tests.md)
-3. **Run linting checks** ← You are here
-4. **Fix code quality issues** ← You are here
-5. Commit changes only after tests pass and linting is clean
-
-## Additional Linting Tools
-
-### Running Other pnpm Scripts
-
-WooCommerce may have additional linting scripts. Check available scripts:
-
-```bash
-# See all available scripts
-pnpm run
-
-# Common additional scripts may include:
-pnpm run lint           # Lint all files
-pnpm run lint:fix       # Fix all auto-fixable issues
-pnpm run lint:php       # PHP linting only
-pnpm run lint:js        # JavaScript linting only
-```
+- [ ] `vendor/bin/phpcs` on the changed PHP files, then `npm run lint:php`
+- [ ] `npm run phpstan`
+- [ ] `npm run lint:js`, `npm run lint:types`, and `npm run lint:css` if you changed front-end files
+- [ ] Review automatic fixes with `git diff`
+- [ ] Run the tests that match the change (see [running-tests.md](running-tests.md))
+- [ ] Add the `changelog.txt` entry if the change is merchant-facing or developer-facing (see "Issues and pull requests" in `AGENTS.md`)
 
 ## Troubleshooting
 
-### Linting Command Not Found
+### Command Not Found
 
-**Problem:** Command fails with "command not found"
+- `vendor/bin/phpcs`, `vendor/bin/phpstan`: run `composer install`
+- `wp-scripts`, `wp-env`, `tsc`: run `npm install`
 
-**Solution:** Install dependencies:
+### Issues Reported in Files You Did Not Change
 
-```bash
-pnpm install
-```
-
-### Too Many Issues Reported
-
-**Problem:** Linting reports issues in files you didn't change
-
-**Solution:** Make sure you're using the branch-specific commands:
-
-```bash
-# Good - only checks your changes
-pnpm run lint:changes:branch:php
-
-# Avoid - checks entire codebase
-pnpm run lint:php
-```
+The tree is expected to be clean. If `trunk` itself fails a check, report it instead of fixing unrelated files in your pull request.
 
 ### Conflicts After Auto-Fix
 
-**Problem:** Git conflicts after running lint:php:fix
-
-**Solution:**
-
 1. Review the automatic fixes: `git diff`
-2. If fixes are incorrect, revert: `git checkout -- path/to/file.php`
-3. Address the issues manually instead
-
-## Notes
-
-- Code quality tools help maintain consistency across the codebase
-- Automatic fixes save time but should always be reviewed
-- Some issues require manual intervention and understanding of the context
-- Linting is required before committing to ensure code quality standards
+2. If a fix is incorrect, revert it: `git checkout -- path/to/file.php`
+3. Address the issue manually instead

@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings;
 
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
@@ -124,13 +125,14 @@ class SettingsTelemetry {
 		$extensions = is_array( $data['extensions'] ?? null ) ? $data['extensions'] : array();
 		$plugin     = is_array( $extensions['woocommerce_fraud_protection'] ?? null ) ? $extensions['woocommerce_fraud_protection'] : array();
 
-		$plugin['merchant_facing_features_status'] = $this->merchant_facing_features_gate->get_status()->value;
-		$plugin['automatic_protection_status']     = $this->automatic_protection->get_status()->value;
-		$plugin['automatic_protection_source']     = $this->automatic_protection->get_source()->value;
+		$plugin['merchant_facing_features_status']   = $this->merchant_facing_features_gate->get_status()->value;
+		$plugin['automatic_protection_status']       = $this->automatic_protection->get_status()->value;
+		$plugin['automatic_protection_source']       = $this->automatic_protection->get_source()->value;
+		$plugin['automatic_protection_opted_out_at'] = $this->automatic_protection->get_opted_out_at();
 
 		try {
 			$performance                               = $this->session_event_store->get_performance_counts();
-			$plugin['automatic_blocks_suppressed_30d'] = $performance['recommended_for_blocking'];
+			$plugin['automatic_blocks_suppressed_30d'] = $performance['flagged_by_fraud_prevention'];
 			$plugin['automatic_blocks_applied_30d']    = $performance['blocked_automatically'];
 			$plugin['allow_rule_matches_30d']          = $performance['allowed_by_rules'];
 			$plugin['block_rule_matches_30d']          = $performance['blocked_by_rules'];
@@ -180,8 +182,53 @@ class SettingsTelemetry {
 			$this->log_aggregate_failure( 'rule_creation_counts', $error );
 		}
 
+		$this->record_tracks_event( 'fraud_protection_automatic_protection_changed', $properties );
+	}
+
+	/**
+	 * Record a confirmed automatic-enrollment opt-out.
+	 *
+	 * @param string $source Settings action source.
+	 */
+	public function record_enrollment_opt_out( string $source ): void {
+		$this->record_tracks_event(
+			'fraud_protection_enrollment_preference_changed',
+			array(
+				'state'  => 'opted_out',
+				'source' => 'inbox' === $source ? 'inbox' : 'settings',
+			)
+		);
+	}
+
+	/**
+	 * Record a successful merchant rule change.
+	 *
+	 * @param string        $operation Rule operation.
+	 * @param FraudDecision $action    Rule action.
+	 * @param string        $type      Rule condition type.
+	 * @param string        $source    UI or API source.
+	 */
+	public function record_rule_change( string $operation, FraudDecision $action, string $type, string $source ): void {
+		$this->record_tracks_event(
+			'fraud_protection_rule_changed',
+			array(
+				'operation' => $operation,
+				'action'    => $action->value,
+				'type'      => $type,
+				'source'    => $source,
+			)
+		);
+	}
+
+	/**
+	 * Record an isolated Tracks event.
+	 *
+	 * @param string               $event_name Event name.
+	 * @param array<string, mixed> $properties Event properties.
+	 */
+	private function record_tracks_event( string $event_name, array $properties ): void {
 		try {
-			\WC_Tracks::record_event( 'fraud_protection_automatic_protection_changed', $properties );
+			\WC_Tracks::record_event( $event_name, $properties );
 		} catch ( \Throwable $error ) {
 			$this->logger->log(
 				'warning',

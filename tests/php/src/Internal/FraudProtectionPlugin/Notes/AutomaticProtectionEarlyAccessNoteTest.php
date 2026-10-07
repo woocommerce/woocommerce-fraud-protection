@@ -18,7 +18,6 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacin
  * Tests the early-access Inbox invitation.
  */
 class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase {
-
 	/**
 	 * The System Under Test.
 	 *
@@ -44,16 +43,18 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
-	 * @testdox Resetting the merchant gate removes an active invitation immediately.
+	 * @testdox Resetting the merchant gate preserves an active invitation under the enabled default.
 	 */
-	public function test_resetting_merchant_gate_removes_note(): void {
+	public function test_resetting_merchant_gate_preserves_note(): void {
 		$this->sut->maybe_add_note();
+		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+
 		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
 	}
 
 	/**
-	 * @testdox The invitation uses the approved copy, support link, and standard settings action.
+	 * @testdox The invitation uses the approved copy, a support link that opens in a new tab, and the standard settings action.
 	 */
 	public function test_note_content_and_actions(): void {
 		$this->sut->maybe_add_note();
@@ -63,7 +64,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$this->assertSame( 'woocommerce-fraud-protection', $note->get_source() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_INFORMATIONAL, $note->get_type() );
 		$this->assertSame( 'Start blocking risky checkout attempts', $note->get_title() );
-		$this->assertSame( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. <a href="https://woocommerce.com/document/fraud-protection/">Learn more</a>', $note->get_content() );
+		$this->assertSame( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. <a href="https://woocommerce.com/document/fraud-protection/" target="_blank" rel="noopener noreferrer">Learn more</a>', $note->get_content() );
 		$this->assertLessThanOrEqual( 320, mb_strlen( wp_strip_all_tags( $note->get_content() ) ) );
 		$actions = $note->get_actions();
 		$this->assertCount( 1, $actions );
@@ -83,6 +84,39 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
 		$this->sut->maybe_add_note();
 		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	}
+
+	/**
+	 * @testdox Opting out dismisses the invitation and prevents another one.
+	 */
+	public function test_opt_out_dismisses_note_without_recreation(): void {
+		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertInstanceOf( Note::class, $note );
+
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_opted_out();
+
+		$reloaded = Notes::get_note( $note->get_id() );
+		$this->assertTrue( $reloaded->get_is_deleted() );
+		$this->sut->maybe_add_note();
+		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	}
+
+	/**
+	 * @testdox Resetting an opt-out allows the invitation to return.
+	 */
+	public function test_resetting_opt_out_allows_note_to_return(): void {
+		$this->sut->maybe_add_note();
+		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+		$setting->set_opted_out();
+
+		$this->assertTrue( $setting->reset() );
+		$this->assertCount( 0, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+
+		$this->sut->maybe_add_note();
+		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$this->assertInstanceOf( Note::class, $note );
+		$this->assertFalse( $note->get_is_deleted() );
 	}
 
 	/**

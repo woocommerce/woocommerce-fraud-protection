@@ -245,11 +245,12 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_returns_resolved_for_missing_pm_id(): void {
 		$resolved = new PaymentMethodData( 'stripe' );
 
-		$result = $this->sut->resolve( $resolved, array() );
+		$result = $this->sut->resolve( $resolved, array( 'express_payment_type' => 'google_pay' ) );
 
 		$array = $result->to_array();
 		$this->assertSame( 'stripe', $array['gateway'] );
 		$this->assertNull( $array['payment_type'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
@@ -589,6 +590,225 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$array = $result->to_array();
 		$this->assertSame( 'sepa_debit', $array['payment_type'] );
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
+	}
+
+	/**
+	 * @testdox Normalizes supported express payment request values.
+	 *
+	 * @dataProvider express_payment_type_provider
+	 *
+	 * @param string $express_payment_type Submitted Stripe value.
+	 * @param string $expected_wallet Expected wallet value.
+	 */
+	public function test_normalizes_express_payment_type( string $express_payment_type, string $expected_wallet ): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array( 'express_payment_type' => $express_payment_type )
+		)->to_array();
+
+		$this->assertSame( $expected_wallet, $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Supported Stripe request values.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function express_payment_type_provider(): array {
+		return array(
+			'Apple Pay'            => array( 'apple_pay', 'apple_pay' ),
+			'Apple Pay uppercase'  => array( 'APPLE_PAY', 'apple_pay' ),
+			'Google Pay'           => array( 'google_pay', 'google_pay' ),
+			'Google Pay uppercase' => array( 'GOOGLE_PAY', 'google_pay' ),
+			'Amazon Pay'           => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase' => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'               => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'     => array( 'PAYPAL', 'paypal' ),
+			'Link'                 => array( 'link', 'link' ),
+			'Link uppercase'       => array( 'LINK', 'link' ),
+		);
+	}
+
+	/**
+	 * @testdox Ignores unsupported or malformed express payment request values.
+	 *
+	 * @dataProvider invalid_express_payment_type_provider
+	 *
+	 * @param mixed $express_payment_type Submitted Stripe value.
+	 */
+	public function test_ignores_invalid_express_payment_type( $express_payment_type ): void {
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array( 'express_payment_type' => $express_payment_type )
+		)->to_array();
+
+		$this->assertNull( $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Invalid Stripe request values.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function invalid_express_payment_type_provider(): array {
+		return array(
+			'Apple Pay configuration key'  => array( 'applePay' ),
+			'Google Pay configuration key' => array( 'googlePay' ),
+			'Amazon Pay configuration key' => array( 'amazonPay' ),
+			'normalized output'            => array( 'cash_app_pay' ),
+			'unknown'                      => array( 'unsupported_wallet' ),
+			'empty'                        => array( '' ),
+			'array'                        => array( array( 'apple_pay' ) ),
+			'object'                       => array( new \stdClass() ),
+		);
+	}
+
+	/**
+	 * @testdox Preserves a request wallet when the provider lookup fails.
+	 */
+	public function test_preserves_request_wallet_when_provider_lookup_fails(): void {
+		\WC_Stripe_API::set_mock_response( new \WP_Error( 'stripe_error', 'Connection failed' ) );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe', 'card' ),
+			array(
+				'wc-stripe-payment-method' => 'pm_123',
+				'express_payment_type'     => 'google_pay',
+			)
+		)->to_array();
+
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * @testdox Provider card wallet takes priority over the request fallback.
+	 */
+	public function test_provider_card_wallet_takes_priority_over_request_fallback(): void {
+		$response                     = $this->create_card_response();
+		$response->card->wallet       = new \stdClass();
+		$response->card->wallet->type = 'apple_pay';
+		\WC_Stripe_API::set_mock_response( $response );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array(
+				'wc-stripe-payment-method' => 'pm_123',
+				'express_payment_type'     => 'google_pay',
+			)
+		)->to_array();
+
+		$this->assertSame( 'apple_pay', $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * @testdox Normalizes supported provider payment types.
+	 *
+	 * @dataProvider provider_payment_type_provider
+	 *
+	 * @param string $payment_type Provider payment type.
+	 * @param string $expected_wallet Expected wallet value.
+	 */
+	public function test_normalizes_provider_payment_type( string $payment_type, string $expected_wallet ): void {
+		$response       = new \stdClass();
+		$response->type = $payment_type;
+		\WC_Stripe_API::set_mock_response( $response );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array( 'wc-stripe-payment-method' => 'pm_123' )
+		)->to_array();
+
+		$this->assertSame( $payment_type, $array['payment_type'] );
+		$this->assertSame( $expected_wallet, $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Supported Stripe provider payment types.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function provider_payment_type_provider(): array {
+		return array(
+			'Amazon Pay'             => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase'   => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'                 => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'       => array( 'PAYPAL', 'paypal' ),
+			'Link'                   => array( 'link', 'link' ),
+			'Link uppercase'         => array( 'LINK', 'link' ),
+			'Cash App Pay'           => array( 'cashapp', 'cash_app_pay' ),
+			'Cash App Pay uppercase' => array( 'CASHAPP', 'cash_app_pay' ),
+			'WeChat Pay'             => array( 'wechat_pay', 'wechat_pay' ),
+		);
+	}
+
+	/**
+	 * @testdox Preserves all supported Stripe card wallet values.
+	 *
+	 * @dataProvider provider_card_wallet_provider
+	 *
+	 * @param string $provider_wallet Stripe card wallet value.
+	 * @param string $expected_wallet Expected wallet value.
+	 */
+	public function test_preserves_provider_card_wallet( string $provider_wallet, string $expected_wallet ): void {
+		$response                     = $this->create_card_response();
+		$response->card->wallet       = new \stdClass();
+		$response->card->wallet->type = $provider_wallet;
+		\WC_Stripe_API::set_mock_response( $response );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array( 'wc-stripe-payment-method' => 'pm_123' )
+		)->to_array();
+
+		$this->assertSame( $expected_wallet, $array['instrument']['wallet'] );
+	}
+
+	/**
+	 * Stripe card wallet values.
+	 *
+	 * @return array<string, array{string, string}>
+	 */
+	public function provider_card_wallet_provider(): array {
+		return array(
+			'American Express Checkout' => array( 'amex_express_checkout', 'amex_express_checkout' ),
+			'Apple Pay'                 => array( 'apple_pay', 'apple_pay' ),
+			'Google Pay'                => array( 'google_pay', 'google_pay' ),
+			'Link'                      => array( 'link', 'link' ),
+			'Masterpass'                => array( 'masterpass', 'masterpass' ),
+			'Samsung Pay'               => array( 'samsung_pay', 'samsung_pay' ),
+			'Visa Checkout'             => array( 'visa_checkout', 'visa_checkout' ),
+			'new provider value'        => array( 'future_wallet', 'future_wallet' ),
+		);
+	}
+
+	/**
+	 * @testdox Preserves an existing wallet and unrelated resolved data.
+	 */
+	public function test_preserves_existing_wallet_and_resolved_data(): void {
+		WC_Stripe_Account_Stub::set_account_data( array( 'id' => 'acct_123' ) );
+		$response                     = $this->create_card_response();
+		$response->card->wallet       = new \stdClass();
+		$response->card->wallet->type = 'apple_pay';
+		\WC_Stripe_API::set_mock_response( $response );
+		$resolved = new PaymentMethodData(
+			'stripe',
+			'card',
+			true,
+			PaymentInstrumentData::from_array( array( 'wallet' => 'existing_wallet' ) )
+		);
+
+		$array = $this->sut->resolve(
+			$resolved,
+			array(
+				'wc-stripe-payment-method' => 'pm_123',
+				'express_payment_type'     => 'google_pay',
+			)
+		)->to_array();
+
+		$this->assertSame( 'existing_wallet', $array['instrument']['wallet'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
 	}
 
 	/**

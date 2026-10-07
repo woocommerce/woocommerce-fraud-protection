@@ -10,6 +10,7 @@ release_pr_url=${5:?Provide the release pull request URL.}
 repository=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required.}
 tag="v$version"
 asset_name=woocommerce-fraud-protection.zip
+translation_import_url="https://translate.wordpress.com/api/import-new-release/woocommerce/woocommerce-fraud-protection/$tag"
 
 resolve_tag_commit() {
 	local object
@@ -115,6 +116,37 @@ fi
 
 if [[ $draft == true ]]; then
 	gh release edit "$tag" --repo "$repository" --draft=false
+fi
+
+translation_import_queued=false
+translation_import_response=''
+if translation_import_response=$(curl \
+	--connect-timeout 10 \
+	--fail-with-body \
+	--location \
+	--max-time 30 \
+	--request POST \
+	--silent \
+	--show-error \
+	"$translation_import_url"); then
+	if jq -e '.success == true' <<< "$translation_import_response" >/dev/null; then
+		translation_import_queued=true
+	fi
+fi
+
+if [[ -n $translation_import_response ]]; then
+	printf '%s\n' "$translation_import_response" | sed 's/^/Translation service response: /'
+else
+	echo "Translation service returned an empty response."
+fi
+
+if [[ $translation_import_queued == true ]]; then
+	echo "Queued the translation import for the published release $tag."
+else
+	echo "The GitHub release is public, but its translation import was not confirmed." >&2
+	if [[ ${GITHUB_ACTIONS:-} == true ]]; then
+		echo "::warning title=Translation import not confirmed::The GitHub release is public. Check GlotPress for the latest plugin version before retrying the POST request."
+	fi
 fi
 
 if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then

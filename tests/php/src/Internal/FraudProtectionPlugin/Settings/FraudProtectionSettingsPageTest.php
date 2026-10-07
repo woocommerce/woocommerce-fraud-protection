@@ -136,6 +136,40 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The React mount is marked as a drill-down page only on routes with their own header.
+	 *
+	 * @dataProvider mount_routes
+	 *
+	 * @param mixed $path       Requested route path.
+	 * @param bool  $drill_down Whether the route is a drill-down page.
+	 */
+	public function test_output_marks_drill_down_routes( $path, bool $drill_down ): void {
+		$_GET['path'] = $path;
+
+		ob_start();
+		$this->sut->output();
+		$output = (string) ob_get_clean();
+
+		$classes = 'wc-settings-prevent-change-event' . ( $drill_down ? ' is-drill-down' : '' );
+		$this->assertSame( '<div id="wc-fraud-protection-settings" class="' . $classes . '"></div>', $output );
+	}
+
+	/**
+	 * Route paths and whether each one is a drill-down page.
+	 *
+	 * @return array<string, array{mixed, bool}>
+	 */
+	public function mount_routes(): array {
+		return array(
+			'settings'          => array( '/', false ),
+			'rules'             => array( '/rules', true ),
+			'checkout attempts' => array( '/checkout-attempts', true ),
+			'unknown route'     => array( '/unknown', false ),
+			'non-string route'  => array( array( '/rules' ), false ),
+		);
+	}
+
+	/**
 	 * @testdox A classic page save has no fields and preserves an absent automatic-protection option.
 	 */
 	public function test_classic_save_preserves_absent_setting(): void {
@@ -181,13 +215,13 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 	 * @testdox The Fraud prevention tab uses generated metadata to enqueue its runtime assets.
 	 */
 	public function test_matching_tab_enqueues_generated_assets(): void {
-		$dependencies = array( 'react-jsx-runtime', 'wp-api-fetch', 'wp-components', 'wp-element', 'wp-i18n' );
+		$dependencies = array( 'react', 'react-dom', 'react-jsx-runtime', 'wc-navigation', 'wp-a11y', 'wp-api-fetch', 'wp-compose', 'wp-data', 'wp-date', 'wp-deprecated', 'wp-element', 'wp-hooks', 'wp-i18n', 'wp-notices', 'wp-primitives' );
 		$version      = 'settings-test-version';
 		$this->write_asset_fixture( $dependencies, $version );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
 		$rest_requests          = array();
 		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
-			if ( '/wc-fraud-protection/v1/settings' !== $request->get_route() ) {
+			if ( '/wc-admin/fraud-protection/settings' !== $request->get_route() ) {
 				return $result;
 			}
 
@@ -200,15 +234,15 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
 		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
-		$this->assertSame( array( array( 'GET', '/wc-fraud-protection/v1/settings' ) ), $rest_requests );
-		$this->assertFalse( wp_style_is( 'wp-components', 'enqueued' ) );
+		$this->assertSame( array( array( 'GET', '/wc-admin/fraud-protection/settings' ) ), $rest_requests );
+		$this->assertTrue( wp_style_is( 'wp-components', 'enqueued' ) );
 		$this->assertTrue( wp_style_is( self::ASSET_HANDLE, 'enqueued' ) );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 
 		$style  = wp_styles()->registered[ self::ASSET_HANDLE ];
 		$script = wp_scripts()->registered[ self::ASSET_HANDLE ];
 		$this->assertSame( plugins_url( 'build/admin-settings.css', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $style->src );
-		$this->assertSame( array(), $style->deps );
+		$this->assertSame( array( 'wp-components', 'wc-admin-style' ), $style->deps );
 		$this->assertSame( $version, $style->ver );
 		$this->assertSame( plugins_url( 'build/admin-settings.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $script->src );
 		$this->assertSame( $dependencies, $script->deps );
@@ -220,20 +254,37 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->assertIsArray( $before );
 		$before_script = implode( "\n", $before );
 		$this->assertStringContainsString( 'wp.apiFetch.createPreloadingMiddleware', $before_script );
-		$this->assertStringContainsString( '"/wc-fraud-protection/v1/settings"', $before_script );
+		$this->assertStringContainsString( '"/wc-admin/fraud-protection/settings"', $before_script );
 		$this->assertStringContainsString( '"automatic_protection":true', $before_script );
+		$this->assertStringNotContainsString( 'window.wcFraudProtectionSettings', $before_script );
 	}
 
 	/**
-	 * @testdox The checkout attempts route does not preload settings data.
+	 * @testdox Managed settings use the MU-plugin script translation directory.
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
 	 */
-	public function test_checkout_attempts_route_does_not_preload_settings(): void {
+	public function test_managed_settings_use_mu_plugin_translation_directory(): void {
+		define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
+		$this->write_asset_fixture( array( 'wp-api-fetch' ), 'settings-test-version' );
+		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
+
+		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
+
+		$script = wp_scripts()->registered[ self::ASSET_HANDLE ];
+		$this->assertSame( WP_LANG_DIR . '/woocommerce-fraud-protection', $script->translations_path );
+	}
+
+	/**
+	 * @testdox The checkout attempts route preloads the settings data it reads.
+	 */
+	public function test_checkout_attempts_route_preloads_settings(): void {
 		$this->write_asset_fixture( array( 'wp-api-fetch' ), 'settings-test-version' );
 		$GLOBALS['current_tab'] = FraudProtectionSettingsPage::PAGE_ID;
 		$_GET['path']           = '/checkout-attempts';
 		$rest_requests          = 0;
 		$rest_mock              = function ( $result, $server, $request ) use ( &$rest_requests ) {
-			if ( '/wc-fraud-protection/v1/settings' === $request->get_route() ) {
+			if ( '/wc-admin/fraud-protection/settings' === $request->get_route() ) {
 				++$rest_requests;
 			}
 
@@ -244,8 +295,15 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 		$this->sut->enqueue_assets( 'woocommerce_page_wc-settings' );
 		remove_filter( 'rest_pre_dispatch', $rest_mock, 10 );
 
-		$this->assertSame( 0, $rest_requests );
-		$this->assertFalse( wp_scripts()->get_data( self::ASSET_HANDLE, 'before' ) );
+		// The list reads protection state from the settings store, so its GET is
+		// preloaded on this route too.
+		$this->assertSame( 1, $rest_requests );
+
+		$before = wp_scripts()->get_data( self::ASSET_HANDLE, 'before' );
+		$this->assertIsArray( $before );
+		$before_script = implode( "\n", $before );
+		$this->assertStringContainsString( 'createPreloadingMiddleware', $before_script );
+		$this->assertStringNotContainsString( 'window.wcFraudProtectionSettings', $before_script );
 		$this->assertTrue( wp_script_is( self::ASSET_HANDLE, 'enqueued' ) );
 	}
 

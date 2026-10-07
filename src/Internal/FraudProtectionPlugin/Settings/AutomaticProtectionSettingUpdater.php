@@ -75,6 +75,29 @@ class AutomaticProtectionSettingUpdater {
 	}
 
 	/**
+	 * Store an automatic-enrollment opt-out.
+	 *
+	 * @param string $source Settings action source.
+	 * @return bool Whether the opt-out is stored.
+	 */
+	public function opt_out( string $source ): bool {
+		if ( ! $this->set_enabled( false, SettingsChangeChannel::Settings ) ) {
+			return false;
+		}
+
+		$created = $this->setting->set_opted_out();
+		if ( null === $created ) {
+			return false;
+		}
+
+		if ( $created ) {
+			$this->telemetry->record_enrollment_opt_out( $source );
+		}
+
+		return true;
+	}
+
+	/**
 	 * Reset automatic protection to its code default.
 	 *
 	 * @param SettingsChangeChannel $channel Change channel.
@@ -86,13 +109,14 @@ class AutomaticProtectionSettingUpdater {
 			return false;
 		}
 
-		$before = $this->setting->get_status();
+		$before        = $this->setting->get_status();
+		$was_opted_out = $this->setting->is_opted_out();
 		if ( ! $this->setting->reset() ) {
 			return false;
 		}
 
 		$after = $this->setting->get_status();
-		if ( $before !== $after ) {
+		if ( $before !== $after || $was_opted_out ) {
 			$this->telemetry->record_automatic_protection_change( AutomaticProtectionChange::Reset, $channel );
 		}
 

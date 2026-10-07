@@ -79,6 +79,201 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The merchant rules page filters by action, type, exact value and dates, and orders newest first.
+	 */
+	public function test_active_rules_page_filters_and_paginates(): void {
+		$old_allow      = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'old@example.com' ) );
+		$same_day_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'same-day@example.com' ) );
+		$new_block      = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'new@example.com' ) );
+		$ip_allow       = $this->sut->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '2001:db8::1',
+			)
+		);
+		$disabled_allow = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'disabled@example.com' ) );
+		$this->set_created_at( $old_allow->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $same_day_allow->id, '2026-01-01 23:59:59' );
+		$this->set_created_at( $new_block->id, '2026-02-01 00:00:00' );
+		$this->set_created_at( $ip_allow->id, '2026-01-01 12:00:00' );
+		$this->set_created_at( $disabled_allow->id, '2026-01-01 12:00:00' );
+		$this->sut->update_rule( $disabled_allow->id, status: RuleStatus::Disabled );
+
+		$page = $this->sut->get_active_rules_page(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'from'   => '2026-01-01 00:00:00',
+				'to'     => '2026-01-01 23:59:59',
+			),
+			1,
+			1
+		);
+
+		$this->assertSame( 2, $page['total'] );
+		$this->assertSame( 2, $page['pages'] );
+		$this->assertSame( 'same-day@example.com', $page['items'][0]->conditions['value'] );
+
+		$second_page = $this->sut->get_active_rules_page(
+			array(
+				'action' => 'allow',
+				'type'   => 'email',
+				'from'   => '2026-01-01 00:00:00',
+				'to'     => '2026-01-01 23:59:59',
+			),
+			2,
+			1
+		);
+
+		$this->assertSame( 2, $second_page['total'] );
+		$this->assertSame( 2, $second_page['pages'] );
+		$this->assertSame( 'old@example.com', $second_page['items'][0]->conditions['value'] );
+
+		$exact_value_page = $this->sut->get_active_rules_page(
+			array(
+				'type'  => 'email',
+				'value' => 'OLD@EXAMPLE.COM',
+			)
+		);
+		$this->assertSame( 1, $exact_value_page['total'] );
+		$this->assertSame( 'old@example.com', $exact_value_page['items'][0]->conditions['value'] );
+
+		$email_value_only_page = $this->sut->get_active_rules_page(
+			array( 'value' => 'OLD@EXAMPLE.COM' )
+		);
+		$this->assertSame( 1, $email_value_only_page['total'] );
+		$this->assertSame( 'old@example.com', $email_value_only_page['items'][0]->conditions['value'] );
+
+		$ip_value_only_page = $this->sut->get_active_rules_page(
+			array( 'value' => '2001:DB8::1' )
+		);
+		$this->assertSame( 1, $ip_value_only_page['total'] );
+		$this->assertSame( '2001:db8::1', $ip_value_only_page['items'][0]->conditions['value'] );
+	}
+
+	/**
+	 * @testdox The merchant rules page sorts each visible column on the server and uses the rule ID as a tie-breaker.
+	 */
+	public function test_active_rules_page_sorts_by_requested_column(): void {
+		$allow_email = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$block_ip    = $this->sut->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '192.0.2.10',
+			)
+		);
+		$block_email = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'alpha@example.com' ) );
+		$allow_ip    = $this->sut->create_rule(
+			FraudDecision::Allow,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '10.0.0.1',
+			)
+		);
+		$this->set_created_at( $allow_email->id, '2026-01-02 00:00:00' );
+		$this->set_created_at( $block_ip->id, '2026-01-03 00:00:00' );
+		$this->set_created_at( $block_email->id, '2026-01-01 00:00:00' );
+		$this->set_created_at( $allow_ip->id, '2026-01-04 00:00:00' );
+
+		$expected = array(
+			'action'     => array(
+				'asc'  => array( $allow_email->id, $allow_ip->id, $block_ip->id, $block_email->id ),
+				'desc' => array( $block_email->id, $block_ip->id, $allow_ip->id, $allow_email->id ),
+			),
+			'value'      => array(
+				'asc'  => array( $allow_ip->id, $block_ip->id, $block_email->id, $allow_email->id ),
+				'desc' => array( $allow_email->id, $block_email->id, $block_ip->id, $allow_ip->id ),
+			),
+			'type'       => array(
+				'asc'  => array( $allow_email->id, $block_email->id, $block_ip->id, $allow_ip->id ),
+				'desc' => array( $allow_ip->id, $block_ip->id, $block_email->id, $allow_email->id ),
+			),
+			'created_at' => array(
+				'asc'  => array( $block_email->id, $allow_email->id, $block_ip->id, $allow_ip->id ),
+				'desc' => array( $allow_ip->id, $block_ip->id, $allow_email->id, $block_email->id ),
+			),
+		);
+
+		foreach ( $expected as $orderby => $directions ) {
+			foreach ( $directions as $order => $expected_ids ) {
+				$page = $this->sut->get_active_rules_page( orderby: $orderby, order: $order );
+				$this->assertSame(
+					$expected_ids,
+					array_map( fn( Rule $rule ) => $rule->id, $page['items'] ),
+					"Unexpected {$orderby} {$order} order"
+				);
+			}
+		}
+
+		$fallback = $this->sut->get_active_rules_page( orderby: 'unknown', order: 'sideways' );
+		$this->assertSame(
+			$expected['created_at']['desc'],
+			array_map( fn( Rule $rule ) => $rule->id, $fallback['items'] )
+		);
+	}
+
+	/**
+	 * @testdox Value and type sorting uses portable SQL expressions and database pagination.
+	 */
+	public function test_active_rules_page_sorting_supports_minimum_database_versions(): void {
+		$email = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'zulu@example.com' ) );
+		$ip    = $this->sut->create_rule(
+			FraudDecision::Block,
+			array(
+				'field'    => 'ip',
+				'operator' => 'equals',
+				'value'    => '10.0.0.1',
+			)
+		);
+		$slash = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'a/b@example.com' ) );
+
+		$queries       = array();
+		$capture_query = static function ( string $query ) use ( &$queries ): string {
+			if ( preg_match( '/JSON_(?:EXTRACT|UNQUOTE)/i', $query ) ) {
+				throw new \RuntimeException( 'JSON functions are not available on every supported database.' );
+			}
+			$queries[] = $query;
+			return $query;
+		};
+		add_filter( 'query', $capture_query );
+
+		try {
+			$value_ascending  = $this->sut->get_active_rules_page( orderby: 'value', order: 'asc' );
+			$value_descending = $this->sut->get_active_rules_page( orderby: 'value', order: 'desc' );
+			$type_page        = $this->sut->get_active_rules_page( orderby: 'type', order: 'asc' );
+			$filtered_page    = $this->sut->get_active_rules_page(
+				array(
+					'type'  => 'email',
+					'value' => 'A/B@EXAMPLE.COM',
+				),
+				orderby: 'value',
+				order: 'asc'
+			);
+		} finally {
+			remove_filter( 'query', $capture_query );
+		}
+
+		$this->assertSame( array( $ip->id, $slash->id, $email->id ), array_map( fn( Rule $rule ) => $rule->id, $value_ascending['items'] ) );
+		$this->assertSame( array( $email->id, $slash->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $value_descending['items'] ) );
+		$this->assertSame( array( $email->id, $slash->id, $ip->id ), array_map( fn( Rule $rule ) => $rule->id, $type_page['items'] ) );
+		$this->assertSame( array( $slash->id ), array_map( fn( Rule $rule ) => $rule->id, $filtered_page['items'] ) );
+
+		$sql = implode( "\n", $queries );
+		$this->assertStringContainsString( 'SUBSTRING_INDEX', $sql );
+		$this->assertStringContainsString( 'REPLACE(', $sql );
+		$this->assertStringContainsString( 'CHAR(92)', $sql );
+		$this->assertStringContainsString( 'condition_hash =', $sql );
+		$this->assertStringContainsString( 'LIMIT 20 OFFSET 0', $sql );
+		$this->assertStringNotContainsString( 'JSON_EXTRACT', strtoupper( $sql ) );
+		$this->assertStringNotContainsString( 'JSON_UNQUOTE', strtoupper( $sql ) );
+	}
+
+	/**
 	 * Get a rule row straight from the table.
 	 *
 	 * @param int $id The rule id.
@@ -204,6 +399,75 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Position selection reports database read failures.
+	 */
+	public function test_seed_position_reports_database_read_failures(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$schema        = $this->createMock( SchemaManager::class );
+		$schema->method( 'get_rules_table_name' )->willReturn( 'test_rules' );
+		$store = new RuleStore();
+		$store->init( $schema );
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Replace the database for one isolated failure path.
+		$wpdb = $this->getMockBuilder( \wpdb::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'prepare', 'get_var' ) )
+			->getMock();
+		$wpdb->method( 'prepare' )->willReturnArgument( 0 );
+		$wpdb->method( 'get_var' )->willReturnCallback(
+			static function () use ( &$wpdb ) {
+				$wpdb->last_error = 'Controlled read failure';
+				return null;
+			}
+		);
+
+		$seed_position = new \ReflectionMethod( RuleStore::class, 'seed_position' );
+		$seed_position->setAccessible( true );
+		try {
+			$this->expectException( \RuntimeException::class );
+			$seed_position->invoke( $store, FraudDecision::Allow );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
+	 * @testdox Position selection reports failures while shifting block rules.
+	 */
+	public function test_seed_position_reports_database_update_failures(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$schema        = $this->createMock( SchemaManager::class );
+		$schema->method( 'get_rules_table_name' )->willReturn( 'test_rules' );
+		$store = new RuleStore();
+		$store->init( $schema );
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Replace the database for one isolated failure path.
+		$wpdb = $this->getMockBuilder( \wpdb::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'prepare', 'get_var', 'query' ) )
+			->getMock();
+		$wpdb->method( 'prepare' )->willReturnArgument( 0 );
+		$wpdb->method( 'get_var' )->willReturn( '1' );
+		$wpdb->method( 'query' )->willReturnCallback(
+			static function () use ( &$wpdb ) {
+				$wpdb->last_error = 'Controlled update failure';
+				return false;
+			}
+		);
+
+		$seed_position = new \ReflectionMethod( RuleStore::class, 'seed_position' );
+		$seed_position->setAccessible( true );
+		try {
+			$this->expectException( \RuntimeException::class );
+			$seed_position->invoke( $store, FraudDecision::Allow );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
+	}
+
+	/**
 	 * @testdox Should soft-delete a rule: kept in the table with a null hash, excluded from the active ruleset.
 	 */
 	public function test_delete_is_a_soft_delete(): void {
@@ -218,6 +482,82 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array(), $this->sut->get_active_rules() );
 		$this->assertSame( RuleStatus::Deleted, $this->sut->get_rule( $rule->id )->status, 'The deleted rule must remain readable by id' );
 		$this->assertFalse( $this->sut->delete_rule( $rule->id ), 'Deleting an already deleted rule must report false' );
+	}
+
+	/**
+	 * @testdox A failed delete query throws instead of reporting a missing rule.
+	 */
+	public function test_delete_query_failure_throws(): void {
+		global $wpdb;
+
+		$rule  = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'fraudster@example.com' ) );
+		$table = $this->schema_manager->get_rules_table_name();
+
+		// The query is intentionally invalid; keep the expected database error out of test output.
+		$previous_suppress_errors = $wpdb->suppress_errors( true );
+
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_starts_with( $query, "UPDATE {$table} SET status = 'deleted'" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID DELETE QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		$this->expectException( \RuntimeException::class );
+		try {
+			$this->sut->delete_rule( $rule->id );
+		} finally {
+			remove_filter( 'query', $filter );
+			$wpdb->suppress_errors( $previous_suppress_errors );
+		}
+	}
+
+	/**
+	 * @testdox A failed rule read query throws instead of reporting a missing rule.
+	 */
+	public function test_get_rule_query_failure_throws(): void {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_rules_table_name();
+
+		// The query is intentionally invalid; keep the expected database error out of test output.
+		$previous_suppress_errors = $wpdb->suppress_errors( true );
+
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_starts_with( $query, "SELECT * FROM {$table} WHERE id =" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID RULE READ QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		$this->expectException( \RuntimeException::class );
+		try {
+			$this->sut->get_rule( 1 );
+		} finally {
+			remove_filter( 'query', $filter );
+			$wpdb->suppress_errors( $previous_suppress_errors );
+		}
+	}
+
+	/**
+	 * @testdox A delete result preserves the rule state read before deletion.
+	 */
+	public function test_delete_rule_with_result_returns_the_deleted_rule_snapshot(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'snapshot@example.com' ) );
+
+		$deleted_rule = $this->sut->delete_rule_with_result( $rule->id );
+
+		$this->assertNotNull( $deleted_rule );
+		$this->assertSame( $rule->id, $deleted_rule->id );
+		$this->assertSame( FraudDecision::Block, $deleted_rule->action );
+		$this->assertSame( 'email', $deleted_rule->conditions['field'] );
+		$this->assertSame( RuleStatus::Deleted, $this->sut->get_rule( $rule->id )->status );
 	}
 
 	/**
@@ -261,6 +601,111 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		$updated = $this->sut->update_rule( $rule->id, FraudDecision::Allow, $this->email_condition( 'someone@example.com' ) );
 
 		$this->assertSame( FraudDecision::Allow, $updated->action );
+	}
+
+	/**
+	 * @testdox Changing a Block rule to Allow moves it to the end of the Allow group.
+	 */
+	public function test_block_to_allow_moves_rule_to_end_of_allow_group(): void {
+		$allow   = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block_1 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-1@example.com' ) );
+		$block_2 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-2@example.com' ) );
+
+		$this->sut->update_rule( $block_2->id, FraudDecision::Allow );
+
+		$this->assertSame(
+			array( $allow->id, $block_2->id, $block_1->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
+	 * @testdox Changing an Allow rule to Block moves it after the last live rule.
+	 */
+	public function test_allow_to_block_moves_rule_after_last_live_rule(): void {
+		$allow_1 = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-1@example.com' ) );
+		$allow_2 = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow-2@example.com' ) );
+		$block   = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block@example.com' ) );
+
+		$this->sut->update_rule( $allow_1->id, FraudDecision::Block );
+
+		$this->assertSame(
+			array( $allow_2->id, $block->id, $allow_1->id ),
+			array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+		);
+	}
+
+	/**
+	 * @testdox An explicit position overrides the position seeded for an action change.
+	 */
+	public function test_action_change_accepts_an_explicit_position_override(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+
+		$updated = $this->sut->update_rule( $rule->id, FraudDecision::Allow, position: 42 );
+
+		$this->assertSame( 42, $updated->position );
+	}
+
+	/**
+	 * @testdox An update that keeps the action does not reseed the rule position.
+	 */
+	public function test_unchanged_action_does_not_reseed_position(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+
+		$updated = $this->sut->update_rule( $rule->id, FraudDecision::Block, $this->email_condition( 'changed@example.com' ) );
+
+		$this->assertSame( $rule->position, $updated->position );
+	}
+
+	/**
+	 * @testdox A failed action update does not move any rule.
+	 */
+	public function test_failed_action_update_preserves_rule_order(): void {
+		$allow   = $this->sut->create_rule( FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+		$block_1 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-1@example.com' ) );
+		$block_2 = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'block-2@example.com' ) );
+
+		try {
+			$this->sut->update_rule( $block_2->id, FraudDecision::Allow, $this->email_condition( 'allow@example.com' ) );
+			$this->fail( 'A DuplicateRuleException was expected' );
+		} catch ( DuplicateRuleException ) {
+			$this->assertSame(
+				array( $allow->id, $block_1->id, $block_2->id ),
+				array_map( static fn( Rule $rule ): int => $rule->id, $this->sut->get_active_rules() )
+			);
+		}
+	}
+
+	/**
+	 * @testdox A failed action-group boundary query aborts the update without changing the rule.
+	 */
+	public function test_action_move_boundary_query_failure_throws(): void {
+		global $wpdb;
+
+		$target = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'target@example.com' ) );
+		$table  = $this->schema_manager->get_rules_table_name();
+
+		// The query is intentionally invalid; keep the expected database error out of test output.
+		$previous_suppress_errors = $wpdb->suppress_errors( true );
+
+		$filter = static function ( string $query ) use ( $table, &$filter ): string {
+			if ( ! str_contains( $query, "SELECT MIN(position) FROM {$table}" ) ) {
+				return $query;
+			}
+			remove_filter( 'query', $filter );
+
+			return 'INVALID BOUNDARY QUERY';
+		};
+		add_filter( 'query', $filter );
+
+		$this->expectException( \RuntimeException::class );
+		try {
+			$this->sut->update_rule( $target->id, FraudDecision::Allow );
+		} finally {
+			remove_filter( 'query', $filter );
+			$wpdb->suppress_errors( $previous_suppress_errors );
+			$this->assertSame( FraudDecision::Block, $this->sut->get_rule( $target->id )->action );
+		}
 	}
 
 	/**

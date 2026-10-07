@@ -1,0 +1,268 @@
+@use '@wordpress/base-styles/colors' as *;
+@use '@wordpress/dataviews/build-style/style.css';
+@use '../settings-list-page' as settings-list-page;
+
+.wc-fraud-protection-checkout-attempts__page {
+
+	@include settings-list-page.page;
+
+	.wc-fraud-protection-checkout-attempts__header {
+
+		@include settings-list-page.header;
+	}
+
+	.wc-fraud-protection-checkout-attempts__breadcrumb {
+
+		@include settings-list-page.breadcrumb;
+	}
+
+	.wc-fraud-protection-checkout-attempts__description {
+
+		@include settings-list-page.description;
+	}
+
+	.wc-fraud-protection-checkout-attempts__toolbar {
+
+		@include settings-list-page.toolbar;
+	}
+
+	// The search box, filters toggle and view options sit to the right of the
+	// status tabs.
+	.wc-fraud-protection-checkout-attempts__view-controls {
+		margin-inline-start: auto;
+	}
+
+	// The "automatic fraud prevention is off" info banner sits between the tabs and the
+	// list; give it room on both sides. The @wordpress/ui Notice supplies the
+	// info styling (light-blue surface, border, icon) and the dark action button.
+	.wc-fraud-protection-checkout-attempts__protection-banner {
+		margin-block: 16px;
+	}
+
+	@include settings-list-page.dataviews;
+
+	// More horizontal breathing room between the data columns, in every density
+	// (the section selectors outrank the per-density paddings DataViews sets).
+	// The first (Provider) and last cells align to the page gutter so the
+	// provider content keeps its room and is never clipped. Uses logical
+	// properties so the alignment follows the writing direction in RTL.
+	.dataviews-view-table tbody td,
+	.dataviews-view-table thead th {
+		padding-inline: var(--wpds-dimension-padding-lg);
+	}
+
+	.dataviews-view-table tr td:first-child,
+	.dataviews-view-table tr th:first-child {
+		padding-inline-start: 0;
+	}
+
+	.dataviews-view-table tr td:last-child,
+	.dataviews-view-table tr th:last-child {
+		padding-inline-end: 0;
+	}
+
+	// A sortable column header is a button with 8px of inline padding of its
+	// own, which DataViews compensates for in its header cells. Repeat that
+	// compensation for the paddings above so each header label starts exactly
+	// where its column's values do: the cell padding is the data cell's minus
+	// the button's, and in the first column, which has none, the button is
+	// pulled back by its own padding instead.
+	.dataviews-view-table thead th:has(.dataviews-view-table-header-button) {
+		padding-inline: calc(var(--wpds-dimension-padding-lg) - var(--wpds-dimension-padding-sm));
+	}
+
+	.dataviews-view-table thead th:has(.dataviews-view-table-header-button):first-child {
+		padding-inline-start: 0;
+
+		.dataviews-view-table-header-button {
+			margin-inline-start: calc(-1 * var(--wpds-dimension-padding-sm));
+		}
+	}
+
+	.dataviews-view-table thead th:has(.dataviews-view-table-header-button):last-child {
+		padding-inline-end: 0;
+	}
+
+	// In compact density DataViews drops the inner header-cell paddings with
+	// more specific rules than the ones above; restore the compensated value
+	// on exactly those sides (the outer sides keep their gutter alignment).
+	.dataviews-view-table.has-compact-density thead th:has(.dataviews-view-table-header-button):not(:first-child) {
+		padding-inline-start: calc(var(--wpds-dimension-padding-lg) - var(--wpds-dimension-padding-sm));
+	}
+
+	.dataviews-view-table.has-compact-density thead th:has(.dataviews-view-table-header-button):not(:last-child) {
+		padding-inline-end: calc(var(--wpds-dimension-padding-lg) - var(--wpds-dimension-padding-sm));
+	}
+
+	.wc-fraud-protection-checkout-attempts__billing {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.wc-fraud-protection-checkout-attempts__billing-secondary {
+		color: $gray-700;
+		font-size: 12px;
+	}
+
+	// Rule chips: a coloured icon plus a neutral label, no pill. The icon carries
+	// the allow/block meaning by shape and colour; a tooltip adds the date.
+	.wc-fraud-protection-checkout-attempts__rule-chip {
+		// The chip is a button (a keyboard-reachable tooltip trigger), so strip
+		// the native button chrome and inherit the cell's typography.
+		appearance: none;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		background: none;
+		display: inline-flex;
+		flex-shrink: 0;
+		align-items: center;
+		gap: 4px;
+		font-family: inherit;
+		font-size: 12px;
+		line-height: 1.4;
+		color: $gray-700;
+		white-space: nowrap;
+		// It carries information rather than triggering an action, so keep the
+		// default arrow cursor instead of the pointer.
+		cursor: default;
+
+		.wc-fraud-protection-checkout-attempts__rule-chip-icon {
+			flex-shrink: 0;
+			width: 16px;
+			height: 16px;
+		}
+
+		&.is-allow .wc-fraud-protection-checkout-attempts__rule-chip-icon {
+			color: #00733f;
+		}
+
+		&.is-block .wc-fraud-protection-checkout-attempts__rule-chip-icon {
+			color: #cc1818;
+		}
+	}
+
+	// Compact density: only the icon shows; the label stays in the accessibility
+	// tree (visually hidden) so screen readers still announce the rule.
+	.wc-fraud-protection-checkout-attempts__rule-chip.is-icon-only {
+		gap: 0;
+
+		.wc-fraud-protection-checkout-attempts__rule-chip-label {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			margin: -1px;
+			padding: 0;
+			border: 0;
+			overflow: hidden;
+			clip: rect(0 0 0 0);
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+	}
+
+	// Outcome cell for a flagged-but-allowed attempt: the "Allowed" and "Flagged"
+	// badges and the info icon stay together on one line, so the icon sits to the
+	// right of the badges rather than wrapping below them.
+	.wc-fraud-protection-checkout-attempts__status {
+		display: inline-flex;
+		flex-wrap: nowrap;
+		align-items: center;
+		gap: 6px;
+	}
+
+	// The info icon that carries an outcome explanation.
+	.wc-fraud-protection-checkout-attempts__outcome-info {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: $gray-700;
+		cursor: pointer;
+	}
+
+	.wc-fraud-protection-checkout-attempts__outcome-info-icon {
+		width: 24px;
+		height: 24px;
+	}
+
+	// Email and IP cells hold the value and, when a rule targets it, a chip. By
+	// default the chip's icon and label wrap below the value. In compact density
+	// the chip is icon-only and sits to the left of the value, which then
+	// truncates first when the column is narrow.
+	.wc-fraud-protection-checkout-attempts__value {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+		max-width: 100%;
+
+		&.is-compact {
+			flex-direction: row;
+			align-items: center;
+			gap: 6px;
+
+			.wc-fraud-protection-checkout-attempts__value-text {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+		}
+	}
+}
+
+// WooCommerce applies the settings tab margin to every nav in the form.
+.woocommerce_page_wc-settings #mainform nav.wc-fraud-protection-checkout-attempts__breadcrumb {
+	margin: 0;
+}
+
+// The "Turn on automatic fraud prevention" row action renders inside the
+// DataViews actions menu, which portals outside the page wrapper — so this rule
+// is intentionally unscoped. It reads as a regular (black) menu item rather than
+// a link, and opens the enable drawer when selected.
+.wc-fraud-protection-checkout-attempts__menu-link {
+	color: $gray-900;
+	font-weight: 500;
+}
+
+// The @wordpress/ui Drawer leaves its z-index as `initial` (which computes to
+// `auto`): each of its layers is `z-index: var(--wp-ui-drawer-z-index, initial)`,
+// expecting the host app to set that variable. Without it, WordPress admin chrome
+// paints over the drawer — the admin bar (z-index 99999/100000) covers the header
+// and the positioned content column (#wpcontent, z-index 1) covers the panel and
+// backdrop — so the open drawer looks unstyled and clipped. The drawer portals to
+// the document body, outside our page wrapper, so this can't be scoped through
+// `__page`; instead scope it to the portal that actually holds our drawer via
+// `:has()`, and let the variable inherit to the backdrop, viewport and popup.
+// 100001 clears the admin bar (and its 100000 submenus) so the drawer, like its
+// Figma design, covers the whole viewport.
+[data-base-ui-portal]:has(
+		.wc-fraud-protection-checkout-attempts__enable-drawer
+	) {
+	--wp-ui-drawer-z-index: 100001;
+}
+
+// The outcome explanation renders in the portaled Popover, which
+// already supplies a light surface with its own padding and border. Just cap its
+// width and, like the enable drawer, lift it above the WordPress admin chrome:
+// the popover's z-index defaults to `initial` (auto), so admin layers would
+// otherwise paint over it. Scoped through the portal that holds our popover.
+[data-base-ui-portal]:has(
+		.wc-fraud-protection-checkout-attempts__outcome-popover
+	) {
+	--wp-ui-popover-z-index: 100001;
+}
+
+.wc-fraud-protection-checkout-attempts__outcome-popover {
+	max-width: 320px;
+
+	// Opening the popover by click moves focus to its link, and wp-admin's
+	// `a:focus` rule draws a focus ring even for mouse focus. Keep the ring for
+	// keyboard focus only.
+	a:focus:not(:focus-visible) {
+		box-shadow: none;
+	}
+}

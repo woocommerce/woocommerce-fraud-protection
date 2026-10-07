@@ -1,87 +1,96 @@
 # Working with Hooks
 
-## Hook Callback Naming Convention
+## Table of Contents
 
-Name hook callback methods: `handle_{hook_name}` with `@internal` annotation.
+- [Adding Hooks](#adding-hooks)
+- [Hook Callback Conventions](#hook-callback-conventions)
+- [Hook Docblocks](#hook-docblocks)
+- [Validating Filtered Values](#validating-filtered-values)
 
-**Examples:**
+## Adding Hooks
+
+Add public hooks only when an extension contract is required. Released hooks must be maintained (see "Hooks, logging, and errors" in `AGENTS.md`). The released extension filters are `woocommerce_fraud_protection_resolved_payment_data` and `woocommerce_fraud_protection_skip_session_verify`; their contracts are documented in the "Public API" section of `README.md`.
+
+Prefix plugin hook names with `woocommerce_fraud_protection_`.
+
+## Hook Callback Conventions
+
+- Callbacks are registered from the component's `register()` method (see [dependency-injection.md](dependency-injection.md)), never from the constructor.
+- Callbacks are public methods marked `@internal` so they are not treated as public API.
+- Name a callback after what it does (`verify_and_block`, `enqueue_pay_for_order_script`, `add_settings_page`). The Core `handle_{hook_name}` form is used only for lifecycle callbacks such as `handle_init` and `handle_woocommerce_loaded`.
+- Follow the timing and priority of the nearest existing component. Hook timing and priorities are intentional.
+- Treat every value a hook passes in as mixed input, even when the documented type is specific. Validate the type before using it, and on invalid input preserve the original safe value or skip only the invalid field.
+
+**Example:**
 
 ```php
 /**
- * Handle the woocommerce_init hook.
+ * Register hooks for pay-for-order fraud protection.
  *
- * @internal
+ * @return void
  */
-public function handle_woocommerce_init() {
-    // Initialize components
+public function register(): void {
+    add_action( 'woocommerce_before_pay_action', array( $this, 'verify_and_block' ) );
 }
 
 /**
- * Handle the woocommerce_before_checkout hook.
+ * Verify the session and block the payment on a Block decision.
  *
  * @internal
  *
- * @param WC_Checkout $checkout The checkout object.
+ * @param \WC_Order $order The order being paid for.
+ * @return void
  */
-public function handle_woocommerce_before_checkout( $checkout ) {
-    // Setup checkout process
+public function verify_and_block( \WC_Order $order ): void {
+    // ...
 }
 ```
 
 ## Hook Docblocks
 
-If you modify a line that fires a hook without a docblock:
+All hooks fired by the plugin must have a docblock with:
 
-1. Add docblock with description and `@param` tags
-2. Use `git log -S "hook_name"` to find when it was introduced
-3. Add `@since` annotation with that version
-
-```php
-/**
- * Fires after an order has been processed.
- *
- * @param int $order_id The processed order ID.
- * @param array $order_data The order data.
- *
- * @since 8.2.0
- */
-do_action( 'woocommerce_order_processed', $order_id, $order_data );
-```
-
-## Hook Documentation Requirements
-
-All hooks must have docblocks that include:
-
-- Description of when the hook fires
+- A description of when the hook fires
+- `@since` with the plugin version (see "Version Information" in [SKILL.md](SKILL.md))
 - `@param` tags for each parameter passed to the hook
-- `@since` annotation with the version number (last line, with blank line before)
-    - For new hooks: Use the version from `includes/class-woocommerce.php` on trunk, removing `-dev` suffix
-    - For existing hooks: Use `git log -S "hook_name"` to find when it was introduced
+
+Existing hook docblocks place the `@since` lines before the `@param` list. Keep that placement when editing a hook. When a released hook's contract changes, add a new `@since <version> <what changed>` line under the original instead of editing it.
+
+If you modify a line that fires a hook without a docblock, add one. Use `git log -S "hook_name"` and `changelog.txt` to find the version that introduced it.
 
 **Action hook example:**
 
 ```php
 /**
- * Fires after a product is saved.
+ * Fires when a merchant rule has decided the session outcome.
  *
- * @param int        $product_id The product ID.
- * @param WC_Product $product    The product object.
+ * @since 0.1.6
  *
- * @since 9.5.0
+ * @param int                  $rule_id           The id of the rule that decided the session.
+ * @param FraudDecision        $applied_decision  The enforced decision (the rule's action).
+ * @param FraudDecision        $received_decision The automated decision that the rule superseded.
+ * @param array<string, mixed> $session_data      The session data that was analyzed.
  */
-do_action( 'woocommerce_product_saved', $product_id, $product );
+do_action( 'woocommerce_fraud_protection_rule_applied', $rule_id, $applied_decision, $received_decision, $session_data );
 ```
 
-**Filter hook example:**
+**Filter hook example with a contract change:**
 
 ```php
 /**
- * Filters the product price before display.
+ * Filters the automated fraud protection decision before it is applied.
  *
- * @param string     $price   The formatted price.
- * @param WC_Product $product The product object.
+ * @since 0.1.0
+ * @since 0.1.6 Renamed from `woocommerce_fraud_protection_decision`.
  *
- * @since 9.5.0
+ * @param FraudDecision        $decision     The decision from the API (Allow or Block).
+ * @param array<string, mixed> $session_data The session data that was analyzed.
  */
-$price = apply_filters( 'woocommerce_product_price', $price, $product );
+$filtered = apply_filters( 'woocommerce_fraud_protection_automated_decision', $decision, $session_data );
 ```
+
+## Validating Filtered Values
+
+Validate every filtered value. On invalid data, return to the original safe value. When a throwing callback must not break the flow, wrap the `apply_filters()` call in `try`/`catch ( \Throwable )`, log the failure with `FraudProtectionController::log()`, and continue with the value that entered the filter. See "Fail open" in `AGENTS.md` for the decision-specific rules.
+
+Gateway compatibility filters must return the incoming resolved value unchanged when the gateway does not match. On partial resolution or failure, preserve all incoming fields and add only values that were resolved successfully.

@@ -47,7 +47,13 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->jetpack_option_filters = array();
 
 		$this->session_identity_manager = $this->createMock( SessionIdentityManager::class );
-		$this->session_identity_manager->method( 'get_identity_id' )->willReturn( 'mock-session-id' );
+		$this->session_identity_manager->method( 'get_identity_cookie_settings' )->willReturn(
+			array(
+				'name'   => 'wfp_id',
+				'path'   => '/',
+				'domain' => '',
+			)
+		);
 
 		$this->sut = new BlackboxScriptHandler();
 		$this->sut->init( $this->session_identity_manager );
@@ -98,27 +104,39 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 
 		$data = (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
 		$this->assertStringContainsString( '"apiKey":"woo:42"', $data );
-		$this->assertStringContainsString( '"identityKey":"mock-session-id"', $data );
+		$this->assertStringNotContainsString( 'identityKey', $data );
+		// Decode instead of matching the string: older WordPress versions escape "/" as "\/".
+		$this->assertSame( 1, preg_match( '/\Avar wcFraudProtection = (.*);\z/s', $data, $matches ) );
+		$localized = json_decode( $matches[1], true );
+		$this->assertIsArray( $localized );
+		$this->assertSame(
+			array(
+				'name'   => 'wfp_id',
+				'path'   => '/',
+				'domain' => '',
+			),
+			$localized['config']['identityCookie'] ?? null
+		);
 		$this->assertStringContainsString( '"timeout":3000', $data );
 		$this->assertStringContainsString( '"sessionIdField":"wc_fraud_protection_session_id"', $data );
 	}
 
 	/**
-	 * @testdox request_scripts() repairs a valid long legacy identity before localization.
+	 * @testdox request_scripts() does not render the session identity or set the identity cookie.
 	 */
-	public function test_request_scripts_localizes_limited_legacy_identity(): void {
+	public function test_request_scripts_does_not_render_session_identity(): void {
 		$this->mock_jetpack_blog_id( 42 );
-		$prefix = str_repeat( 'a', 255 );
-		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $prefix . 'tail' );
+		$identity = '0123456789abcdef0123456789abcdef';
+		WC()->session->set( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY, $identity );
+		$had_cookie = array_key_exists( SessionIdentityManager::IDENTITY_COOKIE_NAME, $_COOKIE );
 
 		$handler = new BlackboxScriptHandler();
 		$handler->init( new SessionIdentityManager() );
 
 		$this->assertTrue( $handler->request_scripts() );
 		$data = (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
-		$this->assertStringContainsString( '"identityKey":"' . $prefix . '"', $data );
-		$this->assertStringNotContainsString( $prefix . 'tail', $data );
-		$this->assertSame( $prefix, WC()->session->get( SessionIdentityManager::CUSTOMER_IDENTITY_ID_KEY ) );
+		$this->assertStringNotContainsString( $identity, $data, 'Pages must stay cacheable, so the identity is read from the cookie in the browser' );
+		$this->assertSame( $had_cookie, array_key_exists( SessionIdentityManager::IDENTITY_COOKIE_NAME, $_COOKIE ), 'Rendering the scripts must not create the identity cookie' );
 	}
 
 	/**
@@ -145,7 +163,13 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	public function test_request_scripts_is_idempotent(): void {
 		$this->mock_jetpack_blog_id( 12345 );
 		$identity_manager = $this->createMock( SessionIdentityManager::class );
-		$identity_manager->expects( $this->once() )->method( 'get_identity_id' )->willReturn( 'one-identity' );
+		$identity_manager->expects( $this->once() )->method( 'get_identity_cookie_settings' )->willReturn(
+			array(
+				'name'   => 'wfp_id',
+				'path'   => '/',
+				'domain' => '',
+			)
+		);
 		$handler = new BlackboxScriptHandler();
 		$handler->init( $identity_manager );
 

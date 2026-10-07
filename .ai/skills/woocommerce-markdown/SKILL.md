@@ -1,40 +1,18 @@
 ---
 name: woocommerce-markdown
-description: Guidelines for creating and modifying markdown files in WooCommerce. Use when writing documentation, README files, or any markdown content.
+description: Guidelines for creating and modifying markdown files in WooCommerce Fraud Protection. Use when writing documentation, README files, skill files, or any markdown content.
 ---
 
-# WooCommerce Markdown Guidelines
+# WooCommerce Fraud Protection Markdown Guidelines
 
-This skill provides guidance for creating and editing markdown files in the WooCommerce project.
+This skill provides guidance for creating and editing markdown files in this repository: `README.md`, `AGENTS.md`, the skill files under `.ai/skills/`, and the pull request template.
 
 ## Critical Rules
 
-1. **Always lint after changes** - Run `markdownlint --fix` then `markdownlint` to verify
-2. **Run from repository root** - Ensures `.markdownlint.json` config is loaded
-3. **Use UTF-8 encoding** - Especially for directory trees and special characters
-4. **Follow WooCommerce markdown standards** - See configuration rules below
-
-## WooCommerce Markdown Configuration
-
-The project uses markdownlint with these specific rules (from `.markdownlint.json`):
-
-### Enabled Rules
-
-- **MD003**: Heading style must be ATX (`# Heading` not `Heading\n===`)
-- **MD007**: Unordered list indentation must be 4 spaces
-- **MD013**: Line length limit disabled (set to 9999)
-- **MD024**: Multiple headings with same content allowed (only check siblings)
-- **MD031**: Fenced code blocks must be surrounded by blank lines
-- **MD032**: Lists must be surrounded by blank lines
-- **MD033**: HTML allowed for `<video>` elements only
-- **MD036**: Emphasis (bold/italic) should not be used as headings - use proper heading tags
-- **MD040**: Fenced code blocks should specify language
-- **MD047**: Files must end with a single newline
-
-### Disabled Rules
-
-- **no-hard-tabs**: Tabs are allowed
-- **whitespace**: Trailing whitespace rules disabled
+1. **Match the existing files** - there is no markdownlint configuration in this repository; consistency with the current documents is the standard
+2. **Use UTF-8 encoding** - especially for directory trees and special characters
+3. **Do not add markdown build or lint tooling** unless asked; see markdown-linting.md in the `woocommerce-dev-cycle` skill for the optional manual check
+4. **Do not disclose private service behavior** in any documentation (see "Issues and pull requests" in `AGENTS.md`)
 
 ## Markdown Writing Guidelines
 
@@ -53,6 +31,7 @@ The project uses markdownlint with these specific rules (from `.markdownlint.jso
 - Use ATX style (`#`) not underline style
 - One H1 per file (usually the title)
 - Maintain heading hierarchy (don't skip levels)
+- Blank line before and after each heading
 
 ### Lists
 
@@ -77,7 +56,7 @@ The project uses markdownlint with these specific rules (from `.markdownlint.jso
 **Important:**
 
 - Use 4 spaces for nested list items
-- Add blank line before and after lists
+- Add a blank line before and after lists
 - Use `-` for unordered lists (not `*` or `+`)
 
 ### Code Blocks
@@ -86,17 +65,17 @@ The project uses markdownlint with these specific rules (from `.markdownlint.jso
 
 ````markdown
 ```bash
-pnpm test:php:env
+npm run test:php:env -- --filter RuleStoreTest
 ```
 
 ```php
-public function process_order( int $order_id ) {
+public function verify_session( string $session_id ): FraudDecision {
     // code here
 }
 ```
 
-```javascript
-const result = calculateTotal(items);
+```typescript
+const rule = getRule( id );
 ```
 ````
 
@@ -108,21 +87,22 @@ const result = calculateTotal(items);
 - `typescript` or `ts` - TypeScript
 - `json` - JSON data
 - `sql` - SQL queries
+- `text` - Plain output, changelog excerpts
 - `markdown` or `md` - Markdown examples
 
 **Code block rules:**
 
-- Add blank line before the opening fence
-- Add blank line after the closing fence
-- Always specify language (never use plain ` ``` `)
+- Add a blank line before the opening fence
+- Add a blank line after the closing fence
+- Always specify a language (never use a bare ` ``` `)
 
 ### Inline Code
 
 Use backticks for inline code:
 
 ```markdown
-Use the `process_order()` method to handle orders.
-The `$order_id` parameter must be an integer.
+Use the `verify_session()` method to verify an attempt.
+The `$session_id` parameter must be a string.
 ```
 
 ### Links
@@ -130,9 +110,9 @@ The `$order_id` parameter must be an integer.
 ```markdown
 [Link text](https://example.com)
 
-[Internal link](../path/to/file.md)
+[Companion file in the same skill](companion-file.md)
 
-[Link with title](https://example.com "Optional title")
+[Section in AGENTS.md](../../../AGENTS.md#safety-rules)
 ```
 
 ### Tables
@@ -154,13 +134,13 @@ The `$order_id` parameter must be an integer.
 
 ```markdown
 src/
-├── Internal/
-│   ├── Admin/
-│   │   └── Controller.php
-│   └── Utils/
-│       └── Helper.php
-└── External/
-    └── API.php
+├── FraudProtection/
+│   ├── Schemas/
+│   │   └── FraudDecision.php
+│   └── SessionVerifier.php
+└── Internal/
+    └── FraudProtectionPlugin/
+        └── FraudProtectionController.php
 ```
 
 **Never use:**
@@ -174,146 +154,49 @@ src/
 ```markdown
 **Bold text** for strong emphasis
 *Italic text* for regular emphasis
-***Bold and italic*** for very strong emphasis
 ```
+
+Do not use bold text as a heading; use a real heading.
 
 ## Workflow for Editing Markdown
 
 1. **Make your changes** to the markdown file
-2. **Auto-fix linting issues:**
-
-   ```bash
-   markdownlint --fix path/to/file.md
-   ```
-
-3. **Check for remaining issues:**
-
-   ```bash
-   markdownlint path/to/file.md
-   ```
-
-4. **Manually fix** what remains (usually language specs for code blocks)
-5. **Verify clean** - No output means success
-6. **Commit changes**
-
-## Common Linting Errors and Fixes
-
-### MD007: List indentation
-
-**Problem:**
-
-```markdown
-- Item
-  - Nested (only 2 spaces)
-```
-
-**Fix:**
-
-```markdown
-- Item
-    - Nested (4 spaces)
-```
-
-### MD031: Code blocks need blank lines
-
-**Problem:**
-
-````markdown
-Some text
-```bash
-command
-```
-More text
-````
-
-**Fix:**
-
-````markdown
-Some text
-
-```bash
-command
-```
-
-More text
-````
-
-### MD032: Lists need blank lines
-
-**Problem:**
-
-````markdown
-Some text
-- List item
-````
-
-**Fix:**
-
-````markdown
-Some text
-
-- List item
-````
-
-### MD036: Emphasis as heading
-
-**Problem:**
-
-```markdown
-**Example: Using bold as a heading**
-
-Some content here
-```
-
-**Fix:**
-
-```markdown
-#### Example: Using a proper heading
-
-Some content here
-```
-
-### MD040: Code needs language
-
-**Problem:**
-
-````markdown
-```
-code here
-```
-````
-
-**Fix:**
-
-````markdown
-```bash
-code here
-```
-````
+2. **Re-read the structure**: heading hierarchy, blank lines around lists and fences, a language on every fence, a single trailing newline
+3. **Optionally run the manual check** described in markdown-linting.md in the `woocommerce-dev-cycle` skill
+4. **Verify the encoding** with `file path/to/file.md` if the file contains box-drawing characters
 
 ## Special Cases
 
-### CLAUDE.md Files
+### AGENTS.md and CLAUDE.md
 
-CLAUDE.md files are AI assistant documentation:
+`CLAUDE.md` only includes `AGENTS.md`. `AGENTS.md` is the agent-facing source of truth for architecture, safety rules, logging, and process. Keep it terse and imperative, one rule per sentence, and update it rather than duplicating a rule into a skill file.
 
-- Must be well-formatted for optimal parsing by AI
-- Follow all markdownlint rules strictly
-- Use clear, hierarchical structure
-- Include table of contents for long files
+### Skill Files
 
-### README Files
+Skills live under `.ai/skills/<name>/SKILL.md` with optional companion files. `.claude/skills` and `.codex/skills` are symlinks to `.ai/skills`; `.cursor/rules/` holds separate Cursor rule files. `SKILL.md` starts with YAML front matter (`name`, `description`). Link companion files with relative links and keep a table of contents in long companion files.
 
-- Start with H1 title
-- Include brief description
-- Add installation/usage sections
-- Keep concise and scannable
+### README.md
 
-### Changelog Files
+`README.md` is the developer setup guide and the public API reference. The "Public API" section is part of the public contract; update it whenever the public API changes.
 
-- Follow Keep a Changelog format
-- Use consistent date formatting
-- Group changes by type (Added, Changed, Fixed, etc.)
+### changelog.txt
+
+`changelog.txt` is plain text in the WooCommerce extension format, not markdown:
+
+```text
+*** WooCommerce Fraud Protection Changelog ***
+
+YYYY-xx-xx - version 0.2.6
+* Added - One sentence describing observable behavior.
+* Fixed - One sentence describing observable behavior.
+
+2026-09-16 - version 0.2.5
+* Added - Checkout attempts list on the Fraud prevention settings page showing recent attempts and how each was handled, with filtering, sorting and search.
+```
+
+- A `YYYY-xx-xx` placeholder block at the top collects entries for the next release; the release pull request replaces the date
+- Categories are `Added`, `Updated`, `Fixed`, and `Dev`
+- Entries describe observable plugin behavior for merchants or developers; tests, CI, documentation, and internal refactoring get no entry (see "Issues and pull requests" in `AGENTS.md`)
 
 ## Troubleshooting
 
@@ -328,35 +211,8 @@ tr -d '\000-\037' < file.md > file.clean.md && mv file.clean.md file.md
 file file.md  # Verify shows "UTF-8 text"
 ```
 
-### Linting Shows Unexpected Errors
-
-**Problem:** Not running from repository root
-
-**Fix:**
-
-```bash
-# Always run from root
-cd /path/to/woocommerce
-markdownlint path/to/file.md
-
-# NOT like this
-markdownlint /absolute/path/to/file.md
-```
-
-### Auto-fix Doesn't Work
-
-**Problem:** Some issues require manual intervention
-
-**Fix:**
-
-- Language specs for code blocks must be added manually
-- Long lines may need manual rewrapping
-- Some structural issues require content reorganization
-
 ## Notes
 
-- Most markdown issues are auto-fixable with `markdownlint --fix`
-- Always run markdownlint from repository root
+- Consistency with the existing files matters more than any particular lint rule
 - UTF-8 encoding is critical for special characters
-- CLAUDE.md files must pass linting for optimal AI parsing
-- See `woocommerce-dev-cycle` skill for markdown linting commands
+- See the `woocommerce-dev-cycle` skill for the optional markdownlint commands

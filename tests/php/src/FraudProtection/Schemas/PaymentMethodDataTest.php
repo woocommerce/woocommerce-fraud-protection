@@ -199,4 +199,44 @@ class PaymentMethodDataTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( $expected, $result->to_array() );
 	}
+
+	/**
+	 * @testdox with_instrument_wallet() changes only the wallet.
+	 */
+	public function test_with_instrument_wallet_preserves_fields(): void {
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand'            => 'visa',
+				'funding'          => 'credit',
+				'last4'            => '4242',
+				'fingerprint'      => 'fp_abc',
+				'country'          => 'US',
+				'exp_month'        => 12,
+				'exp_year'         => 2028,
+				'billing_postcode' => '10001',
+				'wallet'           => 'apple_pay',
+			)
+		);
+		$original   = new PaymentMethodData( 'stripe', 'card', true, $instrument, PaymentMode::Live, 'acct_123', 'account' );
+		$expected   = $original->to_array();
+
+		$expected['instrument']['wallet'] = 'google_pay';
+
+		$this->assertSame( $expected, $original->with_instrument_wallet( 'google_pay' )->to_array() );
+		$this->assertSame( 'apple_pay', $original->to_array()['instrument']['wallet'] );
+	}
+
+	/**
+	 * @testdox Instrument wallet helpers read the wallet and add only when absent.
+	 */
+	public function test_instrument_wallet_helpers_preserve_existing_wallet(): void {
+		$without_wallet = new PaymentMethodData( 'stripe', 'card' );
+		$with_wallet    = $without_wallet->with_instrument_wallet_if_empty( 'apple_pay' );
+
+		$this->assertNull( $without_wallet->get_instrument_wallet() );
+		$this->assertSame( 'apple_pay', $with_wallet->get_instrument_wallet() );
+		$this->assertSame( $with_wallet, $with_wallet->with_instrument_wallet_if_empty( 'google_pay' ) );
+		$this->assertSame( $without_wallet, $without_wallet->with_instrument_wallet_if_empty( null ) );
+		$this->assertSame( $without_wallet, $without_wallet->with_instrument_wallet_if_empty( '' ) );
+	}
 }

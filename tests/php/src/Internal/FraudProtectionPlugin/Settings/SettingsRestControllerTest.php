@@ -19,7 +19,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelem
  */
 class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 
-	private const OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection';
+	private const OPTION_NAME              = 'woocommerce_fraud_protection_automatic_protection';
+	private const OPT_OUT_DATE_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_at';
 
 	/** @var AutomaticProtectionSetting */
 	private $setting;
@@ -30,7 +31,10 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	/** @var AutomaticProtectionSettingUpdater */
 	private $updater;
 
-	/** @var array{recommended_for_blocking: int, blocked_automatically: int, allowed_by_rules: int, blocked_by_rules: int} */
+	/** @var SettingsTelemetry&\PHPUnit\Framework\MockObject\MockObject */
+	private $telemetry;
+
+	/** @var array{flagged_by_fraud_prevention: int, blocked_automatically: int, allowed_by_rules: int, blocked_by_rules: int} */
 	private $performance_counts;
 
 	/**
@@ -45,18 +49,21 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		$this->setting = new AutomaticProtectionSetting();
+		$this->server              = new \WP_REST_Server();
+		$GLOBALS['wp_rest_server'] = $this->server;
+		$this->setting             = new AutomaticProtectionSetting();
 		$this->setting->reset();
 		$this->performance_counts = array(
-			'recommended_for_blocking' => 0,
-			'blocked_automatically'    => 0,
-			'allowed_by_rules'         => 0,
-			'blocked_by_rules'         => 0,
+			'flagged_by_fraud_prevention' => 0,
+			'blocked_automatically'       => 0,
+			'allowed_by_rules'            => 0,
+			'blocked_by_rules'            => 0,
 		);
 		$this->event_store        = $this->createMock( SessionEventStore::class );
 		$this->event_store->method( 'get_performance_counts' )->willReturnCallback( fn() => $this->performance_counts );
-		$this->updater = new AutomaticProtectionSettingUpdater();
-		$this->updater->init( $this->setting, $this->createMock( SettingsTelemetry::class ), $this->createMock( FraudProtectionLogger::class ) );
+		$this->telemetry = $this->createMock( SettingsTelemetry::class );
+		$this->updater   = new AutomaticProtectionSettingUpdater();
+		$this->updater->init( $this->setting, $this->telemetry, $this->createMock( FraudProtectionLogger::class ) );
 		$this->sut = new SettingsRestController();
 		$this->sut->init( $this->setting, $this->updater, $this->event_store );
 		$this->sut->register_routes();
@@ -67,13 +74,15 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox An authorized read returns the disabled default without writing it.
 	 */
 	public function test_get_returns_effective_default_without_write(): void {
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame(
 			array(
-				'automatic_protection' => false,
-				'performance'          => $this->performance_counts,
+				'automatic_protection'            => false,
+				'automatic_protection_opted_out'  => false,
+				'automatic_protection_enabled_at' => null,
+				'performance'                     => $this->performance_counts,
 			),
 			$response->get_data()
 		);
@@ -85,13 +94,13 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 */
 	public function test_get_returns_performance_counts(): void {
 		$this->performance_counts = array(
-			'recommended_for_blocking' => 12,
-			'blocked_automatically'    => 3,
-			'allowed_by_rules'         => 4,
-			'blocked_by_rules'         => 5,
+			'flagged_by_fraud_prevention' => 12,
+			'blocked_automatically'       => 3,
+			'allowed_by_rules'            => 4,
+			'blocked_by_rules'            => 5,
 		);
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( $this->performance_counts, $response->get_data()['performance'] );
@@ -106,7 +115,14 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => true ) ) );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( array( 'automatic_protection' => true ), $response->get_data() );
+		$data = $response->get_data();
+		$this->assertSame( true, $data['automatic_protection'] );
+		$this->assertSame( false, $data['automatic_protection_opted_out'] );
+		// Turning protection on records the enable date, returned as RFC3339.
+		$this->assertMatchesRegularExpression(
+			'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/',
+			$data['automatic_protection_enabled_at']
+		);
 		$this->assertSame( 'yes', get_option( self::OPTION_NAME ) );
 	}
 
@@ -119,7 +135,14 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$response = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( array( 'automatic_protection' => false ), $response->get_data() );
+		$this->assertSame(
+			array(
+				'automatic_protection'            => false,
+				'automatic_protection_opted_out'  => false,
+				'automatic_protection_enabled_at' => null,
+			),
+			$response->get_data()
+		);
 		$this->assertSame( 'no', get_option( self::OPTION_NAME ) );
 	}
 
@@ -131,7 +154,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$event_store->method( 'get_performance_counts' )->willThrowException( new \RuntimeException( 'Database details' ) );
 		$this->sut->init( $this->setting, $this->updater, $event_store );
 
-		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
 
 		$this->assertSame( 500, $response->get_status() );
 		$this->assertSame( 'woocommerce_fraud_protection_settings_not_loaded', $response->get_data()['code'] );
@@ -177,24 +200,94 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox An opt-out storage failure returns its specific error.
+	 */
+	public function test_opt_out_storage_failure_returns_specific_error(): void {
+		add_filter( 'pre_update_option_' . self::OPTION_NAME, '__return_false' );
+
+		$response = $this->server->dispatch( $this->opt_out_request( 'settings' ) );
+
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertSame( 'We could not opt you out of automatic blocking.', $response->get_data()['message'] );
+	}
+
+	/**
+	 * @testdox An opt-out stores both values, and later enablement preserves the marker.
+	 */
+	public function test_opt_out_stores_values_and_later_enablement_preserves_marker(): void {
+		$this->telemetry->expects( $this->once() )->method( 'record_enrollment_opt_out' )->with( 'inbox' );
+
+		$response = $this->server->dispatch( $this->opt_out_request( 'inbox' ) );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame(
+			array(
+				'automatic_protection'            => false,
+				'automatic_protection_opted_out'  => true,
+				'automatic_protection_enabled_at' => null,
+			),
+			$response->get_data()
+		);
+		$this->assertSame( 'no', get_option( self::OPTION_NAME ) );
+		$stored_date = get_option( self::OPT_OUT_DATE_OPTION_NAME );
+
+		$update = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => true ) ) );
+		$this->assertTrue( $update->get_data()['automatic_protection'] );
+		$this->assertTrue( $update->get_data()['automatic_protection_opted_out'] );
+		$this->assertSame( $stored_date, get_option( self::OPT_OUT_DATE_OPTION_NAME ) );
+	}
+
+	/**
+	 * @testdox Opt-out requires a supported string source.
+	 * @dataProvider invalid_opt_out_source_provider
+	 *
+	 * @param mixed  $source        Request source.
+	 * @param string $expected_code REST error code.
+	 */
+	public function test_opt_out_rejects_invalid_source( $source, string $expected_code ): void {
+		$response = $this->server->dispatch( $this->opt_out_request( $source ) );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( $expected_code, $response->as_error()->get_error_code() );
+		$this->assertNull( get_option( self::OPTION_NAME, null ) );
+	}
+
+	/**
+	 * Invalid opt-out sources.
+	 *
+	 * @return array<string, array{mixed, string}>
+	 */
+	public function invalid_opt_out_source_provider(): array {
+		return array(
+			'missing source' => array( null, 'rest_missing_callback_param' ),
+			'unknown source' => array( 'unknown', 'rest_invalid_param' ),
+			'array source'   => array( array( 'inbox' ), 'rest_invalid_param' ),
+		);
+	}
+
+	/**
 	 * @testdox Unauthenticated and unauthorized users cannot read or update settings.
 	 */
 	public function test_permissions_require_woocommerce_management(): void {
 		$this->setting->set_enabled( true );
 
 		wp_set_current_user( 0 );
-		$unauthenticated_get  = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
-		$unauthenticated_post = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
+		$unauthenticated_get     = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
+		$unauthenticated_post    = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
+		$unauthenticated_opt_out = $this->server->dispatch( $this->opt_out_request( 'settings' ) );
 
 		$customer_id = wc_create_new_customer( 'settings-customer@example.com', 'settings-customer', 'password' );
 		wp_set_current_user( $customer_id );
-		$unauthorized_get  = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-fraud-protection/v1/settings' ) );
-		$unauthorized_post = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
+		$unauthorized_get     = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
+		$unauthorized_post    = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => false ) ) );
+		$unauthorized_opt_out = $this->server->dispatch( $this->opt_out_request( 'settings' ) );
 
 		$this->assertSame( 401, $unauthenticated_get->get_status() );
 		$this->assertSame( 401, $unauthenticated_post->get_status() );
+		$this->assertSame( 401, $unauthenticated_opt_out->get_status() );
 		$this->assertSame( 403, $unauthorized_get->get_status() );
 		$this->assertSame( 403, $unauthorized_post->get_status() );
+		$this->assertSame( 403, $unauthorized_opt_out->get_status() );
 		$this->assertSame( 'yes', get_option( self::OPTION_NAME ) );
 	}
 
@@ -204,9 +297,22 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @param array<string, mixed> $data Request body.
 	 */
 	private function post_request( array $data ): \WP_REST_Request {
-		$request = new \WP_REST_Request( 'POST', '/wc-fraud-protection/v1/settings' );
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/settings' );
 		$request->set_header( 'Content-Type', 'application/json' );
 		$request->set_body( (string) wp_json_encode( $data ) );
+
+		return $request;
+	}
+
+	/**
+	 * Create a JSON opt-out request.
+	 *
+	 * @param mixed $source Request source.
+	 */
+	private function opt_out_request( $source ): \WP_REST_Request {
+		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/settings/opt-out' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body( (string) wp_json_encode( null === $source ? array() : array( 'source' => $source ) ) );
 
 		return $request;
 	}

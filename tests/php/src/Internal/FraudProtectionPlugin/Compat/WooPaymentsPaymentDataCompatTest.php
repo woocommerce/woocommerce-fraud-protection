@@ -138,12 +138,26 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
 	/** WooPayments API client test stub. */
 	class WC_Payments_API_Client_Stub {
+		/** @var int Payment method lookup call count. */
+		private static int $payment_method_calls = 0;
+
+		/** Reset the payment method lookup call count. */
+		public static function reset(): void {
+			self::$payment_method_calls = 0;
+		}
+
+		/** Return the payment method lookup call count. */
+		public static function get_payment_method_calls(): int {
+			return self::$payment_method_calls;
+		}
+
 		/**
 		 * Provide the get_payment_method() test stub.
 		 *
 		 * @param string $payment_method_id Test value.
 		 */
 		public function get_payment_method( string $payment_method_id ): array {
+			++self::$payment_method_calls;
 			unset( $payment_method_id );
 			return array();
 		}
@@ -277,6 +291,35 @@ if ( ! class_exists( '\WC_Payments', false ) ) {
 	class_alias( __NAMESPACE__ . '\WC_Payments_Features_Stub', 'WC_Payments_Features' );
 }
 
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+/** WooPay request proof test stub. */
+class WooPay_Session_Stub {
+	/** @var mixed Proof result. */
+	private static $result = false;
+	/** @var bool Whether the proof check throws. */
+	private static bool $throws = false;
+
+	/**
+	 * Configure the proof result.
+	 *
+	 * @param mixed $result Test value.
+	 * @param bool  $throws Whether the proof check throws.
+	 */
+	public static function configure( $result, bool $throws = false ): void {
+		self::$result = $result;
+		self::$throws = $throws;
+	}
+
+	/** Provide the WooPay request proof method. */
+	public static function is_request_vouched_by_woopay() {
+		if ( self::$throws ) {
+			throw new \RuntimeException( 'Proof failed' );
+		}
+
+		return self::$result;
+	}
+}
+
 // phpcs:enable Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
 
 /**
@@ -308,8 +351,10 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		\WC_Payments::reset();
 		\WC_Payments_Features::reset();
+		remove_all_filters( 'wcpay_is_woopay_store_api_request' );
 		remove_filter( 'wp_doing_ajax', '__return_true' );
 		WC_Payments_Account_Service_Stub::reset();
+		WC_Payments_API_Client_Stub::reset();
 		parent::tearDown();
 	}
 
@@ -591,6 +636,210 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'apple_pay', $result->to_array()['instrument']['wallet'] );
 	}
 
+	/**
+	 * @testdox Normalizes supported express request wallet values when provider lookup is unavailable.
+	 *
+	 * @dataProvider express_request_wallet_provider
+	 * @param mixed  $value    Request value.
+	 * @param string $expected Expected wallet.
+	 */
+	public function test_normalizes_express_request_wallet( $value, string $expected ): void {
+		\WC_Payments_Features::set_woopay_enabled( true );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array( 'express_payment_type' => $value )
+		);
+
+		$this->assertSame( $expected, $result->to_array()['instrument']['wallet'] );
+	}
+
+	/** @return array<string, array{string, string}> */
+	public function express_request_wallet_provider(): array {
+		return array(
+			'Apple Pay'            => array( 'apple_pay', 'apple_pay' ),
+			'Apple Pay uppercase'  => array( 'APPLE_PAY', 'apple_pay' ),
+			'Google Pay'           => array( 'google_pay', 'google_pay' ),
+			'Google Pay uppercase' => array( 'GOOGLE_PAY', 'google_pay' ),
+			'Amazon Pay'           => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase' => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'               => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'     => array( 'PAYPAL', 'paypal' ),
+			'Link'                 => array( 'link', 'link' ),
+			'Link uppercase'       => array( 'LINK', 'link' ),
+		);
+	}
+
+	/**
+	 * @testdox Ignores unsupported express request wallet values.
+	 *
+	 * @dataProvider unsupported_wallet_provider
+	 * @param mixed $value Request value.
+	 */
+	public function test_ignores_unsupported_express_request_wallet( $value ): void {
+		\WC_Payments_Features::set_woopay_enabled( true );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array( 'express_payment_type' => $value )
+		);
+
+		$this->assertNull( $result->to_array()['instrument']['wallet'] );
+	}
+
+	/** @return array<string, array{mixed}> */
+	public function unsupported_wallet_provider(): array {
+		return array(
+			'normalized output' => array( 'cash_app_pay' ),
+			'unknown'           => array( 'future_wallet' ),
+			'empty'             => array( '' ),
+			'array'             => array( array( 'apple_pay' ) ),
+			'object'            => array( new \stdClass() ),
+		);
+	}
+
+	/**
+	 * @testdox Maps known provider payment types to wallets.
+	 *
+	 * @dataProvider provider_payment_type_wallet_provider
+	 * @param string $payment_type Provider payment type.
+	 * @param string $expected     Expected wallet.
+	 */
+	public function test_maps_provider_payment_type_to_wallet( string $payment_type, string $expected ): void {
+		$this->mock_api_response(
+			array(
+				'type'        => $payment_type,
+				$payment_type => array(),
+			)
+		);
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array( 'wcpay-payment-method' => 'pm_wallet_123' )
+		);
+
+		$this->assertSame( $expected, $result->to_array()['instrument']['wallet'] );
+	}
+
+	/** @return array<string, array{string, string}> */
+	public function provider_payment_type_wallet_provider(): array {
+		return array(
+			'Amazon Pay'             => array( 'amazon_pay', 'amazon_pay' ),
+			'Amazon Pay uppercase'   => array( 'AMAZON_PAY', 'amazon_pay' ),
+			'PayPal'                 => array( 'paypal', 'paypal' ),
+			'PayPal uppercase'       => array( 'PAYPAL', 'paypal' ),
+			'Link'                   => array( 'link', 'link' ),
+			'Link uppercase'         => array( 'LINK', 'link' ),
+			'Cash App Pay'           => array( 'cashapp', 'cash_app_pay' ),
+			'Cash App Pay uppercase' => array( 'CASHAPP', 'cash_app_pay' ),
+			'Alipay'                 => array( 'alipay', 'alipay' ),
+			'GrabPay'                => array( 'grabpay', 'grabpay' ),
+			'WeChat Pay'             => array( 'wechat_pay', 'wechat_pay' ),
+		);
+	}
+
+	/** @testdox Preserves an existing provider wallet instead of applying a request fallback. */
+	public function test_preserves_existing_provider_wallet(): void {
+		$response                   = $this->create_card_response();
+		$response['card']['wallet'] = array( 'type' => 'future_wallet' );
+		$this->mock_api_response( $response );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array(
+				'wcpay-payment-method' => 'pm_wallet_123',
+				'express_payment_type' => 'google_pay',
+			)
+		);
+
+		$this->assertSame( 'future_wallet', $result->to_array()['instrument']['wallet'] );
+	}
+
+	/** @testdox Uses the legacy WooPay proof filter only for a strict true result. */
+	public function test_legacy_woopay_proof_requires_strict_true(): void {
+		\WC_Payments_Features::set_woopay_enabled( true );
+		add_filter( 'wcpay_is_woopay_store_api_request', '__return_true' );
+		$request = array(
+			'express_payment_type' => 'google_pay',
+			'wcpay-payment-method' => 'pm_platform_scoped',
+		);
+
+		$trusted = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			$request
+		);
+
+		remove_filter( 'wcpay_is_woopay_store_api_request', '__return_true' );
+		add_filter( 'wcpay_is_woopay_store_api_request', static fn() => '1' );
+
+		$untrusted = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			$request
+		);
+
+		$this->assertSame( 'woopay', $trusted->to_array()['instrument']['wallet'] );
+		$this->assertSame( 'google_pay', $untrusted->to_array()['instrument']['wallet'] );
+		$this->assertSame( 0, WC_Payments_API_Client_Stub::get_payment_method_calls() );
+	}
+
+	/** @testdox Raw WooPay request claims do not produce a wallet label. */
+	public function test_raw_woopay_claims_are_not_trusted(): void {
+		\WC_Payments_Features::set_woopay_enabled( true );
+		$this->set_server_variables( array( 'HTTP_USER_AGENT' => 'WooPay' ) );
+
+		$result = $this->sut->resolve(
+			new PaymentMethodData( 'woocommerce_payments' ),
+			array( 'is_woopay' => '1' )
+		);
+
+		$this->assertNull( $result->to_array()['instrument']['wallet'] );
+	}
+
+	/**
+	 * @testdox The current WooPay proof method has priority over the legacy filter.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_current_woopay_proof_method_has_priority(): void {
+		class_alias( WooPay_Session_Stub::class, '\WCPay\WooPay\WooPay_Session' );
+		\WC_Payments_Features::set_woopay_enabled( true );
+
+		$legacy_filter_calls = 0;
+		add_filter(
+			'wcpay_is_woopay_store_api_request',
+			static function () use ( &$legacy_filter_calls ): bool {
+				++$legacy_filter_calls;
+				return true;
+			}
+		);
+
+		$request = array(
+			'express_payment_type' => 'apple_pay',
+			'wcpay-payment-method' => 'pm_platform_scoped',
+		);
+
+		WooPay_Session_Stub::configure( true );
+		$trusted = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+
+		WooPay_Session_Stub::configure( false );
+		$rejected = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+
+		WooPay_Session_Stub::configure( '1' );
+		$request['express_payment_type'] = 'google_pay';
+		$non_boolean                     = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+
+		WooPay_Session_Stub::configure( false, true );
+		$failed = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+
+		$this->assertSame( 'woopay', $trusted->to_array()['instrument']['wallet'] );
+		$this->assertSame( 'apple_pay', $rejected->to_array()['instrument']['wallet'] );
+		$this->assertSame( 'google_pay', $non_boolean->to_array()['instrument']['wallet'] );
+		$this->assertSame( 'google_pay', $failed->to_array()['instrument']['wallet'] );
+		$this->assertSame( 0, $legacy_filter_calls );
+		$this->assertSame( 0, WC_Payments_API_Client_Stub::get_payment_method_calls() );
+	}
+
 	// --- Bank types ---
 
 	/**
@@ -671,7 +920,9 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$array = $result->to_array();
 		$this->assertSame( 'link', $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$expected_instrument           = PaymentInstrumentData::empty()->to_array();
+		$expected_instrument['wallet'] = 'link';
+		$this->assertSame( $expected_instrument, $array['instrument'] );
 	}
 
 	/**
@@ -880,24 +1131,24 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	// --- Fail-open ---
 
 	/**
-	 * @testdox Returns mode only when PM ID is missing from payment data.
+	 * @testdox Returns mode and the request wallet when the PM ID is missing.
 	 */
 	public function test_returns_mode_only_when_pm_id_missing(): void {
 		\WC_Payments::set_live( false );
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array()
+			array( 'express_payment_type' => 'google_pay' )
 		);
 
 		$array = $result->to_array();
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
-	 * @testdox Returns mode only when API client is null.
+	 * @testdox Returns mode and the request wallet when the API client is null.
 	 */
 	public function test_returns_mode_only_when_api_client_null(): void {
 		\WC_Payments::set_live( false );
@@ -906,17 +1157,20 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'wcpay-payment-method' => 'pm_123' )
+			array(
+				'wcpay-payment-method' => 'pm_123',
+				'express_payment_type' => 'google_pay',
+			)
 		);
 
 		$array = $result->to_array();
 		$this->assertSame( PaymentMode::Test->value, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
-	 * @testdox Returns mode only when API throws an exception.
+	 * @testdox Returns mode and the request wallet when the API throws an exception.
 	 */
 	public function test_returns_mode_only_when_api_throws(): void {
 		\WC_Payments::set_live( true );
@@ -925,17 +1179,20 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'wcpay-payment-method' => 'pm_123' )
+			array(
+				'wcpay-payment-method' => 'pm_123',
+				'express_payment_type' => 'google_pay',
+			)
 		);
 
 		$array = $result->to_array();
 		$this->assertSame( PaymentMode::Live->value, $array['transaction_mode'] );
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**
-	 * @testdox Returns mode only when API response is missing type key.
+	 * @testdox Returns mode and the request wallet when the API response is invalid.
 	 */
 	public function test_returns_mode_only_when_response_invalid(): void {
 		$this->mock_api_response(
@@ -944,12 +1201,15 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$result = $this->sut->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
-			array( 'wcpay-payment-method' => 'pm_123' )
+			array(
+				'wcpay-payment-method' => 'pm_123',
+				'express_payment_type' => 'google_pay',
+			)
 		);
 
 		$array = $result->to_array();
 		$this->assertNull( $array['payment_type'] );
-		$this->assertSame( PaymentInstrumentData::empty()->to_array(), $array['instrument'] );
+		$this->assertSame( 'google_pay', $array['instrument']['wallet'] );
 	}
 
 	/**

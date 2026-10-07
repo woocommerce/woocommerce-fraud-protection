@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import apiFetch from '@wordpress/api-fetch';
 import {
@@ -15,6 +15,7 @@ import {
 	type Performance,
 	settingsStore,
 } from '../../client/admin-settings/data/store';
+import { rulesStore } from '../../client/admin-settings/data/rules-store';
 
 const mockCreateSuccessNotice = jest.fn();
 const mockSettingsHistory = { block: jest.fn( () => jest.fn() ) };
@@ -54,9 +55,15 @@ jest.mock( '@woocommerce/navigation', () => ( {
 } ) );
 
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
+const settingsFetchCount = () =>
+	mockedApiFetch.mock.calls.filter(
+		( [ options ] ) =>
+			( options as { path?: string } )?.path ===
+			'/wc-admin/fraud-protection/settings'
+	).length;
 
 const zeroPerformance: Performance = {
-	recommended_for_blocking: 0,
+	flagged_by_fraud_prevention: 0,
 	blocked_automatically: 0,
 	allowed_by_rules: 0,
 	blocked_by_rules: 0,
@@ -64,10 +71,20 @@ const zeroPerformance: Performance = {
 
 const settingsResponse = (
 	automaticProtection: boolean,
-	performance: Performance = zeroPerformance
+	performance: Performance = zeroPerformance,
+	optedOut = false
 ) => ( {
 	automatic_protection: automaticProtection,
+	automatic_protection_opted_out: optedOut,
+	automatic_protection_enabled_at: automaticProtection
+		? '2026-04-20T00:00:00'
+		: null,
 	performance,
+} );
+
+const performanceWithFlagged = ( flaggedByFraudPrevention: number ) => ( {
+	...zeroPerformance,
+	flagged_by_fraud_prevention: flaggedByFraudPrevention,
 } );
 
 const findVisibleText = async ( text: string ) => {
@@ -80,15 +97,33 @@ const findVisibleText = async ( text: string ) => {
 	return visibleMatches[ 0 ];
 };
 
+// Records the router location after each navigation the page triggers, so a
+// test can assert whether an action led away from the settings page.
+const lastLocation = jest.fn();
+function LocationSpy() {
+	lastLocation( useLocation() );
+	return null;
+}
+const currentLocation = () => lastLocation.mock.lastCall?.[ 0 ];
+const expectRulesRoute = () => {
+	const location = currentLocation();
+	expect( location.pathname ).toBe( '/wp-admin/admin.php' );
+	expect( location.search ).toBe(
+		'?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Frules'
+	);
+};
+
 const renderSettings = () => {
 	const registry = createRegistry();
 	registry.register( settingsStore );
+	registry.register( rulesStore );
 	registry.register( noticesStore );
 
 	return render(
 		<MemoryRouter>
 			<RegistryProvider value={ registry }>
 				<FraudProtectionSettingsPage />
+				<LocationSpy />
 			</RegistryProvider>
 		</MemoryRouter>
 	);
@@ -99,6 +134,201 @@ describe( 'FraudProtectionSettingsPage', () => {
 		mockedApiFetch.mockReset();
 		mockCreateSuccessNotice.mockReset();
 		mockSettingsHistory.block.mockClear();
+		window.history.replaceState( {}, '', '/' );
+	} );
+
+	it( 'shows the Rules card controls without a rule count', async () => {
+		mockedApiFetch.mockResolvedValueOnce( settingsResponse( false ) );
+		renderSettings();
+
+		const rulesCard = (
+			await screen.findByRole( 'heading', { name: 'Rules' } )
+		).closest( 'section' );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
+		expect( rulesCard ).not.toBeNull();
+		expect( performanceCard ).not.toBeNull();
+		expect( rulesCard?.nextElementSibling ).toBe( performanceCard );
+		const rules = within( rulesCard as HTMLElement );
+
+		expect(
+			rules.getByText( /Create rules to always allow/ )
+		).toHaveTextContent(
+			'Create rules to always allow or block checkout attempts that match specific criteria. Rules take priority over automatic fraud prevention and allow rules override block rules. See our best practices.'
+		);
+		expect(
+			rules.getByRole( 'link', { name: 'best practices' } )
+		).toHaveAttribute(
+			'href',
+			'https://woocommerce.com/document/fraud-protection/'
+		);
+		expect(
+			rules.getByRole( 'button', { name: 'Create rule' } )
+		).toBeVisible();
+		expect(
+			rules.getByRole( 'link', { name: 'View rules' } )
+		).toBeVisible();
+		expect( rules.queryByText( /^\d+ rules?$/ ) ).not.toBeInTheDocument();
+	} );
+
+	it( 'creates a rule from the Rules card and moves to the rules page', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockResolvedValueOnce( {
+				id: 18,
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				created_at: '2026-09-15T12:00:00Z',
+				updated_at: null,
+			} );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		// The drawer opens here, on the settings page.
+		expect( currentLocation().pathname ).toBe( '/' );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'card@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+			).not.toBeInTheDocument()
+		);
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-admin/fraud-protection/rules',
+			method: 'POST',
+			data: {
+				action: 'allow',
+				type: 'email',
+				value: 'card@example.com',
+				origin: 'rules',
+			},
+		} );
+		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+			'Rule created successfully.',
+			{ type: 'snackbar' }
+		);
+		// The saved rule leads to the rules list, where it now appears.
+		expectRulesRoute();
+	} );
+
+	it( 'stays on the settings page when rule creation is cancelled or fails', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( { message: 'The exact create error.' } );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		let drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Close' } )
+		);
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+			).not.toBeInTheDocument()
+		);
+		expect( currentLocation().pathname ).toBe( '/' );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Create rule' } )
+		);
+		drawer = await screen.findByRole( 'dialog', { name: 'Create rule' } );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'failed@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		expect(
+			await within( drawer ).findByText( 'The exact create error.' )
+		).toBeInTheDocument();
+		expect( drawer ).toBeInTheDocument();
+		expect( currentLocation().pathname ).toBe( '/' );
+	} );
+
+	it( 'edits an existing duplicate rule from the Rules card and then moves to the rules page', async () => {
+		const duplicate = {
+			id: 17,
+			action: 'allow',
+			type: 'email',
+			value: 'duplicate@example.com',
+			created_at: '2026-09-15T12:00:00Z',
+			updated_at: null,
+		};
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( {
+				code: 'woocommerce_fraud_protection_duplicate_rule',
+				message: 'This email is already allowed by a rule.',
+				data: { rule_id: duplicate.id },
+			} )
+			.mockResolvedValueOnce( duplicate )
+			.mockResolvedValueOnce( { ...duplicate, action: 'block' } );
+		renderSettings();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		let drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			duplicate.value
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+		await userEvent.click(
+			await within( drawer ).findByRole( 'button', {
+				name: 'Edit existing rule',
+			} )
+		);
+
+		// The existing rule opens for editing here, still on the settings page.
+		drawer = await screen.findByRole( 'dialog', { name: 'Edit rule' } );
+		expect( within( drawer ).getByLabelText( 'Value' ) ).toHaveValue(
+			duplicate.value
+		);
+		expect( currentLocation().pathname ).toBe( '/' );
+
+		await userEvent.selectOptions(
+			within( drawer ).getByLabelText( 'Action' ),
+			'block'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Save changes' } )
+		);
+
+		await waitFor( () =>
+			expect(
+				screen.queryByRole( 'dialog', { name: 'Edit rule' } )
+			).not.toBeInTheDocument()
+		);
+		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+			'Rule updated successfully.',
+			{ type: 'snackbar' }
+		);
+		expectRulesRoute();
 	} );
 
 	it( 'disables controls, ignores Save, and renders the disabled value while loading', async () => {
@@ -122,7 +352,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.getByRole( 'presentation' ) ).toBeInTheDocument();
 		expect( screen.getAllByRole( 'status' ) ).toHaveLength( 2 );
 		expect(
-			screen.getByText( 'Loading automatic protection setting.' )
+			screen.getByText( 'Loading automatic fraud prevention setting.' )
 		).toBeInTheDocument();
 		expect(
 			screen.getByText( 'Loading performance results.' )
@@ -132,11 +362,18 @@ describe( 'FraudProtectionSettingsPage', () => {
 			'true'
 		);
 		expect(
-			performanceCard?.querySelectorAll( '[aria-hidden="true"]' )
+			performanceCard?.querySelectorAll(
+				'.wc-fraud-protection-settings__performance-skeleton'
+			)
 		).toHaveLength( 4 );
+		expect(
+			performanceCard?.querySelector(
+				'.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).not.toBeInTheDocument();
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
-			screen.getByRole( 'heading', { name: 'Automatic protection' } )
+			screen.getByRole( 'heading', { name: 'Fraud prevention' } )
 		).toBeInTheDocument();
 		expect(
 			screen.getByText(
@@ -145,22 +382,27 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toBeInTheDocument();
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenCalledWith( {
-				path: '/wc-fraud-protection/v1/settings',
+				path: '/wc-admin/fraud-protection/settings',
 			} );
 		} );
 		// Save is disabled while loading, so this click must not start a save request.
 		await userEvent.click( save );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 
 		await act( async () => {
 			resolveLoad( settingsResponse( false ) );
 		} );
 		const checkbox = await screen.findByRole( 'checkbox' );
 		expect( checkbox ).not.toBeChecked();
-		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect( checkbox ).toBeEnabled();
 		expect( screen.queryByRole( 'presentation' ) ).not.toBeInTheDocument();
 		expect( screen.queryByRole( 'status' ) ).not.toBeInTheDocument();
 		expect( screen.getAllByText( '0' ) ).toHaveLength( 4 );
+		expect(
+			performanceCard?.querySelector(
+				'.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'loads the enabled value', async () => {
@@ -172,18 +414,18 @@ describe( 'FraudProtectionSettingsPage', () => {
 				name: 'Automatically block checkout attempts flagged by fraud prevention.',
 			} );
 			expect( checkbox ).toBeChecked();
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+			expect( checkbox ).toBeEnabled();
 		} );
 		expect(
 			screen.getByRole( 'button', { name: 'Save' } )
 		).toHaveAttribute( 'aria-disabled', 'true' );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 	} );
 
-	it( 'shows all four performance outcomes with semantic labels', async () => {
+	it( 'shows all four performance outcomes when automatic fraud prevention is disabled', async () => {
 		mockedApiFetch.mockResolvedValueOnce(
 			settingsResponse( false, {
-				recommended_for_blocking: 12,
+				flagged_by_fraud_prevention: 12,
 				blocked_automatically: 3,
 				allowed_by_rules: 4,
 				blocked_by_rules: 5,
@@ -207,7 +449,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.getAllByRole( 'term' )
 				.map( ( element ) => element.textContent )
 		).toEqual( [
-			'Recommended for blocking',
+			'Flagged by fraud prevention',
 			'Blocked automatically',
 			'Allowed by rules',
 			'Blocked by rules',
@@ -218,6 +460,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.map( ( element ) => element.textContent )
 		).toEqual( [ '12', '3', '4', '5' ] );
 		expect(
+			performanceCard?.querySelector(
+				'svg.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).toBeInTheDocument();
+		expect(
 			performance.getByRole( 'link', {
 				name: 'View checkout attempts',
 			} )
@@ -225,6 +472,45 @@ describe( 'FraudProtectionSettingsPage', () => {
 			'href',
 			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
 		);
+	} );
+
+	it( 'hides flagged checkout attempts when automatic fraud prevention is enabled', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( true, {
+				flagged_by_fraud_prevention: 12,
+				blocked_automatically: 3,
+				allowed_by_rules: 4,
+				blocked_by_rules: 5,
+			} )
+		);
+		renderSettings();
+
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' );
+		await screen.findByText( '3' );
+		expect( performanceCard ).not.toBeNull();
+		const performance = within( performanceCard as HTMLElement );
+
+		expect(
+			performance
+				.getAllByRole( 'term' )
+				.map( ( element ) => element.textContent )
+		).toEqual( [
+			'Blocked automatically',
+			'Allowed by rules',
+			'Blocked by rules',
+		] );
+		expect(
+			performance
+				.getAllByRole( 'definition' )
+				.map( ( element ) => element.textContent )
+		).toEqual( [ '3', '4', '5' ] );
+		expect(
+			performanceCard?.querySelector(
+				'.wc-fraud-protection-settings__performance-caution-icon'
+			)
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'shows an error and keeps controls disabled when loading fails', async () => {
@@ -238,12 +524,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 				'The fraud prevention settings could not be loaded. Check your connection and try again.'
 			)
 		).toBeVisible();
-		expect( screen.getByRole( 'checkbox' ) ).toHaveAttribute(
-			'aria-disabled',
-			'true'
-		);
+		expect( screen.getByRole( 'checkbox' ) ).toBeDisabled();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 		const performanceCard = screen
 			.getByRole( 'heading', { name: 'Performance' } )
 			.closest( 'section' );
@@ -261,32 +549,44 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		// Clicking the disabled button must not retry the failed request.
 		await userEvent.click( save );
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 	} );
 
 	it( 'saves a changed Boolean and queues the success Snackbar', async () => {
 		mockedApiFetch
 			.mockResolvedValueOnce(
 				settingsResponse( false, {
-					recommended_for_blocking: 12,
+					flagged_by_fraud_prevention: 12,
 					blocked_automatically: 3,
 					allowed_by_rules: 4,
 					blocked_by_rules: 5,
 				} )
 			)
-			.mockResolvedValueOnce( { automatic_protection: true } );
+			.mockResolvedValueOnce( {
+				automatic_protection: true,
+				automatic_protection_opted_out: false,
+			} );
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () =>
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
-		);
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' ) as HTMLElement;
+		expect(
+			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).toBeInTheDocument();
 		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/settings',
+				path: '/wc-admin/fraud-protection/settings',
 				method: 'POST',
 				data: { automatic_protection: true },
 			} );
@@ -299,40 +599,48 @@ describe( 'FraudProtectionSettingsPage', () => {
 				}
 			);
 		} );
-		expect( screen.getByText( '12' ) ).toBeInTheDocument();
+		expect( screen.queryByText( '12' ) ).not.toBeInTheDocument();
 		expect( screen.getByText( '3' ) ).toBeInTheDocument();
 		expect( screen.getByText( '4' ) ).toBeInTheDocument();
 		expect( screen.getByText( '5' ) ).toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'keeps the controls disabled while a changed value is saving', async () => {
 		let resolveSave: ( response: {
 			automatic_protection: boolean;
+			automatic_protection_opted_out: boolean;
 		} ) => void = () => {};
-		const pendingSave = new Promise< { automatic_protection: boolean } >(
-			( resolve ) => {
-				resolveSave = resolve;
-			}
-		);
+		const pendingSave = new Promise< {
+			automatic_protection: boolean;
+			automatic_protection_opted_out: boolean;
+		} >( ( resolve ) => {
+			resolveSave = resolve;
+		} );
 		mockedApiFetch
 			.mockResolvedValueOnce( settingsResponse( false ) )
 			.mockReturnValueOnce( pendingSave );
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () =>
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
-		);
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		await userEvent.click( save );
 
 		await waitFor( () => {
 			expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
-			expect( checkbox ).toHaveAttribute( 'aria-disabled', 'true' );
+			expect( checkbox ).toBeDisabled();
 		} );
 
-		resolveSave( { automatic_protection: true } );
+		resolveSave( {
+			automatic_protection: true,
+			automatic_protection_opted_out: false,
+		} );
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
 		} );
@@ -340,16 +648,32 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 	it( 'shows an inline Notice when saving fails', async () => {
 		mockedApiFetch
-			.mockResolvedValueOnce( settingsResponse( true ) )
+			.mockResolvedValueOnce(
+				settingsResponse( true, performanceWithFlagged( 12 ) )
+			)
 			.mockRejectedValueOnce( new Error( 'Try again later.' ) )
-			.mockResolvedValueOnce( { automatic_protection: false } );
+			.mockResolvedValueOnce( {
+				automatic_protection: false,
+				automatic_protection_opted_out: false,
+			} );
 		renderSettings();
 
 		const checkbox = await screen.findByRole( 'checkbox' );
-		await waitFor( () =>
-			expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' )
-		);
+		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
+		const performanceCard = screen
+			.getByRole( 'heading', { name: 'Performance' } )
+			.closest( 'section' ) as HTMLElement;
+		expect(
+			within( performanceCard ).queryByText(
+				'Flagged by fraud prevention'
+			)
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		await userEvent.click( save );
 
@@ -358,14 +682,24 @@ describe( 'FraudProtectionSettingsPage', () => {
 				'The fraud prevention setting could not be saved. Try again later.'
 			)
 		).toBeVisible();
-		expect( checkbox ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect( checkbox ).toBeEnabled();
 		expect( save ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect(
+			within( performanceCard ).queryByText(
+				'Flagged by fraud prevention'
+			)
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 		await userEvent.click( save );
 
 		await waitFor( () => {
 			expect( mockedApiFetch ).toHaveBeenCalledTimes( 3 );
 			expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
-				path: '/wc-fraud-protection/v1/settings',
+				path: '/wc-admin/fraud-protection/settings',
 				method: 'POST',
 				data: { automatic_protection: false },
 			} );
@@ -373,6 +707,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
 		} );
+		expect(
+			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).toBeInTheDocument();
 		expect(
 			screen
 				.queryAllByText(
@@ -382,4 +724,184 @@ describe( 'FraudProtectionSettingsPage', () => {
 				.filter( ( element ) => ! element.hasAttribute( 'aria-live' ) )
 		).toHaveLength( 0 );
 	} );
+
+	it.each< [ number, string, string ] >( [
+		[
+			1,
+			'1 checkout attempt',
+			'1 checkout attempt was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+		[
+			12,
+			'12 checkout attempts',
+			'12 checkout attempts were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+	] )( 'links the %s flagged attempt count', async ( count, label, copy ) => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithFlagged( count ) )
+		);
+		renderSettings();
+
+		const countLink = await screen.findByRole( 'link', {
+			name: label,
+		} );
+		expect( countLink ).toHaveAttribute(
+			'href',
+			'/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection&path=%2Fcheckout-attempts'
+		);
+		expect( countLink.parentElement ).toHaveTextContent( copy );
+	} );
+
+	it( 'shows the opt-out actions and offers no dismiss on the opt-out notice', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithFlagged( 12 ) )
+		);
+		renderSettings();
+
+		expect(
+			await screen.findByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).toBeEnabled();
+		expect(
+			screen.getByRole( 'link', { name: 'Learn more' } )
+		).toHaveAttribute(
+			'href',
+			'https://woocommerce.com/document/fraud-protection/'
+		);
+
+		// The opt-out notice presents a decision, so it cannot be dismissed.
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Dismiss automatic fraud prevention notice',
+			} )
+		).not.toBeInTheDocument();
+	} );
+
+	it.each< [ number, string, string ] >( [
+		[
+			1,
+			'1 checkout attempt',
+			'1 checkout attempt was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+		],
+		[
+			12,
+			'12 checkout attempts',
+			'12 checkout attempts were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+		],
+	] )(
+		'shows the automatic-protection recommendation for %s attempts after an opt-out is stored',
+		async ( count, label, copy ) => {
+			mockedApiFetch.mockResolvedValueOnce(
+				settingsResponse( false, performanceWithFlagged( count ), true )
+			);
+			renderSettings();
+
+			const countLink = await screen.findByRole( 'link', {
+				name: label,
+			} );
+			expect( countLink.parentElement ).toHaveTextContent( copy );
+			expect(
+				screen.queryByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			).not.toBeInTheDocument();
+			expect(
+				screen.queryByRole( 'link', { name: 'Learn more' } )
+			).not.toBeInTheDocument();
+			expect(
+				screen.queryByRole( 'button', {
+					name: 'Dismiss automatic fraud prevention notice',
+				} )
+			).not.toBeInTheDocument();
+		}
+	);
+
+	it.each( [
+		[
+			false,
+			'Automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+		[
+			true,
+			'Automatic fraud prevention is off. We recommend turning it on.',
+		],
+	] )(
+		'shows count-free copy when opted-out is %s and no attempts were flagged',
+		async ( optedOut, copy ) => {
+			mockedApiFetch.mockResolvedValueOnce(
+				settingsResponse( false, zeroPerformance, optedOut )
+			);
+			renderSettings();
+
+			expect( await findVisibleText( copy ) ).toBeVisible();
+			expect(
+				screen.queryByRole( 'link', { name: '0 checkout attempts' } )
+			).not.toBeInTheDocument();
+		}
+	);
+
+	it.each( [
+		[ 'inbox', '/?source=inbox' ],
+		[ 'settings', '/' ],
+	] )(
+		'stores a %s opt-out and queues the approved success message',
+		async ( source, path ) => {
+			window.history.replaceState( {}, '', path );
+			mockedApiFetch
+				.mockResolvedValueOnce( settingsResponse( false ) )
+				.mockResolvedValueOnce( {
+					automatic_protection: false,
+					automatic_protection_opted_out: true,
+				} );
+			renderSettings();
+
+			await userEvent.click(
+				await screen.findByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			);
+
+			await waitFor( () => {
+				expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+					path: '/wc-admin/fraud-protection/settings/opt-out',
+					method: 'POST',
+					data: { source },
+				} );
+			} );
+			await waitFor( () => {
+				expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+					'Automatic blocking stays off.',
+					{ type: 'snackbar' }
+				);
+			} );
+			expect(
+				screen.queryByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			).not.toBeInTheDocument();
+		}
+	);
+
+	it( 'keeps the opt-out available when the request fails', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( new Error( 'Try again later.' ) );
+		renderSettings();
+
+		const optOut = await findOptOutButton();
+		await userEvent.click( optOut );
+
+		expect(
+			await findVisibleText(
+				'We could not opt you out of automatic blocking. Try again later.'
+			)
+		).toBeVisible();
+		expect( optOut ).toBeEnabled();
+		expect( screen.getByRole( 'checkbox' ) ).toBeEnabled();
+		expect( mockCreateSuccessNotice ).not.toHaveBeenCalled();
+	} );
 } );
+
+const findOptOutButton = () =>
+	screen.findByRole( 'button', { name: 'Opt out of automatic blocking' } );

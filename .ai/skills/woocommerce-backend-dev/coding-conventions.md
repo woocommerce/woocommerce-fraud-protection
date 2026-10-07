@@ -145,6 +145,6 @@ call_user_func_array( array( $obj, 'process' ), array( 'order_id' => $id, 'statu
 
 ## Linting
 
-Only fix linting errors for code that has been added or modified in the branch you are working on.
+CI runs phpcs and PHPStan over the whole repository, so the tree is expected to be clean. Fix linting errors in the code you add or modify.
 
-Do not fix linting errors in unrelated code unless specifically asked to do so.
+Do not reformat or fix unrelated code in the same pull request unless specifically asked to do so. See code-quality.md in the `woocommerce-dev-cycle` skill for the commands.

@@ -37,7 +37,7 @@ class MerchantFacingFeaturesGate {
 	 * Get the code default.
 	 */
 	public function get_default(): SettingStatus {
-		return SettingStatus::Disabled;
+		return SettingStatus::Enabled;
 	}
 
 	/**

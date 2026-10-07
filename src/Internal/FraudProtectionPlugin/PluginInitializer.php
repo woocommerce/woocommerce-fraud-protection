@@ -34,16 +34,28 @@ class PluginInitializer {
 	private const MINIMUM_WC_VERSION = '9.8.0';
 
 	/**
+	 * Whether the running copy of the plugin was loaded as an MU-plugin.
+	 *
+	 * @var bool
+	 */
+	private static bool $is_mu_plugin = false;
+
+	/**
 	 * Bootstrap the plugin at load time (before WooCommerce loads).
 	 * Must be executed from the plugin main file.
 	 *
-	 * @param string $plugin_file Absolute path to the plugin's main file (pass `__FILE__`).
+	 * @param string $plugin_file  Absolute path to the plugin's main file (pass `__FILE__`).
+	 * @param bool   $is_mu_plugin Whether the plugin is being loaded as an MU-plugin.
 	 *
 	 * @return void
 	 */
-	public static function run( string $plugin_file ): void {
-		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.3' );
+	public static function run( string $plugin_file, bool $is_mu_plugin = false ): void {
+		self::$is_mu_plugin = $is_mu_plugin;
+
+		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.8' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', $plugin_file );
+
+		self::register_managed_textdomain();
 
 		// Force-disable WC Core's built-in fraud protection feature to prevent
 		// session and script conflicts with this plugin's implementation.
@@ -83,11 +95,71 @@ class PluginInitializer {
 		require_once $autoload;
 
 		$container = wc_get_container();
+		if ( self::is_managed_install() ) {
+			$container->get( ManagedTranslationUpdater::class )->register();
+		}
+
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			$container->get( FraudProtectionCommands::class )->register();
 		}
 
 		$container->get( FraudProtectionController::class )->register();
+	}
+
+	/**
+	 * Register managed PHP translation loading.
+	 *
+	 * @internal
+	 */
+	public static function register_managed_textdomain(): void {
+		$callback = array( self::class, 'load_managed_textdomain' );
+		if ( self::is_managed_install() && false === has_action( 'init', $callback ) ) {
+			add_action( 'init', $callback, 0 );
+		}
+	}
+
+	/**
+	 * Load the managed PHP translation catalog.
+	 *
+	 * @internal Hook callback for `init`.
+	 */
+	public static function load_managed_textdomain(): void {
+		$locale = determine_locale();
+		load_textdomain(
+			'woocommerce-fraud-protection',
+			WP_LANG_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection-' . $locale . '.mo',
+			$locale
+		);
+	}
+
+	/**
+	 * Get the translation directory for settings scripts.
+	 *
+	 * @return string Absolute translation directory.
+	 */
+	public static function get_script_translation_dir(): string {
+		return self::is_managed_install()
+			? WP_LANG_DIR . '/woocommerce-fraud-protection'
+			: dirname( WC_FRAUD_PROTECTION_PLUGIN_FILE ) . '/languages';
+	}
+
+	/**
+	 * Check whether the running copy of the plugin was loaded as an MU-plugin.
+	 *
+	 * An MU-plugin copy yields to an active regular plugin copy, so a false result
+	 * also covers a site where both copies are installed.
+	 *
+	 * @return bool True for the MU-plugin copy, false for a regular or network-activated plugin.
+	 */
+	public static function is_mu_plugin(): bool {
+		return self::$is_mu_plugin;
+	}
+
+	/**
+	 * Check whether the managed loader started the plugin.
+	 */
+	private static function is_managed_install(): bool {
+		return defined( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL' ) && true === constant( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL' );
 	}
 
 	/**

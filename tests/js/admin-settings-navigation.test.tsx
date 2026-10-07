@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory } from 'history';
 
@@ -11,6 +11,7 @@ import {
 } from '@wordpress/data';
 
 import { settingsStore } from '../../client/admin-settings/data/store';
+import { rulesStore } from '../../client/admin-settings/data/rules-store';
 import { FraudProtectionAdminApp } from '../../client/admin-settings';
 
 function mockGetNewPath( _query: { page: string; tab: string }, path: string ) {
@@ -31,21 +32,94 @@ jest.mock( '@wordpress/notices', () => ( {
 	store: { name: 'core/notices' },
 } ) );
 
+jest.mock(
+	'@woocommerce/data',
+	() => ( {
+		useUserPreferences: () => ( {
+			isRequesting: false,
+			updateUserPreferences: jest.fn(),
+		} ),
+	} ),
+	{ virtual: true }
+);
+
 jest.mock( '@woocommerce/navigation', () => ( {
 	getHistory: () => mockHistory,
 	getNewPath: mockGetNewPath,
 } ) );
 
+// The real checkout attempts and rules pages render DataViews; it is bundled
+// and heavy, and these tests cover the app's routing rather than the lists, so
+// it is replaced with a no-op (its composition parts included). The rule
+// drawer's DataForm stays real so a rule can be created through it. The pages'
+// Tabs still render and need a ResizeObserver. The lists import DataViews from
+// the `/wp` runtime entry point, so mock that.
+jest.mock( '@wordpress/dataviews/wp', () => ( {
+	...jest.requireActual( '@wordpress/dataviews/wp' ),
+	DataViews: Object.assign( () => null, {
+		Search: () => null,
+		FiltersToggle: () => null,
+		FiltersToggled: () => null,
+		ViewConfig: () => null,
+		Layout: () => null,
+		Footer: () => null,
+	} ),
+} ) );
+
+if ( ! window.ResizeObserver ) {
+	window.ResizeObserver = class {
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	};
+}
+
 const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
 const settingsResponse = {
 	automatic_protection: false,
 	performance: {
-		recommended_for_blocking: 0,
+		flagged_by_fraud_prevention: 0,
 		blocked_automatically: 0,
 		allowed_by_rules: 0,
 		blocked_by_rules: 0,
 	},
 };
+
+const SETTINGS_PATH = '/wc-admin/fraud-protection/settings';
+
+// The settings data is fetched as a plain object; the checkout attempts list is
+// fetched with `parse: false` and reads a Response. Answer each in kind so the
+// real list page mounts without error while the routing is exercised.
+const apiFetchImplementation = ( options: unknown ) => {
+	const { path } = ( options ?? {} ) as { path?: string };
+	if ( path && path.startsWith( '/wc-admin/fraud-protection/rules' ) ) {
+		return Promise.resolve( {
+			json: () => Promise.resolve( [] ),
+			headers: {
+				get: ( name: string ) =>
+					name === 'X-WP-Total' || name === 'X-WP-TotalPages'
+						? '0'
+						: null,
+			},
+		} );
+	}
+	if ( path && path.startsWith( '/wc-admin/fraud-protection/sessions' ) ) {
+		return Promise.resolve( {
+			json: () => Promise.resolve( [] ),
+			headers: { get: () => '0' },
+		} );
+	}
+
+	return Promise.resolve( settingsResponse );
+};
+
+// How many times the settings endpoint specifically was requested; the list
+// route also calls apiFetch, so a bare call count no longer isolates settings.
+const settingsFetchCount = () =>
+	mockedApiFetch.mock.calls.filter(
+		( [ options ] ) =>
+			( options as { path?: string } )?.path === SETTINGS_PATH
+	).length;
 
 const noticesStore = createReduxStore( 'core/notices', {
 	reducer: ( state = null ) => state,
@@ -58,6 +132,7 @@ const renderApp = ( initialRoute = '/' ) => {
 	mockHistory = createTestHistory( initialRoute );
 	const registry = createRegistry();
 	registry.register( settingsStore );
+	registry.register( rulesStore );
 	registry.register( noticesStore );
 
 	return render(
@@ -70,7 +145,9 @@ const renderApp = ( initialRoute = '/' ) => {
 describe( 'FraudProtectionAdminApp navigation', () => {
 	beforeEach( () => {
 		mockedApiFetch.mockReset();
-		mockedApiFetch.mockResolvedValue( settingsResponse );
+		mockedApiFetch.mockImplementation( apiFetchImplementation );
+		// jsdom does not implement scrolling.
+		jest.spyOn( window, 'scrollTo' ).mockImplementation( () => {} );
 	} );
 
 	afterEach( () => {
@@ -89,10 +166,12 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( 'Hello from the checkout attempts page.' )
+			screen.getByText( /See checkout attempts and how fraud prevention/ )
 		).toBeVisible();
 
-		await userEvent.click( screen.getByRole( 'link', { name: 'Back' } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 
 		await waitFor( () =>
 			expect( mockHistory.location.pathname ).toBe( '/' )
@@ -103,21 +182,191 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( confirm ).not.toHaveBeenCalled();
 	} );
 
+	it( 'marks the mount as a drill-down page only while a list page is shown', async () => {
+		const mount = document.createElement( 'div' );
+		mount.id = 'wc-fraud-protection-settings';
+		document.body.appendChild( mount );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'link', {
+				name: 'View checkout attempts',
+			} )
+		);
+		expect( mount ).toHaveClass( 'is-drill-down' );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
+		await screen.findByRole( 'heading', { name: 'Performance' } );
+		expect( mount ).not.toHaveClass( 'is-drill-down' );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'View rules' } )
+		);
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
+		expect( mount ).toHaveClass( 'is-drill-down' );
+
+		mount.remove();
+	} );
+
+	it( 'opens each page at the top, and leaves Back to the browser', async () => {
+		renderApp();
+		await screen.findByRole( 'heading', { name: 'Performance' } );
+		expect( window.scrollTo ).not.toHaveBeenCalled();
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+		);
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 1 );
+		expect( window.scrollTo ).toHaveBeenCalledWith( 0, 0 );
+
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
+		await userEvent.click(
+			await screen.findByRole( 'link', { name: 'View rules' } )
+		);
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 3 );
+
+		act( () => mockHistory.back() );
+		expect( mockHistory.location.pathname ).toBe( '/' );
+		expect( window.scrollTo ).toHaveBeenCalledTimes( 3 );
+	} );
+
+	it( 'keeps the scroll position when only the list state in the URL changes', async () => {
+		renderApp( '/checkout-attempts' );
+		await waitFor( () => expect( mockedApiFetch ).toHaveBeenCalled() );
+		const requestsBefore = mockedApiFetch.mock.calls.length;
+
+		// The lists push their tab, filters and page to the URL on the same route.
+		act( () => mockHistory.push( '/checkout-attempts?status=blocked' ) );
+		// Let the list request for the new URL settle.
+		await waitFor( () =>
+			expect( mockedApiFetch.mock.calls.length ).toBeGreaterThan(
+				requestsBefore
+			)
+		);
+		await act( async () => {} );
+
+		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
+		expect( window.scrollTo ).not.toHaveBeenCalled();
+	} );
+
 	it( 'loads settings only after returning from a direct checkout-attempt visit', async () => {
 		renderApp( '/checkout-attempts' );
 
 		expect(
-			screen.getByText( 'Hello from the checkout attempts page.' )
+			screen.getByText( /See checkout attempts and how fraud prevention/ )
 		).toBeVisible();
-		expect( mockedApiFetch ).not.toHaveBeenCalled();
+		// The list route never fetches the settings data, only its own list.
+		expect( settingsFetchCount() ).toBe( 0 );
 
-		await userEvent.click( screen.getByRole( 'link', { name: /^Back$/ } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 
 		expect( await screen.findByRole( 'checkbox' ) ).not.toBeChecked();
-		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( settingsFetchCount() ).toBe( 1 );
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {
-			path: '/wc-fraud-protection/v1/settings',
+			path: '/wc-admin/fraud-protection/settings',
 		} );
+	} );
+
+	it( 'loads the rules page on the dedicated route', async () => {
+		mockedApiFetch.mockResolvedValue( {
+			data: [],
+			totalItems: 0,
+			totalPages: 0,
+			page: 1,
+			perPage: 20,
+		} );
+		renderApp( '/rules' );
+
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
+		expect( mockHistory.location.pathname ).toBe( '/rules' );
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			parse: false,
+		} );
+	} );
+
+	it( 'navigates from the settings card to the distinct rules route', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse )
+			.mockResolvedValueOnce( {
+				data: [],
+				totalItems: 0,
+				totalPages: 0,
+				page: 1,
+				perPage: 20,
+			} );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'link', { name: 'View rules' } )
+		);
+
+		expect( mockHistory.location.pathname ).toBe( '/rules' );
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
+		expect( mockedApiFetch ).toHaveBeenNthCalledWith( 2, {
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20&orderby=created_at&order=desc',
+			parse: false,
+		} );
+	} );
+
+	it( 'moves to the rules page once a rule is created from the settings card', async () => {
+		mockedApiFetch.mockImplementation( ( options: unknown ) => {
+			const { path, method } = ( options ?? {} ) as {
+				path?: string;
+				method?: string;
+			};
+			if (
+				path === '/wc-admin/fraud-protection/rules' &&
+				method === 'POST'
+			) {
+				return Promise.resolve( {
+					id: 18,
+					action: 'allow',
+					type: 'email',
+					value: 'card@example.com',
+					created_at: '2026-09-15T12:00:00Z',
+					updated_at: null,
+				} );
+			}
+			return apiFetchImplementation( options );
+		} );
+		renderApp();
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Create rule' } )
+		);
+		const drawer = await screen.findByRole( 'dialog', {
+			name: 'Create rule',
+		} );
+		// The drawer opens on the settings page itself.
+		expect( mockHistory.location.pathname ).toBe( '/' );
+
+		await userEvent.type(
+			within( drawer ).getByLabelText( 'Value' ),
+			'card@example.com'
+		);
+		await userEvent.click(
+			within( drawer ).getByRole( 'button', { name: 'Create rule' } )
+		);
+
+		await waitFor( () =>
+			expect( mockHistory.location.pathname ).toBe( '/rules' )
+		);
+		expect(
+			await screen.findByRole( 'navigation', { name: 'Breadcrumb' } )
+		).toBeVisible();
 	} );
 
 	it( 'keeps settings open when checkout-attempt navigation is cancelled', async () => {
@@ -158,10 +407,12 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( window.confirm ).toHaveBeenCalledTimes( 1 );
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( 'Hello from the checkout attempts page.' )
+			screen.getByText( /See checkout attempts and how fraud prevention/ )
 		).toBeVisible();
 
-		await userEvent.click( screen.getByRole( 'link', { name: /^Back$/ } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 		const checkbox = await screen.findByRole( 'checkbox' );
 		expect( checkbox ).not.toBeChecked();
 		expect(
@@ -181,7 +432,9 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 				name: 'View checkout attempts',
 			} )
 		);
-		await userEvent.click( screen.getByRole( 'link', { name: 'Back' } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 		await userEvent.click( await screen.findByRole( 'checkbox' ) );
 
 		act( () => mockHistory.back() );
@@ -192,7 +445,9 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect( confirm ).toHaveBeenCalledTimes( 2 );
 
-		await userEvent.click( screen.getByRole( 'link', { name: /^Back$/ } ) );
+		await userEvent.click(
+			screen.getByRole( 'link', { name: 'Fraud prevention' } )
+		);
 		expect( await screen.findByRole( 'checkbox' ) ).not.toBeChecked();
 	} );
 

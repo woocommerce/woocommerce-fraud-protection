@@ -4,6 +4,7 @@
  *
  * This file lives in the plugin directory and is symlinked into mu-plugins/
  * on WPCloud. It loads the main plugin file from the expected location.
+ * The main file does not start this copy when a regular plugin copy is active.
  *
  * @package WooCommerce\FraudProtection
  */
@@ -30,8 +31,6 @@ function woocommerce_fraud_protection_symlinked_plugins_url( $url ) {
 	);
 }
 
-add_filter( 'plugins_url', 'woocommerce_fraud_protection_symlinked_plugins_url', 0, 1 );
-
 $woocommerce_fraud_protection_target = WPMU_PLUGIN_DIR . '/woocommerce-fraud-protection/woocommerce-fraud-protection.php';
 
 if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
@@ -41,3 +40,20 @@ if ( ! is_readable( $woocommerce_fraud_protection_target ) ) {
 }
 
 require_once $woocommerce_fraud_protection_target;
+
+// The main file does not start the MU-plugin copy when a kill switch applies or an active
+// regular plugin copy takes precedence. Managed-installation behavior must then stay off.
+if (
+	! class_exists( '\Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer', false )
+	|| ! \Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer::is_mu_plugin()
+) {
+	return;
+}
+
+add_filter( 'plugins_url', 'woocommerce_fraud_protection_symlinked_plugins_url', 0, 1 );
+
+if ( ! defined( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL' ) ) {
+	define( 'WC_FRAUD_PROTECTION_MANAGED_INSTALL', true );
+}
+
+\Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer::register_managed_textdomain();

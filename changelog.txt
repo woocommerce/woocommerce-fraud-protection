@@ -1,9 +1,51 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-2026-xx-xx - version 0.2.4
-* Added - Inbox invitation to enable automatic protection during early access.
-* Updated - Fraud Protection scripts now load on PayPal Payments pages that use PayPal JavaScript SDK v6.
+YYYY-xx-xx - version 0.2.9
+* Added - The rules list can now be filtered by rules created on or after, or on or before, a single date.
+* Updated - Fraud prevention settings, rules, and checkout attempts now use the same WordPress interface component versions as WooCommerce, with small visual differences.
+* Updated - The rules and checkout attempts pages now show only their own breadcrumb header, without the WooCommerce settings header and tabs, and open at the top of the page.
+* Updated - An active regular plugin installation now takes precedence over a managed must-use installation on the same site.
+* Updated - `wp wc fraud-protection status` now reports whether the plugin runs as a must-use or a regular plugin.
+* Updated - Fraud prevention now recognizes a shopper's browser with its own session cookie, `wfp_id`, and no longer uses or sets the `tk_ai` cookie.
 * Updated - Verification requests now include Fraud Protection and selected payment gateway plugin versions.
+* Fixed - The automatic fraud prevention checkbox now lines up with the first line of its label.
+* Fixed - The checkout attempts link in the automatic fraud prevention notice now matches the notice's Learn more link.
+* Fixed - A locked rule type in the rule form now uses the same text color as the locked value.
+* Fixed - The link in a flagged checkout attempt's explanation no longer shows a focus outline when opened with a mouse click.
+* Dev - The admin REST endpoints moved from the wc-fraud-protection/v1 namespace to wc-admin/fraud-protection; the old routes were removed.
+
+2026-09-22 - version 0.2.8
+* Updated - IP location is now hidden by default in the checkout attempts list and remains available in view options.
+* Updated - Fraud prevention settings, checkout attempts, and rules are now available by default.
+
+2026-09-22 - version 0.2.7
+* Updated - Verification payment data now identifies supported express and digital wallet methods.
+
+2026-09-18 - version 0.2.6
+* Added - Managed installations now load available Fraud Protection translations for PHP and settings screens.
+* Updated - Checkout attempt dates now display in the browser's time zone.
+* Updated - The checkout attempts list now shows search, filters, and view options beside the status tabs and aligns its column headers with their values.
+* Updated - Saving a rule from Fraud prevention settings now opens the rules page.
+* Updated - The Inbox invitation's Learn more link now opens in a new tab.
+* Updated - Rules list filters, sorting, paging, and display preferences now persist across navigation and visits.
+* Fixed - The rules list keeps its actions column while it refreshes.
+* Fixed - Manual rule feedback now identifies the rule action and matching field.
+
+2026-09-16 - version 0.2.5
+* Added - Checkout attempts list on the Fraud prevention settings page showing recent attempts and how each was handled, with filtering, sorting and search.
+* Added - Merchants can view their active allow and block rules with filters and paging.
+* Added - Merchants can create exact email and IP allow or block rules.
+* Added - Merchants can edit or delete active allow and block rules.
+* Added - Fraud prevention settings now link to rule creation and management.
+* Added - Merchants can create, edit, or delete email and IP rules from recorded checkout attempts.
+* Updated - Refined merchant-facing copy and rule date details across Fraud prevention settings.
+
+2026-09-14 - version 0.2.4
+* Added - Inbox invitation to enable automatic protection during early access.
+* Added - Merchants can opt out before automatic protection is enabled automatically.
+* Updated - Performance summary now labels flagged checkout attempts and hides that metric when automatic protection is enabled.
+* Updated - Fraud Protection scripts now load on PayPal Payments pages that use PayPal JavaScript SDK v6.
+* Fixed - Fraud Protection scripts load for PayPal buttons on block-theme payment forms and classic mini-cart widgets.
 
 2026-09-10 - version 0.2.3
 * Added - Fraud prevention settings now show a 30-day summary of protected payment attempts.

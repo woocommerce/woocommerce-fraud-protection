@@ -1,0 +1,283 @@
+import apiFetch from '@wordpress/api-fetch';
+import { createRegistry } from '@wordpress/data';
+
+import {
+	normalizeRulesQuery,
+	rulesStore,
+	type Rule,
+	type RulesQuery,
+} from '../../client/admin-settings/data/rules-store';
+
+jest.mock( '@wordpress/api-fetch', () => ( {
+	__esModule: true,
+	default: jest.fn(),
+} ) );
+
+const mockedApiFetch = apiFetch as jest.MockedFunction< typeof apiFetch >;
+
+const rule: Rule = {
+	id: 9,
+	action: 'allow',
+	value: 'shopper@example.com',
+	type: 'email',
+	created_at: '2026-09-14T12:00:00Z',
+	updated_at: null,
+};
+
+const collectionResponse = (
+	data: unknown = [ rule ],
+	total: string | null = '1',
+	totalPages: string | null = '1'
+): Response =>
+	( {
+		json: jest.fn().mockResolvedValue( data ),
+		headers: {
+			get: ( name: string ) => {
+				if ( name === 'X-WP-Total' ) {
+					return total;
+				}
+				if ( name === 'X-WP-TotalPages' ) {
+					return totalPages;
+				}
+				return null;
+			},
+		},
+	} ) as unknown as Response;
+
+const setupRegistry = () => {
+	const registry = createRegistry();
+	registry.register( rulesStore );
+	return registry;
+};
+
+describe( 'rulesStore', () => {
+	beforeEach( () => {
+		mockedApiFetch.mockReset();
+	} );
+
+	it( 'applies query defaults and omits empty optional values', () => {
+		expect(
+			normalizeRulesQuery( {
+				page: 0,
+				perPage: 0,
+				action: '',
+				type: 'email',
+				value: '',
+			} )
+		).toEqual( {
+			page: 1,
+			perPage: 20,
+			type: 'email',
+		} );
+	} );
+
+	it( 'resolves and caches collection responses by normalized query', async () => {
+		const registry = setupRegistry();
+		const query = {
+			page: 1,
+			perPage: 20,
+			action: '',
+		} as RulesQuery;
+		mockedApiFetch.mockResolvedValueOnce(
+			collectionResponse( [ rule ], '23', '2' )
+		);
+
+		await expect(
+			registry.resolveSelect( rulesStore ).getRules( query )
+		).resolves.toEqual( [ rule ] );
+		await expect(
+			registry.resolveSelect( rulesStore ).getRules( {
+				page: 1,
+				perPage: 20,
+			} )
+		).resolves.toEqual( [ rule ] );
+
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( mockedApiFetch ).toHaveBeenCalledWith( {
+			path: '/wc-admin/fraud-protection/rules?page=1&per_page=20',
+			parse: false,
+		} );
+		expect( registry.select( rulesStore ).getTotalItems( query ) ).toBe(
+			23
+		);
+		expect( registry.select( rulesStore ).getTotalPages( query ) ).toBe(
+			2
+		);
+	} );
+
+	it( 'keeps separate collection results for separate queries', async () => {
+		const registry = setupRegistry();
+		const firstQuery = { page: 1, perPage: 20 };
+		const secondQuery = { page: 2, perPage: 20 };
+		const secondRule = { ...rule, id: 10, value: 'other@example.com' };
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse( [ rule ], '2', '2' ) )
+			.mockResolvedValueOnce(
+				collectionResponse( [ secondRule ], '2', '2' )
+			);
+
+		await registry.resolveSelect( rulesStore ).getRules( firstQuery );
+		await registry.resolveSelect( rulesStore ).getRules( secondQuery );
+
+		expect( registry.select( rulesStore ).getRules( firstQuery ) ).toEqual(
+			[ rule ]
+		);
+		expect( registry.select( rulesStore ).getRules( secondQuery ) ).toEqual(
+			[ secondRule ]
+		);
+	} );
+
+	it.each( [
+		[ 'a non-array body', collectionResponse( { data: [ rule ] } ) ],
+		[ 'an invalid rule', collectionResponse( [ { ...rule, id: '9' } ] ) ],
+		[ 'a missing total', collectionResponse( [ rule ], null, '1' ) ],
+		[ 'a negative total', collectionResponse( [ rule ], '-1', '1' ) ],
+		[ 'a decimal total', collectionResponse( [ rule ], '1.5', '1' ) ],
+		[ 'a missing page total', collectionResponse( [ rule ], '1', null ) ],
+	] )( 'records a resolution error for %s', async ( _, response ) => {
+		const registry = setupRegistry();
+		const query = { page: 1, perPage: 20 };
+		mockedApiFetch.mockResolvedValueOnce( response );
+
+		await expect(
+			registry.resolveSelect( rulesStore ).getRules( query )
+		).rejects.toThrow( 'Could not get a valid response from the server.' );
+		expect(
+			registry
+				.select( rulesStore )
+				.getResolutionError( 'getRules', [ query ] )
+		).toEqual(
+			expect.objectContaining( {
+				message: 'Could not get a valid response from the server.',
+			} )
+		);
+	} );
+
+	it( 'records a generic resolution error when collection JSON cannot be parsed', async () => {
+		const registry = setupRegistry();
+		const query = { page: 1, perPage: 20 };
+		const response = collectionResponse();
+		( response.json as jest.Mock ).mockRejectedValueOnce(
+			new SyntaxError( 'Unexpected token' )
+		);
+		mockedApiFetch.mockResolvedValueOnce( response );
+
+		await expect(
+			registry.resolveSelect( rulesStore ).getRules( query )
+		).rejects.toThrow( 'Could not get a valid response from the server.' );
+	} );
+
+	it( 'caches rule details by ID and rejects invalid details', async () => {
+		const registry = setupRegistry();
+		mockedApiFetch.mockResolvedValueOnce( rule );
+
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( rule.id )
+		).resolves.toEqual( rule );
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( rule.id )
+		).resolves.toEqual( rule );
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 1 );
+
+		mockedApiFetch.mockResolvedValueOnce( { ...rule, updated_at: 12 } );
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( 10 )
+		).rejects.toThrow( 'Could not get a valid response from the server.' );
+	} );
+
+	it( 'invalidates every list resolution after create', async () => {
+		const registry = setupRegistry();
+		const firstQuery = { page: 1, perPage: 20 };
+		const secondQuery = { page: 2, perPage: 20 };
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() )
+			.mockResolvedValueOnce( collectionResponse() );
+		await registry.resolveSelect( rulesStore ).getRules( firstQuery );
+		await registry.resolveSelect( rulesStore ).getRules( secondQuery );
+
+		mockedApiFetch.mockResolvedValueOnce( rule );
+		await registry.dispatch( rulesStore ).createRule( {
+			action: rule.action,
+			type: rule.type,
+			value: rule.value,
+			origin: 'rules',
+		} );
+
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ firstQuery ] )
+		).toBe( false );
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ secondQuery ] )
+		).toBe( false );
+	} );
+
+	it( 'updates detail cache and invalidates list resolutions', async () => {
+		const registry = setupRegistry();
+		const query = { page: 1, perPage: 20 };
+		const updatedRule = { ...rule, action: 'block' as const };
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() )
+			.mockResolvedValueOnce( rule );
+		await registry.resolveSelect( rulesStore ).getRules( query );
+		await registry.resolveSelect( rulesStore ).getRule( rule.id );
+
+		mockedApiFetch.mockResolvedValueOnce( updatedRule );
+		await registry.dispatch( rulesStore ).updateRule( rule.id, {
+			action: 'block',
+			type: rule.type,
+			value: rule.value,
+			origin: 'rules',
+		} );
+
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ query ] )
+		).toBe( false );
+		expect(
+			registry
+				.select( rulesStore )
+				.hasFinishedResolution( 'getRule', [ rule.id ] )
+		).toBe( true );
+		expect( registry.select( rulesStore ).getRule( rule.id ) ).toEqual(
+			updatedRule
+		);
+		await registry.resolveSelect( rulesStore ).getRule( rule.id );
+		expect( mockedApiFetch ).toHaveBeenCalledTimes( 3 );
+	} );
+
+	it( 'removes cached detail and invalidates resolutions after delete', async () => {
+		const registry = setupRegistry();
+		const query = { page: 1, perPage: 20 };
+		mockedApiFetch
+			.mockResolvedValueOnce( collectionResponse() )
+			.mockResolvedValueOnce( rule );
+		await registry.resolveSelect( rulesStore ).getRules( query );
+		await registry.resolveSelect( rulesStore ).getRule( rule.id );
+
+		mockedApiFetch.mockResolvedValueOnce( undefined );
+		await registry.dispatch( rulesStore ).deleteRule( rule.id, 'rules' );
+
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRule', [ rule.id ] )
+		).toBe( false );
+		mockedApiFetch.mockRejectedValueOnce( new Error( 'Rule not found.' ) );
+		expect(
+			registry.select( rulesStore ).getRule( rule.id )
+		).toBeUndefined();
+		await expect(
+			registry.resolveSelect( rulesStore ).getRule( rule.id )
+		).rejects.toThrow( 'Rule not found.' );
+		expect(
+			registry
+				.select( rulesStore )
+				.hasStartedResolution( 'getRules', [ query ] )
+		).toBe( false );
+	} );
+} );

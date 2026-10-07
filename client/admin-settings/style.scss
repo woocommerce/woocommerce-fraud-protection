@@ -1,9 +1,12 @@
+@use '@wordpress/base-styles/z-index' as *;
+@use '../settings-list-page' as settings-list-page;
+@import '@wordpress/dataviews/build-style/style.css';
+
 .wc-fraud-protection-settings__content {
 	max-width: 720px;
 	margin: 0 auto;
 
 	.wc-fraud-protection-settings__card {
-		border-color: var(--wpds-color-stroke-surface-neutral-weak);
 		border-radius: 10px;
 
 		> :first-child h2 {
@@ -29,7 +32,9 @@
 
 	.wc-fraud-protection-settings__performance-metrics {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-auto-columns: minmax(0, 1fr);
+		grid-auto-flow: column;
+		grid-auto-rows: 1fr;
 		margin: 0;
 		border-block: var(--wpds-border-width-xs) solid
 			var(--wpds-color-stroke-surface-neutral-weak);
@@ -41,12 +46,11 @@
 
 	.wc-fraud-protection-settings__performance-metric {
 		display: flex;
-		min-height: 104px;
 		box-sizing: border-box;
 		flex-direction: column;
 		justify-content: center;
 		gap: var(--wpds-dimension-gap-sm);
-		padding: var(--wpds-dimension-padding-sm)
+		padding: var(--wpds-dimension-padding-md)
 			var(--wpds-dimension-padding-2xl);
 	}
 
@@ -56,9 +60,21 @@
 		border-radius: var(--wpds-border-radius-sm);
 	}
 
+	.wc-fraud-protection-settings__performance-value {
+		display: flex;
+		align-items: flex-end;
+		gap: var(--wpds-dimension-gap-xs);
+		margin: 0;
+	}
+
+	.wc-fraud-protection-settings__performance-caution-icon {
+		color: var(--wpds-color-foreground-content-caution-weak);
+	}
+
 	@container (max-width: 529px) {
 
 		.wc-fraud-protection-settings__performance-metrics {
+			grid-auto-flow: row;
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
@@ -69,4 +85,133 @@
 			grid-template-columns: minmax(0, 1fr);
 		}
 	}
+}
+
+.wc-fraud-protection-rules {
+
+	@include settings-list-page.page;
+
+	&__header {
+
+		@include settings-list-page.header;
+	}
+
+	&__description {
+
+		@include settings-list-page.description;
+	}
+
+	&__breadcrumb {
+
+		@include settings-list-page.breadcrumb;
+	}
+
+	.woocommerce_page_wc-settings #mainform &__breadcrumb {
+		margin: 0;
+	}
+
+	&__error {
+		margin-block: var(--wpds-dimension-gap-lg);
+	}
+
+	&__toolbar {
+
+		@include settings-list-page.toolbar;
+	}
+
+	&__view-controls {
+		margin-inline-start: auto;
+	}
+
+	@include settings-list-page.dataviews;
+
+	&__delete-button {
+		--wp-ui-button-background-color: var(--wpds-color-background-interactive-error-strong);
+		--wp-ui-button-background-color-active: var(--wpds-color-background-interactive-error-strong-active);
+		--wp-ui-button-background-color-disabled: var(--wpds-color-background-interactive-error-strong-disabled);
+		--wp-ui-button-foreground-color: var(--wpds-color-foreground-interactive-error-strong);
+		--wp-ui-button-foreground-color-active: var(--wpds-color-foreground-interactive-error-strong-active);
+		--wp-ui-button-foreground-color-disabled: var(--wpds-color-foreground-interactive-error-strong-disabled);
+	}
+
+	&__action--allow &__action-icon {
+		color: var(--wpds-color-foreground-content-success-weak);
+	}
+
+	&__action--block &__action-icon {
+		color: var(--wpds-color-foreground-content-error-weak);
+	}
+
+	&__action,
+	&__value {
+		color: var(--wpds-color-foreground-content-neutral);
+	}
+}
+
+// The rules and checkout attempts pages show their own breadcrumb header, so
+// hide the WooCommerce "Settings" header and the settings tabs, as WooCommerce
+// does for its own drill-down settings pages. The server renders both outside
+// the React mount, so they are hidden through the mount's drill-down class.
+body:has( #wc-fraud-protection-settings.is-drill-down ) {
+
+	.woocommerce-layout__header,
+	#mainform nav.nav-tab-wrapper {
+		display: none;
+	}
+}
+
+.wc-fraud-protection-rule-form__metadata {
+	color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+.wc-fraud-protection-rule-form__duplicate-link {
+	color: var(--wpds-color-foreground-interactive-brand);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	cursor: pointer;
+
+	&:hover,
+	&:active {
+		color: var(--wpds-color-foreground-interactive-brand-active);
+	}
+}
+
+// WordPress's components copy greys out a disabled select. Match the disabled
+// look of the @wordpress/ui value input instead.
+.wc-fraud-protection-rule-form__select:has(select:disabled) {
+
+	.components-input-control__container {
+		background-color: var(--wpds-color-background-interactive-neutral-weak-disabled);
+	}
+
+	.components-input-control__backdrop {
+		border-color: var(--wpds-color-stroke-interactive-neutral-disabled);
+	}
+}
+
+// @wordpress/ui 0.17 labels use weight 499; match the 600 of the select labels
+// above it, as newer @wordpress/ui versions do.
+.wc-fraud-protection-rule-form__value label {
+	font-weight: 600;
+}
+
+.wc-fraud-protection-rule-form__loading {
+	align-items: center;
+	justify-content: center;
+	padding-block: var(--wpds-dimension-padding-3xl);
+}
+
+.wc-fraud-protection-rule-form__drawer-portal {
+	--wp-ui-drawer-z-index: #{z-index('.components-modal__screen-overlay')};
+
+	// Chromium's user-agent stylesheet dims disabled selects with opacity on
+	// top of the disabled text colour, which SelectControl does not reset.
+	// Without this, a locked select looks lighter than a locked text input.
+	.components-select-control__input:disabled {
+		opacity: 1;
+	}
+}
+
+.wc-fraud-protection-rules__dialog-portal {
+	--wp-ui-dialog-z-index: #{z-index('.components-modal__screen-overlay')};
 }

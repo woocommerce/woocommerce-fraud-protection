@@ -1,0 +1,72 @@
+@mixin page {
+	// WooCommerce settings add 30px of inline padding around the page content.
+	margin-inline: -30px;
+	padding-block: var(--wpds-dimension-padding-lg);
+	padding-inline: var(--wpds-dimension-padding-2xl);
+	background: var(--wpds-color-background-surface-neutral-strong);
+}
+
+@mixin header {
+	display: flex;
+	flex-direction: column;
+	gap: var(--wpds-dimension-gap-md);
+	margin-block-end: var(--wpds-dimension-gap-lg);
+}
+
+@mixin breadcrumb {
+	display: flex;
+	align-items: center;
+	gap: var(--wpds-dimension-gap-xs);
+	margin: 0;
+	color: var(--wpds-color-foreground-content-neutral);
+	font-size: var(--wpds-typography-font-size-md);
+	font-weight: 600;
+	line-height: var(--wpds-typography-line-height-md);
+
+	// The parent segment is a link and reads as one: underlined in the same
+	// colour as the current segment, as in the design.
+	a {
+		color: inherit;
+		text-decoration: underline;
+		text-decoration-thickness: from-font;
+		text-underline-position: from-font;
+	}
+
+	span[aria-hidden='true'] {
+		color: var(--wpds-color-foreground-content-neutral-weak);
+	}
+}
+
+@mixin description {
+	margin: 0;
+	color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+// The row that holds the status tabs and, to their right, the list controls
+// (search, filters, view options). A rule under the row separates it from the
+// filters bar or the table, as in the design.
+@mixin toolbar {
+	flex-wrap: wrap;
+	border-block-end: var(--wpds-border-width-xs) solid
+		var(--wpds-color-stroke-surface-neutral-weak);
+}
+
+// DataViews indents its filters bar and footer by 24px of its own; the page
+// gutter provides that, so remove the duplicate and let every row align with
+// the breadcrumb, description and tabs. The filters bar and the empty state
+// then get their own room below the toolbar rule.
+@mixin dataviews {
+
+	.dataviews-filters__container,
+	.dataviews-footer {
+		padding-inline: 0;
+	}
+
+	.dataviews-filters__container {
+		margin-block-start: var(--wpds-dimension-gap-lg);
+	}
+
+	.dataviews-no-results {
+		margin-block-start: var(--wpds-dimension-gap-xl);
+	}
+}

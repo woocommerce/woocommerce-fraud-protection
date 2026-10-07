@@ -29,6 +29,21 @@ class StripePaymentDataCompat {
 	private const GATEWAY_PREFIX = 'stripe';
 
 	/**
+	 * Wallet names accepted from Stripe request and provider data.
+	 *
+	 * @var array<string, string>
+	 */
+	private const WALLET_MAP = array(
+		'apple_pay'  => 'apple_pay',
+		'google_pay' => 'google_pay',
+		'amazon_pay' => 'amazon_pay',
+		'paypal'     => 'paypal',
+		'link'       => 'link',
+		'cashapp'    => 'cash_app_pay',
+		'wechat_pay' => 'wechat_pay',
+	);
+
+	/**
 	 * Register the filter callback.
 	 *
 	 * @return void
@@ -53,33 +68,34 @@ class StripePaymentDataCompat {
 
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
+		$request_wallet      = $this->normalize_wallet( $checkout_payment_fields['express_payment_type'] ?? null );
+		$resolved            = $resolved
+			->with_transaction_mode( $transaction_mode )
+			->with_merchant_identifier( $merchant_identifier, 'account' );
 
 		$pm_id = $checkout_payment_fields['wc-stripe-payment-method'] ?? ( $checkout_payment_fields['stripe_source'] ?? '' );
 		if ( empty( $pm_id ) ) {
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		$token_value = $checkout_payment_fields['wc-stripe-payment-token'] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
 		if ( ! class_exists( '\WC_Stripe_API' ) ) {
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
 		$pm_details = \WC_Stripe_API::get_payment_method( $pm_id );
 
 		if ( is_wp_error( $pm_details ) || ! is_object( $pm_details ) || ! isset( $pm_details->type ) ) {
-			return $resolved
-				->with_transaction_mode( $transaction_mode )
-				->with_merchant_identifier( $merchant_identifier, 'account' );
+			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
 
+		$existing_wallet = $resolved->get_instrument_wallet();
+		$provider_wallet = $this->normalize_wallet( $pm_details->type );
+
 		if ( 'card' !== $pm_details->type || ! isset( $pm_details->card ) ) {
-			return new PaymentMethodData(
+			$result = new PaymentMethodData(
 				$resolved->get_gateway(),
 				$pm_details->type,
 				$is_saved,
@@ -88,11 +104,14 @@ class StripePaymentDataCompat {
 				$merchant_identifier,
 				'account'
 			);
+
+			return $result->with_instrument_wallet_if_empty( $existing_wallet ?? $provider_wallet ?? $request_wallet );
 		}
 
-		$postcode = $pm_details->billing_details->address->postal_code ?? null;
+		$postcode        = $pm_details->billing_details->address->postal_code ?? null;
+		$provider_wallet = $this->normalize_provider_wallet( $pm_details->card->wallet->type ?? null );
 
-		return new PaymentMethodData(
+		$result = new PaymentMethodData(
 			$resolved->get_gateway(),
 			'card',
 			$is_saved,
@@ -112,6 +131,32 @@ class StripePaymentDataCompat {
 			$merchant_identifier,
 			'account'
 		);
+
+		return $result->with_instrument_wallet_if_empty( $existing_wallet ?? $provider_wallet ?? $request_wallet );
+	}
+
+	/**
+	 * Normalize a supported Stripe wallet value.
+	 *
+	 * @param mixed $wallet Raw wallet value.
+	 * @return ?string Normalized wallet value.
+	 */
+	private function normalize_wallet( $wallet ): ?string {
+		return is_string( $wallet ) ? ( self::WALLET_MAP[ strtolower( $wallet ) ] ?? null ) : null;
+	}
+
+	/**
+	 * Normalize a Stripe provider wallet and preserve new provider values.
+	 *
+	 * @param mixed $wallet Raw provider wallet value.
+	 * @return ?string Wallet value.
+	 */
+	private function normalize_provider_wallet( $wallet ): ?string {
+		if ( ! is_string( $wallet ) || '' === $wallet ) {
+			return null;
+		}
+
+		return $this->normalize_wallet( $wallet ) ?? $wallet;
 	}
 
 	/**

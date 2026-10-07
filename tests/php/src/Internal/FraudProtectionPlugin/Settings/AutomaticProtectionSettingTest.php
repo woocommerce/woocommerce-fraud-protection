@@ -17,7 +17,9 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingStatus
  */
 class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 
-	private const OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection';
+	private const OPTION_NAME              = 'woocommerce_fraud_protection_automatic_protection';
+	private const OPT_OUT_DATE_OPTION_NAME = 'woocommerce_fraud_protection_automatic_protection_opted_out_at';
+	private const ENABLED_AT_OPTION_NAME   = 'woocommerce_fraud_protection_automatic_protection_enabled_at';
 
 	/**
 	 * Automatic protection setting.
@@ -51,7 +53,10 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( SettingStatus::Disabled, $this->sut->get_default() );
 		$this->assertFalse( $this->sut->is_enabled() );
 		$this->assertSame( AutomaticProtectionSource::None, $this->sut->get_source() );
+		$this->assertFalse( $this->sut->is_opted_out() );
+		$this->assertNull( $this->sut->get_opted_out_at() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
+		$this->assertNull( get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) );
 	}
 
 	/**
@@ -104,12 +109,65 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Reset removes an explicit value.
+	 * @testdox An opt-out stores its first UTC date.
+	 */
+	public function test_opt_out_stores_first_utc_date(): void {
+		$before = time();
+		$this->assertTrue( $this->sut->set_opted_out() );
+		$after = time();
+
+		$stored_date = get_option( self::OPT_OUT_DATE_OPTION_NAME );
+		$this->assertIsString( $stored_date );
+		$this->assertSame( $stored_date, $this->sut->get_opted_out_at() );
+		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $stored_date );
+		$stored_timestamp = strtotime( $stored_date . ' UTC' );
+		$this->assertGreaterThanOrEqual( $before, $stored_timestamp );
+		$this->assertLessThanOrEqual( $after, $stored_timestamp );
+		$this->assertTrue( $this->sut->is_opted_out() );
+
+		update_option( self::OPT_OUT_DATE_OPTION_NAME, '2026-09-11 12:00:00' );
+		$this->assertFalse( $this->sut->set_opted_out() );
+		$this->assertSame( '2026-09-11 12:00:00', get_option( self::OPT_OUT_DATE_OPTION_NAME ) );
+	}
+
+	/**
+	 * @testdox Turning protection on records the enable date and off clears it.
+	 */
+	public function test_enabled_at_is_recorded_on_enable_and_cleared_on_disable(): void {
+		$this->assertNull( $this->sut->get_enabled_at() );
+
+		$before = time();
+		$this->assertTrue( $this->sut->set_enabled( true ) );
+		$after = time();
+
+		$enabled_at = $this->sut->get_enabled_at();
+		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', (string) $enabled_at );
+		$stored_timestamp = strtotime( $enabled_at . ' UTC' );
+		$this->assertGreaterThanOrEqual( $before, $stored_timestamp );
+		$this->assertLessThanOrEqual( $after, $stored_timestamp );
+
+		// Re-saving while already on keeps the original enable date.
+		$this->assertTrue( $this->sut->set_enabled( true ) );
+		$this->assertSame( $enabled_at, $this->sut->get_enabled_at() );
+
+		// Turning it off clears the date, and the getter returns null while off.
+		$this->assertTrue( $this->sut->set_enabled( false ) );
+		$this->assertNull( $this->sut->get_enabled_at() );
+		$this->assertNull( get_option( self::ENABLED_AT_OPTION_NAME, null ) );
+	}
+
+	/**
+	 * @testdox Reset removes the explicit value, opt-out date, and enable date.
 	 */
 	public function test_reset_deletes_value(): void {
-		$this->sut->set_enabled( false );
+		$this->sut->set_enabled( true );
+		$this->sut->set_opted_out();
+		$this->assertNotNull( get_option( self::ENABLED_AT_OPTION_NAME, null ) );
 
 		$this->assertTrue( $this->sut->reset() );
 		$this->assertNull( get_option( self::OPTION_NAME, null ) );
+		$this->assertNull( get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) );
+		$this->assertNull( get_option( self::ENABLED_AT_OPTION_NAME, null ) );
+		$this->assertFalse( $this->sut->is_opted_out() );
 	}
 }

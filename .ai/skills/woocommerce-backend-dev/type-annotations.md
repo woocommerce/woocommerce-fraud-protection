@@ -11,7 +11,14 @@
 
 ## Overview
 
-WooCommerce uses PHPStan for static analysis. Beyond standard PHPDoc annotations (`@param`, `@return`, `@var`), use PHPStan-specific annotations to provide richer type information that enables better type inference.
+The plugin uses PHPStan for static analysis. Beyond standard PHPDoc annotations (`@param`, `@return`, `@var`), use PHPStan-specific annotations to provide richer type information that enables better type inference.
+
+### Project Configuration
+
+- Run with `npm run phpstan` (or `vendor/bin/phpstan analyse --memory-limit=2G`). CI runs it on every pull request.
+- `phpstan.neon`: level 8 over `woocommerce-fraud-protection.php` and `src/`, with `phpVersion` pinned to 8.1, `treatPhpDocTypesAsCertain: false`, and `missingType.iterableValue` ignored. There is no baseline file; new errors must be fixed.
+- WordPress, WooCommerce, WP-CLI, and the WordPress test library come from the `php-stubs/*` packages. Third-party gateway classes (Stripe, WooPayments, Square, PayPal) and `WC_Unit_Test_Case` are declared in `stubs/`. When code references a new third-party class, add or extend a stub there instead of adding an ignore.
+- Iterable value types are not required by the level, but the existing code documents them (`array<string, mixed>`, `string[]`); keep doing so.
 
 ## When to Use PHPStan Annotations
 

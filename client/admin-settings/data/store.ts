@@ -1,12 +1,18 @@
 import apiFetch from '@wordpress/api-fetch';
 import { createReduxStore, register } from '@wordpress/data';
 
+import { SETTINGS_OPT_OUT_PATH, SETTINGS_PATH } from '../../rest-api';
+
 export type Settings = {
 	automatic_protection: boolean;
+	automatic_protection_opted_out: boolean;
+	// GMT datetime (RFC3339 without offset) protection was last turned on, or
+	// null when off.
+	automatic_protection_enabled_at: string | null;
 };
 
 export type Performance = {
-	recommended_for_blocking: number;
+	flagged_by_fraud_prevention: number;
 	blocked_automatically: number;
 	allowed_by_rules: number;
 	blocked_by_rules: number;
@@ -18,13 +24,14 @@ type SettingsResponse = Settings & {
 
 export type SettingsError = {
 	message: string | null;
-	operation: 'load' | 'save';
+	operation: 'load' | 'opt_out' | 'save';
 } | null;
 
 type State = {
 	current: Settings | null;
 	error: SettingsError;
 	isSaving: boolean;
+	isOptingOut: boolean;
 	performance: Performance | null;
 	saved: Settings | null;
 };
@@ -35,12 +42,14 @@ type Action =
 	| { type: 'RECEIVE_SETTINGS_RESPONSE'; response: SettingsResponse }
 	| { type: 'SET_AUTOMATIC_PROTECTION'; value: boolean }
 	| { type: 'SET_ERROR'; error: SettingsError }
+	| { type: 'SET_IS_OPTING_OUT'; isOptingOut: boolean }
 	| { type: 'SET_IS_SAVING'; isSaving: boolean };
 
 const DEFAULT_STATE: State = {
 	current: null,
 	error: null,
 	isSaving: false,
+	isOptingOut: false,
 	performance: null,
 	saved: null,
 };
@@ -77,6 +86,10 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 		case 'RECEIVE_SETTINGS_RESPONSE': {
 			const settings = {
 				automatic_protection: action.response.automatic_protection,
+				automatic_protection_opted_out:
+					action.response.automatic_protection_opted_out,
+				automatic_protection_enabled_at:
+					action.response.automatic_protection_enabled_at,
 			};
 
 			return {
@@ -100,6 +113,8 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 			};
 		case 'SET_ERROR':
 			return { ...state, error: action.error };
+		case 'SET_IS_OPTING_OUT':
+			return { ...state, isOptingOut: action.isOptingOut };
 		case 'SET_IS_SAVING':
 			return { ...state, isSaving: action.isSaving };
 		default:
@@ -123,16 +138,33 @@ const actions = {
 	setError( error: SettingsError ): Action {
 		return { type: 'SET_ERROR', error };
 	},
+	setIsOptingOut( isOptingOut: boolean ): Action {
+		return { type: 'SET_IS_OPTING_OUT', isOptingOut };
+	},
 	setIsSaving( isSaving: boolean ): Action {
 		return { type: 'SET_IS_SAVING', isSaving };
 	},
+	// Save the automatic-protection setting. With no argument it saves the store's
+	// current value (the settings page's dirty edit); with `overrides` it saves
+	// the given value directly, which lets other surfaces — such as the checkout
+	// attempts list's enable drawer — turn the setting on and update the shared
+	// store from the response, so every view stays in sync without a reload.
 	saveSettings:
-		() =>
+		( overrides?: Partial< Settings > ) =>
 		async ( { dispatch, select }: StoreCallback ) => {
-			const settings = select.getSettings();
-
-			if ( ! settings || select.isSaving() || ! select.isDirty() ) {
+			if ( select.isSaving() || select.isOptingOut() ) {
 				return false;
+			}
+
+			let automaticProtection: boolean;
+			if ( typeof overrides?.automatic_protection === 'boolean' ) {
+				automaticProtection = overrides.automatic_protection;
+			} else {
+				const settings = select.getSettings();
+				if ( ! settings || ! select.isDirty() ) {
+					return false;
+				}
+				automaticProtection = settings.automatic_protection;
 			}
 
 			dispatch.setIsSaving( true );
@@ -140,9 +172,11 @@ const actions = {
 
 			try {
 				const response = await apiFetch< Settings >( {
-					path: '/wc-fraud-protection/v1/settings',
+					path: SETTINGS_PATH,
 					method: 'POST',
-					data: settings,
+					data: {
+						automatic_protection: automaticProtection,
+					},
 				} );
 				dispatch.receiveSettings( response );
 				return true;
@@ -156,11 +190,49 @@ const actions = {
 				dispatch.setIsSaving( false );
 			}
 		},
+	requestOptOut:
+		( source: 'inbox' | 'settings' ) =>
+		async ( { dispatch, select }: StoreCallback ) => {
+			const settings = select.getSettings();
+
+			if (
+				! settings ||
+				settings.automatic_protection_opted_out ||
+				select.isSaving() ||
+				select.isOptingOut()
+			) {
+				return false;
+			}
+
+			dispatch.setIsOptingOut( true );
+			dispatch.setError( null );
+
+			try {
+				const response = await apiFetch< Settings >( {
+					path: SETTINGS_OPT_OUT_PATH,
+					method: 'POST',
+					data: { source },
+				} );
+				dispatch.receiveSettings( response );
+				return true;
+			} catch ( error ) {
+				dispatch.setError( {
+					message: getApiErrorMessage( error ),
+					operation: 'opt_out',
+				} );
+				return false;
+			} finally {
+				dispatch.setIsOptingOut( false );
+			}
+		},
 };
 
 const selectors = {
 	getSettings( state: State ): Settings | null {
 		return state.current;
+	},
+	getSavedSettings( state: State ): Settings | null {
+		return state.saved;
 	},
 	getError( state: State ): SettingsError {
 		return state.error;
@@ -170,6 +242,9 @@ const selectors = {
 	},
 	isSaving( state: State ): boolean {
 		return state.isSaving;
+	},
+	isOptingOut( state: State ): boolean {
+		return state.isOptingOut;
 	},
 	isDirty( state: State ): boolean {
 		return (
@@ -186,6 +261,7 @@ type StoreSelectors = {
 	getError: () => SettingsError;
 	getPerformance: () => Performance | null;
 	isSaving: () => boolean;
+	isOptingOut: () => boolean;
 	isDirty: () => boolean;
 };
 
@@ -195,6 +271,7 @@ type StoreActions = {
 	receiveSettingsResponse: ( response: SettingsResponse ) => void;
 	setAutomaticProtection: ( value: boolean ) => void;
 	setError: ( error: SettingsError ) => void;
+	setIsOptingOut: ( isOptingOut: boolean ) => void;
 	setIsSaving: ( isSaving: boolean ) => void;
 };
 
@@ -209,7 +286,7 @@ const resolvers = {
 		async ( { dispatch }: StoreCallback ) => {
 			try {
 				const response = await apiFetch< SettingsResponse >( {
-					path: '/wc-fraud-protection/v1/settings',
+					path: SETTINGS_PATH,
 				} );
 				dispatch.receiveSettingsResponse( response );
 			} catch ( error ) {

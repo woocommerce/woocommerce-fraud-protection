@@ -86,6 +86,11 @@ if [[ -n $archive_path ]]; then
 
 	unzip -p "$archive_path" woocommerce-fraud-protection/vendor/autoload.php >/dev/null
 
+	if ! zipinfo -1 "$archive_path" | grep -Fx 'woocommerce-fraud-protection/languages/woocommerce-fraud-protection.pot' >/dev/null; then
+		echo "Release archive does not contain the translation POT file." >&2
+		exit 1
+	fi
+
 	packaged_version=$(unzip -p "$archive_path" woocommerce-fraud-protection/woocommerce-fraud-protection.php | sed -n 's/^ \* Version: //p')
 	packaged_changelog=$(unzip -p "$archive_path" woocommerce-fraud-protection/changelog.txt | sed -n '3p')
 
