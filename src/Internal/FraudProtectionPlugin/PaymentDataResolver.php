@@ -34,6 +34,7 @@ class PaymentDataResolver {
 	 * The plugin is identified by the directory that contains the gateway class,
 	 * following the same approach as WooCommerce's
 	 * PaymentsProviders::get_payment_gateway_plugin_file(), but limited to active plugins.
+	 * Unlike WooCommerce, a gateway class declared in a single-file plugin is also resolved.
 	 *
 	 * @param string $payment_method The gateway ID.
 	 * @return string The plugin version, or an empty string when unavailable.
@@ -63,7 +64,8 @@ class PaymentDataResolver {
 		}
 
 		foreach ( $active_plugins as $plugin_file ) {
-			if ( dirname( plugin_basename( $plugin_file ) ) === $gateway_plugin_directory ) {
+			$plugin_basename = plugin_basename( $plugin_file );
+			if ( dirname( $plugin_basename ) === $gateway_plugin_directory || $plugin_basename === $gateway_plugin_directory ) {
 				$version = get_file_data( $plugin_file, array( 'Version' => 'Version' ) )['Version'] ?? '';
 				return is_string( $version ) ? trim( $version ) : '';
 			}
