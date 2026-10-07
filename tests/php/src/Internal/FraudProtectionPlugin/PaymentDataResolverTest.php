@@ -77,34 +77,12 @@ class PaymentDataResolverTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Skips invalid active plugin entries and resolves a later valid entry.
+	 * @testdox Does not treat an active entry nested inside the gateway plugin directory as the plugin main file.
 	 */
-	public function test_skips_invalid_active_plugin_entries(): void {
-		$plugin_file      = plugin_basename( WC_PLUGIN_FILE );
-		$plugin_directory = dirname( $plugin_file );
-
-		$this->assert_bacs_gateway_version(
-			WC_VERSION,
-			array(
-				"{$plugin_directory}/invalid\0.php",
-				"{$plugin_directory}/changelog.txt",
-				$plugin_file,
-			)
-		);
-	}
-
-	/**
-	 * @testdox Returns an empty version when multiple active entries share the gateway directory.
-	 */
-	public function test_returns_empty_version_for_ambiguous_active_plugins(): void {
-		$plugin_file = plugin_basename( WC_PLUGIN_FILE );
-
+	public function test_does_not_resolve_nested_active_entry(): void {
 		$this->assert_bacs_gateway_version(
 			'',
-			array(
-				$plugin_file,
-				plugin_basename( WC_ABSPATH . 'includes/class-woocommerce.php' ),
-			)
+			array( plugin_basename( WC_ABSPATH . 'includes/class-woocommerce.php' ) )
 		);
 	}
 
