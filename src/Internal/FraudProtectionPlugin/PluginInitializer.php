@@ -52,7 +52,7 @@ class PluginInitializer {
 	public static function run( string $plugin_file, bool $is_mu_plugin = false ): void {
 		self::$is_mu_plugin = $is_mu_plugin;
 
-		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.8' );
+		define( 'WC_FRAUD_PROTECTION_VERSION', '0.2.9' );
 		define( 'WC_FRAUD_PROTECTION_PLUGIN_FILE', $plugin_file );
 
 		self::register_managed_textdomain();
