@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.2.10
+* Fixed - In Firefox, paying for an order from the Pay for order page and adding a payment method from My Account no longer fail with gateways that collect card details in the browser, such as Stripe and WooPayments.
+
 2026-10-13 - version 0.2.9
 * Added - The rules list's Created filter can now match rules created on or after, or on or before, a single date.
 * Updated - Fraud prevention settings, rules, and checkout attempts now use the same WordPress interface component versions as WooCommerce, with small visual differences.

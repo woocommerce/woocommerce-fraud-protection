@@ -6,6 +6,9 @@
  * hidden field, then re-submits. Uses dispatchEvent to fire gateway
  * handlers, falling back to form.submit() for native POST when no
  * handler prevents default (simple gateways like Check Payments).
+ * The re-submit runs in a new task, after the original submit event has
+ * finished dispatching, because Firefox does not deliver a submit event
+ * fired on a form while another one is being dispatched on it.
  * Capture phase + stopImmediatePropagation ensures this fires first and
  * prevents gateway handlers (e.g. Stripe tokenization) from starting
  * concurrent async work that would cause a double-POST.
@@ -62,21 +65,27 @@
 
 				// Re-fire submit so gateway handlers (Stripe, etc.) can
 				// intercept. If no handler prevents, fall back to native POST.
-				const submitEvent = new Event( 'submit', {
-					bubbles: true,
-					cancelable: true,
-				} );
-				if ( form.dispatchEvent( submitEvent ) ) {
-					form.submit();
-				}
+				// Run it in a new task: when the session ID resolves at once,
+				// this callback runs while the original submit event is still
+				// being dispatched, and Firefox ignores a submit event fired on
+				// the form during that time.
+				setTimeout( function () {
+					const submitEvent = new Event( 'submit', {
+						bubbles: true,
+						cancelable: true,
+					} );
+					if ( form.dispatchEvent( submitEvent ) ) {
+						form.submit();
+					}
 
-				if ( ! sessionId ) {
-					setTimeout( function () {
-						if ( $sessionIdField.val() === '' ) {
-							$sessionIdField.remove();
-						}
-					}, 0 );
-				}
+					if ( ! sessionId ) {
+						setTimeout( function () {
+							if ( $sessionIdField.val() === '' ) {
+								$sessionIdField.remove();
+							}
+						}, 0 );
+					}
+				}, 0 );
 			} );
 		},
 		true

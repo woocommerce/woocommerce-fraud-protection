@@ -99,6 +99,9 @@ describe( 'pay-for-order', () => {
 		expect( field ).not.toBeNull();
 		expect( field.value ).toBe( 'sess-pay-order' );
 
+		// Run the deferred re-dispatch.
+		jest.runOnlyPendingTimers();
+
 		// Re-dispatch reached bubble phase, then native submit fallback fired.
 		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
 		expect( form.submit ).toHaveBeenCalledTimes( 1 );
@@ -119,10 +122,31 @@ describe( 'pay-for-order', () => {
 
 		dispatchSubmit();
 		await flushPromises();
+		jest.runOnlyPendingTimers();
 
 		expect( fieldDuringGatewaySubmit ).not.toBeNull();
 		expect( fieldDuringGatewaySubmit.value ).toBe( 'sess-pay-order' );
 		expect( form.submit ).not.toHaveBeenCalled();
+	} );
+
+	it( 're-fires submit in a new task after the session ID resolves', async () => {
+		setupFraudProtection();
+		loadScript();
+
+		dispatchSubmit();
+		await flushPromises();
+
+		// Firefox ignores a submit event fired on the form while the original
+		// one is still being dispatched, so the re-fire must not happen in the
+		// same task as the session ID callback.
+		expect( document.getElementById( SESSION_ID_FIELD ) ).not.toBeNull();
+		expect( bubbleSubmitSpy ).not.toHaveBeenCalled();
+		expect( form.submit ).not.toHaveBeenCalled();
+
+		jest.runOnlyPendingTimers();
+
+		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
 	} );
 
 	it( 'stops other handlers via stopImmediatePropagation on first submission', () => {
@@ -229,7 +253,8 @@ describe( 'pay-for-order', () => {
 		await flushPromises();
 		expect( field.value ).toBe( 'sess-valid' );
 
-		jest.advanceTimersByTime( 0 );
+		// Run both re-fires and the empty-value cleanup.
+		jest.runAllTimers();
 		expect( field.isConnected ).toBe( true );
 	} );
 
@@ -253,6 +278,7 @@ describe( 'pay-for-order', () => {
 		const notCancelled = dispatchSubmit();
 		expect( notCancelled ).toBe( false );
 		await flushPromises();
+		jest.runOnlyPendingTimers();
 
 		expect( fieldDuringReplay ).not.toBeNull();
 		expect( fieldDuringReplay.value ).toBe( '' );
@@ -266,7 +292,8 @@ describe( 'pay-for-order', () => {
 		otherField.name = SESSION_ID_FIELD;
 		form.appendChild( otherField );
 
-		jest.advanceTimersByTime( 0 );
+		// Run the empty-value cleanup scheduled by the re-fire.
+		jest.runOnlyPendingTimers();
 		expect( temporaryField.isConnected ).toBe( false );
 		expect( otherField.isConnected ).toBe( true );
 		otherField.remove();
