@@ -172,6 +172,34 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	}
 
 	/**
+	 * @testdox A note write that fails silently is logged and checked again later.
+	 */
+	public function test_unconfirmed_note_write_is_checked_again(): void {
+		global $wpdb;
+		$note        = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED );
+		$fail_update = static function ( $query ) use ( $wpdb ) {
+			return is_string( $query ) && str_starts_with( $query, "UPDATE `{$wpdb->prefix}wc_admin_notes`" ) ? 'SELECT * FROM missing_table_for_failed_note_update' : $query;
+		};
+		add_filter( 'query', $fail_update );
+		$suppressed = $wpdb->suppress_errors();
+		try {
+			$this->sut->retire_note();
+		} finally {
+			$wpdb->suppress_errors( $suppressed );
+			remove_filter( 'query', $fail_update );
+		}
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, Notes::get_note( $note->get_id() )->get_status() );
+		$this->assertLogged( 'warning', 'Failed to retire automatic protection early-access note.' );
+		$this->assertNull( get_option( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME, null ), 'An unconfirmed write must run again' );
+
+		$this->sut->retire_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note( $note->get_id() )->get_status() );
+		$this->assertRetirementRecorded();
+	}
+
+	/**
 	 * Assert that the completed check is stored as an autoloaded option.
 	 */
 	private function assertRetirementRecorded(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.

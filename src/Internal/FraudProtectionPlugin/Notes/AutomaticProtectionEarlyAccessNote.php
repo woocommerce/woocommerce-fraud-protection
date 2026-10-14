@@ -50,6 +50,14 @@ class AutomaticProtectionEarlyAccessNote {
 			if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
 				$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
 				$note->save();
+
+				// The note store does not report failed writes, so confirm the stored status
+				// before recording the check. An unconfirmed write runs again on the next request.
+				$stored_note = Notes::get_note( $note->get_id() );
+				if ( ! $stored_note instanceof Note || Note::E_WC_ADMIN_NOTE_ACTIONED !== $stored_note->get_status() ) {
+					FraudProtectionController::log( 'warning', 'Failed to retire automatic protection early-access note.', array( 'error' => 'The note status was not stored.' ) );
+					return;
+				}
 			}
 
 			// Autoloaded so later admin requests skip the check without a query.
