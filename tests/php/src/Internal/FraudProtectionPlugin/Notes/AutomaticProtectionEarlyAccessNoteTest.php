@@ -106,9 +106,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 * @testdox Dismissed invitations remain dismissed.
 	 */
 	public function test_dismissed_note_remains_dismissed(): void {
-		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED );
-		$note->set_is_deleted( true );
-		$note->save();
+		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED, true );
 
 		$this->sut->retire_note();
 
@@ -163,10 +161,11 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	/**
 	 * Save an invitation created during early access.
 	 *
-	 * @param string $status The note status.
+	 * @param string $status     The note status.
+	 * @param bool   $is_deleted Whether the note was dismissed.
 	 * @return Note The saved note.
 	 */
-	private function create_note( string $status ): Note {
+	private function create_note( string $status, bool $is_deleted = false ): Note {
 		$note = new Note();
 		$note->set_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
 		$note->set_source( 'woocommerce-fraud-protection' );
@@ -174,6 +173,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$note->set_title( 'Start blocking risky checkout attempts' );
 		$note->set_content( 'Early-access invitation.' );
 		$note->set_status( $status );
+		$note->set_is_deleted( $is_deleted );
 		$note->save();
 
 		return $note;
