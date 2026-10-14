@@ -24,6 +24,8 @@ class AutomaticProtectionEarlyAccessNote {
 
 	public const NOTE_NAME = 'wc-fraud-protection-automatic-protection-early-access';
 
+	public const RETIRED_OPTION_NAME = 'woocommerce_fraud_protection_early_access_note_retired';
+
 	/**
 	 * Register the note retirement.
 	 */
@@ -34,10 +36,12 @@ class AutomaticProtectionEarlyAccessNote {
 	/**
 	 * Mark an active invitation as actioned so it leaves the Inbox.
 	 *
+	 * The check runs once per site. A failed check runs again on the next admin request.
+	 *
 	 * @internal
 	 */
 	public function retire_note(): void {
-		if ( wp_doing_ajax() ) {
+		if ( wp_doing_ajax() || 'yes' === get_option( self::RETIRED_OPTION_NAME ) ) {
 			return;
 		}
 
@@ -47,6 +51,9 @@ class AutomaticProtectionEarlyAccessNote {
 				$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
 				$note->save();
 			}
+
+			// Autoloaded so later admin requests skip the check without a query.
+			update_option( self::RETIRED_OPTION_NAME, 'yes', true );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log( 'warning', 'Failed to retire automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
 		}

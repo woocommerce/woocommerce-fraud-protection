@@ -150,28 +150,6 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An opt-out stores its first UTC date.
-	 */
-	public function test_opt_out_stores_first_utc_date(): void {
-		$before = time();
-		$this->assertTrue( $this->sut->set_opted_out() );
-		$after = time();
-
-		$stored_date = get_option( self::OPT_OUT_DATE_OPTION_NAME );
-		$this->assertIsString( $stored_date );
-		$this->assertSame( $stored_date, $this->sut->get_opted_out_at() );
-		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $stored_date );
-		$stored_timestamp = strtotime( $stored_date . ' UTC' );
-		$this->assertGreaterThanOrEqual( $before, $stored_timestamp );
-		$this->assertLessThanOrEqual( $after, $stored_timestamp );
-		$this->assertTrue( $this->sut->is_opted_out() );
-
-		update_option( self::OPT_OUT_DATE_OPTION_NAME, '2026-09-11 12:00:00' );
-		$this->assertFalse( $this->sut->set_opted_out() );
-		$this->assertSame( '2026-09-11 12:00:00', get_option( self::OPT_OUT_DATE_OPTION_NAME ) );
-	}
-
-	/**
 	 * @testdox Turning protection on records the enable date and off clears it.
 	 */
 	public function test_enabled_at_is_recorded_on_enable_and_cleared_on_disable(): void {
@@ -214,7 +192,7 @@ class AutomaticProtectionSettingTest extends FraudProtectionUnitTestCase {
 	public function test_reset_deletes_value(): void {
 		$this->sut->set_enabled( false );
 		$this->sut->set_enabled( true );
-		$this->sut->set_opted_out();
+		update_option( self::OPT_OUT_DATE_OPTION_NAME, '2026-09-22 10:00:00' );
 		$this->assertNotNull( get_option( self::ENABLED_AT_OPTION_NAME, null ) );
 
 		$this->assertTrue( $this->sut->reset() );

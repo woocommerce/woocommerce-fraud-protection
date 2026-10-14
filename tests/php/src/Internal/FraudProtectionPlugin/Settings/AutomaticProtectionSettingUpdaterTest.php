@@ -104,23 +104,6 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 	}
 
 	/**
-	 * @testdox An opt-out date failure keeps the explicit disabled state and sends no preference event.
-	 */
-	public function test_opt_out_date_failure_keeps_disabled_state(): void {
-		$setting = $this->createMock( AutomaticProtectionSetting::class );
-		$setting->expects( $this->exactly( 2 ) )->method( 'get_status' )->willReturnOnConsecutiveCalls( SettingStatus::DefaultDisabled, SettingStatus::Disabled );
-		$setting->method( 'set_enabled' )->willReturn( true );
-		$setting->method( 'set_opted_out' )->willReturn( null );
-		$this->sut->init( $setting, $this->telemetry, $this->logger );
-		$this->telemetry->expects( $this->once() )
-			->method( 'record_automatic_protection_change' )
-			->with( AutomaticProtectionChange::Disabled, SettingsChangeChannel::Settings );
-		$this->telemetry->expects( $this->never() )->method( 'record_enrollment_opt_out' );
-
-		$this->assertFalse( $this->sut->opt_out( 'settings' ) );
-	}
-
-	/**
 	 * @testdox Changed resets record the CLI reset action.
 	 *
 	 * @dataProvider changed_reset_provider
@@ -190,7 +173,7 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 	 * @testdox Resetting an opt-out records the CLI reset action.
 	 */
 	public function test_opt_out_reset_records_cli_action(): void {
-		$this->setting->set_opted_out();
+		update_option( 'woocommerce_fraud_protection_automatic_protection_opted_out_at', '2026-09-22 10:00:00' );
 		$this->telemetry->expects( $this->once() )
 			->method( 'record_automatic_protection_change' )
 			->with( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli );

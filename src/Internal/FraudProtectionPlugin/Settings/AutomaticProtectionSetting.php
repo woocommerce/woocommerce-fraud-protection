@@ -126,21 +126,6 @@ class AutomaticProtectionSetting {
 	}
 
 	/**
-	 * Store the first automatic-enrollment opt-out date.
-	 *
-	 * @return bool|null True when created, false when already stored, or null on failure.
-	 */
-	public function set_opted_out(): ?bool {
-		$opted_out_at = gmdate( 'Y-m-d H:i:s' );
-		$created      = add_option( self::OPT_OUT_DATE_OPTION_NAME, $opted_out_at, '', false );
-		if ( $created ) {
-			return get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) === $opted_out_at ? true : null;
-		}
-
-		return $this->is_opted_out() ? false : null;
-	}
-
-	/**
 	 * Delete the stored state and opt-out date.
 	 *
 	 * @return bool Whether the state is absent.

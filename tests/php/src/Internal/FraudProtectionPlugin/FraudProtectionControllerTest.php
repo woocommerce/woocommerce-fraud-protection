@@ -21,7 +21,6 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 	private const MERCHANT_REST_ROUTES = array(
 		'/wc-admin/fraud-protection/settings',
-		'/wc-admin/fraud-protection/settings/opt-out',
 		'/wc-admin/fraud-protection/rules',
 		'/wc-admin/fraud-protection/rules/(?P<id>[\\d]+)',
 		'/wc-admin/fraud-protection/sessions',

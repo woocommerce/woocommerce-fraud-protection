@@ -30,6 +30,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 */
 	public function setUp(): void {
 		parent::setUp();
+		delete_option( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME );
 		$this->sut = new AutomaticProtectionEarlyAccessNote();
 		$this->sut->register();
 	}
@@ -39,6 +40,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	 */
 	public function tearDown(): void {
 		remove_all_filters( 'wp_doing_ajax' );
+		delete_option( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME );
 		parent::tearDown();
 	}
 
@@ -64,6 +66,7 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$reloaded = Notes::get_note( $note->get_id() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status(), 'The invitation should leave the Inbox' );
 		$this->assertFalse( $reloaded->get_is_deleted() );
+		$this->assertRetirementRecorded();
 	}
 
 	/**
@@ -113,6 +116,29 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$reloaded = Notes::get_note( $note->get_id() );
 		$this->assertTrue( $reloaded->get_is_deleted() );
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, $reloaded->get_status() );
+		$this->assertRetirementRecorded();
+	}
+
+	/**
+	 * @testdox A store without the invitation records the completed check.
+	 */
+	public function test_missing_note_records_retirement(): void {
+		$this->sut->retire_note();
+
+		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+		$this->assertRetirementRecorded();
+	}
+
+	/**
+	 * @testdox Once the check is recorded, later admin requests leave the note store alone.
+	 */
+	public function test_recorded_retirement_skips_later_checks(): void {
+		update_option( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME, 'yes' );
+		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED );
+
+		$this->sut->retire_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, Notes::get_note( $note->get_id() )->get_status() );
 	}
 
 	/**
@@ -125,10 +151,11 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		$this->sut->retire_note();
 
 		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, Notes::get_note( $note->get_id() )->get_status() );
+		$this->assertNull( get_option( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME, null ) );
 	}
 
 	/**
-	 * @testdox An unavailable note store does not interrupt the admin request.
+	 * @testdox An unavailable note store does not interrupt the admin request and is checked again later.
 	 */
 	public function test_unavailable_note_store_is_logged(): void {
 		$unavailable_store = static function () {
@@ -138,9 +165,18 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		try {
 			$this->sut->retire_note();
 			$this->assertLogged( 'warning', 'Failed to retire automatic protection early-access note.' );
+			$this->assertNull( get_option( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME, null ), 'A failed check must run again' );
 		} finally {
 			remove_filter( 'woocommerce_admin-note_data_store', $unavailable_store );
 		}
+	}
+
+	/**
+	 * Assert that the completed check is stored as an autoloaded option.
+	 */
+	private function assertRetirementRecorded(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.
+		$this->assertSame( 'yes', get_option( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME ) );
+		$this->assertArrayHasKey( AutomaticProtectionEarlyAccessNote::RETIRED_OPTION_NAME, wp_load_alloptions(), 'The option must be autoloaded' );
 	}
 
 	/**
