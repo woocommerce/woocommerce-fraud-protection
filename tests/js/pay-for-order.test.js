@@ -181,81 +181,53 @@ describe( 'pay-for-order', () => {
 		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'keeps one field with the latest completed value', async () => {
-		let resolveFirst;
-		let resolveSecond;
-		mockAcquireSessionId
-			.mockImplementationOnce(
-				() =>
-					new Promise( ( resolve ) => {
-						resolveFirst = resolve;
-					} )
-			)
-			.mockImplementationOnce(
-				() =>
-					new Promise( ( resolve ) => {
-						resolveSecond = resolve;
-					} )
-			);
+	it( 'cancels another submit while the session ID is pending', async () => {
+		let resolveSessionId;
+		mockAcquireSessionId.mockImplementationOnce(
+			() =>
+				new Promise( ( resolve ) => {
+					resolveSessionId = resolve;
+				} )
+		);
 		setupFraudProtection();
 		loadScript();
 
 		dispatchSubmit();
-		dispatchSubmit();
-		resolveSecond( 'sess-second' );
+		expect( dispatchSubmit() ).toBe( false );
+		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+		expect( bubbleSubmitSpy ).not.toHaveBeenCalled();
+
+		resolveSessionId( 'sess-pending' );
 		await flushPromises();
+		jest.runOnlyPendingTimers();
 
-		let fields = form.querySelectorAll(
-			'input[name="' + SESSION_ID_FIELD + '"]'
-		);
-		expect( fields ).toHaveLength( 1 );
-		expect( fields[ 0 ].value ).toBe( 'sess-second' );
-		const field = fields[ 0 ];
-
-		resolveFirst( 'sess-first' );
-		await flushPromises();
-
-		fields = form.querySelectorAll(
-			'input[name="' + SESSION_ID_FIELD + '"]'
-		);
-		expect( fields ).toHaveLength( 1 );
-		expect( fields[ 0 ] ).toBe( field );
-		expect( field.value ).toBe( 'sess-first' );
+		expect(
+			form.querySelectorAll( 'input[name="' + SESSION_ID_FIELD + '"]' )
+		).toHaveLength( 1 );
+		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	it( 'keeps a later nonempty value after empty cleanup', async () => {
-		let resolveEmpty;
-		let resolveNonempty;
-		mockAcquireSessionId
-			.mockImplementationOnce(
-				() =>
-					new Promise( ( resolve ) => {
-						resolveEmpty = resolve;
-					} )
-			)
-			.mockImplementationOnce(
-				() =>
-					new Promise( ( resolve ) => {
-						resolveNonempty = resolve;
-					} )
-			);
+	it( 'cancels another submit until the deferred re-fire runs', async () => {
 		setupFraudProtection();
 		loadScript();
 
 		dispatchSubmit();
-		dispatchSubmit();
-		resolveEmpty( '' );
 		await flushPromises();
-		const field = document.getElementById( SESSION_ID_FIELD );
-		expect( field.value ).toBe( '' );
 
-		resolveNonempty( 'sess-valid' );
-		await flushPromises();
-		expect( field.value ).toBe( 'sess-valid' );
+		// The field is already in the form, but the re-fire has not run yet.
+		expect( document.getElementById( SESSION_ID_FIELD ) ).not.toBeNull();
+		expect( dispatchSubmit() ).toBe( false );
+		expect( bubbleSubmitSpy ).not.toHaveBeenCalled();
 
-		// Run both re-fires and the empty-value cleanup.
-		jest.runAllTimers();
-		expect( field.isConnected ).toBe( true );
+		jest.runOnlyPendingTimers();
+		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 1 );
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
+
+		// After the re-fire, a gateway re-trigger passes through.
+		expect( dispatchSubmit() ).toBe( true );
+		expect( bubbleSubmitSpy ).toHaveBeenCalledTimes( 2 );
+		expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 	} );
 
 	it( 'removes an empty temporary field after replay and acquires again later', async () => {

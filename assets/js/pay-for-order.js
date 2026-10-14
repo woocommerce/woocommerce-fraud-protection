@@ -9,6 +9,8 @@
  * The re-submit runs in a new task, after the original submit event has
  * finished dispatching, because Firefox does not deliver a submit event
  * fired on a form while another one is being dispatched on it.
+ * Submits that arrive before the re-submit runs are cancelled, so repeated
+ * clicks cannot start gateway handlers more than once.
  * Capture phase + stopImmediatePropagation ensures this fires first and
  * prevents gateway handlers (e.g. Stripe tokenization) from starting
  * concurrent async work that would cause a double-POST.
@@ -26,6 +28,9 @@
 		return;
 	}
 
+	// True from the first held submit until its re-submit is dispatched.
+	let resubmitPending = false;
+
 	// Capture phase: fires before all bubble-phase (jQuery) handlers.
 	form.addEventListener(
 		'submit',
@@ -38,6 +43,14 @@
 
 			const sessionIdField = fraudProtection.config.sessionIdField;
 
+			// A held submit is still waiting for its re-submit. Cancel this
+			// one so gateway handlers do not run for it as well.
+			if ( resubmitPending ) {
+				e.preventDefault();
+				e.stopImmediatePropagation();
+				return;
+			}
+
 			// Session ID already injected — let through (handles both
 			// our re-submit and gateway re-triggers after tokenization).
 			if ( document.getElementById( sessionIdField ) ) {
@@ -46,6 +59,7 @@
 
 			e.preventDefault();
 			e.stopImmediatePropagation();
+			resubmitPending = true;
 
 			fraudProtection.acquireSessionId().then( function ( sessionId ) {
 				let $sessionIdField = $( form )
@@ -70,6 +84,7 @@
 				// being dispatched, and Firefox ignores a submit event fired on
 				// the form during that time.
 				setTimeout( function () {
+					resubmitPending = false;
 					const submitEvent = new Event( 'submit', {
 						bubbles: true,
 						cancelable: true,
