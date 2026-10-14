@@ -220,7 +220,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Settings telemetry registers while an explicit override hides merchant surfaces.
+	 * @testdox Settings telemetry and the note retirement register while an explicit override hides merchant surfaces.
 	 */
 	public function test_disabled_gate_registers_telemetry_without_merchant_surfaces(): void {
 		$container = wc_get_container();
@@ -231,7 +231,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotFalse( has_filter( 'woocommerce_tracker_data', array( $container->get( SettingsTelemetry::class ), 'add_tracker_data' ) ) );
 		$this->assertNotFalse( has_filter( 'woocommerce_tracks_event_properties', array( $container->get( SettingsTelemetry::class ), 'add_settings_view_source' ) ) );
-		$this->assertNull( AutomaticProtectionEarlyAccessNote::get_note() );
+		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'retire_note' ) ) );
 		$this->assertEmpty( array_intersect( self::MERCHANT_REST_ROUTES, $this->get_registered_rest_routes() ) );
 		$this->assertFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
@@ -251,7 +251,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNotFalse( has_filter( 'woocommerce_get_settings_pages', array( $this->sut, 'add_settings_page' ) ) );
 		$this->assertNotFalse( has_action( 'admin_enqueue_scripts', array( $this->sut, 'enqueue_settings_page_assets' ) ) );
-		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'maybe_add_note' ) ) );
+		$this->assertNotFalse( has_action( 'admin_init', array( $container->get( AutomaticProtectionEarlyAccessNote::class ), 'retire_note' ) ) );
 		$this->assertEqualsCanonicalizing( self::MERCHANT_REST_ROUTES, array_intersect( self::MERCHANT_REST_ROUTES, $this->get_registered_rest_routes() ) );
 		$this->assertNotFalse( has_filter( 'woocommerce_admin_get_user_data_fields', array( $this->sut, 'add_user_data_fields' ) ) );
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.

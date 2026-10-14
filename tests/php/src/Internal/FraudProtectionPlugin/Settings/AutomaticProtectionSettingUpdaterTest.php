@@ -134,7 +134,7 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 			->with( AutomaticProtectionChange::Reset, SettingsChangeChannel::Cli );
 
 		$this->assertTrue( $this->sut->reset( SettingsChangeChannel::Cli ) );
-		$this->assertSame( SettingStatus::DefaultDisabled, $this->setting->get_status() );
+		$this->assertSame( SettingStatus::DefaultEnabled, $this->setting->get_status() );
 	}
 
 	/**
@@ -183,7 +183,7 @@ class AutomaticProtectionSettingUpdaterTest extends FraudProtectionUnitTestCase 
 		$this->telemetry->expects( $this->never() )->method( 'record_automatic_protection_change' );
 
 		$this->assertTrue( $this->sut->reset( SettingsChangeChannel::Cli ) );
-		$this->assertSame( SettingStatus::DefaultDisabled, $this->setting->get_status() );
+		$this->assertSame( SettingStatus::DefaultEnabled, $this->setting->get_status() );
 	}
 
 	/**

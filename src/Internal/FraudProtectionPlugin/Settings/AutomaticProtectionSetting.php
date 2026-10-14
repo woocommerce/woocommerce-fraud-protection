@@ -39,7 +39,7 @@ class AutomaticProtectionSetting {
 	 * Get the code default.
 	 */
 	public function get_default(): SettingStatus {
-		return SettingStatus::Disabled;
+		return SettingStatus::Enabled;
 	}
 
 	/**
@@ -91,9 +91,11 @@ class AutomaticProtectionSetting {
 	 * Get the source of the current setting state.
 	 */
 	public function get_source(): AutomaticProtectionSource {
-		return in_array( $this->get_status(), array( SettingStatus::Enabled, SettingStatus::Disabled ), true )
-			? AutomaticProtectionSource::Manual
-			: AutomaticProtectionSource::None;
+		return match ( $this->get_status() ) {
+			SettingStatus::Enabled, SettingStatus::Disabled => AutomaticProtectionSource::Manual,
+			SettingStatus::DefaultEnabled => AutomaticProtectionSource::AutoEnroll,
+			SettingStatus::DefaultDisabled => AutomaticProtectionSource::None,
+		};
 	}
 
 	/**

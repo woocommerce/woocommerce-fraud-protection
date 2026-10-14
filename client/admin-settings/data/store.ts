@@ -1,7 +1,7 @@
 import apiFetch from '@wordpress/api-fetch';
 import { createReduxStore, register } from '@wordpress/data';
 
-import { SETTINGS_OPT_OUT_PATH, SETTINGS_PATH } from '../../rest-api';
+import { SETTINGS_PATH } from '../../rest-api';
 
 export type Settings = {
 	automatic_protection: boolean;
@@ -24,14 +24,13 @@ type SettingsResponse = Settings & {
 
 export type SettingsError = {
 	message: string | null;
-	operation: 'load' | 'opt_out' | 'save';
+	operation: 'load' | 'save';
 } | null;
 
 type State = {
 	current: Settings | null;
 	error: SettingsError;
 	isSaving: boolean;
-	isOptingOut: boolean;
 	performance: Performance | null;
 	saved: Settings | null;
 };
@@ -42,14 +41,12 @@ type Action =
 	| { type: 'RECEIVE_SETTINGS_RESPONSE'; response: SettingsResponse }
 	| { type: 'SET_AUTOMATIC_PROTECTION'; value: boolean }
 	| { type: 'SET_ERROR'; error: SettingsError }
-	| { type: 'SET_IS_OPTING_OUT'; isOptingOut: boolean }
 	| { type: 'SET_IS_SAVING'; isSaving: boolean };
 
 const DEFAULT_STATE: State = {
 	current: null,
 	error: null,
 	isSaving: false,
-	isOptingOut: false,
 	performance: null,
 	saved: null,
 };
@@ -113,8 +110,6 @@ const reducer = ( state = DEFAULT_STATE, action: Action ): State => {
 			};
 		case 'SET_ERROR':
 			return { ...state, error: action.error };
-		case 'SET_IS_OPTING_OUT':
-			return { ...state, isOptingOut: action.isOptingOut };
 		case 'SET_IS_SAVING':
 			return { ...state, isSaving: action.isSaving };
 		default:
@@ -138,9 +133,6 @@ const actions = {
 	setError( error: SettingsError ): Action {
 		return { type: 'SET_ERROR', error };
 	},
-	setIsOptingOut( isOptingOut: boolean ): Action {
-		return { type: 'SET_IS_OPTING_OUT', isOptingOut };
-	},
 	setIsSaving( isSaving: boolean ): Action {
 		return { type: 'SET_IS_SAVING', isSaving };
 	},
@@ -152,7 +144,7 @@ const actions = {
 	saveSettings:
 		( overrides?: Partial< Settings > ) =>
 		async ( { dispatch, select }: StoreCallback ) => {
-			if ( select.isSaving() || select.isOptingOut() ) {
+			if ( select.isSaving() ) {
 				return false;
 			}
 
@@ -190,41 +182,6 @@ const actions = {
 				dispatch.setIsSaving( false );
 			}
 		},
-	requestOptOut:
-		( source: 'inbox' | 'settings' ) =>
-		async ( { dispatch, select }: StoreCallback ) => {
-			const settings = select.getSettings();
-
-			if (
-				! settings ||
-				settings.automatic_protection_opted_out ||
-				select.isSaving() ||
-				select.isOptingOut()
-			) {
-				return false;
-			}
-
-			dispatch.setIsOptingOut( true );
-			dispatch.setError( null );
-
-			try {
-				const response = await apiFetch< Settings >( {
-					path: SETTINGS_OPT_OUT_PATH,
-					method: 'POST',
-					data: { source },
-				} );
-				dispatch.receiveSettings( response );
-				return true;
-			} catch ( error ) {
-				dispatch.setError( {
-					message: getApiErrorMessage( error ),
-					operation: 'opt_out',
-				} );
-				return false;
-			} finally {
-				dispatch.setIsOptingOut( false );
-			}
-		},
 };
 
 const selectors = {
@@ -243,9 +200,6 @@ const selectors = {
 	isSaving( state: State ): boolean {
 		return state.isSaving;
 	},
-	isOptingOut( state: State ): boolean {
-		return state.isOptingOut;
-	},
 	isDirty( state: State ): boolean {
 		return (
 			state.saved !== null &&
@@ -261,7 +215,6 @@ type StoreSelectors = {
 	getError: () => SettingsError;
 	getPerformance: () => Performance | null;
 	isSaving: () => boolean;
-	isOptingOut: () => boolean;
 	isDirty: () => boolean;
 };
 
@@ -271,7 +224,6 @@ type StoreActions = {
 	receiveSettingsResponse: ( response: SettingsResponse ) => void;
 	setAutomaticProtection: ( value: boolean ) => void;
 	setError: ( error: SettingsError ) => void;
-	setIsOptingOut: ( isOptingOut: boolean ) => void;
 	setIsSaving: ( isSaving: boolean ) => void;
 };
 

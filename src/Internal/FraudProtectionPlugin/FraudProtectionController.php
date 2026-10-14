@@ -240,8 +240,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->settings_telemetry->register();
 		wc_get_container()->get( SessionIdentityManager::class )->register();
 
-		// Register outside the merchant features gate to keep note cleanup active when it is disabled.
-		// The note eligibility check prevents creation when merchant-facing features are disabled.
+		// Register outside the merchant features gate so the invitation is retired even when it is disabled.
 		wc_get_container()->get( AutomaticProtectionEarlyAccessNote::class )->register();
 
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {

@@ -10,10 +10,7 @@ type AutomaticProtectionCardProps = {
 	checked: boolean;
 	controlsDisabled: boolean;
 	isLoading: boolean;
-	isOptingOut: boolean;
 	onChange: ( value: boolean ) => void;
-	onOptOut: () => void;
-	optedOut: boolean;
 	flaggedByFraudPreventionCount: number;
 	savedAutomaticProtection: boolean | null;
 };
@@ -24,48 +21,27 @@ export function AutomaticProtectionCard( {
 	checked,
 	controlsDisabled,
 	isLoading,
-	isOptingOut,
 	onChange,
-	onOptOut,
-	optedOut,
 	flaggedByFraudPreventionCount,
 	savedAutomaticProtection,
 }: AutomaticProtectionCardProps ) {
 	const showNotice = ! isLoading && savedAutomaticProtection === false;
-	let noticeText: string;
-	if ( 0 === flaggedByFraudPreventionCount ) {
-		noticeText = optedOut
+	const noticeText =
+		0 === flaggedByFraudPreventionCount
 			? __(
 					'Automatic fraud prevention is off. We recommend turning it on.',
 					'woocommerce-fraud-protection'
 			  )
-			: __(
-					'Automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
-					'woocommerce-fraud-protection'
+			: sprintf(
+					/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
+					_n(
+						'<a>%d checkout attempt</a> was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+						'<a>%d checkout attempts</a> were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+						flaggedByFraudPreventionCount,
+						'woocommerce-fraud-protection'
+					),
+					flaggedByFraudPreventionCount
 			  );
-	} else if ( optedOut ) {
-		noticeText = sprintf(
-			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
-			_n(
-				'<a>%d checkout attempt</a> was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
-				'<a>%d checkout attempts</a> were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
-				flaggedByFraudPreventionCount,
-				'woocommerce-fraud-protection'
-			),
-			flaggedByFraudPreventionCount
-		);
-	} else {
-		noticeText = sprintf(
-			/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
-			_n(
-				'<a>%d checkout attempt</a> was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
-				'<a>%d checkout attempts</a> were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
-				flaggedByFraudPreventionCount,
-				'woocommerce-fraud-protection'
-			),
-			flaggedByFraudPreventionCount
-		);
-	}
 
 	return (
 		<Card.Root
@@ -87,14 +63,9 @@ export function AutomaticProtectionCard( {
 						onChange={ onChange }
 					/>
 					{ showNotice && (
-						<Notice.Root
-							key={ optedOut ? 'opted-out' : 'opt-out' }
-							intent="warning"
-						>
+						<Notice.Root intent="warning">
 							<Notice.Description>
 								{ createInterpolateElement( noticeText, {
-									// Match the neutral tone of the "Learn more"
-									// action link below.
 									a: (
 										<UiLink
 											tone="neutral"
@@ -107,35 +78,6 @@ export function AutomaticProtectionCard( {
 									),
 								} ) }
 							</Notice.Description>
-							{ ! optedOut && (
-								<Notice.Actions>
-									<Notice.ActionButton
-										variant="outline"
-										disabled={ controlsDisabled }
-										loading={ isOptingOut }
-										onClick={ onOptOut }
-									>
-										{ __(
-											'Opt out of automatic blocking',
-											'woocommerce-fraud-protection'
-										) }
-									</Notice.ActionButton>
-									<Notice.ActionLink
-										render={
-											<a
-												href="https://woocommerce.com/document/fraud-protection/"
-												target="_blank"
-												rel="noopener noreferrer"
-											>
-												{ __(
-													'Learn more',
-													'woocommerce-fraud-protection'
-												) }
-											</a>
-										}
-									/>
-								</Notice.Actions>
-							) }
 						</Notice.Root>
 					) }
 				</Stack>

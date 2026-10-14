@@ -71,7 +71,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox An authorized read returns the disabled default without writing it.
+	 * @testdox An authorized read returns the enabled default without writing it.
 	 */
 	public function test_get_returns_effective_default_without_write(): void {
 		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/settings' ) );
@@ -79,7 +79,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame(
 			array(
-				'automatic_protection'            => false,
+				'automatic_protection'            => true,
 				'automatic_protection_opted_out'  => false,
 				'automatic_protection_enabled_at' => null,
 				'performance'                     => $this->performance_counts,
@@ -110,6 +110,7 @@ class SettingsRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @testdox An enabled update stores and returns the setting.
 	 */
 	public function test_post_stores_enabled_setting(): void {
+		update_option( self::OPTION_NAME, 'no' );
 		$this->event_store->expects( $this->never() )->method( 'get_performance_counts' );
 
 		$response = $this->server->dispatch( $this->post_request( array( 'automatic_protection' => true ) ) );

@@ -15,7 +15,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProt
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 
 /**
- * Tests the early-access Inbox invitation.
+ * Tests the retirement of the early-access Inbox invitation.
  */
 class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase {
 	/**
@@ -26,175 +26,107 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 	private $sut;
 
 	/**
-	 * Set up the note and its eligibility settings.
+	 * Set up the note retirement.
 	 */
 	public function setUp(): void {
 		parent::setUp();
-		wc_get_container()->get( MerchantFacingFeaturesGate::class )->set_enabled( true );
 		$this->sut = new AutomaticProtectionEarlyAccessNote();
 		$this->sut->register();
 	}
 
 	/**
-	 * @testdox Note creation runs on admin initialization.
+	 * Tear down test fixtures.
+	 */
+	public function tearDown(): void {
+		remove_all_filters( 'wp_doing_ajax' );
+		parent::tearDown();
+	}
+
+	/**
+	 * @testdox Note retirement runs on admin initialization.
 	 */
 	public function test_registers_admin_callback(): void {
-		$this->assertSame( 10, has_action( 'admin_init', array( $this->sut, 'maybe_add_note' ) ) );
+		$this->assertSame( 10, has_action( 'admin_init', array( $this->sut, 'retire_note' ) ) );
 	}
 
 	/**
-	 * @testdox Resetting the merchant gate preserves an active invitation under the enabled default.
+	 * @testdox An active invitation leaves the Inbox whatever the stored protection state.
+	 * @dataProvider protection_states
+	 *
+	 * @param string|null $stored_value The stored automatic-protection value, or null for none.
 	 */
-	public function test_resetting_merchant_gate_preserves_note(): void {
-		$this->sut->maybe_add_note();
-		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	public function test_retires_active_note( ?string $stored_value ): void {
+		$this->store_protection_state( $stored_value );
+		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED );
 
-		wc_get_container()->get( MerchantFacingFeaturesGate::class )->reset();
-		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-	}
+		$this->sut->retire_note();
 
-	/**
-	 * @testdox The invitation uses the approved copy, a support link that opens in a new tab, and the standard settings action.
-	 */
-	public function test_note_content_and_actions(): void {
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertInstanceOf( Note::class, $note );
-		$this->assertSame( 'wc-fraud-protection-automatic-protection-early-access', $note->get_name() );
-		$this->assertSame( 'woocommerce-fraud-protection', $note->get_source() );
-		$this->assertSame( Note::E_WC_ADMIN_NOTE_INFORMATIONAL, $note->get_type() );
-		$this->assertSame( 'Start blocking risky checkout attempts', $note->get_title() );
-		$this->assertSame( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. <a href="https://woocommerce.com/document/fraud-protection/" target="_blank" rel="noopener noreferrer">Learn more</a>', $note->get_content() );
-		$this->assertLessThanOrEqual( 320, mb_strlen( wp_strip_all_tags( $note->get_content() ) ) );
-		$actions = $note->get_actions();
-		$this->assertCount( 1, $actions );
-		$this->assertSame( 'review-automatic-protection', $actions[0]->name );
-		$this->assertSame( 'Manage in settings', $actions[0]->label );
-		$this->assertSame( admin_url( 'admin.php?page=wc-settings&tab=woocommerce_fraud_protection&source=inbox' ), $actions[0]->query );
-		Notes::trigger_note_action( $note, $actions[0] );
 		$reloaded = Notes::get_note( $note->get_id() );
-		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, $reloaded->get_status() );
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status(), 'The invitation should leave the Inbox' );
 		$this->assertFalse( $reloaded->get_is_deleted() );
 	}
 
 	/**
-	 * @testdox Stores that already enabled automatic protection do not receive an invitation.
-	 */
-	public function test_enabled_stores_do_not_receive_note(): void {
-		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( true );
-		$this->sut->maybe_add_note();
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-	}
-
-	/**
-	 * @testdox Opting out dismisses the invitation and prevents another one.
-	 */
-	public function test_opt_out_dismisses_note_without_recreation(): void {
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertInstanceOf( Note::class, $note );
-
-		wc_get_container()->get( AutomaticProtectionSetting::class )->set_opted_out();
-
-		$reloaded = Notes::get_note( $note->get_id() );
-		$this->assertTrue( $reloaded->get_is_deleted() );
-		$this->sut->maybe_add_note();
-		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-	}
-
-	/**
-	 * @testdox Resetting an opt-out allows the invitation to return.
-	 */
-	public function test_resetting_opt_out_allows_note_to_return(): void {
-		$this->sut->maybe_add_note();
-		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
-		$setting->set_opted_out();
-
-		$this->assertTrue( $setting->reset() );
-		$this->assertCount( 0, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertInstanceOf( Note::class, $note );
-		$this->assertFalse( $note->get_is_deleted() );
-	}
-
-	/**
-	 * @testdox Eligibility changes delete active invitations and allow one new invitation.
-	 */
-	public function test_eligibility_controls_stored_note(): void {
-		$this->sut->maybe_add_note();
-		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
-		$gate->set_enabled( false );
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-		$gate->set_enabled( true );
-		$this->sut->maybe_add_note();
-		$this->sut->maybe_add_note();
-		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
-	}
-
-	/**
-	 * @testdox Enabling protection completes the invitation immediately.
-	 * @dataProvider protection_settings
-	 * @param bool $existing_setting Whether the setting already exists.
-	 */
-	public function test_enabling_protection_completes_note( bool $existing_setting ): void {
-		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
-		if ( $existing_setting ) {
-			$setting->set_enabled( false );
-		}
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$setting->set_enabled( true );
-		$reloaded = Notes::get_note( $note->get_id() );
-		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status() );
-	}
-
-	/**
-	 * @testdox Disabling protection preserves the completed invitation.
-	 */
-	public function test_disabling_protection_does_not_restore_note(): void {
-		$this->sut->maybe_add_note();
-		$note    = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
-		$setting->set_enabled( true );
-
-		$setting->set_enabled( false );
-		$this->sut->maybe_add_note();
-
-		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertSame( $note->get_id(), $reloaded->get_id() );
-		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status() );
-	}
-
-	/**
-	 * Setting storage states.
+	 * Stored automatic-protection states.
 	 *
-	 * @return array<string, array{bool}>
+	 * @return array<string, array{?string}>
 	 */
-	public function protection_settings(): array {
+	public function protection_states(): array {
 		return array(
-			'new setting'      => array( false ),
-			'existing setting' => array( true ),
+			'no stored value'     => array( null ),
+			'explicitly enabled'  => array( 'yes' ),
+			'explicitly disabled' => array( 'no' ),
 		);
 	}
 
 	/**
-	 * @testdox Completed invitations survive eligibility changes without being recreated.
+	 * @testdox Invitations are retired while merchant-facing features are disabled.
 	 */
-	public function test_actioned_note_is_not_recreated(): void {
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
+	public function test_retires_note_with_disabled_merchant_features(): void {
+		wc_get_container()->get( MerchantFacingFeaturesGate::class )->set_enabled( false );
+		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED );
+
+		$this->sut->retire_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note( $note->get_id() )->get_status() );
+	}
+
+	/**
+	 * @testdox Snoozed invitations are retired so they do not return to the Inbox.
+	 */
+	public function test_retires_snoozed_note(): void {
+		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_SNOOZED );
+
+		$this->sut->retire_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note( $note->get_id() )->get_status() );
+	}
+
+	/**
+	 * @testdox Dismissed invitations remain dismissed.
+	 */
+	public function test_dismissed_note_remains_dismissed(): void {
+		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED );
+		$note->set_is_deleted( true );
 		$note->save();
-		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
-		$gate->set_enabled( false );
-		$this->sut->maybe_add_note();
-		$gate->set_enabled( true );
-		$this->sut->maybe_add_note();
-		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertSame( $note->get_id(), $reloaded->get_id() );
-		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, $reloaded->get_status() );
+
+		$this->sut->retire_note();
+
+		$reloaded = Notes::get_note( $note->get_id() );
+		$this->assertTrue( $reloaded->get_is_deleted() );
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, $reloaded->get_status() );
+	}
+
+	/**
+	 * @testdox AJAX requests do not change the invitation.
+	 */
+	public function test_ajax_does_not_retire_note(): void {
+		$note = $this->create_note( Note::E_WC_ADMIN_NOTE_UNACTIONED );
+		add_filter( 'wp_doing_ajax', '__return_true' );
+
+		$this->sut->retire_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, Notes::get_note( $note->get_id() )->get_status() );
 	}
 
 	/**
@@ -206,69 +138,44 @@ class AutomaticProtectionEarlyAccessNoteTest extends FraudProtectionUnitTestCase
 		};
 		add_filter( 'woocommerce_admin-note_data_store', $unavailable_store );
 		try {
-			$this->sut->maybe_add_note();
-			$this->assertLogged( 'warning', 'Failed to create automatic protection early-access note.' );
+			$this->sut->retire_note();
+			$this->assertLogged( 'warning', 'Failed to retire automatic protection early-access note.' );
 		} finally {
 			remove_filter( 'woocommerce_admin-note_data_store', $unavailable_store );
 		}
 	}
 
 	/**
-	 * @testdox AJAX requests do not create the note.
+	 * Store an automatic-protection state.
+	 *
+	 * @param string|null $stored_value The stored value, or null to delete it.
 	 */
-	public function test_ajax_does_not_create_note(): void {
-		add_filter( 'wp_doing_ajax', '__return_true' );
-		$this->sut->maybe_add_note();
-		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME ) );
+	private function store_protection_state( ?string $stored_value ): void {
+		$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
+		if ( null === $stored_value ) {
+			$setting->reset();
+			return;
+		}
+
+		$setting->set_enabled( 'yes' === $stored_value );
 	}
 
 	/**
-	 * @testdox Repeated admin requests do not create duplicate invitations.
+	 * Save an invitation created during early access.
+	 *
+	 * @param string $status The note status.
+	 * @return Note The saved note.
 	 */
-	public function test_repeated_admin_requests_preserve_note(): void {
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-
-		$this->sut->maybe_add_note();
-
-		$note_ids = Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertCount( 1, $note_ids );
-		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertSame( $note->get_id(), $reloaded->get_id() );
-	}
-
-	/**
-	 * @testdox Dismissed invitations remain dismissed after another admin request.
-	 */
-	public function test_dismissed_note_is_not_recreated(): void {
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$note->set_is_deleted( true );
+	private function create_note( string $status ): Note {
+		$note = new Note();
+		$note->set_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
+		$note->set_source( 'woocommerce-fraud-protection' );
+		$note->set_type( Note::E_WC_ADMIN_NOTE_INFORMATIONAL );
+		$note->set_title( 'Start blocking risky checkout attempts' );
+		$note->set_content( 'Early-access invitation.' );
+		$note->set_status( $status );
 		$note->save();
 
-		$this->sut->maybe_add_note();
-
-		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertSame( $note->get_id(), $reloaded->get_id() );
-		$this->assertTrue( $reloaded->get_is_deleted() );
-	}
-
-	/**
-	 * @testdox Eligibility changes preserve dismissed invitations.
-	 */
-	public function test_gate_changes_preserve_dismissal(): void {
-		$this->sut->maybe_add_note();
-		$note = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$note->set_is_deleted( true );
-		$note->save();
-
-		$gate = wc_get_container()->get( MerchantFacingFeaturesGate::class );
-		$gate->set_enabled( false );
-		$gate->set_enabled( true );
-		$this->sut->maybe_add_note();
-
-		$reloaded = Notes::get_note_by_name( AutomaticProtectionEarlyAccessNote::NOTE_NAME );
-		$this->assertSame( $note->get_id(), $reloaded->get_id() );
-		$this->assertTrue( $reloaded->get_is_deleted() );
+		return $note;
 	}
 }
