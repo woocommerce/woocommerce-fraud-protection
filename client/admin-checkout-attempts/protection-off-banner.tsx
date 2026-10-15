@@ -30,7 +30,7 @@ export function ProtectionOffBanner( { onEnable }: { onEnable: () => void } ) {
 		>
 			<Notice.Description>
 				{ __(
-					"Automatic blocking is off, so payments flagged by fraud prevention won't be blocked. Turn it on to help prevent fraud. Any custom rules you've set apply either way.",
+					"Automatic blocking is off, so payments flagged by fraud prevention won't be blocked. Turn it on to help prevent fraud. Any custom rules you've set will still apply.",
 					'woocommerce-fraud-protection'
 				) }
 			</Notice.Description>

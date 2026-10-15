@@ -82,7 +82,7 @@ export function RuleDeleteDialog( {
 					<Stack direction="column" gap="xl">
 						<Dialog.Description>
 							{ __(
-								'This custom rule will be deleted and no longer apply to payment attempts. Past attempts won’t be affected.',
+								'This custom rule will be deleted and no longer apply to payment attempts. It won’t change the outcome of past attempts.',
 								'woocommerce-fraud-protection'
 							) }
 						</Dialog.Description>
