@@ -29,6 +29,11 @@ class AutomaticProtectionEnabledNote {
 	public const ADDED_OPTION_NAME = 'woocommerce_fraud_protection_enabled_note_added';
 
 	/**
+	 * Value of the added option while a note retirement waits for a retry.
+	 */
+	public const RETIREMENT_PENDING = 'retirement_pending';
+
+	/**
 	 * Register note creation and retirement.
 	 */
 	public function register(): void {
@@ -43,12 +48,23 @@ class AutomaticProtectionEnabledNote {
 	/**
 	 * Add the note once for stores that follow the enabled default.
 	 *
-	 * The note is added once per site. A failed or unconfirmed write runs again on the next admin request.
+	 * The note is added once per site. A failed or unconfirmed write runs again on the next admin request,
+	 * and so does a note retirement that could not be confirmed.
 	 *
 	 * @internal
 	 */
 	public function maybe_add_note(): void {
-		if ( wp_doing_ajax() || 'yes' === get_option( self::ADDED_OPTION_NAME ) || ! self::is_applicable() ) {
+		if ( wp_doing_ajax() ) {
+			return;
+		}
+
+		$state = get_option( self::ADDED_OPTION_NAME );
+		if ( self::RETIREMENT_PENDING === $state ) {
+			$this->update_note();
+			return;
+		}
+
+		if ( 'yes' === $state || ! self::is_applicable() ) {
 			return;
 		}
 
@@ -72,12 +88,16 @@ class AutomaticProtectionEnabledNote {
 	/**
 	 * Retire the note when automatic protection is turned off or the settings page is hidden.
 	 *
+	 * Option changes are not repeated, so a failed or unconfirmed retirement is recorded in the
+	 * autoloaded added option and runs again on the next admin request.
+	 *
 	 * @internal
 	 */
 	public function update_note(): void {
 		try {
 			$container = wc_get_container();
 			if ( $container->get( MerchantFacingFeaturesGate::class )->is_enabled() && $container->get( AutomaticProtectionSetting::class )->is_enabled() ) {
+				$this->clear_pending_retirement();
 				return;
 			}
 
@@ -85,9 +105,38 @@ class AutomaticProtectionEnabledNote {
 			if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
 				$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
 				$note->save();
+
+				// The note store does not report failed writes, so confirm the stored status.
+				$stored_note = Notes::get_note( $note->get_id() );
+				if ( ! $stored_note instanceof Note || Note::E_WC_ADMIN_NOTE_ACTIONED !== $stored_note->get_status() ) {
+					FraudProtectionController::log( 'warning', 'Failed to update automatic protection enabled note.', array( 'error' => 'The note status was not stored.' ) );
+					update_option( self::ADDED_OPTION_NAME, self::RETIREMENT_PENDING, true );
+					return;
+				}
 			}
+
+			$this->clear_pending_retirement();
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log( 'warning', 'Failed to update automatic protection enabled note.', array( 'error' => $e->getMessage() ) );
+			update_option( self::ADDED_OPTION_NAME, self::RETIREMENT_PENDING, true );
+		}
+	}
+
+	/**
+	 * Mark a pending retirement as resolved.
+	 *
+	 * A retirement can be recorded before the note was ever added, so the added state is restored
+	 * only when the note exists. Otherwise the note can still be added later.
+	 */
+	private function clear_pending_retirement(): void {
+		if ( self::RETIREMENT_PENDING !== get_option( self::ADDED_OPTION_NAME ) ) {
+			return;
+		}
+
+		if ( self::note_exists() ) {
+			update_option( self::ADDED_OPTION_NAME, 'yes', true );
+		} else {
+			delete_option( self::ADDED_OPTION_NAME );
 		}
 	}
 

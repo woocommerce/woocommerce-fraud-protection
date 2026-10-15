@@ -274,6 +274,89 @@ class AutomaticProtectionEnabledNoteTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A note retirement that fails silently is logged and tried again on the next admin request.
+	 */
+	public function test_unconfirmed_retirement_is_tried_again(): void {
+		global $wpdb;
+		$this->sut->maybe_add_note();
+		$fail_update = static function ( $query ) use ( $wpdb ) {
+			return is_string( $query ) && str_starts_with( $query, "UPDATE `{$wpdb->prefix}wc_admin_notes`" ) ? 'SELECT * FROM missing_table_for_failed_note_update' : $query;
+		};
+		add_filter( 'query', $fail_update );
+		$suppressed = $wpdb->suppress_errors();
+		try {
+			$this->setting->set_enabled( false );
+		} finally {
+			$wpdb->suppress_errors( $suppressed );
+			remove_filter( 'query', $fail_update );
+		}
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME )->get_status() );
+		$this->assertLogged( 'warning', 'Failed to update automatic protection enabled note.' );
+		$this->assertSame( AutomaticProtectionEnabledNote::RETIREMENT_PENDING, get_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME ) );
+		$this->assertArrayHasKey( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME, wp_load_alloptions(), 'The pending retry must be autoloaded' );
+
+		$this->sut->maybe_add_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME )->get_status() );
+		$this->assertAdditionRecorded();
+	}
+
+	/**
+	 * @testdox A retirement that fails with an error is tried again on the next admin request.
+	 */
+	public function test_failed_retirement_is_tried_again(): void {
+		$this->sut->maybe_add_note();
+		$unavailable_store = static function () {
+			throw new \RuntimeException( 'Note storage unavailable.' );
+		};
+		add_filter( 'woocommerce_admin-note_data_store', $unavailable_store );
+		try {
+			$this->setting->set_enabled( false );
+		} finally {
+			remove_filter( 'woocommerce_admin-note_data_store', $unavailable_store );
+		}
+
+		$this->assertLogged( 'warning', 'Failed to update automatic protection enabled note.' );
+		$this->assertSame( AutomaticProtectionEnabledNote::RETIREMENT_PENDING, get_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME ) );
+
+		$this->sut->maybe_add_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME )->get_status() );
+		$this->assertAdditionRecorded();
+	}
+
+	/**
+	 * @testdox A pending retirement is dropped when protection is on again, and the note stays.
+	 */
+	public function test_pending_retirement_is_dropped_when_protection_is_on_again(): void {
+		$this->sut->maybe_add_note();
+		update_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME, AutomaticProtectionEnabledNote::RETIREMENT_PENDING );
+
+		$this->sut->maybe_add_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME )->get_status() );
+		$this->assertAdditionRecorded();
+	}
+
+	/**
+	 * @testdox A pending retirement without a note does not prevent adding the note later.
+	 */
+	public function test_pending_retirement_without_note_allows_adding_later(): void {
+		update_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME, AutomaticProtectionEnabledNote::RETIREMENT_PENDING );
+
+		$this->sut->maybe_add_note();
+
+		$this->assertNull( get_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME, null ) );
+		$this->assertFalse( Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME ) );
+
+		$this->sut->maybe_add_note();
+
+		$this->assertInstanceOf( Note::class, Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME ) );
+		$this->assertAdditionRecorded();
+	}
+
+	/**
 	 * Assert that the added note is recorded as an autoloaded option.
 	 */
 	private function assertAdditionRecorded(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.
