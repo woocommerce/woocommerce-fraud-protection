@@ -21,20 +21,20 @@ Sentence case means only the first word and proper nouns are capitalized.
 ### Correct - Sentence Case
 
 - "Fraud prevention"
-- "Checkout attempts"
+- "Payment activity"
 - "Block this email address"
 - "Allow this IP address"
-- "Turn on automatic fraud prevention"
+- "Turn on automatic blocking"
 - "Save changes"
 - "View documentation"
 
 ### Incorrect - Title Case
 
 - "Fraud Prevention"
-- "Checkout Attempts"
+- "Payment Activity"
 - "Block This Email Address"
 - "Allow This IP Address"
-- "Turn On Automatic Fraud Prevention"
+- "Turn On Automatic Blocking"
 - "Save Changes"
 - "View Documentation"
 

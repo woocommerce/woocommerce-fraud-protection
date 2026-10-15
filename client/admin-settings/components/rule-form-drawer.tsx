@@ -137,7 +137,7 @@ function RuleValueEditControl( {
 					disabled={ disabled }
 					maxLength={ maxLength }
 				/>
-				<Stack direction="row" align="center" gap="xs">
+				<Stack direction="column" align="start" gap="xs">
 					<ValidityIndicator
 						id={ duplicateMessageId }
 						type="invalid"
