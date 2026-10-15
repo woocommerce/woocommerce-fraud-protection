@@ -727,7 +727,9 @@ describe( 'RulesPage', () => {
 			await screen.findByText( 'Loading rules' )
 		).toBeInTheDocument();
 		await act( async () => resolveList( collectionResponse( [] ) ) );
-		expect( await screen.findByText( 'No rules' ) ).toBeInTheDocument();
+		expect(
+			await screen.findByText( 'No custom rules' )
+		).toBeInTheDocument();
 		expect(
 			screen.getByText( 'Any rules you create will appear here.' )
 		).toBeInTheDocument();
@@ -743,7 +745,9 @@ describe( 'RulesPage', () => {
 				'The fraud prevention rules could not be loaded. Rules unavailable.'
 			)
 		).not.toHaveLength( 0 );
-		expect( screen.queryByText( 'No rules' ) ).not.toBeInTheDocument();
+		expect(
+			screen.queryByText( 'No custom rules' )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'shows the filtered empty state when no rules match', async () => {
@@ -888,7 +892,7 @@ describe( 'RulesPage', () => {
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
 			expect.arrayContaining( [
 				expect.objectContaining( {
-					content: 'Rule created successfully.',
+					content: 'Rule created.',
 					type: 'snackbar',
 				} ),
 			] )
@@ -980,7 +984,7 @@ describe( 'RulesPage', () => {
 		const onViewRule = jest.fn();
 		mockedApiFetch.mockRejectedValueOnce( {
 			code: 'woocommerce_fraud_protection_duplicate_rule',
-			message: 'This email is already allowed by a rule.',
+			message: 'You already have a rule that allows this email address.',
 			data: { rule_id: 17 },
 		} );
 		renderDrawer( { onViewRule } );
@@ -994,7 +998,7 @@ describe( 'RulesPage', () => {
 		const drawer = screen.getByRole( 'dialog', { name: 'Create rule' } );
 		await userEvent.click(
 			within( drawer ).getByRole( 'button', {
-				name: 'Edit existing rule',
+				name: 'View rule',
 			} )
 		);
 		expect( onViewRule ).toHaveBeenCalledWith( 17 );
@@ -1004,7 +1008,7 @@ describe( 'RulesPage', () => {
 		const user = userEvent.setup();
 		mockedApiFetch.mockRejectedValueOnce( {
 			code: 'woocommerce_fraud_protection_duplicate_rule',
-			message: 'This email is already allowed by a rule.',
+			message: 'You already have a rule that allows this email address.',
 			data: { rule_id: 17 },
 		} );
 		renderDrawer();
@@ -1012,7 +1016,9 @@ describe( 'RulesPage', () => {
 		await user.click(
 			screen.getByRole( 'button', { name: 'Create rule' } )
 		);
-		await screen.findByText( 'This email is already allowed by a rule.' );
+		await screen.findByText(
+			'You already have a rule that allows this email address.'
+		);
 
 		await user.tripleClick( screen.getByLabelText( 'Value' ) );
 		await user.paste( `${ 'a'.repeat( 250 ) }@b.com` );
@@ -1050,7 +1056,7 @@ describe( 'RulesPage', () => {
 		expect( registry.select( noticesStore ).getNotices() ).toEqual(
 			expect.arrayContaining( [
 				expect.objectContaining( {
-					content: 'Rule updated successfully.',
+					content: 'Rule updated.',
 					type: 'snackbar',
 				} ),
 			] )
@@ -1087,7 +1093,7 @@ describe( 'RulesPage', () => {
 		await screen.findByText( rule.value );
 		await chooseRuleAction( rule.value, 'Delete' );
 		const dialog = await screen.findByRole( 'dialog', {
-			name: 'Delete rule',
+			name: 'Delete rule?',
 		} );
 		await userEvent.click(
 			within( dialog ).getByRole( 'button', { name: 'Delete' } )
@@ -1105,14 +1111,14 @@ describe( 'RulesPage', () => {
 		await screen.findByText( rule.value );
 		await chooseRuleAction( rule.value, 'Delete' );
 		const dialog = await screen.findByRole( 'dialog', {
-			name: 'Delete rule',
+			name: 'Delete rule?',
 		} );
 		await userEvent.click(
 			within( dialog ).getByRole( 'button', { name: 'Delete' } )
 		);
 		await waitFor( () =>
 			expect(
-				screen.queryByRole( 'dialog', { name: 'Delete rule' } )
+				screen.queryByRole( 'dialog', { name: 'Delete rule?' } )
 			).toBeNull()
 		);
 		expect( mockedApiFetch ).toHaveBeenCalledWith( {

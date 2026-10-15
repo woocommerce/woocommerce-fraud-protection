@@ -166,7 +166,7 @@ it( 'keeps Delete open when an older edit request finishes', async () => {
 	await chooseRuleAction( firstRule.value, 'Delete' );
 	await act( async () => resolveDetail( firstRule ) );
 	expect(
-		screen.getByRole( 'dialog', { name: 'Delete rule' } )
+		screen.getByRole( 'dialog', { name: 'Delete rule?' } )
 	).toBeInTheDocument();
 	expect(
 		screen.queryByRole( 'dialog', { name: 'Edit rule' } )

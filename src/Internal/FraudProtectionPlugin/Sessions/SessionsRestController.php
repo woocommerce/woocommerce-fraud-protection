@@ -564,7 +564,7 @@ class SessionsRestController extends RestApiControllerBase {
 
 		return new \WP_Error(
 			'woocommerce_fraud_protection_sessions_unavailable',
-			__( 'The checkout attempts could not be loaded.', 'woocommerce-fraud-protection' ),
+			__( 'The payment activity could not be loaded.', 'woocommerce-fraud-protection' ),
 			array( 'status' => 500 )
 		);
 	}

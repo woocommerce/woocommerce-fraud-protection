@@ -28,7 +28,7 @@ export function RulesCard() {
 			>
 				<Card.Header render={ <Stack direction="column" gap="md" /> }>
 					<Card.Title render={ <h2 /> }>
-						{ __( 'Rules', 'woocommerce-fraud-protection' ) }
+						{ __( 'Custom rules', 'woocommerce-fraud-protection' ) }
 					</Card.Title>
 					<Text
 						className="wc-fraud-protection-settings__description"
@@ -37,7 +37,7 @@ export function RulesCard() {
 					>
 						{ createInterpolateElement(
 							__(
-								'Create rules to always allow or block checkout attempts that match specific criteria. Rules take priority over automatic fraud prevention and allow rules override block rules. See our <a>best practices</a>.',
+								"Always allow or block payment activity from specific IP or email addresses. Custom rules override automatic blocking, and still apply when it's off. If a payment attempt matches both an allow and a block rule, it's allowed. <a>Learn when to use custom rules</a>",
 								'woocommerce-fraud-protection'
 							),
 							{

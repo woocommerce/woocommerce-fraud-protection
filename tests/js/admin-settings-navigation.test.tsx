@@ -160,13 +160,13 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		await userEvent.click(
 			await screen.findByRole( 'link', {
-				name: 'View checkout attempts',
+				name: 'View all payment activity',
 			} )
 		);
 
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( /See checkout attempts and how fraud prevention/ )
+			screen.getByText( /View activity recorded by fraud prevention/ )
 		).toBeVisible();
 
 		await userEvent.click(
@@ -177,7 +177,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 			expect( mockHistory.location.pathname ).toBe( '/' )
 		);
 		expect(
-			screen.getByRole( 'heading', { name: 'Performance' } )
+			screen.getByRole( 'heading', { name: 'Payment activity' } )
 		).toBeVisible();
 		expect( confirm ).not.toHaveBeenCalled();
 	} );
@@ -190,7 +190,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		await userEvent.click(
 			await screen.findByRole( 'link', {
-				name: 'View checkout attempts',
+				name: 'View all payment activity',
 			} )
 		);
 		expect( mount ).toHaveClass( 'is-drill-down' );
@@ -198,7 +198,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		await userEvent.click(
 			screen.getByRole( 'link', { name: 'Fraud prevention' } )
 		);
-		await screen.findByRole( 'heading', { name: 'Performance' } );
+		await screen.findByRole( 'heading', { name: 'Payment activity' } );
 		expect( mount ).not.toHaveClass( 'is-drill-down' );
 
 		await userEvent.click(
@@ -214,11 +214,11 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 	it( 'opens each page at the top, and leaves Back to the browser', async () => {
 		renderApp();
-		await screen.findByRole( 'heading', { name: 'Performance' } );
+		await screen.findByRole( 'heading', { name: 'Payment activity' } );
 		expect( window.scrollTo ).not.toHaveBeenCalled();
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+			screen.getByRole( 'link', { name: 'View all payment activity' } )
 		);
 		expect( window.scrollTo ).toHaveBeenCalledTimes( 1 );
 		expect( window.scrollTo ).toHaveBeenCalledWith( 0, 0 );
@@ -259,7 +259,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		renderApp( '/checkout-attempts' );
 
 		expect(
-			screen.getByText( /See checkout attempts and how fraud prevention/ )
+			screen.getByText( /View activity recorded by fraud prevention/ )
 		).toBeVisible();
 		// The list route never fetches the settings data, only its own list.
 		expect( settingsFetchCount() ).toBe( 0 );
@@ -378,7 +378,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		await userEvent.click( checkbox );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+			screen.getByRole( 'link', { name: 'View all payment activity' } )
 		);
 
 		expect( confirm ).toHaveBeenCalledTimes( 1 );
@@ -389,7 +389,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		).not.toHaveAttribute( 'aria-disabled', 'true' );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+			screen.getByRole( 'link', { name: 'View all payment activity' } )
 		);
 		expect( confirm ).toHaveBeenCalledTimes( 2 );
 		expect( mockHistory.location.pathname ).toBe( '/' );
@@ -401,13 +401,13 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		await userEvent.click( await screen.findByRole( 'checkbox' ) );
 
 		await userEvent.click(
-			screen.getByRole( 'link', { name: 'View checkout attempts' } )
+			screen.getByRole( 'link', { name: 'View all payment activity' } )
 		);
 
 		expect( window.confirm ).toHaveBeenCalledTimes( 1 );
 		expect( mockHistory.location.pathname ).toBe( '/checkout-attempts' );
 		expect(
-			screen.getByText( /See checkout attempts and how fraud prevention/ )
+			screen.getByText( /View activity recorded by fraud prevention/ )
 		).toBeVisible();
 
 		await userEvent.click(
@@ -429,7 +429,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 
 		await userEvent.click(
 			await screen.findByRole( 'link', {
-				name: 'View checkout attempts',
+				name: 'View all payment activity',
 			} )
 		);
 		await userEvent.click(
@@ -459,7 +459,7 @@ describe( 'FraudProtectionAdminApp navigation', () => {
 		);
 		expect( mockHistory.action ).toBe( 'REPLACE' );
 		expect(
-			screen.getByRole( 'heading', { name: 'Performance' } )
+			screen.getByRole( 'heading', { name: 'Payment activity' } )
 		).toBeVisible();
 	} );
 } );

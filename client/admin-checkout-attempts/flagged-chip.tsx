@@ -29,21 +29,21 @@ export function getFlaggedExplanation( {
 	if ( protectionOn ) {
 		explanation = enabledAt
 			? sprintf(
-					// translators: %s is the date automatic fraud prevention was enabled.
+					// translators: %s is the date automatic blocking was turned on.
 					__(
-						'Flagged as suspicious but allowed because automatic protection was off. Enabled %s.',
+						"Flagged but not blocked because automatic blocking was off at the time. It's been active since %s.",
 						'woocommerce-fraud-protection'
 					),
 					formatDate( enabledAt )
 			  )
 			: __(
-					'Flagged as suspicious but allowed because automatic fraud prevention was off.',
+					'Flagged but not blocked because automatic blocking was off at the time.',
 					'woocommerce-fraud-protection'
 			  );
 	} else if ( settingsUrl ) {
 		explanation = createInterpolateElement(
 			__(
-				'Flagged as suspicious but allowed because automatic fraud prevention is off. <a>Enable automatic fraud prevention</a>.',
+				'Flagged but not blocked because automatic blocking is off. <a>Turn on automatic blocking</a>',
 				'woocommerce-fraud-protection'
 			),
 			{
@@ -59,7 +59,7 @@ export function getFlaggedExplanation( {
 		);
 	} else {
 		explanation = __(
-			'Flagged as suspicious but allowed because automatic fraud prevention is off.',
+			'Flagged but not blocked because automatic blocking is off.',
 			'woocommerce-fraud-protection'
 		);
 	}
@@ -81,7 +81,7 @@ export function FlaggedChip( props: FlaggedChipProps ) {
 					'woocommerce-fraud-protection'
 				) }
 				title={ __(
-					'Why this checkout attempt was flagged',
+					'Why this payment attempt was flagged',
 					'woocommerce-fraud-protection'
 				) }
 			>

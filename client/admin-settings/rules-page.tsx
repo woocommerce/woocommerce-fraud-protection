@@ -275,7 +275,7 @@ function RulesEmptyState( {
 			<EmptyState.Title>
 				{ hasActiveFilters
 					? __( 'No matching rules', 'woocommerce-fraud-protection' )
-					: __( 'No rules', 'woocommerce-fraud-protection' ) }
+					: __( 'No custom rules', 'woocommerce-fraud-protection' ) }
 			</EmptyState.Title>
 			<EmptyState.Description>
 				{ hasActiveFilters
@@ -374,7 +374,10 @@ export function RulesPage() {
 						</Link>
 						<span aria-hidden="true">/</span>
 						<span aria-current="page">
-							{ __( 'Rules', 'woocommerce-fraud-protection' ) }
+							{ __(
+								'Custom rules',
+								'woocommerce-fraud-protection'
+							) }
 						</span>
 					</nav>
 					<Button
@@ -387,7 +390,7 @@ export function RulesPage() {
 				</Stack>
 				<p className="wc-fraud-protection-rules__description">
 					{ __(
-						'Rules that override any automatic fraud prevention decision. Allow rules take priority over block rules.',
+						"View and manage the custom rules you've created. These take priority over automatic blocking when it's active.",
 						'woocommerce-fraud-protection'
 					) }
 				</p>

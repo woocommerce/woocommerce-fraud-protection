@@ -58,7 +58,7 @@ export function PerformanceCard( {
 		>
 			<Card.Header>
 				<Card.Title render={ <h2 /> }>
-					{ __( 'Performance', 'woocommerce-fraud-protection' ) }
+					{ __( 'Payment activity', 'woocommerce-fraud-protection' ) }
 				</Card.Title>
 			</Card.Header>
 			<Card.Content className="wc-fraud-protection-settings__performance-content">
@@ -69,7 +69,7 @@ export function PerformanceCard( {
 						render={ <p /> }
 					>
 						{ __(
-							'See how fraud prevention is evaluating recent checkout activity.',
+							'See how much activity fraud prevention has flagged, blocked, or allowed on your store.',
 							'woocommerce-fraud-protection'
 						) }
 					</Text>
@@ -127,7 +127,7 @@ export function PerformanceCard( {
 						{ isLoading && (
 							<VisuallyHidden role="status">
 								{ __(
-									'Loading performance results.',
+									'Loading payment activity results.',
 									'woocommerce-fraud-protection'
 								) }
 							</VisuallyHidden>
@@ -139,7 +139,7 @@ export function PerformanceCard( {
 							render={ <Link to={ checkoutAttemptsHref } /> }
 						>
 							{ __(
-								'View checkout attempts',
+								'View all payment activity',
 								'woocommerce-fraud-protection'
 							) }
 						</LinkButton>

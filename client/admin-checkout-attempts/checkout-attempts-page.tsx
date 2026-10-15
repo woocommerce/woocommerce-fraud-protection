@@ -226,7 +226,7 @@ export function CheckoutAttemptsPage() {
 	let emptyMessage;
 	if ( error ) {
 		emptyMessage = __(
-			'No checkout attempts to show.',
+			'No payment activity to show.',
 			'woocommerce-fraud-protection'
 		);
 	} else if (
@@ -235,12 +235,12 @@ export function CheckoutAttemptsPage() {
 		tab !== 'all'
 	) {
 		emptyMessage = __(
-			'No checkout attempts match your search or filters.',
+			'No payment activity matches your search or filters.',
 			'woocommerce-fraud-protection'
 		);
 	} else {
 		emptyMessage = __(
-			'No checkout attempts have been recorded in the last 30 days.',
+			'No payment activity has been recorded in the last 30 days.',
 			'woocommerce-fraud-protection'
 		);
 	}
@@ -278,14 +278,14 @@ export function CheckoutAttemptsPage() {
 					<span aria-hidden="true"> / </span>
 					<span>
 						{ __(
-							'Checkout attempts',
+							'Payment activity',
 							'woocommerce-fraud-protection'
 						) }
 					</span>
 				</nav>
 				<p className="wc-fraud-protection-checkout-attempts__description">
 					{ __(
-						'See checkout attempts and how fraud prevention responded to them, including any that fraud prevention blocked before completing.',
+						'View activity recorded by fraud prevention in the last 30 days.',
 						'woocommerce-fraud-protection'
 					) }
 				</p>

@@ -71,7 +71,7 @@ export function RuleDeleteDialog( {
 			>
 				<Dialog.Header>
 					<Dialog.Title>
-						{ __( 'Delete rule', 'woocommerce-fraud-protection' ) }
+						{ __( 'Delete rule?', 'woocommerce-fraud-protection' ) }
 					</Dialog.Title>
 					<Dialog.CloseIcon
 						label={ __( 'Close', 'woocommerce-fraud-protection' ) }
@@ -82,7 +82,7 @@ export function RuleDeleteDialog( {
 					<Stack direction="column" gap="xl">
 						<Dialog.Description>
 							{ __(
-								'This rule will no longer apply to future checkout attempts. Past attempts won’t be affected.',
+								'This custom rule will be deleted and no longer apply to payment attempts. Past attempts won’t be affected.',
 								'woocommerce-fraud-protection'
 							) }
 						</Dialog.Description>

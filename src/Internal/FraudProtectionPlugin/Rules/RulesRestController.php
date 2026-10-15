@@ -528,11 +528,11 @@ class RulesRestController extends RestApiControllerBase {
 	 */
 	private function duplicate_rule_message( string $type, ?string $existing_action ): string {
 		return match ( array( $type, $existing_action ) ) {
-			array( RuleConditions::FIELD_EMAIL, FraudDecision::Allow->value ) => __( 'This email is already allowed by a rule.', 'woocommerce-fraud-protection' ),
-			array( RuleConditions::FIELD_EMAIL, FraudDecision::Block->value ) => __( 'This email is already blocked by a rule.', 'woocommerce-fraud-protection' ),
-			array( RuleConditions::FIELD_IP, FraudDecision::Allow->value ) => __( 'This IP is already allowed by a rule.', 'woocommerce-fraud-protection' ),
-			array( RuleConditions::FIELD_IP, FraudDecision::Block->value ) => __( 'This IP is already blocked by a rule.', 'woocommerce-fraud-protection' ),
-			default => __( 'A rule with this value already exists.', 'woocommerce-fraud-protection' ),
+			array( RuleConditions::FIELD_EMAIL, FraudDecision::Allow->value ) => __( 'You already have a rule that allows this email address.', 'woocommerce-fraud-protection' ),
+			array( RuleConditions::FIELD_EMAIL, FraudDecision::Block->value ) => __( 'You already have a rule that blocks this email address.', 'woocommerce-fraud-protection' ),
+			array( RuleConditions::FIELD_IP, FraudDecision::Allow->value ) => __( 'You already have a rule that allows this IP address.', 'woocommerce-fraud-protection' ),
+			array( RuleConditions::FIELD_IP, FraudDecision::Block->value ) => __( 'You already have a rule that blocks this IP address.', 'woocommerce-fraud-protection' ),
+			default => __( 'You already have a rule with this value.', 'woocommerce-fraud-protection' ),
 		};
 	}
 

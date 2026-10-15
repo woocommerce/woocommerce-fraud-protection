@@ -45,7 +45,7 @@ export function EnableFraudPreventionDrawer( {
 		if ( didSave ) {
 			createSuccessNotice(
 				__(
-					'Automatic fraud prevention is on, flagged checkout attempts will be blocked automatically going forward.',
+					'Automatic blocking is active.',
 					'woocommerce-fraud-protection'
 				),
 				{ type: 'snackbar' }
@@ -83,7 +83,7 @@ export function EnableFraudPreventionDrawer( {
 				<Drawer.Header>
 					<Drawer.Title>
 						{ __(
-							'Enable fraud prevention',
+							'Turn on automatic blocking',
 							'woocommerce-fraud-protection'
 						) }
 					</Drawer.Title>
@@ -93,6 +93,10 @@ export function EnableFraudPreventionDrawer( {
 					<Stack direction="column" gap="lg">
 						<AutomaticProtectionControl
 							id={ CHECKBOX_ID }
+							description={ __(
+								'Fraud prevention analyzes payment activity on your store for automated or malicious behavior. Turn on automatic blocking to stop flagged payment attempts before they go through. You can turn it off at any time in the Fraud prevention area of your store settings.',
+								'woocommerce-fraud-protection'
+							) }
 							checked={ checked }
 							disabled={ isSaving }
 							onChange={ setChecked }

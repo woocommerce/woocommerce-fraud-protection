@@ -593,7 +593,7 @@ describe( 'checkout attempts row actions', () => {
 		const { container } = render( <>{ label }</> );
 
 		expect(
-			screen.getByText( 'Turn on automatic fraud prevention' )
+			screen.getByText( 'Turn on automatic blocking' )
 		).toBeInTheDocument();
 		expect(
 			container.querySelector(
@@ -735,13 +735,13 @@ describe( 'checkout attempts status field', () => {
 		);
 
 		expect( container ).toHaveTextContent(
-			'Flagged as suspicious but allowed because automatic fraud prevention is off. Enable automatic fraud prevention.'
+			'Flagged but not blocked because automatic blocking is off. Turn on automatic blocking'
 		);
 		expect(
-			screen.getByText( /because automatic fraud prevention is off/ )
+			screen.getByText( /because automatic blocking is off/ )
 		).toBeInTheDocument();
 		const link = screen.getByRole( 'link', {
-			name: 'Enable automatic fraud prevention',
+			name: 'Turn on automatic blocking',
 		} );
 		expect( link ).toHaveAttribute( 'href', config.settingsUrl );
 		// The settings page opens in a new tab.
@@ -761,12 +761,12 @@ describe( 'checkout attempts status field', () => {
 		);
 
 		expect( container ).toHaveTextContent(
-			'Flagged as suspicious but allowed because automatic protection was off. Enabled Apr 20, 2026.'
+			"Flagged but not blocked because automatic blocking was off at the time. It's been active since Apr 20, 2026."
 		);
 		// No enable link once protection is on.
 		expect(
 			screen.queryByRole( 'link', {
-				name: 'Enable automatic fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		).not.toBeInTheDocument();
 	} );
@@ -1309,7 +1309,7 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		expect(
 			screen.getByText(
-				'See checkout attempts and how fraud prevention responded to them, including any that fraud prevention blocked before completing.'
+				'View activity recorded by fraud prevention in the last 30 days.'
 			)
 		).toBeInTheDocument();
 
@@ -1361,27 +1361,53 @@ describe( 'CheckoutAttemptsPage', () => {
 
 		renderPage();
 		await chooseAttemptAction( allowed.email!, 'Block this email address' );
+		const emailDrawer = await screen.findByRole( 'dialog', {
+			name: 'Block email address',
+		} );
+		expect( emailDrawer ).toBeVisible();
 		expect(
-			await screen.findByRole( 'dialog', { name: 'Create rule' } )
-		).toBeVisible();
+			within( emailDrawer ).getByText(
+				/^Always block payment attempts from this email address\./
+			)
+		).toBeInTheDocument();
 		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'block' );
 		expect( screen.getByLabelText( 'Rule type' ) ).toHaveValue( 'email' );
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( allowed.email );
 		expect( ruleMutationRequests() ).toHaveLength( 0 );
+
+		// The title and description follow the action the merchant picks.
+		await userEvent.selectOptions(
+			screen.getByLabelText( 'Action' ),
+			'allow'
+		);
+		const allowEmailDrawer = screen.getByRole( 'dialog', {
+			name: 'Allow email address',
+		} );
+		expect(
+			within( allowEmailDrawer ).getByText(
+				/^Always allow payment attempts from this email address\./
+			)
+		).toBeInTheDocument();
 
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Close' } )
 		);
 		await waitFor( () =>
 			expect(
-				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+				screen.queryByRole( 'dialog', { name: 'Allow email address' } )
 			).not.toBeInTheDocument()
 		);
 
 		await chooseAttemptAction( blocked.ip!, 'Allow this IP address' );
+		const ipDrawer = await screen.findByRole( 'dialog', {
+			name: 'Allow IP address',
+		} );
+		expect( ipDrawer ).toBeVisible();
 		expect(
-			await screen.findByRole( 'dialog', { name: 'Create rule' } )
-		).toBeVisible();
+			within( ipDrawer ).getByText(
+				/^Always allow payment attempts from this IP address\./
+			)
+		).toBeInTheDocument();
 		expect( screen.getByLabelText( 'Action' ) ).toHaveValue( 'allow' );
 		expect( screen.getByLabelText( 'Rule type' ) ).toHaveValue( 'ip' );
 		expect( screen.getByLabelText( 'Value' ) ).toHaveValue( blocked.ip );
@@ -1429,7 +1455,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		expect( ruleMutationRequests() ).toHaveLength( 1 );
 		await waitFor( () =>
 			expect(
-				screen.queryByRole( 'dialog', { name: 'Create rule' } )
+				screen.queryByRole( 'dialog', { name: 'Block email address' } )
 			).not.toBeInTheDocument()
 		);
 		expect( mockHistory.location.search ).toBe( searchBeforeSave );
@@ -1533,7 +1559,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		renderPage();
 		await chooseAttemptAction( attempt.ip!, 'Delete IP address rule' );
 		const dialog = await screen.findByRole( 'dialog', {
-			name: 'Delete rule',
+			name: 'Delete rule?',
 		} );
 		expect( within( dialog ).getByLabelText( 'Rule type' ) ).toHaveValue(
 			'ip'
@@ -1553,7 +1579,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		);
 		await waitFor( () =>
 			expect(
-				screen.queryByRole( 'dialog', { name: 'Delete rule' } )
+				screen.queryByRole( 'dialog', { name: 'Delete rule?' } )
 			).not.toBeInTheDocument()
 		);
 		await openAttemptActions( refreshedAttempt.ip! );
@@ -1572,7 +1598,8 @@ describe( 'CheckoutAttemptsPage', () => {
 			before: [ attempt ],
 			createError: {
 				code: 'woocommerce_fraud_protection_duplicate_rule',
-				message: 'This email is already allowed by a rule.',
+				message:
+					'You already have a rule that allows this email address.',
 				data: { rule_id: 17 },
 			},
 			details: { 17: existingRule },
@@ -1584,7 +1611,7 @@ describe( 'CheckoutAttemptsPage', () => {
 			await screen.findByRole( 'button', { name: 'Create rule' } )
 		);
 		await userEvent.click(
-			await screen.findByRole( 'button', { name: 'Edit existing rule' } )
+			await screen.findByRole( 'button', { name: 'View rule' } )
 		);
 
 		expect(
@@ -1661,7 +1688,7 @@ describe( 'CheckoutAttemptsPage', () => {
 			'Delete email address rule'
 		);
 		const dialog = await screen.findByRole( 'dialog', {
-			name: 'Delete rule',
+			name: 'Delete rule?',
 		} );
 		await userEvent.click(
 			within( dialog ).getByRole( 'button', { name: 'Cancel' } )
@@ -1675,7 +1702,7 @@ describe( 'CheckoutAttemptsPage', () => {
 			)
 		).toBe( false );
 		expect(
-			screen.queryByRole( 'dialog', { name: 'Delete rule' } )
+			screen.queryByRole( 'dialog', { name: 'Delete rule?' } )
 		).not.toBeInTheDocument();
 	} );
 
@@ -1922,11 +1949,11 @@ describe( 'CheckoutAttemptsPage', () => {
 		// The banner's message renders visibly (the Notice also mirrors it into an
 		// aria-live region, so there are two matches).
 		expect(
-			screen.getAllByText( /Automatic fraud prevention is off/ ).length
+			screen.getAllByText( /Automatic blocking is off/ ).length
 		).toBeGreaterThan( 0 );
 		expect(
 			await screen.findByRole( 'button', {
-				name: 'Enable automatic fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		).toBeInTheDocument();
 	} );
@@ -1937,12 +1964,12 @@ describe( 'CheckoutAttemptsPage', () => {
 		renderPage();
 
 		await screen.findByRole( 'button', {
-			name: 'Enable automatic fraud prevention',
+			name: 'Turn on automatic blocking',
 		} );
 
 		fireEvent.click(
 			screen.getByRole( 'button', {
-				name: 'Dismiss the automatic fraud prevention banner',
+				name: 'Dismiss the automatic blocking banner',
 			} )
 		);
 
@@ -1964,7 +1991,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		await waitFor( () => expect( listPaths() ).toHaveLength( 1 ) );
 		expect(
 			screen.queryByRole( 'button', {
-				name: 'Enable automatic fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		).not.toBeInTheDocument();
 	} );
@@ -1977,12 +2004,12 @@ describe( 'CheckoutAttemptsPage', () => {
 		// Clicking the banner button opens the drawer, without navigating away.
 		await userEvent.click(
 			await screen.findByRole( 'button', {
-				name: 'Enable automatic fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		);
 		expect(
 			await screen.findByRole( 'heading', {
-				name: 'Enable fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		).toBeVisible();
 
@@ -1996,7 +2023,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		// Check the box and save: it posts to the settings endpoint...
 		await userEvent.click(
 			screen.getByRole( 'checkbox', {
-				name: /Automatically block checkout attempts/,
+				name: /Block flagged payment attempts automatically/,
 			} )
 		);
 		expect(
@@ -2012,10 +2039,10 @@ describe( 'CheckoutAttemptsPage', () => {
 			} )
 		);
 
-		// ...confirms that automatic fraud prevention is on...
+		// ...confirms that automatic blocking is on...
 		await waitFor( () =>
 			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-				'Automatic fraud prevention is on, flagged checkout attempts will be blocked automatically going forward.',
+				'Automatic blocking is active.',
 				{ type: 'snackbar' }
 			)
 		);
@@ -2023,7 +2050,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		// ...and the banner goes away once protection is on.
 		await waitFor( () =>
 			expect(
-				screen.queryByText( /Automatic fraud prevention is off/ )
+				screen.queryByText( /Automatic blocking is off/ )
 			).not.toBeInTheDocument()
 		);
 	} );
@@ -2037,12 +2064,12 @@ describe( 'CheckoutAttemptsPage', () => {
 		renderPage();
 		await chooseAttemptAction(
 			flagged.email!,
-			'Turn on automatic fraud prevention'
+			'Turn on automatic blocking'
 		);
 
 		expect(
 			await screen.findByRole( 'heading', {
-				name: 'Enable fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		).toBeVisible();
 	} );
@@ -2056,7 +2083,7 @@ describe( 'CheckoutAttemptsPage', () => {
 		await waitFor( () => expect( listPaths() ).toHaveLength( 1 ) );
 		expect(
 			screen.queryByRole( 'button', {
-				name: 'Enable automatic fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		).not.toBeInTheDocument();
 	} );
@@ -2112,11 +2139,11 @@ describe( 'CheckoutAttemptsPage', () => {
 		await waitFor( () => expect( listPaths() ).toHaveLength( 1 ) );
 		expect(
 			screen.queryByRole( 'button', {
-				name: 'Enable automatic fraud prevention',
+				name: 'Turn on automatic blocking',
 			} )
 		).not.toBeInTheDocument();
 		expect(
-			screen.queryByText( /Automatic fraud prevention is off/ )
+			screen.queryByText( /Automatic blocking is off/ )
 		).not.toBeInTheDocument();
 	} );
 } );

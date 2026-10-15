@@ -80,14 +80,8 @@ export function useRuleMutation() {
 						  );
 				createSuccessNotice(
 					ruleId === undefined
-						? __(
-								'Rule created successfully.',
-								'woocommerce-fraud-protection'
-						  )
-						: __(
-								'Rule updated successfully.',
-								'woocommerce-fraud-protection'
-						  ),
+						? __( 'Rule created.', 'woocommerce-fraud-protection' )
+						: __( 'Rule updated.', 'woocommerce-fraud-protection' ),
 					{ type: 'snackbar' }
 				);
 				return rule;

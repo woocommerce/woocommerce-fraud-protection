@@ -146,10 +146,10 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const rulesCard = (
-			await screen.findByRole( 'heading', { name: 'Rules' } )
+			await screen.findByRole( 'heading', { name: 'Custom rules' } )
 		).closest( 'section' );
 		const performanceCard = screen
-			.getByRole( 'heading', { name: 'Performance' } )
+			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' );
 		expect( rulesCard ).not.toBeNull();
 		expect( performanceCard ).not.toBeNull();
@@ -157,12 +157,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 		const rules = within( rulesCard as HTMLElement );
 
 		expect(
-			rules.getByText( /Create rules to always allow/ )
+			rules.getByText( /Always allow or block payment activity/ )
 		).toHaveTextContent(
-			'Create rules to always allow or block checkout attempts that match specific criteria. Rules take priority over automatic fraud prevention and allow rules override block rules. See our best practices.'
+			"Always allow or block payment activity from specific IP or email addresses. Custom rules override automatic blocking, and still apply when it's off. If a payment attempt matches both an allow and a block rule, it's allowed. Learn when to use custom rules"
 		);
 		expect(
-			rules.getByRole( 'link', { name: 'best practices' } )
+			rules.getByRole( 'link', {
+				name: 'Learn when to use custom rules',
+			} )
 		).toHaveAttribute(
 			'href',
 			'https://woocommerce.com/document/fraud-protection/'
@@ -221,7 +223,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			},
 		} );
 		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-			'Rule created successfully.',
+			'Rule created.',
 			{ type: 'snackbar' }
 		);
 		// The saved rule leads to the rules list, where it now appears.
@@ -282,7 +284,8 @@ describe( 'FraudProtectionSettingsPage', () => {
 			.mockResolvedValueOnce( settingsResponse( false ) )
 			.mockRejectedValueOnce( {
 				code: 'woocommerce_fraud_protection_duplicate_rule',
-				message: 'This email is already allowed by a rule.',
+				message:
+					'You already have a rule that allows this email address.',
 				data: { rule_id: duplicate.id },
 			} )
 			.mockResolvedValueOnce( duplicate )
@@ -304,7 +307,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		);
 		await userEvent.click(
 			await within( drawer ).findByRole( 'button', {
-				name: 'Edit existing rule',
+				name: 'View rule',
 			} )
 		);
 
@@ -329,7 +332,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			).not.toBeInTheDocument()
 		);
 		expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-			'Rule updated successfully.',
+			'Rule updated.',
 			{ type: 'snackbar' }
 		);
 		expectRulesRoute();
@@ -350,16 +353,16 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		const performanceCard = screen
-			.getByRole( 'heading', { name: 'Performance' } )
+			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' );
 		expect( screen.queryByRole( 'checkbox' ) ).not.toBeInTheDocument();
 		expect( screen.getByRole( 'presentation' ) ).toBeInTheDocument();
 		expect( screen.getAllByRole( 'status' ) ).toHaveLength( 2 );
 		expect(
-			screen.getByText( 'Loading automatic fraud prevention setting.' )
+			screen.getByText( 'Loading automatic blocking setting.' )
 		).toBeInTheDocument();
 		expect(
-			screen.getByText( 'Loading performance results.' )
+			screen.getByText( 'Loading payment activity results.' )
 		).toBeInTheDocument();
 		expect( performanceCard?.querySelector( 'dl' ) ).toHaveAttribute(
 			'aria-busy',
@@ -377,11 +380,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).not.toBeInTheDocument();
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		expect(
-			screen.getByRole( 'heading', { name: 'Fraud prevention' } )
+			screen.getByRole( 'heading', { name: 'Automatic blocking' } )
 		).toBeInTheDocument();
 		expect(
 			screen.getByText(
-				'Fraud prevention scans checkout attempts for potentially automated or malicious shopper behavior. Flagged checkout attempts are recorded by default and are only blocked when automatic blocking is turned on.'
+				"Fraud prevention analyzes payment activity on your store for automated or malicious behavior. Automatic blocking stops payment attempts flagged as suspicious before they go through. If you turn this off, flagged activity will still be recorded, but payments won't be blocked."
 			)
 		).toBeInTheDocument();
 		await waitFor( () => {
@@ -415,7 +418,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		await waitFor( () => {
 			const checkbox = screen.getByRole( 'checkbox', {
-				name: 'Automatically block checkout attempts flagged by fraud prevention.',
+				name: 'Block flagged payment attempts automatically',
 			} );
 			expect( checkbox ).toBeChecked();
 			expect( checkbox ).toBeEnabled();
@@ -438,14 +441,14 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const performanceCard = screen
-			.getByRole( 'heading', { name: 'Performance' } )
+			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' );
 		await screen.findByText( '12' );
 		expect( performanceCard ).not.toBeNull();
 		const performance = within( performanceCard as HTMLElement );
 
 		expect( performanceCard ).toHaveTextContent(
-			'See how fraud prevention is evaluating recent checkout activity.'
+			'See how much activity fraud prevention has flagged, blocked, or allowed on your store.'
 		);
 		expect( performanceCard ).toHaveTextContent( 'Last 30 days' );
 		expect(
@@ -470,7 +473,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		).toBeInTheDocument();
 		expect(
 			performance.getByRole( 'link', {
-				name: 'View checkout attempts',
+				name: 'View all payment activity',
 			} )
 		).toHaveAttribute(
 			'href',
@@ -490,7 +493,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		renderSettings();
 
 		const performanceCard = screen
-			.getByRole( 'heading', { name: 'Performance' } )
+			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' );
 		await screen.findByText( '3' );
 		expect( performanceCard ).not.toBeNull();
@@ -532,7 +535,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
 		const performanceCard = screen
-			.getByRole( 'heading', { name: 'Performance' } )
+			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' );
 		expect( performanceCard ).not.toBeNull();
 		const definitions = within(
@@ -571,13 +574,13 @@ describe( 'FraudProtectionSettingsPage', () => {
 		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
 		const performanceCard = screen
-			.getByRole( 'heading', { name: 'Performance' } )
+			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' ) as HTMLElement;
 		expect(
 			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole( 'link', { name: '12 checkout attempts' } )
+			screen.getByRole( 'link', { name: '12 times' } )
 		).toBeInTheDocument();
 		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
@@ -590,7 +593,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		} );
 		await waitFor( () => {
 			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
-				'Settings saved.',
+				'Automatic blocking is active. Flagged payment attempts will now be blocked.',
 				{
 					type: 'snackbar',
 				}
@@ -601,7 +604,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.getByText( '4' ) ).toBeInTheDocument();
 		expect( screen.getByText( '5' ) ).toBeInTheDocument();
 		expect(
-			screen.queryByRole( 'link', { name: '12 checkout attempts' } )
+			screen.queryByRole( 'link', { name: '12 times' } )
 		).not.toBeInTheDocument();
 	} );
 
@@ -657,7 +660,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		await waitFor( () => expect( checkbox ).toBeEnabled() );
 		await userEvent.click( checkbox );
 		const performanceCard = screen
-			.getByRole( 'heading', { name: 'Performance' } )
+			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' ) as HTMLElement;
 		expect(
 			within( performanceCard ).queryByText(
@@ -665,7 +668,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			)
 		).not.toBeInTheDocument();
 		expect(
-			screen.queryByRole( 'link', { name: '12 checkout attempts' } )
+			screen.queryByRole( 'link', { name: '12 times' } )
 		).not.toBeInTheDocument();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		await userEvent.click( save );
@@ -683,7 +686,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 			)
 		).not.toBeInTheDocument();
 		expect(
-			screen.queryByRole( 'link', { name: '12 checkout attempts' } )
+			screen.queryByRole( 'link', { name: '12 times' } )
 		).not.toBeInTheDocument();
 		await userEvent.click( save );
 
@@ -696,13 +699,18 @@ describe( 'FraudProtectionSettingsPage', () => {
 			} );
 		} );
 		await waitFor( () => {
-			expect( mockCreateSuccessNotice ).toHaveBeenCalled();
+			expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+				'Settings saved.',
+				{
+					type: 'snackbar',
+				}
+			);
 		} );
 		expect(
 			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole( 'link', { name: '12 checkout attempts' } )
+			screen.getByRole( 'link', { name: '12 times' } )
 		).toBeInTheDocument();
 		expect(
 			screen
@@ -717,13 +725,13 @@ describe( 'FraudProtectionSettingsPage', () => {
 	it.each< [ number, string, string ] >( [
 		[
 			1,
-			'1 checkout attempt',
-			'1 checkout attempt was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+			'once',
+			'In the last 30 days, fraud prevention flagged suspicious activity once on your store. To help prevent fraudulent payments, we recommend turning on automatic blocking.',
 		],
 		[
 			12,
-			'12 checkout attempts',
-			'12 checkout attempts were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+			'12 times',
+			'In the last 30 days, fraud prevention flagged suspicious activity 12 times on your store. To help prevent fraudulent payments, we recommend turning on automatic blocking.',
 		],
 	] )( 'links the %s flagged attempt count', async ( count, label, copy ) => {
 		mockedApiFetch.mockResolvedValueOnce(
@@ -755,7 +763,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 			expect(
 				await screen.findByRole( 'link', {
-					name: '12 checkout attempts',
+					name: '12 times',
 				} )
 			).toBeInTheDocument();
 			expect(
@@ -778,7 +786,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		'shows count-free copy when opted-out is %s and no attempts were flagged',
 		async ( optedOut ) => {
 			const copy =
-				'Automatic fraud prevention is off. We recommend turning it on.';
+				'To help prevent fraudulent payments, we recommend turning on automatic blocking.';
 			mockedApiFetch.mockResolvedValueOnce(
 				settingsResponse( false, zeroPerformance, optedOut )
 			);
@@ -786,7 +794,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 			expect( await findVisibleText( copy ) ).toBeVisible();
 			expect(
-				screen.queryByRole( 'link', { name: '0 checkout attempts' } )
+				screen.queryByRole( 'link', { name: '0 times' } )
 			).not.toBeInTheDocument();
 		}
 	);
