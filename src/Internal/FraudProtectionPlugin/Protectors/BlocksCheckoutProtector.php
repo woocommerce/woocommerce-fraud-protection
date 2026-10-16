@@ -13,6 +13,7 @@ use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 use Automattic\WooCommerce\StoreApi\Schemas\V1\CheckoutSchema;
 
@@ -141,7 +142,7 @@ class BlocksCheckoutProtector {
 
 		$session_id_error = self::get_submitted_session_id_error( $this->request_data['extensions'] );
 		if ( null !== $session_id_error ) {
-			$this->request_data[ SessionVerifier::SESSION_ID_ERROR_FIELD ] = $session_id_error;
+			$this->request_data[ SessionIdError::FIELD ] = $session_id_error;
 		}
 	}
 

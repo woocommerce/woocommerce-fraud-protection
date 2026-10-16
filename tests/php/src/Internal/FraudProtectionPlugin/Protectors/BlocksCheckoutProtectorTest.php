@@ -14,6 +14,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -582,7 +583,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->extract_request_data( $this->create_mock_order( 910 ), $request );
 
-		$this->assertSame( 'timeout', $this->get_request_data()[ SessionVerifier::SESSION_ID_ERROR_FIELD ] ?? null, 'The reason should be sanitized as a key' );
+		$this->assertSame( 'timeout', $this->get_request_data()[ SessionIdError::FIELD ] ?? null, 'The reason should be sanitized as a key' );
 	}
 
 	/**
@@ -598,7 +599,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->extract_request_data( $this->create_mock_order( 911 ), $request );
 
-		$this->assertArrayNotHasKey( SessionVerifier::SESSION_ID_ERROR_FIELD, $this->get_request_data() );
+		$this->assertArrayNotHasKey( SessionIdError::FIELD, $this->get_request_data() );
 	}
 
 	/**

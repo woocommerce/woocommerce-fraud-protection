@@ -16,6 +16,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
@@ -416,7 +417,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	 * @return array<string, array{array, string}>
 	 */
 	public function session_id_error_provider(): array {
-		$field = SessionVerifier::SESSION_ID_ERROR_FIELD;
+		$field = SessionIdError::FIELD;
 
 		return array(
 			'timeout'          => array( array( $field => 'timeout' ), 'timeout' ),
@@ -452,7 +453,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			);
 		$this->decision_handler->method( 'apply_decision' )->willReturn( FraudDecision::Allow );
 
-		$this->sut->verify_session( $submitted, 'blocks_checkout', 0, array( SessionVerifier::SESSION_ID_ERROR_FIELD => 'timeout' ) );
+		$this->sut->verify_session( $submitted, 'blocks_checkout', 0, array( SessionIdError::FIELD => 'timeout' ) );
 
 		$this->assertSame( array( 'wc_identity_id' => 'identity-1' ), $sent_payload['session'] ?? null );
 	}

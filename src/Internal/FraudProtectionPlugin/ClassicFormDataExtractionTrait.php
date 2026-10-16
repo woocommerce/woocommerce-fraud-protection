@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -62,9 +63,9 @@ trait ClassicFormDataExtractionTrait {
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by WooCommerce. Strings are unslashed and sanitized below.
-		$session_id_error = $_POST[ SessionVerifier::SESSION_ID_ERROR_FIELD ] ?? null;
+		$session_id_error = $_POST[ SessionIdError::FIELD ] ?? null;
 		if ( is_string( $session_id_error ) ) {
-			$request_data[ SessionVerifier::SESSION_ID_ERROR_FIELD ] = sanitize_key( wp_unslash( $session_id_error ) );
+			$request_data[ SessionIdError::FIELD ] = sanitize_key( wp_unslash( $session_id_error ) );
 		}
 
 		return $request_data;
