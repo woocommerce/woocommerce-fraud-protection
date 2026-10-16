@@ -61,6 +61,12 @@ trait ClassicFormDataExtractionTrait {
 			$request_data['shipping_address'] = $shipping_address;
 		}
 
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by WooCommerce. Strings are unslashed and sanitized below.
+		$session_id_error = $_POST[ SessionVerifier::SESSION_ID_ERROR_FIELD ] ?? null;
+		if ( is_string( $session_id_error ) ) {
+			$request_data[ SessionVerifier::SESSION_ID_ERROR_FIELD ] = sanitize_key( wp_unslash( $session_id_error ) );
+		}
+
 		return $request_data;
 	}
 

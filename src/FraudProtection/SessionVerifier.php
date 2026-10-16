@@ -48,6 +48,27 @@ class SessionVerifier {
 	public const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 
 	/**
+	 * Name of the request field and request data key carrying why the browser sent no session ID.
+	 *
+	 * The plugin's own scripts send it next to an empty session ID, and
+	 * {@see verify_session()} reads it from the request data. Only the values in
+	 * SESSION_ID_ERRORS are used.
+	 *
+	 * @since 0.3.0
+	 */
+	public const SESSION_ID_ERROR_FIELD = 'wc_fraud_protection_session_id_error';
+
+	/**
+	 * Reasons for a missing session ID that the browser can report.
+	 */
+	private const SESSION_ID_ERRORS = array( 'timeout', 'sdk_error', 'sdk_unavailable' );
+
+	/**
+	 * Reason sent when there is no session ID and the browser reported no valid reason.
+	 */
+	private const SESSION_ID_ERROR_UNKNOWN = 'unknown';
+
+	/**
 	 * Session data collector instance.
 	 *
 	 * @var SessionDataCollector
@@ -185,7 +206,7 @@ class SessionVerifier {
 	 * @param mixed  $session_id   The submitted Blackbox session ID.
 	 * @param string $source       Stable application-defined ASCII caller identifier, capped at 32 characters.
 	 * @param int    $order_id     The WooCommerce order ID (0 for pre-order flows).
-	 * @param array  $request_data Request data containing payment_method and payment_data.
+	 * @param array  $request_data Request data containing payment_method and payment_data, and optionally SESSION_ID_ERROR_FIELD.
 	 * @return FraudDecision The final decision: Allow or Block.
 	 */
 	public function verify_session( mixed $session_id, string $source, int $order_id = 0, array $request_data = array() ): FraudDecision {
@@ -327,6 +348,12 @@ class SessionVerifier {
 			$payload['payment']                        = $payment_data?->to_array();
 			$payload['payment_gateway_plugin_version'] = $payment_gateway_plugin_version;
 
+			if ( '' === $normalized_session_id ) {
+				$session                     = is_array( $payload['session'] ?? null ) ? $payload['session'] : array();
+				$session['session_id_error'] = self::get_session_id_error( $request_data );
+				$payload['session']          = $session;
+			}
+
 			$verification = $this->decision_handler->prepare_verification( $payload );
 			$payload      = array_merge( $payload, $verification['context'] );
 
@@ -375,6 +402,18 @@ class SessionVerifier {
 	 */
 	public function last_verified_session_id(): string {
 		return $this->last_verified_session_id;
+	}
+
+	/**
+	 * Get why the browser sent no session ID, from the request data.
+	 *
+	 * @param array $request_data Request data that may contain SESSION_ID_ERROR_FIELD.
+	 * @return string A reported reason, or `unknown` when none is valid.
+	 */
+	private static function get_session_id_error( array $request_data ): string {
+		$error = $request_data[ self::SESSION_ID_ERROR_FIELD ] ?? null;
+
+		return is_string( $error ) && in_array( $error, self::SESSION_ID_ERRORS, true ) ? $error : self::SESSION_ID_ERROR_UNKNOWN;
 	}
 
 	/**

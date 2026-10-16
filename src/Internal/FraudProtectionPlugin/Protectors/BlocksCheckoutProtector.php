@@ -138,6 +138,11 @@ class BlocksCheckoutProtector {
 			'additional_fields' => $request->get_param( 'additional_fields' ),
 			'extensions'        => $request->get_param( 'extensions' ),
 		);
+
+		$session_id_error = self::get_submitted_session_id_error( $this->request_data['extensions'] );
+		if ( null !== $session_id_error ) {
+			$this->request_data[ SessionVerifier::SESSION_ID_ERROR_FIELD ] = $session_id_error;
+		}
 	}
 
 	/**
@@ -238,9 +243,17 @@ class BlocksCheckoutProtector {
 				'namespace'       => self::EXTENSION_NAMESPACE,
 				'schema_callback' => function () {
 					return array(
-						'blackbox_session_id' => array(
+						'blackbox_session_id'       => array(
 							'description' => 'Blackbox session ID for fraud protection verification.',
 							'type'        => 'string',
+							'context'     => array( 'view', 'edit' ),
+							'readonly'    => true,
+						),
+						// Nullable: the Store API fills a missing key with null, and
+						// requests that carry a session ID omit this one.
+						'blackbox_session_id_error' => array(
+							'description' => 'Why the browser has no Blackbox session ID.',
+							'type'        => array( 'string', 'null' ),
 							'context'     => array( 'view', 'edit' ),
 							'readonly'    => true,
 						),
@@ -299,5 +312,19 @@ class BlocksCheckoutProtector {
 		}
 
 		return $fraud_data['blackbox_session_id'];
+	}
+
+	/**
+	 * Get why the browser has no session ID, from the submitted extension data.
+	 *
+	 * @param mixed $extensions Submitted extension data.
+	 * @return string|null The submitted reason, or null when there is none.
+	 */
+	private static function get_submitted_session_id_error( mixed $extensions ): ?string {
+		$error = is_array( $extensions ) && is_array( $extensions[ self::EXTENSION_NAMESPACE ] ?? null )
+			? ( $extensions[ self::EXTENSION_NAMESPACE ]['blackbox_session_id_error'] ?? null )
+			: null;
+
+		return is_string( $error ) ? sanitize_key( $error ) : null;
 	}
 }

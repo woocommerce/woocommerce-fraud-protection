@@ -3,7 +3,9 @@
  *
  * Configures the Blackbox JS SDK and exposes shared utilities on
  * window.wcFraudProtection for checkout integration scripts.
- * Only set when the SDK is present and configured.
+ * Only set when the SDK is present and configured. When the SDK is
+ * missing, only acquireSessionIdResult() is set, so the plugin's own
+ * scripts can still report why there is no session ID.
  */
 ( function () {
 	'use strict';
@@ -13,11 +15,24 @@
 		return;
 	}
 
+	/**
+	 * Build the result of a session ID request without a session ID.
+	 *
+	 * @param {string} error Why there is no session ID.
+	 * @return {{sessionId: string, error: string}} Result.
+	 */
+	function withoutSessionId( error ) {
+		return { sessionId: '', error };
+	}
+
 	if (
 		! window.Blackbox ||
 		! window.Blackbox.configure ||
 		! window.Blackbox.init
 	) {
+		fraudProtection.acquireSessionIdResult = function () {
+			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
+		};
 		return;
 	}
 
@@ -88,27 +103,59 @@
 	window.Blackbox.init();
 
 	/**
+	 * Acquire a Blackbox session ID, or the reason why there is none.
+	 *
+	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
+	 * answer in time, `sdk_error` when it fails or returns no session ID, and
+	 * `sdk_unavailable` when its API is missing. Internal to the plugin's own
+	 * scripts.
+	 *
+	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
+	 */
+	fraudProtection.acquireSessionIdResult = function () {
+		if ( ! window.Blackbox || ! window.Blackbox.getSessionId ) {
+			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
+		}
+
+		let timer;
+		const timeout = new Promise( function ( resolve ) {
+			timer = setTimeout( function () {
+				resolve( withoutSessionId( 'timeout' ) );
+			}, fraudProtection.config.timeout );
+		} );
+
+		let session;
+		try {
+			session = Promise.resolve( window.Blackbox.getSessionId() ).then(
+				function ( result ) {
+					return typeof result === 'string' && result
+						? { sessionId: result, error: '' }
+						: withoutSessionId( 'sdk_error' );
+				},
+				function () {
+					return withoutSessionId( 'sdk_error' );
+				}
+			);
+		} catch {
+			session = Promise.resolve( withoutSessionId( 'sdk_error' ) );
+		}
+
+		return Promise.race( [ session, timeout ] ).then( function ( result ) {
+			clearTimeout( timer );
+			return result;
+		} );
+	};
+
+	/**
 	 * Acquire a Blackbox session ID (fail-open: empty string on timeout/error).
 	 *
 	 * @return {Promise<string>} Session ID or empty string.
 	 */
 	fraudProtection.acquireSessionId = function () {
-		if ( ! window.Blackbox || ! window.Blackbox.getSessionId ) {
-			return Promise.resolve( '' );
-		}
-
-		const timeout = new Promise( function ( resolve ) {
-			setTimeout( function () {
-				resolve( '' );
-			}, fraudProtection.config.timeout );
-		} );
-
-		return Promise.race( [ window.Blackbox.getSessionId(), timeout ] )
+		return fraudProtection
+			.acquireSessionIdResult()
 			.then( function ( result ) {
-				return typeof result === 'string' ? result : '';
-			} )
-			.catch( function () {
-				return '';
+				return result.sessionId;
 			} );
 	};
 

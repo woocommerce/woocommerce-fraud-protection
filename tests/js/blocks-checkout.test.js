@@ -126,6 +126,70 @@ describe( 'blocks-checkout', () => {
 			);
 		} );
 
+		it( 'sends the reason for a missing session ID', async () => {
+			setupFraudProtection();
+			window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+				Promise.resolve( { sessionId: '', error: 'timeout' } )
+			);
+			loadScript();
+
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			await validationCallback();
+
+			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+			expect( mockSetExtensionData ).toHaveBeenCalledWith(
+				'woocommerce/fraud-protection',
+				{
+					blackbox_session_id: '',
+					blackbox_session_id_error: 'timeout',
+				},
+				true
+			);
+		} );
+
+		it( 'does not send a reason with a session ID', async () => {
+			setupFraudProtection();
+			window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+				Promise.resolve( { sessionId: 'sess-result', error: '' } )
+			);
+			loadScript();
+
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			await validationCallback();
+
+			expect( mockSetExtensionData ).toHaveBeenCalledWith(
+				'woocommerce/fraud-protection',
+				{ blackbox_session_id: 'sess-result' },
+				true
+			);
+		} );
+
+		it( 'reports a missing SDK when only acquireSessionIdResult is available', async () => {
+			window.wcFraudProtection = {
+				acquireSessionIdResult: () =>
+					Promise.resolve( {
+						sessionId: '',
+						error: 'sdk_unavailable',
+					} ),
+			};
+			loadScript();
+
+			const validationCallback =
+				mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ];
+			expect( await validationCallback() ).toBe( true );
+
+			expect( mockSetExtensionData ).toHaveBeenCalledWith(
+				'woocommerce/fraud-protection',
+				{
+					blackbox_session_id: '',
+					blackbox_session_id_error: 'sdk_unavailable',
+				},
+				true
+			);
+		} );
+
 		it( 'returns true when wcFraudProtection is missing (fail-open)', async () => {
 			loadScript();
 
