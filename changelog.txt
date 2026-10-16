@@ -2,6 +2,7 @@
 
 YYYY-xx-xx - version 0.3.0
 * Updated - Automatic blocking is now on by default. Stores that turned it on, turned it off, or opted out of automatic enrollment keep their choice.
+* Added - Stores where automatic fraud prevention was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic fraud prevention is turned off.
 * Updated - The early-access Inbox note is removed, and the Fraud prevention settings no longer offer the option to opt out of automatic blocking.
 * Updated - Fraud prevention screens use clearer wording: "Checkout attempts" is now "Payment activity", "Rules" is now "Custom rules", and the automatic fraud prevention setting is now "Automatic blocking".
 * Fixed - In Firefox, paying for an order from the Pay for order page and adding a payment method from My Account no longer fail with gateways that collect card details in the browser, such as Stripe and WooPayments.

@@ -8,7 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes;
 
 use Automattic\WooCommerce\Admin\Notes\Note;
-use Automattic\WooCommerce\Admin\Notes\Notes;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
@@ -21,6 +20,8 @@ defined( 'ABSPATH' ) || exit;
  * instead of being updated.
  */
 class AutomaticProtectionEarlyAccessNote {
+
+	use StoredNoteLookup;
 
 	public const NOTE_NAME = 'wc-fraud-protection-automatic-protection-early-access';
 
@@ -46,15 +47,15 @@ class AutomaticProtectionEarlyAccessNote {
 		}
 
 		try {
-			$note = Notes::get_note_by_name( self::NOTE_NAME );
-			if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
+			$note = self::get_stored_note();
+			if ( null !== $note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
 				$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
 				$note->save();
 
 				// The note store does not report failed writes, so confirm the stored status
 				// before recording the check. An unconfirmed write runs again on the next request.
-				$stored_note = Notes::get_note( $note->get_id() );
-				if ( ! $stored_note instanceof Note || Note::E_WC_ADMIN_NOTE_ACTIONED !== $stored_note->get_status() ) {
+				$stored_note = self::get_stored_note();
+				if ( null === $stored_note || Note::E_WC_ADMIN_NOTE_ACTIONED !== $stored_note->get_status() ) {
 					FraudProtectionController::log( 'warning', 'Failed to retire automatic protection early-access note.', array( 'error' => 'The note status was not stored.' ) );
 					return;
 				}
