@@ -1,7 +1,11 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.3.0
+* Added - Stores where automatic fraud prevention was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic fraud prevention is turned off.
+* Updated - Automatic fraud prevention is now on by default. Stores that turned it on, turned it off, or opted out of automatic enrollment keep their choice.
+* Updated - The early-access Inbox note is removed, and the Fraud prevention settings no longer offer the option to opt out of automatic blocking.
 * Fixed - In Firefox, paying for an order from the Pay for order page and adding a payment method from My Account no longer fail with gateways that collect card details in the browser, such as Stripe and WooPayments.
+* Dev - The `wc-admin/fraud-protection/settings/opt-out` REST route was removed. Earlier opt-out dates are still reported by `wp wc fraud-protection status` and usage tracking.
 
 2026-10-13 - version 0.2.9
 * Added - The rules list's Created filter can now match rules created on or after, or on or before, a single date.

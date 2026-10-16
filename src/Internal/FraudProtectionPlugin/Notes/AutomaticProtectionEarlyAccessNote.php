@@ -8,147 +8,63 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes;
 
 use Automattic\WooCommerce\Admin\Notes\Note;
-use Automattic\WooCommerce\Admin\Notes\NoteTraits;
-use Automattic\WooCommerce\Admin\Notes\Notes;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Invites merchants to enable automatic protection during early access.
+ * Retires the early-access invitation to enable automatic protection.
+ *
+ * Early access ended when automatic protection became enabled by default. The
+ * stored invitation keeps its early-access copy, so it is removed from the Inbox
+ * instead of being updated.
  */
 class AutomaticProtectionEarlyAccessNote {
 
-	use NoteTraits;
+	use StoredNoteLookup;
 
 	public const NOTE_NAME = 'wc-fraud-protection-automatic-protection-early-access';
 
+	public const RETIRED_OPTION_NAME = 'woocommerce_fraud_protection_early_access_note_retired';
+
 	/**
-	 * Register note creation and cleanup.
+	 * Register the note retirement.
 	 */
 	public function register(): void {
-		add_action( 'admin_init', array( $this, 'maybe_add_note' ) );
-		foreach ( array( 'woocommerce_fraud_protection_automatic_protection', 'woocommerce_fraud_protection_automatic_protection_opted_out_at', 'woocommerce_fraud_protection_merchant_facing_features' ) as $option ) {
-			foreach ( array( 'add_option_', 'update_option_', 'delete_option_' ) as $hook ) {
-				add_action( $hook . $option, array( $this, 'update_note' ) );
-			}
-		}
-		add_action( 'delete_option_woocommerce_fraud_protection_automatic_protection_opted_out_at', array( $this, 'reset_dismissed_note' ) );
+		add_action( 'admin_init', array( $this, 'retire_note' ) );
 	}
 
 	/**
-	 * Delete the dismissed invitation when the opt-out is reset.
+	 * Mark an active invitation as actioned so it leaves the Inbox.
+	 *
+	 * The check runs once per site. A failed check runs again on the next admin request.
 	 *
 	 * @internal
 	 */
-	public function reset_dismissed_note(): void {
-		try {
-			if ( self::is_applicable() ) {
-				self::possibly_delete_note();
-			}
-		} catch ( \Throwable $e ) {
-			FraudProtectionController::log( 'warning', 'Failed to reset automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
-		}
-	}
-
-	/**
-	 * Add the note once for eligible stores.
-	 *
-	 * @internal
-	 */
-	public function maybe_add_note(): void {
-		if ( wp_doing_ajax() ) {
+	public function retire_note(): void {
+		if ( wp_doing_ajax() || 'yes' === get_option( self::RETIRED_OPTION_NAME ) ) {
 			return;
 		}
 
 		try {
-			self::possibly_add_note();
-		} catch ( \Throwable $e ) {
-			FraudProtectionController::log( 'warning', 'Failed to create automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
-		}
-	}
+			$note = self::get_stored_note();
+			if ( null !== $note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
+				$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
+				$note->save();
 
-	/**
-	 * Complete invitations when protection is enabled, or remove ineligible invitations.
-	 *
-	 * @internal
-	 */
-	public function update_note(): void {
-		try {
-			$setting = wc_get_container()->get( AutomaticProtectionSetting::class );
-			if ( $setting->is_enabled() ) {
-				$note = Notes::get_note_by_name( self::NOTE_NAME );
-				if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
-					$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
-					$note->save();
+				// The note store does not report failed writes, so confirm the stored status
+				// before recording the check. An unconfirmed write runs again on the next request.
+				$stored_note = self::get_stored_note();
+				if ( null === $stored_note || Note::E_WC_ADMIN_NOTE_ACTIONED !== $stored_note->get_status() ) {
+					FraudProtectionController::log( 'warning', 'Failed to retire automatic protection early-access note.', array( 'error' => 'The note status was not stored.' ) );
+					return;
 				}
-				return;
 			}
 
-			if ( $setting->is_opted_out() ) {
-				$note = Notes::get_note_by_name( self::NOTE_NAME );
-				if ( $note instanceof Note && ! $note->get_is_deleted() ) {
-					$note->set_is_deleted( true );
-					$note->save();
-				}
-				return;
-			}
-
-			self::delete_if_not_applicable();
+			// Autoloaded so later admin requests skip the check without a query.
+			update_option( self::RETIRED_OPTION_NAME, 'yes', true );
 		} catch ( \Throwable $e ) {
-			FraudProtectionController::log( 'warning', 'Failed to update automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
+			FraudProtectionController::log( 'warning', 'Failed to retire automatic protection early-access note.', array( 'error' => $e->getMessage() ) );
 		}
-	}
-
-	/**
-	 * Check the existing merchant gate and automatic-protection setting.
-	 */
-	public static function is_applicable(): bool {
-		$container = wc_get_container();
-		return $container->get( MerchantFacingFeaturesGate::class )->is_enabled()
-			&& ! $container->get( AutomaticProtectionSetting::class )->is_enabled()
-			&& ! $container->get( AutomaticProtectionSetting::class )->is_opted_out();
-	}
-
-	/**
-	 * Build the early-access note for stores with automatic protection off.
-	 *
-	 * @return Note|null
-	 */
-	public static function get_note(): ?Note {
-		if ( ! self::is_applicable() ) {
-			return null;
-		}
-
-		$note = new Note();
-		$note->set_name( self::NOTE_NAME );
-		$note->set_source( 'woocommerce-fraud-protection' );
-		$note->set_type( Note::E_WC_ADMIN_NOTE_INFORMATIONAL );
-		$note->set_title( __( 'Start blocking risky checkout attempts', 'woocommerce-fraud-protection' ) );
-		$note->set_content(
-			sprintf(
-				/* translators: 1: Opening documentation link tag, 2: Closing documentation link tag. */
-				__( 'WooCommerce is introducing Fraud Prevention, a new feature that scans checkout attempts for signs of bot or automated behavior. You can turn it on early and try it now, or wait until October 20, when it will be enabled automatically. %1$sLearn more%2$s', 'woocommerce-fraud-protection' ),
-				'<a href="' . esc_url( 'https://woocommerce.com/document/fraud-protection/' ) . '" target="_blank" rel="noopener noreferrer">',
-				'</a>'
-			)
-		);
-		$note->add_action(
-			'review-automatic-protection',
-			__( 'Manage in settings', 'woocommerce-fraud-protection' ),
-			add_query_arg(
-				array(
-					'page'   => 'wc-settings',
-					'tab'    => 'woocommerce_fraud_protection',
-					'source' => 'inbox',
-				),
-				admin_url( 'admin.php' )
-			),
-			Note::E_WC_ADMIN_NOTE_UNACTIONED
-		);
-
-		return $note;
 	}
 }

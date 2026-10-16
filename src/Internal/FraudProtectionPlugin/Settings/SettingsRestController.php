@@ -112,25 +112,6 @@ class SettingsRestController extends RestApiControllerBase {
 				'schema' => fn() => $this->get_item_schema(),
 			)
 		);
-
-		register_rest_route(
-			$this->route_namespace,
-			'/' . $this->rest_base . '/opt-out',
-			array(
-				array(
-					'methods'             => \WP_REST_Server::EDITABLE,
-					'callback'            => fn( \WP_REST_Request $request ) => $this->opt_out( $request ),
-					'permission_callback' => fn( \WP_REST_Request $request ) => $this->check_permission( $request, 'manage_woocommerce' ),
-					'args'                => array(
-						'source' => array(
-							'type'     => 'string',
-							'required' => true,
-							'enum'     => array( 'inbox', 'settings' ),
-						),
-					),
-				),
-			)
-		);
 	}
 
 	/**
@@ -166,22 +147,6 @@ class SettingsRestController extends RestApiControllerBase {
 
 		if ( ! $this->updater->set_enabled( $enabled, SettingsChangeChannel::Settings ) ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
-		}
-
-		return rest_ensure_response( $this->get_setting_values() );
-	}
-
-	/**
-	 * Store an automatic-enrollment opt-out.
-	 *
-	 * @param \WP_REST_Request $request REST request.
-	 * @return \WP_REST_Response|\WP_Error
-	 */
-	private function opt_out( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$source = 'inbox' === $request->get_param( 'source' ) ? 'inbox' : 'settings';
-
-		if ( ! $this->updater->opt_out( $source ) ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'We could not opt you out of automatic blocking.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
 		return rest_ensure_response( $this->get_setting_values() );

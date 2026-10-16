@@ -13,9 +13,7 @@ export function FraudProtectionSettingsPage() {
 		error,
 		isDirty,
 		isLoading,
-		isOptingOut,
 		isSaving,
-		optOut,
 		performance,
 		save,
 		savedSettings,
@@ -24,7 +22,7 @@ export function FraudProtectionSettingsPage() {
 	} = useFraudProtectionSettings();
 
 	useUnsavedChangesGuard( isDirty, discardChanges );
-	const controlsDisabled = ! settings || isSaving || isOptingOut;
+	const controlsDisabled = ! settings || isSaving;
 
 	let errorMessage = null;
 	if ( error?.operation === 'load' ) {
@@ -35,11 +33,6 @@ export function FraudProtectionSettingsPage() {
 	} else if ( error?.operation === 'save' ) {
 		errorMessage = __(
 			'The fraud prevention setting could not be saved.',
-			'woocommerce-fraud-protection'
-		);
-	} else if ( error?.operation === 'opt_out' ) {
-		errorMessage = __(
-			'We could not opt you out of automatic blocking.',
 			'woocommerce-fraud-protection'
 		);
 	}
@@ -65,10 +58,7 @@ export function FraudProtectionSettingsPage() {
 				checked={ settings?.automatic_protection ?? false }
 				controlsDisabled={ controlsDisabled }
 				isLoading={ isLoading }
-				isOptingOut={ isOptingOut }
 				onChange={ setAutomaticProtection }
-				onOptOut={ optOut }
-				optedOut={ settings?.automatic_protection_opted_out ?? true }
 				flaggedByFraudPreventionCount={
 					performance?.flagged_by_fraud_prevention ?? 0
 				}
@@ -89,7 +79,7 @@ export function FraudProtectionSettingsPage() {
 					variant="solid"
 					type="button"
 					loading={ isSaving }
-					disabled={ ! isDirty || isSaving || isOptingOut }
+					disabled={ ! isDirty || isSaving }
 					onClick={ save }
 				>
 					{ __( 'Save', 'woocommerce-fraud-protection' ) }
