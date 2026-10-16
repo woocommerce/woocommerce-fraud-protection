@@ -26,22 +26,32 @@ export function AutomaticProtectionCard( {
 	savedAutomaticProtection,
 }: AutomaticProtectionCardProps ) {
 	const showNotice = ! isLoading && savedAutomaticProtection === false;
-	const noticeText =
-		0 === flaggedByFraudPreventionCount
-			? __(
-					'Automatic fraud prevention is off. We recommend turning it on.',
-					'woocommerce-fraud-protection'
-			  )
-			: sprintf(
-					/* translators: %d: Number of checkout attempts. The <a> tags link the count to the checkout attempts page. */
-					_n(
-						'<a>%d checkout attempt</a> was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
-						'<a>%d checkout attempts</a> were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
-						flaggedByFraudPreventionCount,
-						'woocommerce-fraud-protection'
-					),
-					flaggedByFraudPreventionCount
-			  );
+	let noticeText;
+	if ( 0 === flaggedByFraudPreventionCount ) {
+		noticeText = __(
+			'To help prevent fraudulent payments, we recommend turning on automatic blocking.',
+			'woocommerce-fraud-protection'
+		);
+	} else if ( 1 === flaggedByFraudPreventionCount ) {
+		// A separate string, not the singular form of the plural below: "once"
+		// has no number, and some languages use the singular form for other
+		// counts too.
+		noticeText = __(
+			'In the last 30 days, fraud prevention flagged suspicious activity <a>once</a> on your store. To help prevent fraudulent payments, we recommend turning on automatic blocking.',
+			'woocommerce-fraud-protection'
+		);
+	} else {
+		noticeText = sprintf(
+			/* translators: %d: Number of times suspicious activity was flagged. The <a> tags link the count to the payment activity page. */
+			_n(
+				'In the last 30 days, fraud prevention flagged suspicious activity <a>%d time</a> on your store. To help prevent fraudulent payments, we recommend turning on automatic blocking.',
+				'In the last 30 days, fraud prevention flagged suspicious activity <a>%d times</a> on your store. To help prevent fraudulent payments, we recommend turning on automatic blocking.',
+				flaggedByFraudPreventionCount,
+				'woocommerce-fraud-protection'
+			),
+			flaggedByFraudPreventionCount
+		);
+	}
 
 	return (
 		<Card.Root
@@ -50,13 +60,20 @@ export function AutomaticProtectionCard( {
 		>
 			<Card.Header>
 				<Card.Title render={ <h2 /> }>
-					{ __( 'Fraud prevention', 'woocommerce-fraud-protection' ) }
+					{ __(
+						'Automatic blocking',
+						'woocommerce-fraud-protection'
+					) }
 				</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<Stack direction="column" gap="xl">
 					<AutomaticProtectionControl
 						id="automatic-protection-checkbox"
+						description={ __(
+							"Fraud prevention analyzes payment activity on your store for automated or malicious behavior. Automatic blocking stops payment attempts flagged as suspicious before they go through. If you turn this off, flagged activity will still be recorded, but payments won't be blocked.",
+							'woocommerce-fraud-protection'
+						) }
 						checked={ checked }
 						disabled={ controlsDisabled }
 						isLoading={ isLoading }

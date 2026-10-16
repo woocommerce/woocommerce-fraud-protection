@@ -26,11 +26,19 @@ export function useFraudProtectionSettings() {
 	const { createSuccessNotice } = useDispatch( noticesStore );
 
 	const save = async () => {
+		const turnsOnAutomaticBlocking =
+			state.settings?.automatic_protection === true &&
+			state.savedSettings?.automatic_protection !== true;
 		const didSave = await saveSettings();
 
 		if ( didSave ) {
 			createSuccessNotice(
-				__( 'Settings saved.', 'woocommerce-fraud-protection' ),
+				turnsOnAutomaticBlocking
+					? __(
+							'Automatic blocking is active. Flagged payment attempts will now be blocked.',
+							'woocommerce-fraud-protection'
+					  )
+					: __( 'Settings saved.', 'woocommerce-fraud-protection' ),
 				{ type: 'snackbar' }
 			);
 		}

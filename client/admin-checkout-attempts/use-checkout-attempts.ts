@@ -120,7 +120,7 @@ export function useCheckoutAttempts(
 						error instanceof Error && error.message
 							? error.message
 							: __(
-									'The checkout attempts could not be loaded.',
+									'The payment activity could not be loaded.',
 									'woocommerce-fraud-protection'
 							  ),
 					path,

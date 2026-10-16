@@ -106,7 +106,7 @@ export function OutcomeBadge( {
 						'woocommerce-fraud-protection'
 					) }
 					title={ __(
-						'Why this checkout attempt was blocked',
+						'Why this payment attempt was blocked',
 						'woocommerce-fraud-protection'
 					) }
 				>

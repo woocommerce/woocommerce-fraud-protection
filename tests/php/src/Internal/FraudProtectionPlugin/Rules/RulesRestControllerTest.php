@@ -422,7 +422,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 503, $response->get_status() );
 		$this->assertInstanceOf( \WP_Error::class, $error );
 		$this->assertSame( 'woocommerce_fraud_protection_rules_not_loaded', $error->get_error_code() );
-		$this->assertSame( 'The fraud prevention rules could not be loaded.', $error->get_error_message() );
+		$this->assertSame( 'The custom rules could not be loaded.', $error->get_error_message() );
 		$this->assertSame( 503, $error->get_error_data()['status'] );
 	}
 
@@ -447,7 +447,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 500, $response->get_status() );
 		$this->assertInstanceOf( \WP_Error::class, $error );
 		$this->assertSame( 'woocommerce_fraud_protection_rules_not_loaded', $error->get_error_code() );
-		$this->assertSame( 'The fraud prevention rules could not be loaded.', $error->get_error_message() );
+		$this->assertSame( 'The custom rules could not be loaded.', $error->get_error_message() );
 		$this->assertSame( 500, $error->get_error_data()['status'] );
 	}
 
@@ -770,7 +770,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 
 		$this->assertSame( 409, $response->get_status() );
 		$this->assertSame( 'woocommerce_fraud_protection_duplicate_rule', $error->get_error_code() );
-		$this->assertSame( 'This IP is already blocked by a rule.', $error->get_error_message() );
+		$this->assertSame( 'You already have a rule that blocks this IP address.', $error->get_error_message() );
 		$this->assertSame( $existing->id, $error->get_error_data()['rule_id'] );
 		$this->assertSame( 'block', $error->get_error_data()['action'] );
 	}
@@ -796,13 +796,13 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 * @return array<string, array{string, ?string, string}>
 	 */
 	public function duplicate_message_provider(): array {
-		$generic = 'A rule with this value already exists.';
+		$generic = 'You already have a rule with this value.';
 
 		return array(
-			'email allow'    => array( 'email', 'allow', 'This email is already allowed by a rule.' ),
-			'email block'    => array( 'email', 'block', 'This email is already blocked by a rule.' ),
-			'IP allow'       => array( 'ip', 'allow', 'This IP is already allowed by a rule.' ),
-			'IP block'       => array( 'ip', 'block', 'This IP is already blocked by a rule.' ),
+			'email allow'    => array( 'email', 'allow', 'You already have a rule that allows this email address.' ),
+			'email block'    => array( 'email', 'block', 'You already have a rule that blocks this email address.' ),
+			'IP allow'       => array( 'ip', 'allow', 'You already have a rule that allows this IP address.' ),
+			'IP block'       => array( 'ip', 'block', 'You already have a rule that blocks this IP address.' ),
 			'unknown field'  => array( 'country', 'allow', $generic ),
 			'unknown action' => array( 'email', 'challenge', $generic ),
 			'null action'    => array( 'email', null, $generic ),

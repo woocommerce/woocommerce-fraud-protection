@@ -46,7 +46,7 @@ export function buildActions(
 			label: ( () => (
 				<span className="wc-fraud-protection-checkout-attempts__menu-link">
 					{ __(
-						'Turn on automatic fraud prevention',
+						'Turn on automatic blocking',
 						'woocommerce-fraud-protection'
 					) }
 				</span>

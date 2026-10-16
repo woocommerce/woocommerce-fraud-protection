@@ -387,7 +387,7 @@ class SessionsRestController extends RestApiControllerBase {
 			'type'       => 'object',
 			'properties' => array(
 				'id'              => array(
-					'description' => __( 'Unique identifier of the recorded checkout attempt.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'Unique identifier of the recorded payment attempt.', 'woocommerce-fraud-protection' ),
 					'type'        => 'integer',
 					'context'     => array( 'view' ),
 					'readonly'    => true,
@@ -564,7 +564,7 @@ class SessionsRestController extends RestApiControllerBase {
 
 		return new \WP_Error(
 			'woocommerce_fraud_protection_sessions_unavailable',
-			__( 'The checkout attempts could not be loaded.', 'woocommerce-fraud-protection' ),
+			__( 'The payment activity could not be loaded.', 'woocommerce-fraud-protection' ),
 			array( 'status' => 500 )
 		);
 	}

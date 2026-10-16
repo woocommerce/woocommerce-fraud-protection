@@ -146,7 +146,7 @@ class SettingsRestController extends RestApiControllerBase {
 		$enabled = true === $request->get_param( 'automatic_protection' );
 
 		if ( ! $this->updater->set_enabled( $enabled, SettingsChangeChannel::Settings ) ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The fraud prevention setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_setting_not_saved', __( 'The automatic blocking setting could not be saved.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
 		return rest_ensure_response( $this->get_setting_values() );
@@ -164,25 +164,25 @@ class SettingsRestController extends RestApiControllerBase {
 			'type'       => 'object',
 			'properties' => array(
 				'automatic_protection'            => array(
-					'description' => __( 'Whether automatic fraud prevention is enabled.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'Whether automatic blocking is enabled.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view', 'edit' ),
 				),
 				'automatic_protection_opted_out'  => array(
-					'description' => __( 'Whether automatic fraud prevention enrollment was declined.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'Whether automatic blocking enrollment was declined.', 'woocommerce-fraud-protection' ),
 					'type'        => 'boolean',
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
 				'automatic_protection_enabled_at' => array(
-					'description' => __( 'The date automatic fraud prevention was last turned on, or null when off.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'The date automatic blocking was last turned on, or null when off.', 'woocommerce-fraud-protection' ),
 					'type'        => array( 'string', 'null' ),
 					'format'      => 'date-time',
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
 				'performance'                     => array(
-					'description' => __( 'Fraud prevention performance for the previous 30 days.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'Payment activity summary for the previous 30 days.', 'woocommerce-fraud-protection' ),
 					'type'        => 'object',
 					'context'     => array( 'view' ),
 					'readonly'    => true,

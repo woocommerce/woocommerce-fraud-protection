@@ -8,6 +8,8 @@ import { Spinner } from '../../ui-compat';
 
 type AutomaticProtectionControlProps = {
 	id: string;
+	// The settings page and the enable drawer explain the setting differently.
+	description: string;
 	checked: boolean;
 	disabled: boolean;
 	isLoading?: boolean;
@@ -18,6 +20,7 @@ type AutomaticProtectionControlProps = {
 
 export function AutomaticProtectionControl( {
 	id,
+	description,
 	checked,
 	disabled,
 	isLoading = false,
@@ -32,10 +35,7 @@ export function AutomaticProtectionControl( {
 				variant="body-md"
 				render={ descriptionRender }
 			>
-				{ __(
-					'Fraud prevention scans checkout attempts for potentially automated or malicious shopper behavior. Flagged checkout attempts are recorded by default and are only blocked when automatic blocking is turned on.',
-					'woocommerce-fraud-protection'
-				) }
+				{ description }
 			</Text>
 			{ children }
 			<Stack
@@ -49,7 +49,7 @@ export function AutomaticProtectionControl( {
 						<Spinner />
 						<span className="screen-reader-text" role="status">
 							{ __(
-								'Loading automatic fraud prevention setting.',
+								'Loading automatic blocking setting.',
 								'woocommerce-fraud-protection'
 							) }
 						</span>
@@ -62,7 +62,7 @@ export function AutomaticProtectionControl( {
 						disabled={ disabled }
 						onChange={ onChange }
 						label={ __(
-							'Automatically block checkout attempts flagged by fraud prevention.',
+							'Block flagged payment attempts automatically',
 							'woocommerce-fraud-protection'
 						) }
 					/>

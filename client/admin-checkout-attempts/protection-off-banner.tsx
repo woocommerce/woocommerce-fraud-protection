@@ -30,21 +30,21 @@ export function ProtectionOffBanner( { onEnable }: { onEnable: () => void } ) {
 		>
 			<Notice.Description>
 				{ __(
-					'Automatic fraud prevention is off. Fraud prevention is flagging risky attempts but not stopping them. Turn it on to block flagged attempts. Your rules keep working either way.',
+					"Automatic blocking is off, so payments flagged by fraud prevention won't be blocked. Turn it on to help prevent fraud. Any custom rules you've set will still apply.",
 					'woocommerce-fraud-protection'
 				) }
 			</Notice.Description>
 			<Notice.Actions>
 				<Notice.ActionButton onClick={ onEnable }>
 					{ __(
-						'Enable automatic fraud prevention',
+						'Turn on automatic blocking',
 						'woocommerce-fraud-protection'
 					) }
 				</Notice.ActionButton>
 			</Notice.Actions>
 			<Notice.CloseIcon
 				label={ __(
-					'Dismiss the automatic fraud prevention banner',
+					'Dismiss the automatic blocking banner',
 					'woocommerce-fraud-protection'
 				) }
 				onClick={ dismiss }

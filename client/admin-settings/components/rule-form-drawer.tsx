@@ -137,7 +137,7 @@ function RuleValueEditControl( {
 					disabled={ disabled }
 					maxLength={ maxLength }
 				/>
-				<Stack direction="row" align="center" gap="xs">
+				<Stack direction="column" align="start" gap="xs">
 					<ValidityIndicator
 						id={ duplicateMessageId }
 						type="invalid"
@@ -150,7 +150,7 @@ function RuleValueEditControl( {
 							onClick={ () => onViewRule( duplicateRuleId ) }
 						>
 							{ __(
-								'Edit existing rule',
+								'View rule',
 								'woocommerce-fraud-protection'
 							) }
 						</Button>
@@ -327,28 +327,70 @@ export const getRuleFormFields = ( {
 
 type RuleMutation = ReturnType< typeof useRuleMutation >;
 
-function RuleFormDescription( { isEdit }: { isEdit: boolean } ) {
+// A drawer opened from a recorded attempt names the rule it creates, and
+// follows the action if the merchant changes it.
+const getContextTitle = ( { action, type }: RuleFormData ): string => {
+	if ( 'allow' === action ) {
+		return 'email' === type
+			? __( 'Allow email address', 'woocommerce-fraud-protection' )
+			: __( 'Allow IP address', 'woocommerce-fraud-protection' );
+	}
+	return 'email' === type
+		? __( 'Block email address', 'woocommerce-fraud-protection' )
+		: __( 'Block IP address', 'woocommerce-fraud-protection' );
+};
+
+const getContextIntro = ( { action, type }: RuleFormData ): string => {
+	if ( 'allow' === action ) {
+		return 'email' === type
+			? __(
+					'Always allow payment attempts from this email address.',
+					'woocommerce-fraud-protection'
+			  )
+			: __(
+					'Always allow payment attempts from this IP address.',
+					'woocommerce-fraud-protection'
+			  );
+	}
+	return 'email' === type
+		? __(
+				'Always block payment attempts from this email address.',
+				'woocommerce-fraud-protection'
+		  )
+		: __(
+				'Always block payment attempts from this IP address.',
+				'woocommerce-fraud-protection'
+		  );
+};
+
+function RuleFormHeader( {
+	title,
+	isSaving,
+}: {
+	title: string;
+	isSaving: boolean;
+} ) {
+	return (
+		<Drawer.Header>
+			<Drawer.Title>{ title }</Drawer.Title>
+			<Drawer.CloseIcon
+				label={ __( 'Close', 'woocommerce-fraud-protection' ) }
+				disabled={ isSaving }
+			/>
+		</Drawer.Header>
+	);
+}
+
+function RuleFormDescription( { intro }: { intro: string } ) {
 	return (
 		<Drawer.Description>
-			{ isEdit ? (
-				__(
-					'Edit a rule to always allow or block checkout attempt based on an IP or email address. If a session matches both, it will always be allowed.',
-					'woocommerce-fraud-protection'
-				)
-			) : (
-				<>
-					{ __(
-						'Create a rule to always allow or block checkout attempt based on an IP or email address.',
-						'woocommerce-fraud-protection'
-					) }{ ' ' }
-					{ __(
-						"If an attempt matches both an allow rule and a block rule, it's allowed.",
-						'woocommerce-fraud-protection'
-					) }
-				</>
+			{ intro }{ ' ' }
+			{ __(
+				"Custom rules take priority over automatic blocking, and if an attempt matches both an allow and a block rule, it's allowed.",
+				'woocommerce-fraud-protection'
 			) }{ ' ' }
 			<a
-				href="https://woocommerce.com/document/fraud-protection/"
+				href="https://woocommerce.com/document/fraud-protection/#section-9"
 				target="_blank"
 				rel="noopener noreferrer"
 			>
@@ -357,6 +399,12 @@ function RuleFormDescription( { isEdit }: { isEdit: boolean } ) {
 		</Drawer.Description>
 	);
 }
+
+const getEditIntro = (): string =>
+	__(
+		'Update this rule to allow or block payment attempts from a specific IP or email address.',
+		'woocommerce-fraud-protection'
+	);
 
 function RuleForm( {
 	context,
@@ -431,11 +479,28 @@ function RuleForm( {
 		}
 	};
 
+	let title;
+	let intro;
+	if ( rule ) {
+		title = __( 'Edit rule', 'woocommerce-fraud-protection' );
+		intro = getEditIntro();
+	} else if ( context ) {
+		title = getContextTitle( data );
+		intro = getContextIntro( data );
+	} else {
+		title = __( 'Create rule', 'woocommerce-fraud-protection' );
+		intro = __(
+			'Always allow or block payment attempts from a specific IP or email address.',
+			'woocommerce-fraud-protection'
+		);
+	}
+
 	return (
 		<>
+			<RuleFormHeader title={ title } isSaving={ isSaving } />
 			<Drawer.Content>
 				<Stack direction="column" gap="lg">
-					<RuleFormDescription isEdit={ Boolean( rule ) } />
+					<RuleFormDescription intro={ intro } />
 					<DataForm< RuleFormData >
 						data={ data }
 						fields={ fields }
@@ -543,20 +608,6 @@ export function RuleFormDrawer( {
 					<Drawer.Portal className="wc-fraud-protection-rule-form__drawer-portal" />
 				}
 			>
-				<Drawer.Header>
-					<Drawer.Title>
-						{ isEdit
-							? __( 'Edit rule', 'woocommerce-fraud-protection' )
-							: __(
-									'Create rule',
-									'woocommerce-fraud-protection'
-							  ) }
-					</Drawer.Title>
-					<Drawer.CloseIcon
-						label={ __( 'Close', 'woocommerce-fraud-protection' ) }
-						disabled={ mutation.isSaving }
-					/>
-				</Drawer.Header>
 				{ canRenderForm ? (
 					<RuleForm
 						key={ formKey }
@@ -569,37 +620,48 @@ export function RuleFormDrawer( {
 						rule={ isEdit ? rule : undefined }
 					/>
 				) : (
-					<Drawer.Content>
-						<Stack direction="column" gap="lg">
-							<RuleFormDescription isEdit />
-							{ isLoading && (
-								<Stack className="wc-fraud-protection-rule-form__loading">
-									<Spinner />
-									<VisuallyHidden>
-										{ __(
-											'Loading rule',
-											'woocommerce-fraud-protection'
-										) }
-									</VisuallyHidden>
-								</Stack>
+					<>
+						<RuleFormHeader
+							title={ __(
+								'Edit rule',
+								'woocommerce-fraud-protection'
 							) }
-							{ ! isLoading && detailError && (
-								<Notice.Root intent="error">
-									<Notice.Description>
-										{ detailError }
-									</Notice.Description>
-									<Notice.Actions>
-										<Notice.ActionButton onClick={ retry }>
+							isSaving={ mutation.isSaving }
+						/>
+						<Drawer.Content>
+							<Stack direction="column" gap="lg">
+								<RuleFormDescription intro={ getEditIntro() } />
+								{ isLoading && (
+									<Stack className="wc-fraud-protection-rule-form__loading">
+										<Spinner />
+										<VisuallyHidden>
 											{ __(
-												'Retry',
+												'Loading rule',
 												'woocommerce-fraud-protection'
 											) }
-										</Notice.ActionButton>
-									</Notice.Actions>
-								</Notice.Root>
-							) }
-						</Stack>
-					</Drawer.Content>
+										</VisuallyHidden>
+									</Stack>
+								) }
+								{ ! isLoading && detailError && (
+									<Notice.Root intent="error">
+										<Notice.Description>
+											{ detailError }
+										</Notice.Description>
+										<Notice.Actions>
+											<Notice.ActionButton
+												onClick={ retry }
+											>
+												{ __(
+													'Retry',
+													'woocommerce-fraud-protection'
+												) }
+											</Notice.ActionButton>
+										</Notice.Actions>
+									</Notice.Root>
+								) }
+							</Stack>
+						</Drawer.Content>
+					</>
 				) }
 			</Drawer.Popup>
 		</Drawer.Root>
