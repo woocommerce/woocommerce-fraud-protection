@@ -21,6 +21,7 @@ const flushPromises = () =>
 	new Promise( jest.requireActual( 'timers' ).setImmediate );
 
 const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+const SESSION_ID_ERROR_FIELD = 'wc_fraud_protection_session_id_error';
 
 let $;
 let form;
@@ -55,7 +56,10 @@ afterEach( () => {
 
 function setupFraudProtection() {
 	window.wcFraudProtection = {
-		config: { sessionIdField: SESSION_ID_FIELD },
+		config: {
+			sessionIdField: SESSION_ID_FIELD,
+			sessionIdErrorField: SESSION_ID_ERROR_FIELD,
+		},
 		acquireSessionId: mockAcquireSessionId,
 	};
 }
@@ -277,5 +281,52 @@ describe( 'pay-for-order', () => {
 		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
 			'sess-later'
 		);
+	} );
+
+	it( 'sends the reason for a missing session ID and removes it with the empty field', async () => {
+		setupFraudProtection();
+		window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+			Promise.resolve( { sessionId: '', error: 'sdk_error' } )
+		);
+		loadScript();
+
+		let errorDuringNativeSubmit;
+		form.submit = jest.fn( () => {
+			const field = form.querySelector(
+				'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
+			);
+			errorDuringNativeSubmit = field && field.value;
+		} );
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runOnlyPendingTimers();
+
+		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+		expect( errorDuringNativeSubmit ).toBe( 'sdk_error' );
+
+		jest.runOnlyPendingTimers();
+		expect(
+			form.querySelector( 'input[name="' + SESSION_ID_ERROR_FIELD + '"]' )
+		).toBeNull();
+	} );
+
+	it( 'does not send a reason with a session ID', async () => {
+		setupFraudProtection();
+		window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+			Promise.resolve( { sessionId: 'sess-result', error: '' } )
+		);
+		loadScript();
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runOnlyPendingTimers();
+
+		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+			'sess-result'
+		);
+		expect(
+			form.querySelector( 'input[name="' + SESSION_ID_ERROR_FIELD + '"]' )
+		).toBeNull();
 	} );
 } );

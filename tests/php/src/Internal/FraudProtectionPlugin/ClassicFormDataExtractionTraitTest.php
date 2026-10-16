@@ -134,6 +134,44 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
+	 * @testdox build_request_data() adds the reported reason for a missing session ID from the POST data.
+	 */
+	public function test_build_request_data_adds_session_id_error(): void {
+		$_POST['wc_fraud_protection_session_id_error'] = 'sdk\\_unavailable'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
+
+		$this->assertSame( 'sdk_unavailable', $result['wc_fraud_protection_session_id_error'] ?? null );
+	}
+
+	/**
+	 * @testdox build_request_data() adds no reason when none, or a non-string one, was posted.
+	 *
+	 * @dataProvider missing_posted_session_id_error_provider
+	 *
+	 * @param array $post POST data.
+	 */
+	public function test_build_request_data_skips_missing_session_id_error( array $post ): void {
+		$_POST = $post; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
+
+		$this->assertArrayNotHasKey( 'wc_fraud_protection_session_id_error', $result );
+	}
+
+	/**
+	 * POST data without a usable reason.
+	 *
+	 * @return array<string, array{array}>
+	 */
+	public function missing_posted_session_id_error_provider(): array {
+		return array(
+			'absent'     => array( array() ),
+			'non-string' => array( array( 'wc_fraud_protection_session_id_error' => array( 'timeout' ) ) ),
+		);
+	}
+
+	/**
 	 * @testdox build_request_data() includes payment_method from form data.
 	 */
 	public function test_build_request_data_includes_payment_method(): void {

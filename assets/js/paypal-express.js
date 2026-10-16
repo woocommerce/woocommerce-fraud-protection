@@ -62,9 +62,19 @@
 		}
 
 		try {
-			const sessionId = await fp.acquireSessionId();
+			const result =
+				typeof fp.acquireSessionIdResult === 'function'
+					? await fp.acquireSessionIdResult()
+					: { sessionId: await fp.acquireSessionId(), error: '' };
 			const body = JSON.parse( init.body );
-			body[ fp.config.sessionIdField ] = sessionId;
+			body[ fp.config.sessionIdField ] = result.sessionId;
+			if (
+				! result.sessionId &&
+				result.error &&
+				fp.config.sessionIdErrorField
+			) {
+				body[ fp.config.sessionIdErrorField ] = result.error;
+			}
 			init.body = JSON.stringify( body );
 		} catch {
 			// Fail open with the original request data.
@@ -94,7 +104,8 @@
 			if (
 				protectedPayPalEndpoints.includes( getEndpoint( resource ) ) &&
 				fp &&
-				typeof fp.acquireSessionId === 'function'
+				( typeof fp.acquireSessionIdResult === 'function' ||
+					typeof fp.acquireSessionId === 'function' )
 			) {
 				return dispatchProtectedPayPalRequest(
 					this,
