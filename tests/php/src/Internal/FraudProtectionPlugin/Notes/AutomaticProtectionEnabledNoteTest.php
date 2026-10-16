@@ -357,11 +357,69 @@ class AutomaticProtectionEnabledNoteTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A failed note lookup is not treated as a missing note when adding it.
+	 */
+	public function test_failed_lookup_does_not_add_note(): void {
+		$this->with_failed_note_lookup( fn() => $this->sut->maybe_add_note() );
+
+		$this->assertSame( array(), Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEnabledNote::NOTE_NAME ) );
+		$this->assertLogged( 'warning', 'Failed to add automatic protection enabled note.' );
+		$this->assertNull( get_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME, null ) );
+
+		$this->sut->maybe_add_note();
+
+		$this->assertCount( 1, Notes::load_data_store()->get_notes_with_name( AutomaticProtectionEnabledNote::NOTE_NAME ) );
+		$this->assertAdditionRecorded();
+	}
+
+	/**
+	 * @testdox A failed note lookup keeps the retirement pending until the note can be read.
+	 */
+	public function test_failed_lookup_keeps_retirement_pending(): void {
+		$this->sut->maybe_add_note();
+
+		$this->with_failed_note_lookup( fn() => $this->setting->set_enabled( false ) );
+
+		$this->assertLogged( 'warning', 'Failed to update automatic protection enabled note.' );
+		$this->assertSame( AutomaticProtectionEnabledNote::RETIREMENT_PENDING, get_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME ) );
+
+		$this->with_failed_note_lookup( fn() => $this->sut->maybe_add_note() );
+
+		$this->assertSame( AutomaticProtectionEnabledNote::RETIREMENT_PENDING, get_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME ), 'A retry that cannot read the note must stay pending' );
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_UNACTIONED, Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME )->get_status() );
+
+		$this->sut->maybe_add_note();
+
+		$this->assertSame( Note::E_WC_ADMIN_NOTE_ACTIONED, Notes::get_note_by_name( AutomaticProtectionEnabledNote::NOTE_NAME )->get_status() );
+		$this->assertAdditionRecorded();
+	}
+
+	/**
 	 * Assert that the added note is recorded as an autoloaded option.
 	 */
 	private function assertAdditionRecorded(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- PHPUnit style.
 		$this->assertSame( 'yes', get_option( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME ) );
 		$this->assertArrayHasKey( AutomaticProtectionEnabledNote::ADDED_OPTION_NAME, wp_load_alloptions(), 'The option must be autoloaded' );
+	}
+
+	/**
+	 * Run a callback while the note lookup by name fails at the database.
+	 *
+	 * @param callable $callback Code to run.
+	 */
+	private function with_failed_note_lookup( callable $callback ): void {
+		global $wpdb;
+		$fail_lookup = static function ( $query ) use ( $wpdb ) {
+			return is_string( $query ) && str_starts_with( $query, "SELECT note_id FROM {$wpdb->prefix}wc_admin_notes WHERE name = " ) ? 'SELECT * FROM missing_table_for_failed_note_lookup' : $query;
+		};
+		add_filter( 'query', $fail_lookup );
+		$suppressed = $wpdb->suppress_errors();
+		try {
+			$callback();
+		} finally {
+			$wpdb->suppress_errors( $suppressed );
+			remove_filter( 'query', $fail_lookup );
+		}
 	}
 
 	/**

@@ -8,8 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes;
 
 use Automattic\WooCommerce\Admin\Notes\Note;
-use Automattic\WooCommerce\Admin\Notes\NoteTraits;
-use Automattic\WooCommerce\Admin\Notes\Notes;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\MerchantFacingFeaturesGate;
@@ -22,7 +20,7 @@ defined( 'ABSPATH' ) || exit;
  */
 class AutomaticProtectionEnabledNote {
 
-	use NoteTraits;
+	use StoredNoteLookup;
 
 	public const NOTE_NAME = 'wc-fraud-protection-automatic-protection-enabled';
 
@@ -69,11 +67,14 @@ class AutomaticProtectionEnabledNote {
 		}
 
 		try {
-			self::possibly_add_note();
+			// A dismissed or retired note is kept, so it is not added again.
+			if ( null === self::get_stored_note() ) {
+				self::get_note()->save();
+			}
 
 			// The note store does not report failed writes, so confirm the note exists
 			// before recording it.
-			if ( ! self::note_exists() ) {
+			if ( null === self::get_stored_note() ) {
 				FraudProtectionController::log( 'warning', 'Failed to add automatic protection enabled note.', array( 'error' => 'The note was not stored.' ) );
 				return;
 			}
@@ -101,14 +102,14 @@ class AutomaticProtectionEnabledNote {
 				return;
 			}
 
-			$note = Notes::get_note_by_name( self::NOTE_NAME );
-			if ( $note instanceof Note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
+			$note = self::get_stored_note();
+			if ( null !== $note && ! $note->get_is_deleted() && Note::E_WC_ADMIN_NOTE_ACTIONED !== $note->get_status() ) {
 				$note->set_status( Note::E_WC_ADMIN_NOTE_ACTIONED );
 				$note->save();
 
 				// The note store does not report failed writes, so confirm the stored status.
-				$stored_note = Notes::get_note( $note->get_id() );
-				if ( ! $stored_note instanceof Note || Note::E_WC_ADMIN_NOTE_ACTIONED !== $stored_note->get_status() ) {
+				$stored_note = self::get_stored_note();
+				if ( null === $stored_note || Note::E_WC_ADMIN_NOTE_ACTIONED !== $stored_note->get_status() ) {
 					FraudProtectionController::log( 'warning', 'Failed to update automatic protection enabled note.', array( 'error' => 'The note status was not stored.' ) );
 					update_option( self::ADDED_OPTION_NAME, self::RETIREMENT_PENDING, true );
 					return;
@@ -127,13 +128,15 @@ class AutomaticProtectionEnabledNote {
 	 *
 	 * A retirement can be recorded before the note was ever added, so the added state is restored
 	 * only when the note exists. Otherwise the note can still be added later.
+	 *
+	 * @throws \RuntimeException When the note could not be read.
 	 */
 	private function clear_pending_retirement(): void {
 		if ( self::RETIREMENT_PENDING !== get_option( self::ADDED_OPTION_NAME ) ) {
 			return;
 		}
 
-		if ( self::note_exists() ) {
+		if ( null !== self::get_stored_note() ) {
 			update_option( self::ADDED_OPTION_NAME, 'yes', true );
 		} else {
 			delete_option( self::ADDED_OPTION_NAME );
