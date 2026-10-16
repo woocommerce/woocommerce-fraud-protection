@@ -37,6 +37,8 @@ beforeEach( () => {
 } );
 
 afterEach( () => {
+	// Release activity listeners left armed by a test.
+	document.dispatchEvent( new Event( 'pointerdown' ) );
 	jest.useRealTimers();
 	jest.restoreAllMocks();
 } );
@@ -408,10 +410,7 @@ describe( 'blackbox-init', () => {
 			);
 		} );
 
-		it( 'is replaced on a visible page before it gets too old', async () => {
-			mockGetSessionId
-				.mockResolvedValueOnce( 'first-session-id' )
-				.mockResolvedValueOnce( 'second-session-id' );
+		it( 'is dropped when it gets too old, without starting a session on an idle page', async () => {
 			setupAndLoad();
 			window.wcFraudProtection.prepareSessionId();
 			await flushPromises();
@@ -419,27 +418,104 @@ describe( 'blackbox-init', () => {
 			jest.advanceTimersByTime( 10 * 60 * 1000 );
 			await flushPromises();
 
-			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( mockReset ).not.toHaveBeenCalled();
 			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
-				'second-session-id'
+				''
 			);
 		} );
 
-		it( 'is replaced on a hidden page once it becomes visible again', async () => {
+		it.each( [
+			[ 'a pointer press', document, 'pointerdown' ],
+			[ 'a key press', document, 'keydown' ],
+			[ 'a touch', document, 'touchstart' ],
+			[ 'focus moving to an express button frame', window, 'blur' ],
+		] )(
+			'is replaced after it gets too old, on %s',
+			async ( _, target, type ) => {
+				mockGetSessionId
+					.mockResolvedValueOnce( 'first-session-id' )
+					.mockResolvedValueOnce( 'second-session-id' );
+				setupAndLoad();
+				window.wcFraudProtection.prepareSessionId();
+				await flushPromises();
+				jest.advanceTimersByTime( 10 * 60 * 1000 );
+
+				target.dispatchEvent( new Event( type ) );
+				target.dispatchEvent( new Event( type ) );
+				await flushPromises();
+
+				expect( mockReset ).toHaveBeenCalledTimes( 1 );
+				expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+					'second-session-id'
+				);
+			}
+		);
+
+		it( 'is replaced on a hidden page only once it is visible and active again', async () => {
 			const visibility = jest
 				.spyOn( document, 'visibilityState', 'get' )
 				.mockReturnValue( 'hidden' );
 			setupAndLoad();
 			window.wcFraudProtection.prepareSessionId();
 			await flushPromises();
-
 			jest.advanceTimersByTime( 10 * 60 * 1000 );
+
+			window.dispatchEvent( new Event( 'blur' ) );
 			expect( mockReset ).not.toHaveBeenCalled();
 
 			visibility.mockReturnValue( 'visible' );
 			document.dispatchEvent( new Event( 'visibilitychange' ) );
 
 			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'is not replaced on activity when a reset already started a new session', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockResolvedValueOnce( 'second-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			jest.advanceTimersByTime( 10 * 60 * 1000 );
+
+			window.wcFraudProtection.reset();
+			await flushPromises();
+			document.dispatchEvent( new Event( 'pointerdown' ) );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'is prepared again after a failed attempt', async () => {
+			mockGetSessionId
+				.mockRejectedValueOnce( new Error( 'SDK error' ) )
+				.mockResolvedValueOnce( 'retried-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+
+			jest.advanceTimersByTime( 2000 );
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'retried-session-id'
+			);
+		} );
+
+		it( 'stops preparing after two failed retries', async () => {
+			mockGetSessionId.mockRejectedValue( new Error( 'SDK error' ) );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			for ( let i = 0; i < 5; i++ ) {
+				jest.advanceTimersByTime( 2000 );
+				await flushPromises();
+			}
+
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 3 );
 		} );
 
 		it( 'ignores a session ID that resolves after a reset', async () => {

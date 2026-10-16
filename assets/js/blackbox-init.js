@@ -91,13 +91,27 @@
 	// track the IDs already handed out, and the one prepared for callers that
 	// cannot wait for a Promise.
 	const PREPARED_SESSION_MAX_AGE_MS = 10 * 60 * 1000;
+	const PREPARATION_RETRY_DELAY_MS = 2000;
+	const MAX_PREPARATION_RETRIES = 2;
+	// The shopper's next activity. A click on a cross-origin express button
+	// iframe only reaches this page as a window blur.
+	const ACTIVITY_EVENTS = [
+		[ document, 'pointerdown' ],
+		[ document, 'keydown' ],
+		[ document, 'touchstart' ],
+		[ document, 'visibilitychange' ],
+		[ window, 'blur' ],
+		[ window, 'focus' ],
+	];
 	const handedOutSessionIds = new Set();
 	let preparedSessionId = '';
 	let preparedAt = 0;
 	let isPreparing = false;
 	let preparation = 0;
 	let refreshTimer = 0;
-	let isWaitingForVisibility = false;
+	let retryTimer = 0;
+	let preparationRetries = 0;
+	let isWaitingForActivity = false;
 
 	/**
 	 * Record a session ID as handed out for a payment attempt.
@@ -129,48 +143,101 @@
 				return window.Blackbox.getSessionId();
 			} )
 			.then( function ( result ) {
+				if ( current !== preparation ) {
+					return;
+				}
+
 				if (
-					current === preparation &&
 					typeof result === 'string' &&
 					result &&
 					! handedOutSessionIds.has( result )
 				) {
+					preparationRetries = 0;
 					preparedSessionId = result;
 					preparedAt = Date.now();
 					clearTimeout( refreshTimer );
 					refreshTimer = setTimeout(
-						refreshPreparedSessionId,
+						expirePreparedSessionId,
 						PREPARED_SESSION_MAX_AGE_MS
 					);
+				} else {
+					retryPreparation( current );
 				}
 			} )
-			.catch( function () {} );
+			.catch( function () {
+				retryPreparation( current );
+			} );
 	}
 
 	/**
-	 * Replace an unused prepared session ID before it gets too old.
+	 * Try a failed preparation again, a limited number of times.
 	 *
-	 * A hidden page waits until it is visible again.
+	 * @param {number} current The preparation that failed.
 	 */
-	function refreshPreparedSessionId() {
-		if ( ! preparedSessionId || isWaitingForVisibility ) {
+	function retryPreparation( current ) {
+		if (
+			current !== preparation ||
+			preparationRetries >= MAX_PREPARATION_RETRIES
+		) {
 			return;
 		}
 
-		if ( document.visibilityState === 'hidden' ) {
-			isWaitingForVisibility = true;
-			document.addEventListener(
-				'visibilitychange',
-				function () {
-					isWaitingForVisibility = false;
-					refreshPreparedSessionId();
-				},
-				{ once: true }
-			);
+		preparationRetries++;
+		clearTimeout( retryTimer );
+		retryTimer = setTimeout( function () {
+			if ( current === preparation ) {
+				prepareSessionId();
+			}
+		}, PREPARATION_RETRY_DELAY_MS );
+	}
+
+	/**
+	 * Drop an unused prepared session ID that got too old.
+	 *
+	 * A new session starts on the shopper's next activity, so a page left
+	 * open without activity does not keep starting sessions.
+	 */
+	function expirePreparedSessionId() {
+		if ( ! preparedSessionId ) {
 			return;
 		}
 
-		fraudProtection.reset();
+		markHandedOut( preparedSessionId );
+		whenShopperIsActive( function () {
+			// Another reset may have prepared a new ID in the meantime.
+			if ( ! preparedSessionId ) {
+				fraudProtection.reset();
+			}
+		} );
+	}
+
+	/**
+	 * Run a callback once, on the shopper's next activity on a visible page.
+	 *
+	 * @param {Function} callback Callback.
+	 */
+	function whenShopperIsActive( callback ) {
+		if ( isWaitingForActivity ) {
+			return;
+		}
+
+		isWaitingForActivity = true;
+
+		const onActivity = function () {
+			if ( document.visibilityState === 'hidden' ) {
+				return;
+			}
+
+			ACTIVITY_EVENTS.forEach( function ( [ target, type ] ) {
+				target.removeEventListener( type, onActivity, true );
+			} );
+			isWaitingForActivity = false;
+			callback();
+		};
+
+		ACTIVITY_EVENTS.forEach( function ( [ target, type ] ) {
+			target.addEventListener( type, onActivity, true );
+		} );
 	}
 
 	/**
@@ -206,7 +273,9 @@
 	fraudProtection.reset = function () {
 		preparedSessionId = '';
 		++preparation;
+		preparationRetries = 0;
 		clearTimeout( refreshTimer );
+		clearTimeout( retryTimer );
 
 		if ( window.Blackbox && window.Blackbox.reset ) {
 			try {
