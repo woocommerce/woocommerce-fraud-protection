@@ -303,5 +303,182 @@ describe( 'blackbox-init', () => {
 				window.wcFraudProtection.reset();
 			} ).not.toThrow();
 		} );
+
+		it( 'swallows a reset() that throws or returns no Promise', () => {
+			mockReset.mockImplementationOnce( () => {
+				throw new Error( 'reset error' );
+			} );
+			mockReset.mockImplementationOnce( () => undefined );
+			setupAndLoad();
+
+			expect( () => {
+				window.wcFraudProtection.reset();
+				window.wcFraudProtection.reset();
+			} ).not.toThrow();
+		} );
+	} );
+
+	describe( 'prepared session ID', () => {
+		it( 'is not fetched until a script asks for it', async () => {
+			setupAndLoad();
+			await flushPromises();
+
+			expect( mockGetSessionId ).not.toHaveBeenCalled();
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+		} );
+
+		it( 'is handed out once, then a fresh session is started', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'test-session-id'
+			);
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+		} );
+
+		it( 'is replaced with the session started after a reset', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockResolvedValueOnce( 'second-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			window.wcFraudProtection.takePreparedSessionId();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'second-session-id'
+			);
+		} );
+
+		it( 'is not handed out after acquireSessionId() returned it', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			await window.wcFraudProtection.acquireSessionId();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+		} );
+
+		it( 'never repeats a session ID that was already handed out', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			window.wcFraudProtection.takePreparedSessionId();
+			await flushPromises();
+
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 2 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+		} );
+
+		it( 'is not handed out once it is too old, and a fresh session is started', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockResolvedValueOnce( 'second-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			const now = Date.now();
+			jest.spyOn( Date, 'now' ).mockReturnValue(
+				now + 10 * 60 * 1000 + 1
+			);
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+
+			await flushPromises();
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'second-session-id'
+			);
+		} );
+
+		it( 'is replaced on a visible page before it gets too old', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockResolvedValueOnce( 'second-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			jest.advanceTimersByTime( 10 * 60 * 1000 );
+			await flushPromises();
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'second-session-id'
+			);
+		} );
+
+		it( 'is replaced on a hidden page once it becomes visible again', async () => {
+			const visibility = jest
+				.spyOn( document, 'visibilityState', 'get' )
+				.mockReturnValue( 'hidden' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			jest.advanceTimersByTime( 10 * 60 * 1000 );
+			expect( mockReset ).not.toHaveBeenCalled();
+
+			visibility.mockReturnValue( 'visible' );
+			document.dispatchEvent( new Event( 'visibilitychange' ) );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'ignores a session ID that resolves after a reset', async () => {
+			let resolveFirst;
+			mockGetSessionId
+				.mockReturnValueOnce(
+					new Promise( ( resolve ) => {
+						resolveFirst = resolve;
+					} )
+				)
+				.mockResolvedValueOnce( 'second-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			window.wcFraudProtection.reset();
+			await flushPromises();
+			resolveFirst( 'first-session-id' );
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'second-session-id'
+			);
+		} );
+
+		it.each( [
+			[ 'rejects', () => Promise.reject( new Error( 'SDK error' ) ) ],
+			[ 'resolves with a non-string', () => Promise.resolve( {} ) ],
+			[ 'resolves with an empty string', () => Promise.resolve( '' ) ],
+		] )( 'is empty when getSessionId %s', async ( _, implementation ) => {
+			mockGetSessionId.mockImplementation( implementation );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			expect( mockReset ).not.toHaveBeenCalled();
+		} );
 	} );
 } );

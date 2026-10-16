@@ -87,6 +87,92 @@
 	// throwing, and downstream consumers already fail open on empty session IDs.
 	window.Blackbox.init();
 
+	// A session ID is valid for one payment attempt, for a limited time. These
+	// track the IDs already handed out, and the one prepared for callers that
+	// cannot wait for a Promise.
+	const PREPARED_SESSION_MAX_AGE_MS = 10 * 60 * 1000;
+	const handedOutSessionIds = new Set();
+	let preparedSessionId = '';
+	let preparedAt = 0;
+	let isPreparing = false;
+	let preparation = 0;
+	let refreshTimer = 0;
+	let isWaitingForVisibility = false;
+
+	/**
+	 * Record a session ID as handed out for a payment attempt.
+	 *
+	 * @param {string} sessionId Session ID.
+	 */
+	function markHandedOut( sessionId ) {
+		if ( ! sessionId ) {
+			return;
+		}
+
+		handedOutSessionIds.add( sessionId );
+		if ( preparedSessionId === sessionId ) {
+			preparedSessionId = '';
+		}
+	}
+
+	/**
+	 * Fetch the current session ID ahead of time, without a timeout.
+	 */
+	function prepareSessionId() {
+		if ( ! isPreparing || ! window.Blackbox.getSessionId ) {
+			return;
+		}
+
+		const current = ++preparation;
+		Promise.resolve()
+			.then( function () {
+				return window.Blackbox.getSessionId();
+			} )
+			.then( function ( result ) {
+				if (
+					current === preparation &&
+					typeof result === 'string' &&
+					result &&
+					! handedOutSessionIds.has( result )
+				) {
+					preparedSessionId = result;
+					preparedAt = Date.now();
+					clearTimeout( refreshTimer );
+					refreshTimer = setTimeout(
+						refreshPreparedSessionId,
+						PREPARED_SESSION_MAX_AGE_MS
+					);
+				}
+			} )
+			.catch( function () {} );
+	}
+
+	/**
+	 * Replace an unused prepared session ID before it gets too old.
+	 *
+	 * A hidden page waits until it is visible again.
+	 */
+	function refreshPreparedSessionId() {
+		if ( ! preparedSessionId || isWaitingForVisibility ) {
+			return;
+		}
+
+		if ( document.visibilityState === 'hidden' ) {
+			isWaitingForVisibility = true;
+			document.addEventListener(
+				'visibilitychange',
+				function () {
+					isWaitingForVisibility = false;
+					refreshPreparedSessionId();
+				},
+				{ once: true }
+			);
+			return;
+		}
+
+		fraudProtection.reset();
+	}
+
 	/**
 	 * Acquire a Blackbox session ID (fail-open: empty string on timeout/error).
 	 *
@@ -105,7 +191,9 @@
 
 		return Promise.race( [ window.Blackbox.getSessionId(), timeout ] )
 			.then( function ( result ) {
-				return typeof result === 'string' ? result : '';
+				const sessionId = typeof result === 'string' ? result : '';
+				markHandedOut( sessionId );
+				return sessionId;
 			} )
 			.catch( function () {
 				return '';
@@ -116,8 +204,54 @@
 	 * Reset Blackbox state. Silently no-ops if reset is unavailable.
 	 */
 	fraudProtection.reset = function () {
+		preparedSessionId = '';
+		++preparation;
+		clearTimeout( refreshTimer );
+
 		if ( window.Blackbox && window.Blackbox.reset ) {
-			window.Blackbox.reset().catch( function () {} );
+			try {
+				Promise.resolve( window.Blackbox.reset() )
+					.then( prepareSessionId )
+					.catch( function () {} );
+			} catch {
+				// Fail open.
+			}
 		}
+	};
+
+	/**
+	 * Keep a session ID ready for takePreparedSessionId().
+	 *
+	 * Internal to the plugin's own scripts.
+	 */
+	fraudProtection.prepareSessionId = function () {
+		if ( isPreparing ) {
+			return;
+		}
+
+		isPreparing = true;
+		prepareSessionId();
+	};
+
+	/**
+	 * Hand out the prepared session ID for a payment attempt, at most once.
+	 *
+	 * For callers that must add the ID synchronously. A fresh session is
+	 * started for the next attempt. Internal to the plugin's own scripts.
+	 *
+	 * @return {string} Session ID, or an empty string when none is ready.
+	 */
+	fraudProtection.takePreparedSessionId = function () {
+		const sessionId = preparedSessionId;
+		if ( ! sessionId ) {
+			return '';
+		}
+
+		// A stale ID is not sent, and must not come back after the reset either.
+		const isFresh = Date.now() - preparedAt <= PREPARED_SESSION_MAX_AGE_MS;
+		markHandedOut( sessionId );
+		fraudProtection.reset();
+
+		return isFresh ? sessionId : '';
 	};
 } )();

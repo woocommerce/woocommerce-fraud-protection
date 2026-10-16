@@ -6,6 +6,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExpressCheckoutScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
@@ -182,6 +183,14 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 				array( $container->get( PayPalScriptCompat::class ), 'enqueue_paypal_script' )
 			),
 			'PayPal script action should be registered via the controller'
+		);
+		$this->assertSame(
+			PHP_INT_MAX,
+			has_action(
+				'wp_enqueue_scripts',
+				array( $container->get( ExpressCheckoutScriptCompat::class ), 'enqueue_express_checkout_script_if_buttons_enqueued' )
+			),
+			'Express checkout script action should be registered via the controller'
 		);
 
 		// Subscriptions change-payment-method compat action.
