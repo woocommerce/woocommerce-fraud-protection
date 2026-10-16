@@ -644,7 +644,7 @@ describe( 'RulesPage', () => {
 		renderRules( 'paged=3' );
 
 		await screen.findAllByText(
-			'The fraud prevention rules could not be loaded. Unavailable.'
+			'The custom rules could not be loaded. Unavailable.'
 		);
 		expect(
 			new URLSearchParams( mockHistory.location.search ).get( 'paged' )
@@ -742,7 +742,7 @@ describe( 'RulesPage', () => {
 		renderRules();
 		expect(
 			await screen.findAllByText(
-				'The fraud prevention rules could not be loaded. Rules unavailable.'
+				'The custom rules could not be loaded. Rules unavailable.'
 			)
 		).not.toHaveLength( 0 );
 		expect(

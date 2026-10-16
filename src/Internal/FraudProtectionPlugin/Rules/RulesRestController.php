@@ -177,7 +177,7 @@ class RulesRestController extends RestApiControllerBase {
 	 */
 	private function get_items( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The custom rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
 
 		$filters = array();
@@ -221,7 +221,7 @@ class RulesRestController extends RestApiControllerBase {
 				order: $order
 			);
 		} catch ( \RuntimeException ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The custom rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
 
 		return $this->collection_response( array_map( array( $this, 'to_public_rule' ), $result['items'] ), $result['total'], $result['pages'] );
@@ -235,7 +235,7 @@ class RulesRestController extends RestApiControllerBase {
 	 */
 	private function create_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The custom rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
 
 		$action = $request->get_param( 'action' );
@@ -269,12 +269,12 @@ class RulesRestController extends RestApiControllerBase {
 		if ( $event_id > 0 ) {
 			$event = $this->event_store->get_event( $event_id );
 			if ( ! is_array( $event ) ) {
-				return new \WP_Error( 'woocommerce_fraud_protection_recorded_attempt_not_found', __( 'The recorded checkout attempt could not be found.', 'woocommerce-fraud-protection' ), array( 'status' => 404 ) );
+				return new \WP_Error( 'woocommerce_fraud_protection_recorded_attempt_not_found', __( 'The recorded payment attempt could not be found.', 'woocommerce-fraud-protection' ), array( 'status' => 404 ) );
 			}
 
 			$session_id = $this->session_id_normalizer->normalize_stored( $event['session_id'] );
 			if ( '' === $session_id || ! in_array( $event['final_status'], array( 'allowed', 'blocked' ), true ) ) {
-				return new \WP_Error( 'woocommerce_fraud_protection_recorded_attempt_invalid', __( 'This checkout attempt cannot be used to create a rule.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
+				return new \WP_Error( 'woocommerce_fraud_protection_recorded_attempt_invalid', __( 'This payment attempt cannot be used to create a rule.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
 			}
 
 			$event_value      = $event[ $type ] ?? null;
@@ -288,7 +288,7 @@ class RulesRestController extends RestApiControllerBase {
 				)
 				: null;
 			if ( is_null( $event_conditions ) || $event_conditions['value'] !== $conditions['value'] ) {
-				return new \WP_Error( 'woocommerce_fraud_protection_recorded_attempt_mismatch', __( 'The rule value does not match the recorded checkout attempt.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
+				return new \WP_Error( 'woocommerce_fraud_protection_recorded_attempt_mismatch', __( 'The rule value does not match the recorded payment attempt.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
 			}
 
 			$source_meta['recorded_attempt_id'] = $event_id;
@@ -349,7 +349,7 @@ class RulesRestController extends RestApiControllerBase {
 	 */
 	private function get_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The custom rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
 
 		try {
@@ -368,7 +368,7 @@ class RulesRestController extends RestApiControllerBase {
 	 */
 	private function update_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The custom rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
 		if ( $request->has_param( 'position' ) || $request->has_param( 'status' ) ) {
 			return $this->invalid_update_error();
@@ -435,7 +435,7 @@ class RulesRestController extends RestApiControllerBase {
 	 */
 	private function delete_item( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		if ( ! $this->schema_manager->is_schema_installed() ) {
-			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The fraud prevention rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
+			return new \WP_Error( 'woocommerce_fraud_protection_rules_not_loaded', __( 'The custom rules could not be loaded.', 'woocommerce-fraud-protection' ), array( 'status' => 503 ) );
 		}
 
 		$id = (int) $request->get_param( 'id' );

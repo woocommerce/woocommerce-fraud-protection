@@ -675,7 +675,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 		expect(
 			await findVisibleText(
-				'The fraud prevention setting could not be saved. Try again later.'
+				'The automatic blocking setting could not be saved. Try again later.'
 			)
 		).toBeVisible();
 		expect( checkbox ).toBeEnabled();
@@ -715,7 +715,7 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect(
 			screen
 				.queryAllByText(
-					'The fraud prevention setting could not be saved. Try again later.',
+					'The automatic blocking setting could not be saved. Try again later.',
 					{ exact: true }
 				)
 				.filter( ( element ) => ! element.hasAttribute( 'aria-live' ) )

@@ -387,7 +387,7 @@ class SessionsRestController extends RestApiControllerBase {
 			'type'       => 'object',
 			'properties' => array(
 				'id'              => array(
-					'description' => __( 'Unique identifier of the recorded checkout attempt.', 'woocommerce-fraud-protection' ),
+					'description' => __( 'Unique identifier of the recorded payment attempt.', 'woocommerce-fraud-protection' ),
 					'type'        => 'integer',
 					'context'     => array( 'view' ),
 					'readonly'    => true,

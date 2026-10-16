@@ -422,7 +422,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 503, $response->get_status() );
 		$this->assertInstanceOf( \WP_Error::class, $error );
 		$this->assertSame( 'woocommerce_fraud_protection_rules_not_loaded', $error->get_error_code() );
-		$this->assertSame( 'The fraud prevention rules could not be loaded.', $error->get_error_message() );
+		$this->assertSame( 'The custom rules could not be loaded.', $error->get_error_message() );
 		$this->assertSame( 503, $error->get_error_data()['status'] );
 	}
 
@@ -447,7 +447,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 500, $response->get_status() );
 		$this->assertInstanceOf( \WP_Error::class, $error );
 		$this->assertSame( 'woocommerce_fraud_protection_rules_not_loaded', $error->get_error_code() );
-		$this->assertSame( 'The fraud prevention rules could not be loaded.', $error->get_error_message() );
+		$this->assertSame( 'The custom rules could not be loaded.', $error->get_error_message() );
 		$this->assertSame( 500, $error->get_error_data()['status'] );
 	}
 

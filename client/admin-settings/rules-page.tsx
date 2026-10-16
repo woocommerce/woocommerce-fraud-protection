@@ -249,7 +249,7 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 		return null;
 	}
 	const prefix = __(
-		'The fraud prevention rules could not be loaded.',
+		'The custom rules could not be loaded.',
 		'woocommerce-fraud-protection'
 	);
 	if ( error.startsWith( prefix ) ) {
@@ -258,7 +258,7 @@ const getLoadErrorMessage = ( error: string | null ): string | null => {
 	return sprintf(
 		// translators: %s: Error returned by the server.
 		__(
-			'The fraud prevention rules could not be loaded. %s',
+			'The custom rules could not be loaded. %s',
 			'woocommerce-fraud-protection'
 		),
 		error

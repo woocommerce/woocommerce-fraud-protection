@@ -32,7 +32,7 @@ export function FraudProtectionSettingsPage() {
 		);
 	} else if ( error?.operation === 'save' ) {
 		errorMessage = __(
-			'The fraud prevention setting could not be saved.',
+			'The automatic blocking setting could not be saved.',
 			'woocommerce-fraud-protection'
 		);
 	}
