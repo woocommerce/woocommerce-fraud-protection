@@ -132,7 +132,10 @@
 	}
 
 	/**
-	 * Fetch the current session ID ahead of time, without a timeout.
+	 * Fetch the current session ID ahead of time.
+	 *
+	 * Each try gets the same timeout as acquireSessionId(), so a session ID
+	 * that never arrives is tried again instead of keeping the slot waiting.
 	 */
 	function prepareSessionId() {
 		if ( ! isPreparing || ! window.Blackbox.getSessionId ) {
@@ -141,12 +144,21 @@
 		}
 
 		const current = ++preparation;
+		let timeoutTimer = 0;
 		isFetching = true;
 		Promise.resolve()
 			.then( function () {
-				return window.Blackbox.getSessionId();
+				return Promise.race( [
+					window.Blackbox.getSessionId(),
+					new Promise( function ( _, reject ) {
+						timeoutTimer = setTimeout( function () {
+							reject( new Error( 'timeout' ) );
+						}, fraudProtection.config.timeout );
+					} ),
+				] );
 			} )
 			.then( function ( result ) {
+				clearTimeout( timeoutTimer );
 				if ( current !== preparation ) {
 					return;
 				}
@@ -174,6 +186,7 @@
 				);
 			} )
 			.catch( function () {
+				clearTimeout( timeoutTimer );
 				retryPreparation( current );
 			} );
 	}

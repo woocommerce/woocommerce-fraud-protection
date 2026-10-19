@@ -637,6 +637,46 @@ describe( 'blackbox-init', () => {
 			expect( mockGetSessionId ).toHaveBeenCalledTimes( 3 );
 		} );
 
+		it( 'is prepared again when getSessionId does not answer in time', async () => {
+			mockGetSessionId
+				.mockReturnValueOnce( new Promise( () => {} ) )
+				.mockResolvedValueOnce( 'retried-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			jest.advanceTimersByTime( 3000 );
+			await flushPromises();
+			jest.advanceTimersByTime( 2000 );
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'retried-session-id'
+			);
+		} );
+
+		it( 'starts a new session on the next activity when getSessionId never answers', async () => {
+			mockGetSessionId.mockReturnValue( new Promise( () => {} ) );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			for ( let i = 0; i < 3; i++ ) {
+				jest.advanceTimersByTime( 3000 );
+				await flushPromises();
+				jest.advanceTimersByTime( 2000 );
+				await flushPromises();
+			}
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 3 );
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			document.dispatchEvent( new Event( 'pointerdown' ) );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
 		it( 'ignores a session ID that resolves after a reset', async () => {
 			let resolveFirst;
 			mockGetSessionId
