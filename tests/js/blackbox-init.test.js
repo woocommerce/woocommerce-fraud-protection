@@ -789,6 +789,53 @@ describe( 'blackbox-init', () => {
 			);
 		} );
 
+		it( 'is prepared again on the next activity when Blackbox.reset() never settles', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockResolvedValueOnce( 'second-session-id' );
+			mockReset.mockReturnValueOnce( new Promise( () => {} ) );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			window.wcFraudProtection.takePreparedSessionId();
+
+			jest.advanceTimersByTime( 3000 );
+			await flushPromises();
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			document.dispatchEvent( new Event( 'pointerdown' ) );
+			await flushPromises();
+
+			expect( mockReset ).toHaveBeenCalledTimes( 2 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'second-session-id'
+			);
+		} );
+
+		it( 'is prepared only by the latest of overlapping resets', async () => {
+			let resolveFirstReset;
+			mockReset
+				.mockReturnValueOnce(
+					new Promise( ( resolve ) => {
+						resolveFirstReset = resolve;
+					} )
+				)
+				.mockResolvedValueOnce( undefined );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+
+			window.wcFraudProtection.reset();
+			window.wcFraudProtection.reset();
+			await flushPromises();
+			resolveFirstReset();
+			await flushPromises();
+
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 2 );
+		} );
+
 		it.each( [
 			[ 'rejects', () => Promise.reject( new Error( 'SDK error' ) ) ],
 			[ 'resolves with a non-string', () => Promise.resolve( {} ) ],

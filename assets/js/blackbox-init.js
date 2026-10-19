@@ -358,16 +358,34 @@
 		clearTimeout( retryTimer );
 
 		if ( window.Blackbox && window.Blackbox.reset ) {
+			let timeoutTimer = 0;
 			try {
 				isFetching = isPreparing;
-				Promise.resolve( window.Blackbox.reset() )
-					.then( prepareSessionId )
+				// Like each preparation, a reset that never settles must not
+				// keep the slot waiting.
+				Promise.race( [
+					Promise.resolve( window.Blackbox.reset() ),
+					new Promise( function ( _, reject ) {
+						timeoutTimer = setTimeout( function () {
+							reject( new Error( 'timeout' ) );
+						}, fraudProtection.config.timeout );
+					} ),
+				] )
+					.then( function () {
+						clearTimeout( timeoutTimer );
+						// A later reset prepares its own session.
+						if ( current === preparation ) {
+							prepareSessionId();
+						}
+					} )
 					.catch( function () {
+						clearTimeout( timeoutTimer );
 						if ( current === preparation ) {
 							isFetching = false;
 						}
 					} );
 			} catch {
+				clearTimeout( timeoutTimer );
 				// Fail open.
 				isFetching = false;
 			}
