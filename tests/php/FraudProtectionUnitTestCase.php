@@ -204,6 +204,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 		'wc-fraud-protection-pay-for-order',
 		'wc-fraud-protection-add-payment-method',
 		'wc-fraud-protection-paypal-express',
+		'wc-fraud-protection-express-checkout',
 		'wc-fraud-protection-extension-flow',
 	);
 

@@ -185,7 +185,7 @@ On pages where the Blackbox scripts are loaded, the plugin exposes a small API o
 - **`acquireSessionId(): Promise<string>`** — resolves to a Blackbox session ID, or an empty string on timeout/error (fail-open). Send this value to the server under the field name in `window.wcFraudProtection.config.sessionIdField` (which mirrors `SessionVerifier::SESSION_ID_FIELD`); the server reads it back before calling `verify_session()`.
 - **`reset(): void`** — clears Blackbox state so a subsequent payment attempt gets a fresh session.
 
-`config.sessionIdField` is the only supported entry on `config`; the rest are internal to the plugin's own init script and may change.
+`config.sessionIdField` is the only supported entry on `config`; the rest are internal to the plugin's own init script and may change. Other methods on `window.wcFraudProtection` are internal to the plugin's own scripts and may also change.
 
 Request the Blackbox scripts from the hook that renders your payment surface, then enqueue your integration script with `wc-fraud-protection-blackbox-init` as a dependency so it runs after the API is set up. `BlackboxScriptHandler::request_scripts()` enqueues the shared scripts when they are available; on `false`, skip your script because the store has no Jetpack blog ID or the request cannot render a payment page. The server still verifies fail-open:
 

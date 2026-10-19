@@ -382,6 +382,91 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
+	 * @testdox A Store API Pay for order request verifies with the session ID from its extension data.
+	 */
+	public function test_store_api_pay_for_order_request_verifies_with_extension_session_id(): void {
+		global $wp_rest_server;
+
+		$order = \WC_Helper_Order::create_order( 0 );
+		$order->set_status( 'pending' );
+		$order->save();
+
+		$verified = array();
+		$this->session_verifier
+			->method( 'verify_session' )
+			->willReturnCallback(
+				function ( $session_id, string $source, int $order_id ) use ( &$verified ): FraudDecision {
+					$verified[] = array( $session_id, $source, $order_id );
+					return FraudDecision::Block;
+				}
+			);
+
+		$bacs_settings = get_option( 'woocommerce_bacs_settings', null );
+		update_option( 'woocommerce_bacs_settings', array( 'enabled' => 'yes' ) );
+		WC()->payment_gateways()->init();
+
+		$this->sut->register();
+		add_filter( 'woocommerce_store_api_disable_nonce_check', '__return_true' );
+		// Build the routes again so they use the registered extension schema.
+		$wp_rest_server = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+
+		$address = array(
+			'first_name' => $order->get_billing_first_name(),
+			'last_name'  => $order->get_billing_last_name(),
+			'address_1'  => $order->get_billing_address_1(),
+			'city'       => $order->get_billing_city(),
+			'state'      => $order->get_billing_state(),
+			'postcode'   => $order->get_billing_postcode(),
+			'country'    => $order->get_billing_country(),
+			'phone'      => '5555555555',
+			'email'      => $order->get_billing_email(),
+		);
+
+		try {
+			$request = new \WP_REST_Request( 'POST', '/wc/store/v1/checkout/' . $order->get_id() );
+			$request->set_query_params(
+				array(
+					'key'           => $order->get_order_key(),
+					'billing_email' => $order->get_billing_email(),
+				)
+			);
+			$request->set_header( 'Content-Type', 'application/json' );
+			$request->set_body(
+				(string) wp_json_encode(
+					array(
+						'billing_address'  => $address,
+						'shipping_address' => $address,
+						'payment_method'   => 'bacs',
+						'extensions'       => array(
+							'woocommerce/fraud-protection' => array( 'blackbox_session_id' => 'session-pay-for-order' ),
+						),
+					)
+				)
+			);
+
+			$response = rest_get_server()->dispatch( $request );
+		} finally {
+			remove_filter( 'woocommerce_store_api_disable_nonce_check', '__return_true' );
+			if ( null === $bacs_settings ) {
+				delete_option( 'woocommerce_bacs_settings' );
+			} else {
+				update_option( 'woocommerce_bacs_settings', $bacs_settings );
+			}
+			WC()->payment_gateways()->init();
+			remove_action( 'woocommerce_store_api_checkout_update_order_from_request', array( $this->sut, 'extract_request_data' ), 10 );
+			remove_action( 'woocommerce_store_api_checkout_order_processed', array( $this->sut, 'verify_and_block' ) );
+			$wp_rest_server = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+		}
+
+		$this->assertSame(
+			array( array( 'session-pay-for-order', 'blocks_checkout', $order->get_id() ) ),
+			$verified,
+			'The order-pay route should verify once with the submitted session ID: ' . wp_json_encode( $response->get_data() )
+		);
+		$this->assertSame( 403, $response->get_status(), 'A Block decision should stop the payment' );
+	}
+
+	/**
 	 * @testdox extract_request_data() correctly extracts blackbox_session_id from request extensions.
 	 */
 	public function test_extract_request_data_extracts_session_id(): void {
