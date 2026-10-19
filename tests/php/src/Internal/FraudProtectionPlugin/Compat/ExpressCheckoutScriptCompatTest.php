@@ -47,35 +47,28 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		global $wp;
-
 		foreach ( $this->gateway_handles as $handle ) {
 			wp_dequeue_script( $handle );
 			wp_deregister_script( $handle );
 		}
-		unset( $wp->query_vars['order-pay'], $wp->query_vars['order-received'] );
 		remove_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_express_checkout_script_if_buttons_enqueued' ), PHP_INT_MAX );
-		remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_express_checkout_block_script_if_registered' ), 20 );
-		remove_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_express_checkout_block_script_if_registered' ), 20 );
 		$this->reset_fraud_protection_scripts();
 
 		parent::tearDown();
 	}
 
 	/**
-	 * @testdox Registers the express payment surface hooks.
+	 * @testdox Registers the express payment surface hook.
 	 */
 	public function test_register_hooks(): void {
 		$this->sut->register();
 
 		$this->assertSame( PHP_INT_MAX, has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_express_checkout_script_if_buttons_enqueued' ) ) );
-		$this->assertSame( 20, has_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_express_checkout_block_script_if_registered' ) ) );
-		$this->assertSame( 20, has_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this->sut, 'enqueue_express_checkout_block_script_if_registered' ) ) );
 	}
 
 	/**
 	 * @testdox Loads the express checkout script after a gateway enqueues its express button script.
-	 * @dataProvider classic_handle_provider
+	 * @dataProvider express_button_handle_provider
 	 *
 	 * @param string $handle Gateway express button script handle.
 	 */
@@ -100,7 +93,7 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @return array<string, array{0: string}>
 	 */
-	public function classic_handle_provider(): array {
+	public function express_button_handle_provider(): array {
 		return array(
 			'WooPayments' => array( 'WCPAY_EXPRESS_CHECKOUT_ECE' ),
 			'Stripe'      => array( 'wc_stripe_express_checkout' ),
@@ -149,92 +142,19 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Loads the express checkout script for a Cart or Checkout block with a registered gateway block integration.
-	 * @dataProvider blocks_handle_provider
+	 * @testdox A Cart block page loads no fraud scripts when a gateway registers only its block integration.
+	 * @dataProvider block_integration_handle_provider
 	 *
 	 * @param string $handle Gateway block integration script handle.
 	 */
-	public function test_block_follower_enqueues_for_registered_block_integration( string $handle ): void {
+	public function test_cart_block_page_with_only_block_integration_skips_scripts( string $handle ): void {
 		$this->mock_jetpack_blog_id( 12345 );
 		$this->register_gateway_handle( $handle, false );
-
-		$this->sut->enqueue_express_checkout_block_script_if_registered();
-
-		$this->assertTrue( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ) );
-	}
-
-	/**
-	 * Gateway block integration script handles.
-	 *
-	 * @return array<string, array{0: string}>
-	 */
-	public function blocks_handle_provider(): array {
-		return array(
-			'WooPayments' => array( 'WCPAY_BLOCKS_CHECKOUT' ),
-			'Stripe'      => array( 'wc-stripe-blocks-integration' ),
-		);
-	}
-
-	/**
-	 * @testdox The block follower leaves the order-pay and order-received endpoints to the classic handles.
-	 * @dataProvider checkout_endpoint_provider
-	 *
-	 * @param string $endpoint Checkout endpoint query variable.
-	 */
-	public function test_block_follower_skips_checkout_endpoints( string $endpoint ): void {
-		global $wp;
-
-		$handler = $this->createMock( BlackboxScriptHandler::class );
-		$handler->expects( $this->never() )->method( 'request_scripts' );
-		$this->sut->init( $handler );
-		$this->register_gateway_handle( 'WCPAY_BLOCKS_CHECKOUT', false );
-		$wp->query_vars[ $endpoint ] = '123';
-
-		$this->sut->enqueue_express_checkout_block_script_if_registered();
-
-		$this->assertFalse( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ) );
-	}
-
-	/**
-	 * Checkout endpoints rendered with classic views.
-	 *
-	 * @return array<string, array{0: string}>
-	 */
-	public function checkout_endpoint_provider(): array {
-		return array(
-			'order pay'      => array( 'order-pay' ),
-			'order received' => array( 'order-received' ),
-		);
-	}
-
-	/**
-	 * @testdox A Cart block rendered with a gateway block integration loads the express checkout script.
-	 */
-	public function test_cart_block_render_enqueues_script(): void {
-		$this->mock_jetpack_blog_id( 12345 );
-		$this->register_gateway_handle( 'wc-stripe-blocks-integration', false );
 		$this->sut->register();
 		$previous_enqueue_state = $this->set_cart_block_enqueue_state( false );
 
 		try {
-			do_blocks( '<!-- wp:woocommerce/cart --><div class="wp-block-woocommerce-cart"></div><!-- /wp:woocommerce/cart -->' );
-
-			$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
-			$this->assertTrue( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ) );
-		} finally {
-			$this->set_cart_block_enqueue_state( $previous_enqueue_state );
-		}
-	}
-
-	/**
-	 * @testdox A Cart block rendered without a gateway block integration loads no fraud scripts.
-	 */
-	public function test_cart_block_render_without_gateway_skips_scripts(): void {
-		$this->mock_jetpack_blog_id( 12345 );
-		$this->sut->register();
-		$previous_enqueue_state = $this->set_cart_block_enqueue_state( false );
-
-		try {
+			$this->run_wp_enqueue_scripts();
 			do_blocks( '<!-- wp:woocommerce/cart --><div class="wp-block-woocommerce-cart"></div><!-- /wp:woocommerce/cart -->' );
 
 			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
@@ -242,6 +162,18 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 		} finally {
 			$this->set_cart_block_enqueue_state( $previous_enqueue_state );
 		}
+	}
+
+	/**
+	 * Gateway block integration script handles.
+	 *
+	 * @return array<string, array{0: string}>
+	 */
+	public function block_integration_handle_provider(): array {
+		return array(
+			'WooPayments' => array( 'WCPAY_BLOCKS_CHECKOUT' ),
+			'Stripe'      => array( 'wc-stripe-blocks-integration' ),
+		);
 	}
 
 	/**

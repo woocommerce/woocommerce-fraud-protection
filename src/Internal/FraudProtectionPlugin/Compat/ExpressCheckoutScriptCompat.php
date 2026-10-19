@@ -20,19 +20,16 @@ defined( 'ABSPATH' ) || exit;
 class ExpressCheckoutScriptCompat {
 
 	/**
-	 * Script handles that render express buttons on product, cart, checkout, and pay-for-order pages.
+	 * Script handles that the gateways enqueue only on pages where they show express buttons.
+	 *
+	 * This includes pages with the Cart and Checkout blocks: the gateways show express
+	 * buttons in the blocks only when they also enqueue these scripts. Their block
+	 * integration scripts are not used, because they are registered even when express
+	 * buttons are turned off.
 	 */
-	private const CLASSIC_HANDLES = array(
+	private const EXPRESS_BUTTON_HANDLES = array(
 		'WCPAY_EXPRESS_CHECKOUT_ECE',
 		'wc_stripe_express_checkout',
-	);
-
-	/**
-	 * Script handles that render express buttons in the Cart and Checkout blocks.
-	 */
-	private const BLOCKS_HANDLES = array(
-		'WCPAY_BLOCKS_CHECKOUT',
-		'wc-stripe-blocks-integration',
 	);
 
 	/**
@@ -60,8 +57,6 @@ class ExpressCheckoutScriptCompat {
 	 */
 	public function register(): void {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_express_checkout_script_if_buttons_enqueued' ), PHP_INT_MAX, 0 );
-		add_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this, 'enqueue_express_checkout_block_script_if_registered' ), 20, 0 );
-		add_action( 'woocommerce_blocks_enqueue_cart_block_scripts_before', array( $this, 'enqueue_express_checkout_block_script_if_registered' ), 20, 0 );
 	}
 
 	/**
@@ -72,29 +67,8 @@ class ExpressCheckoutScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_express_checkout_script_if_buttons_enqueued(): void {
-		foreach ( self::CLASSIC_HANDLES as $handle ) {
+		foreach ( self::EXPRESS_BUTTON_HANDLES as $handle ) {
 			if ( wp_script_is( $handle, 'registered' ) && wp_script_is( $handle, 'enqueued' ) ) {
-				$this->enqueue_express_checkout_script();
-				return;
-			}
-		}
-	}
-
-	/**
-	 * Enqueue the express checkout script for a frontend Cart or Checkout block.
-	 *
-	 * @internal
-	 *
-	 * @return void
-	 */
-	public function enqueue_express_checkout_block_script_if_registered(): void {
-		// WooCommerce renders these endpoints with classic views, covered by the classic handles.
-		if ( is_wc_endpoint_url( 'order-pay' ) || is_wc_endpoint_url( 'order-received' ) ) {
-			return;
-		}
-
-		foreach ( self::BLOCKS_HANDLES as $handle ) {
-			if ( wp_script_is( $handle, 'registered' ) ) {
 				$this->enqueue_express_checkout_script();
 				return;
 			}
