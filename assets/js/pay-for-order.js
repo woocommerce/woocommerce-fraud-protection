@@ -86,20 +86,26 @@
 					const sessionId = result.sessionId;
 					const errorField =
 						fraudProtection.config.sessionIdErrorField;
-					let $errorField = $();
+					// The reason describes the latest acquisition and stays
+					// until the next one. A gateway can submit the form
+					// natively after the empty session ID field is removed.
+					const $errorField = errorField
+						? $( form )
+								.find( 'input[name="' + errorField + '"]' )
+								.first()
+						: $();
 					if ( ! sessionId && result.error && errorField ) {
-						$errorField = $( form )
-							.find( 'input[name="' + errorField + '"]' )
-							.first();
 						if ( $errorField.length ) {
 							$errorField.val( result.error );
 						} else {
-							$errorField = $( '<input>', {
+							$( '<input>', {
 								type: 'hidden',
 								name: errorField,
 								value: result.error,
 							} ).appendTo( form );
 						}
+					} else {
+						$errorField.remove();
 					}
 
 					let $sessionIdField = $( form )
@@ -137,7 +143,6 @@
 							setTimeout( function () {
 								if ( $sessionIdField.val() === '' ) {
 									$sessionIdField.remove();
-									$errorField.remove();
 								}
 							}, 0 );
 						}

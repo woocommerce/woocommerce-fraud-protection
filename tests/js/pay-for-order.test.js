@@ -283,32 +283,78 @@ describe( 'pay-for-order', () => {
 		);
 	} );
 
-	it( 'sends the reason for a missing session ID and removes it with the empty field', async () => {
+	it( 'keeps the reason for a gateway that submits the form after a delay', async () => {
 		setupFraudProtection();
 		window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
-			Promise.resolve( { sessionId: '', error: 'sdk_error' } )
+			Promise.resolve( { sessionId: '', error: 'sdk_unavailable' } )
 		);
 		loadScript();
 
-		let errorDuringNativeSubmit;
-		form.submit = jest.fn( () => {
-			const field = form.querySelector(
-				'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
-			);
-			errorDuringNativeSubmit = field && field.value;
+		// Like Stripe: stop the re-fired submit, prepare the payment, then
+		// submit the form natively.
+		form.addEventListener( 'submit', ( e ) => {
+			e.preventDefault();
+			setTimeout( () => form.submit(), 1000 );
 		} );
+		let fieldsDuringNativeSubmit;
+		form.submit = jest.fn( () => {
+			fieldsDuringNativeSubmit = {
+				sessionId: document.getElementById( SESSION_ID_FIELD ),
+				error: form.querySelector(
+					'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
+				),
+			};
+		} );
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runAllTimers();
+
+		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
+		expect( fieldsDuringNativeSubmit.sessionId ).toBeNull();
+		expect( fieldsDuringNativeSubmit.error.value ).toBe(
+			'sdk_unavailable'
+		);
+	} );
+
+	it.each( [
+		[
+			'updates the reason when the next acquisition has none either',
+			{ sessionId: '', error: 'sdk_error' },
+			[ 'sdk_error' ],
+		],
+		[
+			'removes the reason when the next acquisition has a session ID',
+			{ sessionId: 'sess-later', error: '' },
+			[],
+		],
+	] )( '%s', async ( _, secondResult, expectedErrors ) => {
+		setupFraudProtection();
+		window.wcFraudProtection.acquireSessionIdResult = jest
+			.fn()
+			.mockResolvedValueOnce( { sessionId: '', error: 'timeout' } )
+			.mockResolvedValueOnce( secondResult );
+		loadScript();
+		form.submit = jest.fn();
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runAllTimers();
 
 		dispatchSubmit();
 		await flushPromises();
 		jest.runOnlyPendingTimers();
 
-		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
-		expect( errorDuringNativeSubmit ).toBe( 'sdk_error' );
-
-		jest.runOnlyPendingTimers();
-		expect(
-			form.querySelector( 'input[name="' + SESSION_ID_ERROR_FIELD + '"]' )
-		).toBeNull();
+		const errorFields = form.querySelectorAll(
+			'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
+		);
+		expect( Array.from( errorFields, ( field ) => field.value ) ).toEqual(
+			expectedErrors
+		);
+		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+			secondResult.sessionId
+		);
 	} );
 
 	it( 'does not send a reason with a session ID', async () => {
