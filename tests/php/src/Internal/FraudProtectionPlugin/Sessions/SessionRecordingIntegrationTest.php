@@ -174,6 +174,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox A block suppressed while automatic protection is disabled is recorded with its received decision and risk score.
 	 */
 	public function test_suppressed_block_decision_is_recorded(): void {
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( false );
 		$verifier = $this->a_session_verifier_receiving(
 			array(
 				'session_id' => 'integration-session-1',
@@ -301,6 +302,7 @@ class SessionRecordingIntegrationTest extends FraudProtectionUnitTestCase {
 	 * @testdox A rejected verify is recorded as a received block while automatic protection is disabled.
 	 */
 	public function test_rejected_verify_is_recorded_and_suppressed_when_automatic_protection_is_disabled(): void {
+		wc_get_container()->get( AutomaticProtectionSetting::class )->set_enabled( false );
 		$verifier = $this->a_session_verifier_with_transport(
 			array(
 				'response' => array( 'code' => 413 ),

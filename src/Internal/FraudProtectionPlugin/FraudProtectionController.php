@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEnabledNote;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExpressCheckoutScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
@@ -242,9 +243,10 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->settings_telemetry->register();
 		wc_get_container()->get( SessionIdentityManager::class )->register();
 
-		// Register outside the merchant features gate to keep note cleanup active when it is disabled.
-		// The note eligibility check prevents creation when merchant-facing features are disabled.
+		// Register outside the merchant features gate so the invitation is retired even when it is disabled,
+		// and the enabled note can follow later gate changes.
 		wc_get_container()->get( AutomaticProtectionEarlyAccessNote::class )->register();
+		wc_get_container()->get( AutomaticProtectionEnabledNote::class )->register();
 
 		if ( $this->merchant_facing_features_gate->is_enabled() ) {
 			add_filter( 'woocommerce_get_settings_pages', array( $this, 'add_settings_page' ) );
