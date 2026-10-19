@@ -37,7 +37,9 @@ beforeEach( () => {
 } );
 
 afterEach( () => {
-	// Release activity listeners left armed by a test.
+	// Release activity listeners left armed by a test, without letting them
+	// reach the next test's SDK mocks.
+	delete window.Blackbox;
 	document.dispatchEvent( new Event( 'pointerdown' ) );
 	jest.useRealTimers();
 	jest.restoreAllMocks();
@@ -370,6 +372,123 @@ describe( 'blackbox-init', () => {
 
 			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
 				''
+			);
+		} );
+
+		it( 'is not prepared again after acquireSessionId() returned it, until an attempt finds none', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockResolvedValueOnce( 'second-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			// Another payment flow, such as PayPal, takes the prepared session.
+			await window.wcFraudProtection.acquireSessionId();
+			window.dispatchEvent( new Event( 'focus' ) );
+			await flushPromises();
+			expect( mockReset ).not.toHaveBeenCalled();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			window.dispatchEvent( new Event( 'focus' ) );
+			await flushPromises();
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'second-session-id'
+			);
+		} );
+
+		it( 'is prepared again on the next activity after an attempt finds it already handed out', async () => {
+			let resolveRefill;
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockReturnValueOnce(
+					new Promise( ( resolve ) => {
+						resolveRefill = resolve;
+					} )
+				)
+				.mockResolvedValueOnce( 'second-session-id' )
+				.mockResolvedValueOnce( 'third-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			window.wcFraudProtection.takePreparedSessionId();
+			await flushPromises();
+
+			// Another payment flow takes the new session before it reaches the slot.
+			await window.wcFraudProtection.acquireSessionId();
+			resolveRefill( 'second-session-id' );
+			await flushPromises();
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+
+			document.dispatchEvent( new Event( 'pointerdown' ) );
+			await flushPromises();
+
+			expect( mockReset ).toHaveBeenCalledTimes( 2 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'third-session-id'
+			);
+		} );
+
+		it( 'is prepared again on the next activity after an attempt found none', async () => {
+			mockGetSessionId
+				.mockRejectedValueOnce( new Error( 'SDK error' ) )
+				.mockRejectedValueOnce( new Error( 'SDK error' ) )
+				.mockRejectedValueOnce( new Error( 'SDK error' ) )
+				.mockResolvedValueOnce( 'recovered-session-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			for ( let i = 0; i < 2; i++ ) {
+				jest.advanceTimersByTime( 2000 );
+				await flushPromises();
+			}
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			expect( mockReset ).not.toHaveBeenCalled();
+
+			window.dispatchEvent( new Event( 'blur' ) );
+			await flushPromises();
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'recovered-session-id'
+			);
+		} );
+
+		it( 'does not start another session on activity while one is on its way', async () => {
+			let resolveRefill;
+			mockGetSessionId
+				.mockResolvedValueOnce( 'first-session-id' )
+				.mockReturnValueOnce(
+					new Promise( ( resolve ) => {
+						resolveRefill = resolve;
+					} )
+				);
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			window.wcFraudProtection.takePreparedSessionId();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			document.dispatchEvent( new Event( 'pointerdown' ) );
+			resolveRefill( 'second-session-id' );
+			await flushPromises();
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				'second-session-id'
 			);
 		} );
 

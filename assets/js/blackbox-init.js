@@ -107,6 +107,8 @@
 	let preparedSessionId = '';
 	let preparedAt = 0;
 	let isPreparing = false;
+	// Whether a session ID is on its way to the prepared slot.
+	let isFetching = false;
 	let preparation = 0;
 	let refreshTimer = 0;
 	let retryTimer = 0;
@@ -134,10 +136,12 @@
 	 */
 	function prepareSessionId() {
 		if ( ! isPreparing || ! window.Blackbox.getSessionId ) {
+			isFetching = false;
 			return;
 		}
 
 		const current = ++preparation;
+		isFetching = true;
 		Promise.resolve()
 			.then( function () {
 				return window.Blackbox.getSessionId();
@@ -147,22 +151,27 @@
 					return;
 				}
 
-				if (
-					typeof result === 'string' &&
-					result &&
-					! handedOutSessionIds.has( result )
-				) {
-					preparationRetries = 0;
-					preparedSessionId = result;
-					preparedAt = Date.now();
-					clearTimeout( refreshTimer );
-					refreshTimer = setTimeout(
-						expirePreparedSessionId,
-						PREPARED_SESSION_MAX_AGE_MS
-					);
-				} else {
+				if ( typeof result !== 'string' || ! result ) {
 					retryPreparation( current );
+					return;
 				}
+
+				isFetching = false;
+
+				// Asking again returns the same ID. The next attempt that finds
+				// the slot empty starts a new session.
+				if ( handedOutSessionIds.has( result ) ) {
+					return;
+				}
+
+				preparationRetries = 0;
+				preparedSessionId = result;
+				preparedAt = Date.now();
+				clearTimeout( refreshTimer );
+				refreshTimer = setTimeout(
+					expirePreparedSessionId,
+					PREPARED_SESSION_MAX_AGE_MS
+				);
 			} )
 			.catch( function () {
 				retryPreparation( current );
@@ -175,10 +184,12 @@
 	 * @param {number} current The preparation that failed.
 	 */
 	function retryPreparation( current ) {
-		if (
-			current !== preparation ||
-			preparationRetries >= MAX_PREPARATION_RETRIES
-		) {
+		if ( current !== preparation ) {
+			return;
+		}
+
+		if ( preparationRetries >= MAX_PREPARATION_RETRIES ) {
+			isFetching = false;
 			return;
 		}
 
@@ -193,9 +204,6 @@
 
 	/**
 	 * Drop an unused prepared session ID that got too old.
-	 *
-	 * A new session starts on the shopper's next activity, so a page left
-	 * open without activity does not keep starting sessions.
 	 */
 	function expirePreparedSessionId() {
 		if ( ! preparedSessionId ) {
@@ -203,9 +211,19 @@
 		}
 
 		markHandedOut( preparedSessionId );
+		prepareAgainOnActivity();
+	}
+
+	/**
+	 * Start a new session for the prepared slot on the shopper's next activity.
+	 *
+	 * Waiting for activity means a page left open without activity does not
+	 * keep starting sessions.
+	 */
+	function prepareAgainOnActivity() {
 		whenShopperIsActive( function () {
 			// Another reset may have prepared a new ID in the meantime.
-			if ( ! preparedSessionId ) {
+			if ( ! preparedSessionId && ! isFetching ) {
 				fraudProtection.reset();
 			}
 		} );
@@ -272,18 +290,25 @@
 	 */
 	fraudProtection.reset = function () {
 		preparedSessionId = '';
-		++preparation;
+		const current = ++preparation;
+		isFetching = false;
 		preparationRetries = 0;
 		clearTimeout( refreshTimer );
 		clearTimeout( retryTimer );
 
 		if ( window.Blackbox && window.Blackbox.reset ) {
 			try {
+				isFetching = isPreparing;
 				Promise.resolve( window.Blackbox.reset() )
 					.then( prepareSessionId )
-					.catch( function () {} );
+					.catch( function () {
+						if ( current === preparation ) {
+							isFetching = false;
+						}
+					} );
 			} catch {
 				// Fail open.
+				isFetching = false;
 			}
 		}
 	};
@@ -313,6 +338,13 @@
 	fraudProtection.takePreparedSessionId = function () {
 		const sessionId = preparedSessionId;
 		if ( ! sessionId ) {
+			// Have one ready for the next attempt. Another payment flow may
+			// have taken the prepared ID, for example a cancelled PayPal
+			// payment. Refilling only here adds no session after other
+			// payments that succeed.
+			if ( isPreparing && ! isFetching ) {
+				prepareAgainOnActivity();
+			}
 			return '';
 		}
 
