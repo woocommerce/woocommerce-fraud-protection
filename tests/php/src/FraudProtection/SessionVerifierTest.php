@@ -16,6 +16,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
@@ -371,6 +372,102 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 
 		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( $submitted, 'direct_caller' ) );
+	}
+
+	/**
+	 * @testdox verify_session() adds why there is no session ID to the session context.
+	 *
+	 * @dataProvider session_id_error_provider
+	 *
+	 * @param array  $request_data Request data.
+	 * @param string $expected     Reason sent in the session context.
+	 */
+	public function test_verify_session_adds_session_id_error_without_session_id( array $request_data, string $expected ): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array( 'session' => array( 'wc_identity_id' => 'identity-1' ) ) );
+
+		$sent_payload = null;
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturnCallback(
+				function ( string $session_id, array $payload ) use ( &$sent_payload ) {
+					$this->assertSame( '', $session_id, 'No session ID should be sent' );
+					$sent_payload = $payload;
+					return VerifyResult::create( FraudDecision::Allow, 'new-session' );
+				}
+			);
+		$this->decision_handler->method( 'apply_decision' )->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( '', 'blocks_checkout', 0, $request_data );
+
+		$this->assertSame(
+			array(
+				'wc_identity_id'   => 'identity-1',
+				'session_id_error' => $expected,
+			),
+			$sent_payload['session'] ?? null
+		);
+	}
+
+	/**
+	 * Reported reasons and the reason sent for each.
+	 *
+	 * @return array<string, array{array, string}>
+	 */
+	public function session_id_error_provider(): array {
+		$field = SessionIdError::FIELD;
+
+		return array(
+			'timeout'          => array( array( $field => 'timeout' ), 'timeout' ),
+			'SDK error'        => array( array( $field => 'sdk_error' ), 'sdk_error' ),
+			'SDK unavailable'  => array( array( $field => 'sdk_unavailable' ), 'sdk_unavailable' ),
+			'no reason'        => array( array(), 'unknown' ),
+			'unlisted reason'  => array( array( $field => 'blocked_by_extension' ), 'unknown' ),
+			'non-string value' => array( array( $field => array( 'timeout' ) ), 'unknown' ),
+		);
+	}
+
+	/**
+	 * @testdox verify_session() sends no reason when a session ID or an invalid-value marker is sent.
+	 *
+	 * @dataProvider submitted_session_id_with_reason_provider
+	 *
+	 * @param mixed $submitted Submitted session ID.
+	 */
+	public function test_verify_session_sends_no_session_id_error_with_session_id( $submitted ): void {
+		$this->data_collector
+			->method( 'get_collected_data' )
+			->willReturn( array( 'session' => array( 'wc_identity_id' => 'identity-1' ) ) );
+
+		$sent_payload = null;
+		$this->api_client
+			->expects( $this->once() )
+			->method( 'verify' )
+			->willReturnCallback(
+				function ( string $session_id, array $payload ) use ( &$sent_payload ) {
+					$sent_payload = $payload;
+					return VerifyResult::create( FraudDecision::Allow, $session_id );
+				}
+			);
+		$this->decision_handler->method( 'apply_decision' )->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_session( $submitted, 'blocks_checkout', 0, array( SessionIdError::FIELD => 'timeout' ) );
+
+		$this->assertSame( array( 'wc_identity_id' => 'identity-1' ), $sent_payload['session'] ?? null );
+	}
+
+	/**
+	 * Submitted values that are sent as a session ID.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function submitted_session_id_with_reason_provider(): array {
+		return array(
+			'session ID'     => array( 'real-session' ),
+			'invalid marker' => array( null ),
+		);
 	}
 
 	/**

@@ -14,6 +14,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\StoreApi\Exceptions\RouteException;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -498,6 +499,122 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		);
 		$this->assertSame( 'session-900', $request_data['extensions']['woocommerce/fraud-protection']['blackbox_session_id'] );
 		$this->assertSame( 'preserved-extension', $request_data['extensions']['example/existing-extension']['value'] );
+	}
+
+	/**
+	 * @testdox The Store API accepts the plugin's extension data with or without a reason for a missing session ID.
+	 *
+	 * @dataProvider store_api_extension_data_provider
+	 *
+	 * @param array $fraud_data Extension data in the plugin's namespace.
+	 */
+	public function test_store_api_accepts_extension_data( array $fraud_data ): void {
+		global $wp_rest_server;
+
+		$this->sut->register();
+		// Build the routes again so they use the registered extension schema.
+		$wp_rest_server = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+
+		$request = new \WP_REST_Request( 'POST', '/wc/store/v1/checkout' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					// Required parameters are checked before the others are validated.
+					'billing_address' => array(
+						'first_name' => 'Test',
+						'last_name'  => 'Shopper',
+						'address_1'  => '1 Test St',
+						'city'       => 'New York',
+						'state'      => 'NY',
+						'postcode'   => '10001',
+						'country'    => 'US',
+						'email'      => 'shopper@example.com',
+					),
+					'payment_method'  => 'bacs',
+					'extensions'      => array( 'woocommerce/fraud-protection' => $fraud_data ),
+				)
+			)
+		);
+
+		$response = rest_get_server()->dispatch( $request );
+		$data     = $response->get_data();
+
+		$this->assertNotContains(
+			$data['code'] ?? '',
+			array( 'rest_missing_callback_param', 'rest_invalid_param' ),
+			'The request should pass parameter validation: ' . wp_json_encode( $data )
+		);
+
+		$wp_rest_server = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+	}
+
+	/**
+	 * Extension data that the browser scripts send.
+	 *
+	 * @return array<string, array{array}>
+	 */
+	public function store_api_extension_data_provider(): array {
+		return array(
+			'session ID only'      => array( array( 'blackbox_session_id' => 'session-1' ) ),
+			'reason without an ID' => array(
+				array(
+					'blackbox_session_id'       => '',
+					'blackbox_session_id_error' => 'timeout',
+				),
+			),
+		);
+	}
+
+	/**
+	 * @testdox extract_request_data() adds the reported reason for a missing session ID to the request data.
+	 */
+	public function test_extract_request_data_adds_session_id_error(): void {
+		$request = new \WP_REST_Request( 'POST', '/wc/store/v1/checkout' );
+		$request->set_param(
+			'extensions',
+			array(
+				'woocommerce/fraud-protection' => array(
+					'blackbox_session_id'       => '',
+					'blackbox_session_id_error' => 'Time Out!',
+				),
+			)
+		);
+
+		$this->sut->extract_request_data( $this->create_mock_order( 910 ), $request );
+
+		$this->assertSame( 'timeout', $this->get_request_data()[ SessionIdError::FIELD ] ?? null, 'The reason should be sanitized as a key' );
+	}
+
+	/**
+	 * @testdox extract_request_data() adds no reason when none, or a non-string one, was submitted.
+	 *
+	 * @dataProvider missing_session_id_error_provider
+	 *
+	 * @param mixed $extensions Submitted extensions.
+	 */
+	public function test_extract_request_data_skips_missing_session_id_error( $extensions ): void {
+		$request = new \WP_REST_Request( 'POST', '/wc/store/v1/checkout' );
+		$request->set_param( 'extensions', $extensions );
+
+		$this->sut->extract_request_data( $this->create_mock_order( 911 ), $request );
+
+		$this->assertArrayNotHasKey( SessionIdError::FIELD, $this->get_request_data() );
+	}
+
+	/**
+	 * Extensions without a usable reason.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function missing_session_id_error_provider(): array {
+		return array(
+			'no extensions'     => array( null ),
+			'no namespace'      => array( array( 'example/other' => array( 'blackbox_session_id_error' => 'timeout' ) ) ),
+			'namespace not map' => array( array( 'woocommerce/fraud-protection' => 'timeout' ) ),
+			'no reason'         => array( array( 'woocommerce/fraud-protection' => array( 'blackbox_session_id' => '' ) ) ),
+			'non-string reason' => array( array( 'woocommerce/fraud-protection' => array( 'blackbox_session_id_error' => array( 'timeout' ) ) ) ),
+		);
 	}
 
 	/**

@@ -13,6 +13,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -326,6 +327,12 @@ class SessionVerifier {
 			$payload['source']                         = $source;
 			$payload['payment']                        = $payment_data?->to_array();
 			$payload['payment_gateway_plugin_version'] = $payment_gateway_plugin_version;
+
+			if ( '' === $normalized_session_id ) {
+				$session                     = is_array( $payload['session'] ?? null ) ? $payload['session'] : array();
+				$session['session_id_error'] = SessionIdError::from_request_data( $request_data );
+				$payload['session']          = $session;
+			}
 
 			$verification = $this->decision_handler->prepare_verification( $payload );
 			$payload      = array_merge( $payload, $verification['context'] );

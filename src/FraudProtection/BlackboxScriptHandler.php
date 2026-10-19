@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 
 defined( 'ABSPATH' ) || exit;
@@ -120,10 +121,11 @@ class BlackboxScriptHandler {
 			'wcFraudProtection',
 			array(
 				'config' => array(
-					'apiKey'         => self::API_KEY_PREFIX . ':' . $blog_id,
-					'identityCookie' => $this->session_identity_manager->get_identity_cookie_settings(),
-					'timeout'        => self::SESSION_ID_TIMEOUT_MS,
-					'sessionIdField' => SessionVerifier::SESSION_ID_FIELD,
+					'apiKey'              => self::API_KEY_PREFIX . ':' . $blog_id,
+					'identityCookie'      => $this->session_identity_manager->get_identity_cookie_settings(),
+					'timeout'             => self::SESSION_ID_TIMEOUT_MS,
+					'sessionIdField'      => SessionVerifier::SESSION_ID_FIELD,
+					'sessionIdErrorField' => SessionIdError::FIELD,
 				),
 			)
 		);

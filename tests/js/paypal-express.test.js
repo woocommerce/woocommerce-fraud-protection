@@ -127,6 +127,69 @@ describe( 'paypal-express fetch interceptor', () => {
 		} );
 	} );
 
+	describe( 'missing session ID reason', () => {
+		it( 'sends the reason next to an empty session ID', async () => {
+			setupAndLoad( {
+				sessionIdField: 'wc_fraud_protection_session_id',
+				sessionIdErrorField: 'wc_fraud_protection_session_id_error',
+			} );
+			window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+				Promise.resolve( { sessionId: '', error: 'timeout' } )
+			);
+
+			await fetchPayPalEndpoint( 'ppc-create-order', { nonce: 'abc' } );
+
+			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+			expect( JSON.parse( fetchCalls[ 0 ].init.body ) ).toEqual( {
+				nonce: 'abc',
+				wc_fraud_protection_session_id: '',
+				wc_fraud_protection_session_id_error: 'timeout',
+			} );
+		} );
+
+		it( 'does not send a reason with a session ID', async () => {
+			setupAndLoad( {
+				sessionIdField: 'wc_fraud_protection_session_id',
+				sessionIdErrorField: 'wc_fraud_protection_session_id_error',
+			} );
+			window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+				Promise.resolve( { sessionId: 'sess-result', error: '' } )
+			);
+
+			await fetchPayPalEndpoint( 'ppc-create-order', { nonce: 'abc' } );
+
+			expect( JSON.parse( fetchCalls[ 0 ].init.body ) ).toEqual( {
+				nonce: 'abc',
+				wc_fraud_protection_session_id: 'sess-result',
+			} );
+		} );
+
+		it( 'reports a missing SDK when only acquireSessionIdResult is available', async () => {
+			window.wcFraudProtection = {
+				config: {
+					sessionIdField: 'wc_fraud_protection_session_id',
+					sessionIdErrorField: 'wc_fraud_protection_session_id_error',
+				},
+				acquireSessionIdResult: () =>
+					Promise.resolve( {
+						sessionId: '',
+						error: 'sdk_unavailable',
+					} ),
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/paypal-express' );
+			} );
+
+			await fetchPayPalEndpoint( 'ppc-create-order', { nonce: 'abc' } );
+
+			expect( JSON.parse( fetchCalls[ 0 ].init.body ) ).toEqual( {
+				nonce: 'abc',
+				wc_fraud_protection_session_id: '',
+				wc_fraud_protection_session_id_error: 'sdk_unavailable',
+			} );
+		} );
+	} );
+
 	describe( 'fail-open', () => {
 		it( 'runs the original request unchanged when session acquisition rejects', async () => {
 			mockAcquireSessionId.mockRejectedValueOnce(
@@ -164,8 +227,8 @@ describe( 'paypal-express fetch interceptor', () => {
 		} );
 
 		it( 'passes ppc-create-order through untouched when acquireSessionId is missing', async () => {
-			// wp_localize_script always prints the config object, even when the
-			// Blackbox SDK never loaded and blackbox-init.js attached no methods.
+			// wp_localize_script always prints the config object, even when
+			// blackbox-init.js attached no methods.
 			window.wcFraudProtection = {
 				config: { sessionIdField: 'wc_fraud_protection_session_id' },
 			};
