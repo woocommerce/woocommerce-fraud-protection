@@ -1,15 +1,17 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.3.0
-* Updated - Automatic blocking is now on by default. Stores that turned it on, turned it off, or opted out of automatic enrollment keep their choice.
 * Added - Stores where automatic fraud prevention was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic fraud prevention is turned off.
+* Updated - Automatic blocking is now on by default. Stores that turned it on, turned it off, or opted out of automatic enrollment keep their choice.
 * Updated - The early-access Inbox note is removed, and the Fraud prevention settings no longer offer the option to opt out of automatic blocking.
+* Dev - The `wc-admin/fraud-protection/settings/opt-out` REST route was removed. Earlier opt-out dates are still reported by `wp wc fraud-protection status` and usage tracking.
+
+2026-10-19 - version 0.2.10
 * Updated - Fraud prevention screens use clearer wording: "Checkout attempts" is now "Payment activity", "Rules" is now "Custom rules", and the automatic fraud prevention setting is now "Automatic blocking".
+* Updated - When a payment attempt has no browser session, the fraud check now says why: the browser script timed out, failed, or did not load, or the reason is unknown.
 * Fixed - Express payments made with WooPayments and Stripe buttons, such as Apple Pay and Google Pay, are now analyzed with the shopper's browser session, like payments made through the checkout form. This applies on product, cart, checkout, and Pay for order pages.
 * Fixed - On the classic checkout, gateways that prepare the payment in the browser before placing the order, such as Stripe and WooPayments, no longer start a new browser session between their two steps, which could delay the order or send it without a session.
-* Updated - When a payment attempt has no browser session, the fraud check now says why: the browser script timed out, failed, or did not load, or the reason is unknown.
 * Fixed - In Firefox, paying for an order from the Pay for order page and adding a payment method from My Account no longer fail with gateways that collect card details in the browser, such as Stripe and WooPayments.
-* Dev - The `wc-admin/fraud-protection/settings/opt-out` REST route was removed. Earlier opt-out dates are still reported by `wp wc fraud-protection status` and usage tracking.
 * Dev - WP-CLI messages, `wp wc fraud-protection status` labels, and REST schema descriptions now use "automatic blocking" and "payment attempt".
 
 2026-10-13 - version 0.2.9
