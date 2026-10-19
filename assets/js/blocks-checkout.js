@@ -4,7 +4,8 @@
  * Gates checkout submission via wcFraudProtection.acquireSessionId(),
  * sets the session ID as extension data for the checkout POST (or, without
  * one, the reason why), then lets the request proceed. Resets after
- * checkout failure for retry.
+ * checkout failure for retry, and after an attempt that stops before the
+ * order is sent.
  *
  * Depends on blackbox-init.js (wcFraudProtection), wp-data (checkout
  * store), and wc-blocks-checkout-events (validation + success/fail hooks).
@@ -25,6 +26,9 @@
 	}
 
 	const fraudProtection = window.wcFraudProtection;
+
+	// Whether the latest attempt took a session ID that no order has used yet.
+	let isSessionIdUnsent = false;
 
 	/**
 	 * Acquire the session ID and, without one, the reason why.
@@ -52,6 +56,8 @@
 
 		return acquireSessionIdResult()
 			.then( function ( result ) {
+				isSessionIdUnsent = !! result.sessionId;
+
 				const extensionData = { blackbox_session_id: result.sessionId };
 				if ( ! result.sessionId && result.error ) {
 					extensionData.blackbox_session_id_error = result.error;
@@ -69,6 +75,7 @@
 	} );
 
 	const resetFraudProtection = function () {
+		isSessionIdUnsent = false;
 		if ( fraudProtection && fraudProtection.reset ) {
 			fraudProtection.reset();
 		}
@@ -78,4 +85,28 @@
 	// No reset on success: the page navigates to order-received, so the collect triggered
 	// by reset() would be wasted.
 	checkoutEvents.onCheckoutFail( resetFraudProtection );
+
+	// An attempt can also stop before the order is sent, for example when the
+	// gateway rejects the card details in the browser. The checkout then goes
+	// back to idle without onCheckoutFail. Reset so that the next attempt,
+	// including an express payment, gets a session ID.
+	if ( wp.data.subscribe && wp.data.select ) {
+		wp.data.subscribe( function () {
+			if ( ! isSessionIdUnsent ) {
+				return;
+			}
+
+			try {
+				const checkout = wp.data.select( STORE_KEY );
+				if ( checkout.isAfterProcessing() || checkout.isComplete() ) {
+					isSessionIdUnsent = false;
+				} else if ( checkout.isIdle() ) {
+					resetFraudProtection();
+				}
+			} catch {
+				// Fail open.
+				isSessionIdUnsent = false;
+			}
+		}, STORE_KEY );
+	}
 } )();

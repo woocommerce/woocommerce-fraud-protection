@@ -18,6 +18,8 @@ let mockReset;
 let mockOnCheckoutValidation;
 let mockOnCheckoutSuccess;
 let mockOnCheckoutFail;
+let checkoutStatus;
+let storeListeners;
 
 beforeEach( () => {
 	delete window.wcFraudProtection;
@@ -34,12 +36,22 @@ beforeEach( () => {
 	mockOnCheckoutValidation = jest.fn();
 	mockOnCheckoutSuccess = jest.fn();
 	mockOnCheckoutFail = jest.fn();
+	checkoutStatus = 'idle';
+	storeListeners = [];
 
 	window.wp = {
 		data: {
 			dispatch: jest.fn( () => ( {
 				setExtensionData: mockSetExtensionData,
 			} ) ),
+			select: jest.fn( () => ( {
+				isIdle: () => checkoutStatus === 'idle',
+				isAfterProcessing: () => checkoutStatus === 'after_processing',
+				isComplete: () => checkoutStatus === 'complete',
+			} ) ),
+			subscribe: jest.fn( ( listener ) => {
+				storeListeners.push( listener );
+			} ),
 		},
 	};
 	window.wc = {
@@ -69,6 +81,17 @@ function loadScript() {
 	jest.isolateModules( () => {
 		require( '../../assets/js/blocks-checkout' );
 	} );
+}
+
+function setCheckoutStatus( status ) {
+	checkoutStatus = status;
+	storeListeners.forEach( ( listener ) => listener() );
+}
+
+async function validateCheckout() {
+	setCheckoutStatus( 'before_processing' );
+	await mockOnCheckoutValidation.mock.calls[ 0 ][ 0 ]();
+	setCheckoutStatus( 'processing' );
 }
 
 describe( 'blocks-checkout', () => {
@@ -231,6 +254,65 @@ describe( 'blocks-checkout', () => {
 			loadScript();
 
 			expect( mockOnCheckoutSuccess ).not.toHaveBeenCalled();
+		} );
+
+		it( 'resets when the attempt stops before the order is sent', async () => {
+			setupFraudProtection();
+			loadScript();
+
+			await validateCheckout();
+			// For example, the gateway rejects the card details.
+			setCheckoutStatus( 'idle' );
+			setCheckoutStatus( 'idle' );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'leaves a sent order to onCheckoutFail', async () => {
+			setupFraudProtection();
+			loadScript();
+
+			await validateCheckout();
+			setCheckoutStatus( 'after_processing' );
+			mockOnCheckoutFail.mock.calls[ 0 ][ 0 ]();
+			setCheckoutStatus( 'idle' );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'does not reset after a completed order', async () => {
+			setupFraudProtection();
+			loadScript();
+
+			await validateCheckout();
+			setCheckoutStatus( 'complete' );
+			setCheckoutStatus( 'idle' );
+
+			expect( mockReset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'does not reset when the attempt had no session ID', async () => {
+			mockAcquireSessionId.mockReturnValue( Promise.resolve( '' ) );
+			setupFraudProtection();
+			loadScript();
+
+			await validateCheckout();
+			setCheckoutStatus( 'idle' );
+
+			expect( mockReset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'fails open when the checkout store cannot be read', async () => {
+			window.wp.data.select.mockImplementation( () => {
+				throw new Error( 'store error' );
+			} );
+			setupFraudProtection();
+			loadScript();
+
+			await validateCheckout();
+
+			expect( () => setCheckoutStatus( 'idle' ) ).not.toThrow();
+			expect( mockReset ).not.toHaveBeenCalled();
 		} );
 
 		it( 'does not call reset when wcFraudProtection is missing', () => {
