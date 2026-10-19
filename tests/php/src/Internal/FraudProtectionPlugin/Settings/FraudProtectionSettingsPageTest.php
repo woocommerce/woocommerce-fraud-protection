@@ -178,7 +178,7 @@ class FraudProtectionSettingsPageTest extends FraudProtectionUnitTestCase {
 
 		$this->sut->save();
 
-		$this->assertSame( SettingStatus::DefaultEnabled, wc_get_container()->get( AutomaticProtectionSetting::class )->get_status() );
+		$this->assertSame( SettingStatus::DefaultDisabled, wc_get_container()->get( AutomaticProtectionSetting::class )->get_status() );
 	}
 
 	/**

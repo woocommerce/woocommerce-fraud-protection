@@ -538,6 +538,25 @@ class SettingsTelemetryTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Enrollment opt-outs use the exact event and normalize an unexpected source.
+	 */
+	public function test_enrollment_opt_out_uses_exact_event_properties(): void {
+		$captured = $this->capture_tracks_event(
+			'wcadmin_fraud_protection_enrollment_preference_changed',
+			fn() => $this->sut->record_enrollment_opt_out( 'other' )
+		);
+		unset( $captured['feature_email_improvements'] );
+
+		$this->assertSame(
+			array(
+				'state'  => 'opted_out',
+				'source' => 'settings',
+			),
+			$captured
+		);
+	}
+
+	/**
 	 * @testdox Rule changes use the exact event and bounded properties.
 	 */
 	public function test_rule_change_uses_exact_event_properties(): void {

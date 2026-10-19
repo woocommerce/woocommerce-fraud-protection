@@ -111,7 +111,7 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 */
 	public function automatic_protection_context_provider(): array {
 		return array(
-			'default enabled'       => array( SettingStatus::DefaultEnabled, AutomaticProtectionSource::AutoEnroll ),
+			'default enabled'       => array( SettingStatus::DefaultEnabled, AutomaticProtectionSource::None ),
 			'default disabled'      => array( SettingStatus::DefaultDisabled, AutomaticProtectionSource::None ),
 			'enabled manually'      => array( SettingStatus::Enabled, AutomaticProtectionSource::Manual ),
 			'disabled manually'     => array( SettingStatus::Disabled, AutomaticProtectionSource::Manual ),
@@ -142,8 +142,8 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame(
 			array(
-				'automatic_protection_status' => 'default_enabled',
-				'automatic_protection_source' => 'auto_enroll',
+				'automatic_protection_status' => 'default_disabled',
+				'automatic_protection_source' => 'none',
 				'matched_rule_action'         => $expected_action,
 				'matched_rule_type'           => $expected_type,
 			),
@@ -429,7 +429,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Disabled automatic protection suppresses a Block recovered after an automated-decision filter error.
 	 */
 	public function test_automated_filter_throw_still_applies_automatic_protection_setting(): void {
-		$this->automatic_protection->set_enabled( false );
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
 			function () {
@@ -544,8 +543,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Disabled automatic protection suppresses a block decision from the service.
 	 */
 	public function test_disabled_automatic_protection_suppresses_block(): void {
-		$this->automatic_protection->set_enabled( false );
-
 		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
 
 		$this->assertSame( FraudDecision::Allow, $result );
@@ -553,19 +550,9 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A store that never chose a setting enforces a block decision from the service.
-	 */
-	public function test_enabled_default_enforces_block(): void {
-		$result = $this->sut->apply_decision( VerifyResult::create( FraudDecision::Block, 'test-session' ), array( 'session_id' => 'test' ), null );
-
-		$this->assertSame( FraudDecision::Block, $result );
-	}
-
-	/**
 	 * @testdox Disabled automatic protection suppresses a filter override to block.
 	 */
 	public function test_disabled_automatic_protection_suppresses_filter_override_to_block(): void {
-		$this->automatic_protection->set_enabled( false );
 		add_filter(
 			'woocommerce_fraud_protection_automated_decision',
 			function () {
@@ -583,7 +570,6 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox Records the received block with the applied allow when automatic protection suppresses it.
 	 */
 	public function test_records_suppressed_block_decision(): void {
-		$this->automatic_protection->set_enabled( false );
 		$result = VerifyResult::create( FraudDecision::Block, 'test-session' );
 
 		$this->event_recorder
@@ -800,8 +786,8 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 
 		$expected_session_data = array(
 			'session_id'                  => 'test',
-			'automatic_protection_status' => 'default_enabled',
-			'automatic_protection_source' => 'auto_enroll',
+			'automatic_protection_status' => 'default_disabled',
+			'automatic_protection_source' => 'none',
 			'matched_rule_action'         => 'block',
 			'matched_rule_type'           => 'email',
 			'verify_result'               => array(

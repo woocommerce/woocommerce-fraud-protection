@@ -87,17 +87,13 @@ const performanceWithFlagged = ( flaggedByFraudPrevention: number ) => ( {
 	flagged_by_fraud_prevention: flaggedByFraudPrevention,
 } );
 
-// Waits for the visible copy, because an earlier test's live region can already
-// hold the same text.
 const findVisibleText = async ( text: string ) => {
-	let visibleMatches: HTMLElement[] = [];
-	await waitFor( () => {
-		visibleMatches = screen
-			.getAllByText( text, { exact: true } )
-			.filter( ( element ) => ! element.hasAttribute( 'aria-live' ) );
-		expect( visibleMatches ).toHaveLength( 1 );
-	} );
+	const matches = await screen.findAllByText( text, { exact: true } );
+	const visibleMatches = matches.filter(
+		( element ) => ! element.hasAttribute( 'aria-live' )
+	);
 
+	expect( visibleMatches ).toHaveLength( 1 );
 	return visibleMatches[ 0 ];
 };
 
@@ -534,6 +530,11 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.getByRole( 'checkbox' ) ).toBeDisabled();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).not.toBeInTheDocument();
 		const performanceCard = screen
 			.getByRole( 'heading', { name: 'Payment activity' } )
 			.closest( 'section' );
@@ -580,7 +581,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole( 'link', { name: '12 times' } )
+			screen.getByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
 		).toBeInTheDocument();
 		await userEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 
@@ -604,7 +607,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( screen.getByText( '4' ) ).toBeInTheDocument();
 		expect( screen.getByText( '5' ) ).toBeInTheDocument();
 		expect(
-			screen.queryByRole( 'link', { name: '12 times' } )
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
 		).not.toBeInTheDocument();
 	} );
 
@@ -668,7 +673,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 			)
 		).not.toBeInTheDocument();
 		expect(
-			screen.queryByRole( 'link', { name: '12 times' } )
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
 		).not.toBeInTheDocument();
 		const save = screen.getByRole( 'button', { name: 'Save' } );
 		await userEvent.click( save );
@@ -686,7 +693,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 			)
 		).not.toBeInTheDocument();
 		expect(
-			screen.queryByRole( 'link', { name: '12 times' } )
+			screen.queryByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
 		).not.toBeInTheDocument();
 		await userEvent.click( save );
 
@@ -710,7 +719,9 @@ describe( 'FraudProtectionSettingsPage', () => {
 			within( performanceCard ).getByText( 'Flagged by fraud prevention' )
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole( 'link', { name: '12 times' } )
+			screen.getByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
 		).toBeInTheDocument();
 		expect(
 			screen
@@ -725,13 +736,13 @@ describe( 'FraudProtectionSettingsPage', () => {
 	it.each< [ number, string, string ] >( [
 		[
 			1,
-			'once',
-			'In the last 30 days, fraud prevention flagged suspicious activity once on your store. To help prevent fraudulent payments, we recommend turning on automatic blocking.',
+			'1 checkout attempt',
+			'1 checkout attempt was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 		],
 		[
 			12,
-			'12 times',
-			'In the last 30 days, fraud prevention flagged suspicious activity 12 times on your store. To help prevent fraudulent payments, we recommend turning on automatic blocking.',
+			'12 checkout attempts',
+			'12 checkout attempts were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
 		],
 	] )( 'links the %s flagged attempt count', async ( count, label, copy ) => {
 		mockedApiFetch.mockResolvedValueOnce(
@@ -749,23 +760,55 @@ describe( 'FraudProtectionSettingsPage', () => {
 		expect( countLink.parentElement ).toHaveTextContent( copy );
 	} );
 
-	it.each( [ false, true ] )(
-		'offers no opt-out, Learn more, or dismiss action on the off notice when opted-out is %s',
-		async ( optedOut ) => {
+	it( 'shows the opt-out actions and offers no dismiss on the opt-out notice', async () => {
+		mockedApiFetch.mockResolvedValueOnce(
+			settingsResponse( false, performanceWithFlagged( 12 ) )
+		);
+		renderSettings();
+
+		expect(
+			await screen.findByRole( 'button', {
+				name: 'Opt out of automatic blocking',
+			} )
+		).toBeEnabled();
+		expect(
+			screen.getByRole( 'link', { name: 'Learn more' } )
+		).toHaveAttribute(
+			'href',
+			'https://woocommerce.com/document/fraud-protection/'
+		);
+
+		// The opt-out notice presents a decision, so it cannot be dismissed.
+		expect(
+			screen.queryByRole( 'button', {
+				name: 'Dismiss automatic fraud prevention notice',
+			} )
+		).not.toBeInTheDocument();
+	} );
+
+	it.each< [ number, string, string ] >( [
+		[
+			1,
+			'1 checkout attempt',
+			'1 checkout attempt was flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+		],
+		[
+			12,
+			'12 checkout attempts',
+			'12 checkout attempts were flagged as suspicious in the last 30 days but allowed because automatic fraud prevention is off. We recommend turning it on.',
+		],
+	] )(
+		'shows the automatic-protection recommendation for %s attempts after an opt-out is stored',
+		async ( count, label, copy ) => {
 			mockedApiFetch.mockResolvedValueOnce(
-				settingsResponse(
-					false,
-					performanceWithFlagged( 12 ),
-					optedOut
-				)
+				settingsResponse( false, performanceWithFlagged( count ), true )
 			);
 			renderSettings();
 
-			expect(
-				await screen.findByRole( 'link', {
-					name: '12 times',
-				} )
-			).toBeInTheDocument();
+			const countLink = await screen.findByRole( 'link', {
+				name: label,
+			} );
+			expect( countLink.parentElement ).toHaveTextContent( copy );
 			expect(
 				screen.queryByRole( 'button', {
 					name: 'Opt out of automatic blocking',
@@ -782,11 +825,18 @@ describe( 'FraudProtectionSettingsPage', () => {
 		}
 	);
 
-	it.each( [ false, true ] )(
+	it.each( [
+		[
+			false,
+			'Automatic fraud prevention is off. We will turn on blocking by default on October 20. You can turn it on now using the setting above, or opt out of this new feature.',
+		],
+		[
+			true,
+			'Automatic fraud prevention is off. We recommend turning it on.',
+		],
+	] )(
 		'shows count-free copy when opted-out is %s and no attempts were flagged',
-		async ( optedOut ) => {
-			const copy =
-				'To help prevent fraudulent payments, we recommend turning on automatic blocking.';
+		async ( optedOut, copy ) => {
 			mockedApiFetch.mockResolvedValueOnce(
 				settingsResponse( false, zeroPerformance, optedOut )
 			);
@@ -794,8 +844,72 @@ describe( 'FraudProtectionSettingsPage', () => {
 
 			expect( await findVisibleText( copy ) ).toBeVisible();
 			expect(
-				screen.queryByRole( 'link', { name: '0 times' } )
+				screen.queryByRole( 'link', { name: '0 checkout attempts' } )
 			).not.toBeInTheDocument();
 		}
 	);
+
+	it.each( [
+		[ 'inbox', '/?source=inbox' ],
+		[ 'settings', '/' ],
+	] )(
+		'stores a %s opt-out and queues the approved success message',
+		async ( source, path ) => {
+			window.history.replaceState( {}, '', path );
+			mockedApiFetch
+				.mockResolvedValueOnce( settingsResponse( false ) )
+				.mockResolvedValueOnce( {
+					automatic_protection: false,
+					automatic_protection_opted_out: true,
+				} );
+			renderSettings();
+
+			await userEvent.click(
+				await screen.findByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			);
+
+			await waitFor( () => {
+				expect( mockedApiFetch ).toHaveBeenLastCalledWith( {
+					path: '/wc-admin/fraud-protection/settings/opt-out',
+					method: 'POST',
+					data: { source },
+				} );
+			} );
+			await waitFor( () => {
+				expect( mockCreateSuccessNotice ).toHaveBeenCalledWith(
+					'Automatic blocking stays off.',
+					{ type: 'snackbar' }
+				);
+			} );
+			expect(
+				screen.queryByRole( 'button', {
+					name: 'Opt out of automatic blocking',
+				} )
+			).not.toBeInTheDocument();
+		}
+	);
+
+	it( 'keeps the opt-out available when the request fails', async () => {
+		mockedApiFetch
+			.mockResolvedValueOnce( settingsResponse( false ) )
+			.mockRejectedValueOnce( new Error( 'Try again later.' ) );
+		renderSettings();
+
+		const optOut = await findOptOutButton();
+		await userEvent.click( optOut );
+
+		expect(
+			await findVisibleText(
+				'We could not opt you out of automatic blocking. Try again later.'
+			)
+		).toBeVisible();
+		expect( optOut ).toBeEnabled();
+		expect( screen.getByRole( 'checkbox' ) ).toBeEnabled();
+		expect( mockCreateSuccessNotice ).not.toHaveBeenCalled();
+	} );
 } );
+
+const findOptOutButton = () =>
+	screen.findByRole( 'button', { name: 'Opt out of automatic blocking' } );

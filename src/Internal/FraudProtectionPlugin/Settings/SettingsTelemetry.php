@@ -186,6 +186,21 @@ class SettingsTelemetry {
 	}
 
 	/**
+	 * Record a confirmed automatic-enrollment opt-out.
+	 *
+	 * @param string $source Settings action source.
+	 */
+	public function record_enrollment_opt_out( string $source ): void {
+		$this->record_tracks_event(
+			'fraud_protection_enrollment_preference_changed',
+			array(
+				'state'  => 'opted_out',
+				'source' => 'inbox' === $source ? 'inbox' : 'settings',
+			)
+		);
+	}
+
+	/**
 	 * Record a successful merchant rule change.
 	 *
 	 * @param string        $operation Rule operation.

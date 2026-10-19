@@ -39,7 +39,7 @@ class AutomaticProtectionSetting {
 	 * Get the code default.
 	 */
 	public function get_default(): SettingStatus {
-		return SettingStatus::Enabled;
+		return SettingStatus::Disabled;
 	}
 
 	/**
@@ -91,11 +91,9 @@ class AutomaticProtectionSetting {
 	 * Get the source of the current setting state.
 	 */
 	public function get_source(): AutomaticProtectionSource {
-		return match ( $this->get_status() ) {
-			SettingStatus::Enabled, SettingStatus::Disabled => AutomaticProtectionSource::Manual,
-			SettingStatus::DefaultEnabled => AutomaticProtectionSource::AutoEnroll,
-			SettingStatus::DefaultDisabled => AutomaticProtectionSource::None,
-		};
+		return in_array( $this->get_status(), array( SettingStatus::Enabled, SettingStatus::Disabled ), true )
+			? AutomaticProtectionSource::Manual
+			: AutomaticProtectionSource::None;
 	}
 
 	/**
@@ -123,6 +121,21 @@ class AutomaticProtectionSetting {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Store the first automatic-enrollment opt-out date.
+	 *
+	 * @return bool|null True when created, false when already stored, or null on failure.
+	 */
+	public function set_opted_out(): ?bool {
+		$opted_out_at = gmdate( 'Y-m-d H:i:s' );
+		$created      = add_option( self::OPT_OUT_DATE_OPTION_NAME, $opted_out_at, '', false );
+		if ( $created ) {
+			return get_option( self::OPT_OUT_DATE_OPTION_NAME, null ) === $opted_out_at ? true : null;
+		}
+
+		return $this->is_opted_out() ? false : null;
 	}
 
 	/**
