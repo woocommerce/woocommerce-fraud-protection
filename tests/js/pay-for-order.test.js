@@ -290,11 +290,12 @@ describe( 'pay-for-order', () => {
 		);
 		loadScript();
 
-		// Like Stripe: stop the re-fired submit, prepare the payment, then
-		// submit the form natively.
+		// Like Stripe and WooPayments: stop the re-fired submit, prepare the
+		// payment, then submit again with jQuery, which posts the form
+		// without a submit event.
 		form.addEventListener( 'submit', ( e ) => {
 			e.preventDefault();
-			setTimeout( () => form.submit(), 1000 );
+			setTimeout( () => $( form ).trigger( 'submit' ), 1000 );
 		} );
 		let fieldsDuringNativeSubmit;
 		form.submit = jest.fn( () => {
