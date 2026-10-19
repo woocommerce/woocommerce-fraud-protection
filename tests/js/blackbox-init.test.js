@@ -278,6 +278,81 @@ describe( 'blackbox-init', () => {
 		} );
 	} );
 
+	describe( 'acquireSessionIdResult', () => {
+		it( 'resolves with the session ID and no error', async () => {
+			setupAndLoad();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'test-session-id', error: '' } );
+		} );
+
+		it( 'reports a timeout when getSessionId does not settle in time', async () => {
+			mockGetSessionId.mockReturnValue( new Promise( () => {} ) );
+			setupAndLoad();
+
+			const resultPromise =
+				window.wcFraudProtection.acquireSessionIdResult();
+			await jest.advanceTimersByTimeAsync( 3000 );
+
+			await expect( resultPromise ).resolves.toEqual( {
+				sessionId: '',
+				error: 'timeout',
+			} );
+		} );
+
+		it.each( [
+			[ 'rejects', () => Promise.reject( new Error( 'SDK error' ) ) ],
+			[
+				'throws',
+				() => {
+					throw new Error( 'SDK error' );
+				},
+			],
+			[ 'resolves with a non-string', () => Promise.resolve( {} ) ],
+			[ 'resolves with an empty string', () => Promise.resolve( '' ) ],
+		] )( 'reports an SDK error when getSessionId %s', async ( _, impl ) => {
+			mockGetSessionId.mockImplementation( impl );
+			setupAndLoad();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'sdk_error' } );
+			await expect(
+				window.wcFraudProtection.acquireSessionId()
+			).resolves.toBe( '' );
+		} );
+
+		it( 'reports an unavailable SDK when getSessionId is missing', async () => {
+			setupAndLoad();
+			delete window.Blackbox.getSessionId;
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
+		} );
+
+		it( 'is the only method set when the SDK is missing', async () => {
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
+
+			jest.isolateModules( () => {
+				require( '../../assets/js/blackbox-init' );
+			} );
+
+			expect( window.wcFraudProtection.acquireSessionId ).toBeUndefined();
+			expect( window.wcFraudProtection.reset ).toBeUndefined();
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
+		} );
+	} );
+
 	describe( 'reset', () => {
 		it( 'calls Blackbox.reset() when available', () => {
 			setupAndLoad();
@@ -370,6 +445,20 @@ describe( 'blackbox-init', () => {
 
 			await window.wcFraudProtection.acquireSessionId();
 
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+		} );
+
+		it( 'is not handed out after acquireSessionIdResult() returned it', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			const result =
+				await window.wcFraudProtection.acquireSessionIdResult();
+
+			expect( result.sessionId ).toBe( 'test-session-id' );
 			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
 				''
 			);

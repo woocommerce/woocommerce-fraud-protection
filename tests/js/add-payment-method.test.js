@@ -21,6 +21,7 @@ const flushPromises = () =>
 	new Promise( jest.requireActual( 'timers' ).setImmediate );
 
 const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+const SESSION_ID_ERROR_FIELD = 'wc_fraud_protection_session_id_error';
 
 let $;
 let form;
@@ -55,7 +56,10 @@ afterEach( () => {
 
 function setupFraudProtection() {
 	window.wcFraudProtection = {
-		config: { sessionIdField: SESSION_ID_FIELD },
+		config: {
+			sessionIdField: SESSION_ID_FIELD,
+			sessionIdErrorField: SESSION_ID_ERROR_FIELD,
+		},
 		acquireSessionId: mockAcquireSessionId,
 	};
 }
@@ -277,5 +281,99 @@ describe( 'add-payment-method', () => {
 		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
 			'sess-later'
 		);
+	} );
+
+	it( 'keeps the reason for a gateway that submits the form after a delay', async () => {
+		setupFraudProtection();
+		window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+			Promise.resolve( { sessionId: '', error: 'sdk_unavailable' } )
+		);
+		loadScript();
+
+		// Like Stripe and WooPayments: stop the re-fired submit, prepare the
+		// payment, then submit again with jQuery, which posts the form
+		// without a submit event.
+		form.addEventListener( 'submit', ( e ) => {
+			e.preventDefault();
+			setTimeout( () => $( form ).trigger( 'submit' ), 1000 );
+		} );
+		let fieldsDuringNativeSubmit;
+		form.submit = jest.fn( () => {
+			fieldsDuringNativeSubmit = {
+				sessionId: document.getElementById( SESSION_ID_FIELD ),
+				error: form.querySelector(
+					'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
+				),
+			};
+		} );
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runAllTimers();
+
+		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+		expect( form.submit ).toHaveBeenCalledTimes( 1 );
+		expect( fieldsDuringNativeSubmit.sessionId ).toBeNull();
+		expect( fieldsDuringNativeSubmit.error.value ).toBe(
+			'sdk_unavailable'
+		);
+	} );
+
+	it.each( [
+		[
+			'updates the reason when the next acquisition has none either',
+			{ sessionId: '', error: 'sdk_error' },
+			[ 'sdk_error' ],
+		],
+		[
+			'removes the reason when the next acquisition has a session ID',
+			{ sessionId: 'sess-later', error: '' },
+			[],
+		],
+	] )( '%s', async ( _, secondResult, expectedErrors ) => {
+		setupFraudProtection();
+		window.wcFraudProtection.acquireSessionIdResult = jest
+			.fn()
+			.mockResolvedValueOnce( { sessionId: '', error: 'timeout' } )
+			.mockResolvedValueOnce( secondResult );
+		loadScript();
+		form.submit = jest.fn();
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runAllTimers();
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runOnlyPendingTimers();
+
+		const errorFields = form.querySelectorAll(
+			'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
+		);
+		expect( Array.from( errorFields, ( field ) => field.value ) ).toEqual(
+			expectedErrors
+		);
+		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+			secondResult.sessionId
+		);
+	} );
+
+	it( 'does not send a reason with a session ID', async () => {
+		setupFraudProtection();
+		window.wcFraudProtection.acquireSessionIdResult = jest.fn( () =>
+			Promise.resolve( { sessionId: 'sess-result', error: '' } )
+		);
+		loadScript();
+
+		dispatchSubmit();
+		await flushPromises();
+		jest.runOnlyPendingTimers();
+
+		expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+			'sess-result'
+		);
+		expect(
+			form.querySelector( 'input[name="' + SESSION_ID_ERROR_FIELD + '"]' )
+		).toBeNull();
 	} );
 } );

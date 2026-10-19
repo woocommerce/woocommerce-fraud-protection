@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -59,6 +60,12 @@ trait ClassicFormDataExtractionTrait {
 		$shipping_address = $this->extract_address( $form_data, 'shipping_' );
 		if ( ! empty( $shipping_address ) ) {
 			$request_data['shipping_address'] = $shipping_address;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by WooCommerce. Strings are unslashed and sanitized below.
+		$session_id_error = $_POST[ SessionIdError::FIELD ] ?? null;
+		if ( is_string( $session_id_error ) ) {
+			$request_data[ SessionIdError::FIELD ] = sanitize_key( wp_unslash( $session_id_error ) );
 		}
 
 		return $request_data;

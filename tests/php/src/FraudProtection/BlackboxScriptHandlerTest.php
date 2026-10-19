@@ -119,6 +119,7 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		);
 		$this->assertStringContainsString( '"timeout":3000', $data );
 		$this->assertStringContainsString( '"sessionIdField":"wc_fraud_protection_session_id"', $data );
+		$this->assertStringContainsString( '"sessionIdErrorField":"wc_fraud_protection_session_id_error"', $data );
 	}
 
 	/**
