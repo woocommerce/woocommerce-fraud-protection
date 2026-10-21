@@ -145,7 +145,7 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox build_request_data() adds no reason when none, or a non-string one, was posted.
+	 * @testdox build_request_data() adds no reason when the session ID field was posted without a usable one.
 	 *
 	 * @dataProvider missing_posted_session_id_error_provider
 	 *
@@ -160,15 +160,58 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * POST data without a usable reason.
+	 * POST data with the session ID field, and without a usable reason.
 	 *
 	 * @return array<string, array{array}>
 	 */
 	public function missing_posted_session_id_error_provider(): array {
 		return array(
-			'absent'     => array( array() ),
-			'non-string' => array( array( 'wc_fraud_protection_session_id_error' => array( 'timeout' ) ) ),
+			'absent'     => array( array( 'wc_fraud_protection_session_id' => '' ) ),
+			'non-string' => array(
+				array(
+					'wc_fraud_protection_session_id'       => '',
+					'wc_fraud_protection_session_id_error' => array( 'timeout' ),
+				),
+			),
 		);
+	}
+
+	/**
+	 * @testdox build_request_data() records that the plugin's scripts did not handle a request without the session ID field or a reason.
+	 *
+	 * @dataProvider not_submitted_session_id_provider
+	 *
+	 * @param array $post POST data.
+	 */
+	public function test_build_request_data_adds_not_submitted_without_session_id_field( array $post ): void {
+		$_POST = $post; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
+
+		$this->assertSame( 'not_submitted', $result['wc_fraud_protection_session_id_error'] ?? null );
+	}
+
+	/**
+	 * POST data without the session ID field or a usable reason.
+	 *
+	 * @return array<string, array{array}>
+	 */
+	public function not_submitted_session_id_provider(): array {
+		return array(
+			'no fields'         => array( array() ),
+			'non-string reason' => array( array( 'wc_fraud_protection_session_id_error' => array( 'timeout' ) ) ),
+		);
+	}
+
+	/**
+	 * @testdox build_request_data() keeps a posted reason when the session ID field is absent.
+	 */
+	public function test_build_request_data_keeps_reason_without_session_id_field(): void {
+		$_POST['wc_fraud_protection_session_id_error'] = 'not_ready'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
+
+		$this->assertSame( 'not_ready', $result['wc_fraud_protection_session_id_error'] ?? null );
 	}
 
 	/**

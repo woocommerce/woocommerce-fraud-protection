@@ -13,6 +13,13 @@
  * so the next attempt gets a fresh one. A checkout_error event does the
  * same, for failures reported without that request.
  *
+ * Another checkout_place_order handler can let the submit continue before
+ * the session ID is ready. The checkout request then leaves without the
+ * field, so the request itself gets the session ID prepared in advance, or
+ * the `not_ready` reason when none is ready. A session ID that arrives
+ * after such a request was sent is unused, and stays for the next attempt.
+ * The form is not submitted again for the attempt that already left.
+ *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
  */
 /* global jQuery */
@@ -21,6 +28,15 @@
 
 	// Forms that hold fields added by this script.
 	const formsWithFields = new Set();
+	// What each checkout request carried when it was sent, by its settings.
+	const checkoutRequests = new WeakMap();
+	// Prepared session IDs that checkout requests took because they left
+	// without the field. A session ID acquired for the same attempt is not sent again.
+	const usedSessionIds = new Set();
+	// The settings of the checkout request in flight.
+	let checkoutRequestInFlight = null;
+	// Checkout requests sent so far, to tell whether one left during an acquisition.
+	let checkoutRequestCount = 0;
 
 	/**
 	 * Acquire the session ID and, without one, the reason why.
@@ -64,8 +80,12 @@
 
 	/**
 	 * Remove the fields of a finished attempt and start a fresh session.
+	 *
+	 * @param {Object}  [request]         What the finished checkout request carried, when known.
+	 * @param {string}  request.sessionId Session ID the request carried, or an empty string.
+	 * @param {boolean} request.fromForm  Whether the fields came from the form.
 	 */
-	function resetAfterAttempt() {
+	function resetAfterAttempt( request ) {
 		const fraudProtection = window.wcFraudProtection;
 		if ( ! fraudProtection || ! fraudProtection.config ) {
 			return;
@@ -78,7 +98,18 @@
 			const $sessionIdField = $( form ).find(
 				'input[name="' + config.sessionIdField + '"]'
 			);
-			if ( $sessionIdField.val() ) {
+			const sessionId = $sessionIdField.val();
+			// Added after the request was sent, so no request used it yet.
+			if (
+				request &&
+				! request.fromForm &&
+				sessionId &&
+				! usedSessionIds.has( sessionId )
+			) {
+				return;
+			}
+
+			if ( sessionId ) {
 				sessionIdWasSent = true;
 			}
 			$sessionIdField.remove();
@@ -87,13 +118,64 @@
 					.find( 'input[name="' + config.sessionIdErrorField + '"]' )
 					.remove();
 			}
+			formsWithFields.delete( form );
 		} );
-		formsWithFields.clear();
 
-		// Without a session ID, the current session was not used.
+		// Without a session ID, the current session was not used. A request
+		// that took the prepared session ID already started a fresh one.
+		if ( request ) {
+			sessionIdWasSent = request.fromForm && !! request.sessionId;
+		}
 		if ( sessionIdWasSent && typeof fraudProtection.reset === 'function' ) {
 			fraudProtection.reset();
 		}
+	}
+
+	/**
+	 * Add the session ID to a checkout request that left without it.
+	 *
+	 * Takes the session ID prepared in advance, or reports `not_ready` when
+	 * none is ready. Records what the request carries for the cleanup after
+	 * it completes.
+	 *
+	 * @param {Object} settings jQuery AJAX settings, before the request is sent.
+	 */
+	function completeCheckoutRequest( settings ) {
+		const fraudProtection = window.wcFraudProtection;
+		if (
+			! fraudProtection ||
+			! fraudProtection.config ||
+			( ! fraudProtection.acquireSessionIdResult &&
+				! fraudProtection.acquireSessionId ) ||
+			typeof settings.data !== 'string'
+		) {
+			return;
+		}
+
+		const config = fraudProtection.config;
+		const params = new URLSearchParams( settings.data );
+		const request = {
+			sessionId: params.get( config.sessionIdField ) || '',
+			fromForm: params.has( config.sessionIdField ),
+		};
+
+		if ( ! request.fromForm ) {
+			request.sessionId =
+				typeof fraudProtection.takePreparedSessionId === 'function'
+					? fraudProtection.takePreparedSessionId()
+					: '';
+
+			const fields = { [ config.sessionIdField ]: request.sessionId };
+			if ( ! request.sessionId && config.sessionIdErrorField ) {
+				fields[ config.sessionIdErrorField ] = 'not_ready';
+			}
+			settings.data += ( settings.data ? '&' : '' ) + $.param( fields );
+			if ( request.sessionId ) {
+				usedSessionIds.add( request.sessionId );
+			}
+		}
+
+		checkoutRequests.set( settings, request );
 	}
 
 	/**
@@ -136,7 +218,22 @@
 			return true;
 		}
 
+		const requestCount = checkoutRequestCount;
+
 		acquireSessionIdResult( fraudProtection ).then( function ( result ) {
+			// A checkout request that left without waiting already took it.
+			if ( usedSessionIds.has( result.sessionId ) ) {
+				return;
+			}
+
+			// A checkout request left without waiting, so this attempt is
+			// already sent. Keep a session ID for the next attempt, which the
+			// shopper starts, and let it acquire again when there is none.
+			const requestLeft = checkoutRequestCount !== requestCount;
+			if ( requestLeft && ! result.sessionId ) {
+				return;
+			}
+
 			setField( $form, config.sessionIdField, result.sessionId );
 			if (
 				! result.sessionId &&
@@ -147,17 +244,49 @@
 			}
 			formsWithFields.add( $form[ 0 ] );
 
-			$form.trigger( 'submit' );
+			if ( ! requestLeft ) {
+				$form.trigger( 'submit' );
+			}
 		} );
 
 		return false;
 	} );
 
-	$( document ).on( 'ajaxComplete', function ( event, xhr, settings ) {
+	// Keep a session ID ready for a checkout request that leaves without one.
+	if (
+		window.wcFraudProtection &&
+		typeof window.wcFraudProtection.prepareSessionId === 'function'
+	) {
+		window.wcFraudProtection.prepareSessionId();
+	}
+
+	$.ajaxPrefilter( function ( settings ) {
 		if ( isCheckoutRequest( settings ) ) {
-			resetAfterAttempt();
+			completeCheckoutRequest( settings );
 		}
 	} );
 
-	$( document.body ).on( 'checkout_error', resetAfterAttempt );
+	$( document ).on( 'ajaxSend', function ( event, xhr, settings ) {
+		if ( checkoutRequests.has( settings ) ) {
+			checkoutRequestInFlight = settings;
+			checkoutRequestCount++;
+		}
+	} );
+
+	$( document ).on( 'ajaxComplete', function ( event, xhr, settings ) {
+		if ( isCheckoutRequest( settings ) ) {
+			if ( checkoutRequestInFlight === settings ) {
+				checkoutRequestInFlight = null;
+			}
+			resetAfterAttempt( checkoutRequests.get( settings ) );
+		}
+	} );
+
+	$( document.body ).on( 'checkout_error', function () {
+		// The checkout request reports its error before it completes, and
+		// the cleanup after it knows what the request carried.
+		if ( ! checkoutRequestInFlight ) {
+			resetAfterAttempt();
+		}
+	} );
 } )( jQuery );

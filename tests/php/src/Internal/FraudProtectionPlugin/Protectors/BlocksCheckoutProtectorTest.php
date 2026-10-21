@@ -370,9 +370,31 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	public function submitted_session_value_provider(): array {
 		return array(
-			'null'  => array( null ),
 			'array' => array( array( 'private' ) ),
 		);
+	}
+
+	/**
+	 * @testdox verify_and_block() passes an empty session ID to SessionVerifier when the submitted one is null
+	 */
+	public function test_verify_passes_empty_session_id_for_null(): void {
+		$this->set_request_data(
+			array(
+				'extensions' => array(
+					'woocommerce/fraud-protection' => array(
+						'blackbox_session_id' => null,
+					),
+				),
+			)
+		);
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( '', 'blocks_checkout', 202, $this->anything() )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block( $this->create_mock_order( 202 ) );
 	}
 
 	/*
@@ -652,6 +674,85 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox extract_request_data() reads the reason for a missing session ID from Store API checkout parameters.
+	 *
+	 * @dataProvider store_api_session_id_error_provider
+	 *
+	 * @param array|null  $extensions Submitted extensions, or null to leave them out.
+	 * @param string|null $expected   Expected reason, or null for none.
+	 */
+	public function test_extract_request_data_reads_session_id_error_from_store_api_params( ?array $extensions, ?string $expected ): void {
+		global $wp_rest_server;
+
+		$this->sut->register();
+		// Build the routes again so they use the registered extension schema.
+		$wp_rest_server = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+
+		$body = array(
+			// Required parameters are checked before the others are validated.
+			'billing_address' => array(
+				'first_name' => 'Test',
+				'last_name'  => 'Shopper',
+				'address_1'  => '1 Test St',
+				'city'       => 'New York',
+				'state'      => 'NY',
+				'postcode'   => '10001',
+				'country'    => 'US',
+				'email'      => 'shopper@example.com',
+			),
+			'payment_method'  => 'bacs',
+		);
+		if ( null !== $extensions ) {
+			$body['extensions'] = $extensions;
+		}
+
+		$request = new \WP_REST_Request( 'POST', '/wc/store/v1/checkout' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body( (string) wp_json_encode( $body ) );
+
+		// Read the parameters after the Store API applied its defaults and sanitization.
+		$sanitized_request = null;
+		$capture           = function ( $response, $handler, $request ) use ( &$sanitized_request ) {
+			$sanitized_request = $request;
+			return new \WP_Error( 'test_stop', 'Stopped before the checkout callback.' );
+		};
+		add_filter( 'rest_request_before_callbacks', $capture, 10, 3 );
+
+		rest_get_server()->dispatch( $request );
+
+		remove_filter( 'rest_request_before_callbacks', $capture, 10 );
+		$wp_rest_server = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+
+		$this->assertInstanceOf( \WP_REST_Request::class, $sanitized_request, 'The request should pass parameter validation' );
+
+		$this->sut->extract_request_data( $this->create_mock_order( 913 ), $sanitized_request );
+
+		$this->assertSame( $expected, $this->get_request_data()[ SessionIdError::FIELD ] ?? null );
+	}
+
+	/**
+	 * Store API extensions and the reason extract_request_data() should record.
+	 *
+	 * @return array<string, array{array|null, string|null}>
+	 */
+	public function store_api_session_id_error_provider(): array {
+		return array(
+			'no extensions'        => array( null, SessionIdError::NOT_SUBMITTED ),
+			'other namespace only' => array( array( 'example/other' => array( 'value' => 'x' ) ), SessionIdError::NOT_SUBMITTED ),
+			'session ID'           => array( array( 'woocommerce/fraud-protection' => array( 'blackbox_session_id' => 'session-1' ) ), null ),
+			'reason without an ID' => array(
+				array(
+					'woocommerce/fraud-protection' => array(
+						'blackbox_session_id'       => '',
+						'blackbox_session_id_error' => 'timeout',
+					),
+				),
+				'timeout',
+			),
+		);
+	}
+
+	/**
 	 * @testdox extract_request_data() adds the reported reason for a missing session ID to the request data.
 	 */
 	public function test_extract_request_data_adds_session_id_error(): void {
@@ -672,7 +773,7 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox extract_request_data() adds no reason when none, or a non-string one, was submitted.
+	 * @testdox extract_request_data() adds no reason when a session ID value was submitted without a usable one.
 	 *
 	 * @dataProvider missing_session_id_error_provider
 	 *
@@ -688,16 +789,66 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Extensions without a usable reason.
+	 * Extensions with a session ID value, and without a usable reason.
 	 *
 	 * @return array<string, array{mixed}>
 	 */
 	public function missing_session_id_error_provider(): array {
 		return array(
+			'no reason'         => array( array( 'woocommerce/fraud-protection' => array( 'blackbox_session_id' => '' ) ) ),
+			'null reason'       => array(
+				array(
+					'woocommerce/fraud-protection' => array(
+						'blackbox_session_id'       => '',
+						'blackbox_session_id_error' => null,
+					),
+				),
+			),
+			'non-string reason' => array(
+				array(
+					'woocommerce/fraud-protection' => array(
+						'blackbox_session_id'       => '',
+						'blackbox_session_id_error' => array( 'timeout' ),
+					),
+				),
+			),
+		);
+	}
+
+	/**
+	 * @testdox extract_request_data() records that the plugin's scripts did not handle a request without a session ID value or a reason.
+	 *
+	 * @dataProvider not_submitted_session_id_provider
+	 *
+	 * @param mixed $extensions Submitted extensions.
+	 */
+	public function test_extract_request_data_adds_not_submitted_without_session_id( $extensions ): void {
+		$request = new \WP_REST_Request( 'POST', '/wc/store/v1/checkout' );
+		$request->set_param( 'extensions', $extensions );
+
+		$this->sut->extract_request_data( $this->create_mock_order( 912 ), $request );
+
+		$this->assertSame( SessionIdError::NOT_SUBMITTED, $this->get_request_data()[ SessionIdError::FIELD ] ?? null );
+	}
+
+	/**
+	 * Extensions without a session ID value or a usable reason.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function not_submitted_session_id_provider(): array {
+		return array(
 			'no extensions'     => array( null ),
 			'no namespace'      => array( array( 'example/other' => array( 'blackbox_session_id_error' => 'timeout' ) ) ),
 			'namespace not map' => array( array( 'woocommerce/fraud-protection' => 'timeout' ) ),
-			'no reason'         => array( array( 'woocommerce/fraud-protection' => array( 'blackbox_session_id' => '' ) ) ),
+			'null session ID'   => array(
+				array(
+					'woocommerce/fraud-protection' => array(
+						'blackbox_session_id'       => null,
+						'blackbox_session_id_error' => null,
+					),
+				),
+			),
 			'non-string reason' => array( array( 'woocommerce/fraud-protection' => array( 'blackbox_session_id_error' => array( 'timeout' ) ) ) ),
 		);
 	}
