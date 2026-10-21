@@ -18,6 +18,7 @@
  * field, so the request itself gets the session ID prepared in advance, or
  * the `not_ready` reason when none is ready. A session ID that arrives
  * after such a request was sent is unused, and stays for the next attempt.
+ * The form is not submitted again for the attempt that already left.
  *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
  */
@@ -34,6 +35,8 @@
 	const usedSessionIds = new Set();
 	// The settings of the checkout request in flight.
 	let checkoutRequestInFlight = null;
+	// Checkout requests sent so far, to tell whether one left during an acquisition.
+	let checkoutRequestCount = 0;
 
 	/**
 	 * Acquire the session ID and, without one, the reason why.
@@ -215,9 +218,19 @@
 			return true;
 		}
 
+		const requestCount = checkoutRequestCount;
+
 		acquireSessionIdResult( fraudProtection ).then( function ( result ) {
 			// A checkout request that left without waiting already took it.
 			if ( usedSessionIds.has( result.sessionId ) ) {
+				return;
+			}
+
+			// A checkout request left without waiting, so this attempt is
+			// already sent. Keep a session ID for the next attempt, which the
+			// shopper starts, and let it acquire again when there is none.
+			const requestLeft = checkoutRequestCount !== requestCount;
+			if ( requestLeft && ! result.sessionId ) {
 				return;
 			}
 
@@ -231,7 +244,9 @@
 			}
 			formsWithFields.add( $form[ 0 ] );
 
-			$form.trigger( 'submit' );
+			if ( ! requestLeft ) {
+				$form.trigger( 'submit' );
+			}
 		} );
 
 		return false;
@@ -254,6 +269,7 @@
 	$( document ).on( 'ajaxSend', function ( event, xhr, settings ) {
 		if ( checkoutRequests.has( settings ) ) {
 			checkoutRequestInFlight = settings;
+			checkoutRequestCount++;
 		}
 	} );
 

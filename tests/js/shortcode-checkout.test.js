@@ -516,6 +516,9 @@ describe( 'shortcode-checkout', () => {
 			expect( $form.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
 				'sess-late'
 			);
+			expect(
+				document.querySelector( 'form.checkout' ).submit
+			).not.toHaveBeenCalled();
 
 			// The request reports its error, then completes.
 			transport.completeNext();
@@ -537,6 +540,64 @@ describe( 'shortcode-checkout', () => {
 			);
 			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
 			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'keeps a session ID that arrives after the request completed, without submitting again', async () => {
+			setup();
+
+			$form.triggerHandler( 'checkout_place_order' );
+			sendCheckoutRequest();
+			transport.completeNext();
+			resolveAcquisition( 'sess-later' );
+			await flushPromises();
+
+			expect(
+				document.querySelector( 'form.checkout' ).submit
+			).not.toHaveBeenCalled();
+			expect( transport.sent ).toHaveLength( 1 );
+			expect( $form.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
+				'sess-later'
+			);
+
+			// The next attempt sends it.
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				true
+			);
+			sendCheckoutRequest();
+
+			expect( sentField( transport.sent[ 1 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-later'
+			);
+		} );
+
+		it( 'drops a missing-session reason that arrives after the request completed, without submitting again', async () => {
+			mockAcquireSessionId.mockImplementation( () => undefined );
+			setupFraudProtection( {
+				prepareSessionId: jest.fn(),
+				takePreparedSessionId: mockTakePreparedSessionId,
+				acquireSessionIdResult: () =>
+					new Promise( ( resolve ) => {
+						resolveAcquisition = resolve;
+					} ),
+			} );
+			loadScript();
+
+			$form.triggerHandler( 'checkout_place_order' );
+			sendCheckoutRequest();
+			transport.completeNext();
+			resolveAcquisition( { sessionId: '', error: 'timeout' } );
+			await flushPromises();
+
+			expect(
+				document.querySelector( 'form.checkout' ).submit
+			).not.toHaveBeenCalled();
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+			expect( $form.find( '#' + SESSION_ID_ERROR_FIELD ).length ).toBe(
+				0
+			);
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				false
+			);
 		} );
 
 		it( 'drops a missing-session reason that arrives after the request left', async () => {
