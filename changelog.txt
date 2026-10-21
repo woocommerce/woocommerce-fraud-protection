@@ -1,5 +1,9 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.3.1
+* Fixed - On the classic checkout, payment attempts are analyzed with the shopper's browser session even when another plugin sends the order before the session is ready. A session that arrives too late for one attempt is used for the next.
+* Dev - Payment attempts without a browser session now report whether the plugin's scripts handled the request.
+
 2026-10-20 - version 0.3.0
 * Added - Stores where automatic blocking was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic blocking is turned off.
 * Updated - Automatic blocking is now on by default. Stores that turned it on, turned it off, or opted out of automatic enrollment keep their choice.

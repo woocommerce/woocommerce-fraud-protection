@@ -27,7 +27,10 @@ let mockReset;
 beforeEach( () => {
 	document.body.innerHTML = '<form class="checkout"></form>';
 
-	$ = require( 'jquery' );
+	// A fresh jQuery, so AJAX prefilters and transports do not pile up.
+	jest.isolateModules( () => {
+		$ = require( 'jquery' );
+	} );
 	window.jQuery = $;
 	$form = $( 'form.checkout' );
 
@@ -39,7 +42,7 @@ beforeEach( () => {
 } );
 
 afterEach( () => {
-	$( document ).off( 'ajaxComplete' );
+	$( document ).off( 'ajaxSend ajaxComplete' );
 	$( document.body ).off( 'checkout_error' );
 	document.body.innerHTML = '';
 	delete window.jQuery;
@@ -73,6 +76,58 @@ function loadScript() {
 	jest.isolateModules( () => {
 		require( '../../assets/js/shortcode-checkout' );
 	} );
+}
+
+/**
+ * Answer AJAX requests without a network, when the test completes them.
+ *
+ * @return {{sent: string[], completeNext: Function}} Data of each sent request, and a function that completes the oldest pending one.
+ */
+function stubTransport() {
+	const sent = [];
+	const pending = [];
+	$.ajaxTransport( '+*', function ( options ) {
+		return {
+			send( headers, complete ) {
+				sent.push( options.data );
+				pending.push( complete );
+			},
+			abort() {},
+		};
+	} );
+
+	return {
+		sent,
+		completeNext() {
+			pending.shift()( 200, 'success', { text: '{"result":"failure"}' } );
+		},
+	};
+}
+
+/**
+ * Send the checkout request the way WooCommerce does, reporting its error.
+ */
+function sendCheckoutRequest() {
+	$.ajax( {
+		type: 'POST',
+		url: '/?wc-ajax=checkout',
+		data: $form.serialize(),
+		dataType: 'json',
+		success() {
+			$( document.body ).trigger( 'checkout_error' );
+		},
+	} );
+}
+
+/**
+ * Read a field from the data of a sent request.
+ *
+ * @param {string} data Sent data.
+ * @param {string} name Field name.
+ * @return {string|null} Field value, or null when absent.
+ */
+function sentField( data, name ) {
+	return new URLSearchParams( data ).get( name );
 }
 
 describe( 'shortcode-checkout', () => {
@@ -339,5 +394,192 @@ describe( 'shortcode-checkout', () => {
 			'other-form'
 		);
 		expect( mockReset ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	describe( 'checkout requests', () => {
+		let transport;
+		let mockTakePreparedSessionId;
+		let resolveAcquisition;
+
+		beforeEach( () => {
+			$form.append(
+				'<input name="billing_email" value="a@example.com">'
+			);
+			transport = stubTransport();
+			mockTakePreparedSessionId = jest.fn( () => '' );
+			// The session ID arrives when the test decides.
+			mockAcquireSessionId.mockImplementation(
+				() =>
+					new Promise( ( resolve ) => {
+						resolveAcquisition = resolve;
+					} )
+			);
+		} );
+
+		function setup() {
+			setupFraudProtection( {
+				prepareSessionId: jest.fn(),
+				takePreparedSessionId: mockTakePreparedSessionId,
+			} );
+			loadScript();
+		}
+
+		it( 'keeps a session ID ready when loaded', () => {
+			setup();
+
+			expect(
+				window.wcFraudProtection.prepareSessionId
+			).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'sends the session ID from the form unchanged, then resets', async () => {
+			setup();
+			$form.triggerHandler( 'checkout_place_order' );
+			resolveAcquisition( 'sess-form' );
+			await flushPromises();
+
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				true
+			);
+			sendCheckoutRequest();
+			transport.completeNext();
+
+			expect( sentField( transport.sent[ 0 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-form'
+			);
+			expect(
+				sentField( transport.sent[ 0 ], SESSION_ID_ERROR_FIELD )
+			).toBeNull();
+			expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'adds the prepared session ID to a checkout request sent before the session ID is ready', async () => {
+			mockTakePreparedSessionId.mockReturnValue( 'sess-prepared' );
+			setup();
+
+			// Another handler lets the submit continue.
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				false
+			);
+			sendCheckoutRequest();
+
+			expect( sentField( transport.sent[ 0 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-prepared'
+			);
+			expect(
+				sentField( transport.sent[ 0 ], SESSION_ID_ERROR_FIELD )
+			).toBeNull();
+			expect( sentField( transport.sent[ 0 ], 'billing_email' ) ).toBe(
+				'a@example.com'
+			);
+
+			// The same session ID arrives for the gated submit.
+			resolveAcquisition( 'sess-prepared' );
+			await flushPromises();
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+			expect(
+				document.querySelector( 'form.checkout' ).submit
+			).not.toHaveBeenCalled();
+
+			transport.completeNext();
+
+			// Taking the prepared ID already started a fresh session.
+			expect( mockReset ).not.toHaveBeenCalled();
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				false
+			);
+		} );
+
+		it( 'reports not_ready when no session ID is prepared', () => {
+			setup();
+
+			$form.triggerHandler( 'checkout_place_order' );
+			sendCheckoutRequest();
+
+			expect( sentField( transport.sent[ 0 ], SESSION_ID_FIELD ) ).toBe(
+				''
+			);
+			expect(
+				sentField( transport.sent[ 0 ], SESSION_ID_ERROR_FIELD )
+			).toBe( 'not_ready' );
+		} );
+
+		it( 'keeps a session ID that arrives after the request left for the next attempt', async () => {
+			setup();
+
+			$form.triggerHandler( 'checkout_place_order' );
+			sendCheckoutRequest();
+			resolveAcquisition( 'sess-late' );
+			await flushPromises();
+			expect( $form.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
+				'sess-late'
+			);
+
+			// The request reports its error, then completes.
+			transport.completeNext();
+
+			expect( $form.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
+				'sess-late'
+			);
+			expect( mockReset ).not.toHaveBeenCalled();
+
+			// The next attempt sends it.
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				true
+			);
+			sendCheckoutRequest();
+			transport.completeNext();
+
+			expect( sentField( transport.sent[ 1 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-late'
+			);
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'drops a missing-session reason that arrives after the request left', async () => {
+			mockAcquireSessionId.mockImplementation( () => undefined );
+			setupFraudProtection( {
+				prepareSessionId: jest.fn(),
+				takePreparedSessionId: mockTakePreparedSessionId,
+				acquireSessionIdResult: () =>
+					new Promise( ( resolve ) => {
+						resolveAcquisition = resolve;
+					} ),
+			} );
+			loadScript();
+
+			$form.triggerHandler( 'checkout_place_order' );
+			sendCheckoutRequest();
+			resolveAcquisition( { sessionId: '', error: 'timeout' } );
+			await flushPromises();
+			transport.completeNext();
+
+			// The next attempt tries again.
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+			expect( $form.find( '#' + SESSION_ID_ERROR_FIELD ).length ).toBe(
+				0
+			);
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				false
+			);
+		} );
+
+		it( 'leaves other requests unchanged', () => {
+			setup();
+
+			$.ajax( {
+				type: 'POST',
+				url: '/?wc-ajax=update_order_review',
+				data: 'billing_email=a%40example.com',
+			} );
+
+			expect( transport.sent[ 0 ] ).toBe(
+				'billing_email=a%40example.com'
+			);
+			expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
+		} );
 	} );
 } );
