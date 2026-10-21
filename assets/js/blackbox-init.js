@@ -108,6 +108,12 @@
 	const PREPARED_SESSION_MAX_AGE_MS = 10 * 60 * 1000;
 	const PREPARATION_RETRY_DELAY_MS = 2000;
 	const MAX_PREPARATION_RETRIES = 2;
+	// flush() enforces the timeout itself. This margin only bounds an SDK
+	// that breaks that contract.
+	const FLUSH_GRACE_MS = 500;
+	// The shopper may need a while to complete a challenge, but a payment
+	// attempt must not wait on the SDK forever.
+	const MAX_CHALLENGE_WAIT_MS = 5 * 60 * 1000;
 	// The shopper's next activity. A click on a cross-origin express button
 	// iframe only reaches this page as a window blur.
 	const ACTIVITY_EVENTS = [
@@ -151,6 +157,9 @@
 	 *
 	 * Each try gets the same timeout as acquireSessionId(), so a session ID
 	 * that never arrives is tried again instead of keeping the slot waiting.
+	 * Uses getSessionId(), not flush(): ahead of the payment attempt there is
+	 * no newer data to send, and flush() could show a challenge before the
+	 * shopper starts a payment.
 	 */
 	function prepareSessionId() {
 		if ( ! isPreparing || ! window.Blackbox.getSessionId ) {
@@ -287,20 +296,153 @@
 	}
 
 	/**
-	 * Acquire a Blackbox session ID, or the reason why there is none.
+	 * Convert a flush() result into a session ID result.
 	 *
-	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
-	 * answer in time, `sdk_error` when it fails or returns no session ID, and
-	 * `sdk_unavailable` when its API is missing. Internal to the plugin's own
-	 * scripts.
+	 * @param {*} flushed Value that flush() resolved with.
+	 * @return {{result: {sessionId: string, error: string}, challengePending: boolean}} Result, and whether a challenge is active.
+	 */
+	function fromFlushResult( flushed ) {
+		if ( ! flushed || typeof flushed !== 'object' ) {
+			return {
+				result: withoutSessionId( 'sdk_error' ),
+				challengePending: false,
+			};
+		}
+
+		// flush() keeps a valid session ID on a timeout or error.
+		const sessionId =
+			typeof flushed.sessionId === 'string' ? flushed.sessionId : '';
+		let result = { sessionId, error: '' };
+		if ( ! sessionId ) {
+			result = withoutSessionId(
+				flushed.outcome === 'timeout' ? 'timeout' : 'sdk_error'
+			);
+		}
+
+		return { result, challengePending: flushed.challengePending === true };
+	}
+
+	/**
+	 * Send the current session data with flush(), within the timeout.
+	 *
+	 * Never rejects.
+	 *
+	 * @return {Promise<{result: {sessionId: string, error: string}, challengePending: boolean}>} Result, and whether a challenge is active.
+	 */
+	function flushOnce() {
+		let flushed;
+		try {
+			flushed = Promise.resolve(
+				window.Blackbox.flush( {
+					deadlineMs: fraudProtection.config.timeout,
+				} )
+			).then( fromFlushResult, function () {
+				return fromFlushResult( null );
+			} );
+		} catch {
+			return Promise.resolve( fromFlushResult( null ) );
+		}
+
+		let timer;
+		const timeout = new Promise( function ( resolve ) {
+			timer = setTimeout( function () {
+				resolve( {
+					result: withoutSessionId( 'timeout' ),
+					challengePending: false,
+				} );
+			}, fraudProtection.config.timeout + FLUSH_GRACE_MS );
+		} );
+
+		return Promise.race( [ flushed, timeout ] ).then( function ( outcome ) {
+			clearTimeout( timer );
+			return outcome;
+		} );
+	}
+
+	/**
+	 * Wait until the active challenge ends, or for at most MAX_CHALLENGE_WAIT_MS.
+	 *
+	 * Never rejects.
+	 *
+	 * @return {Promise<void>} Resolves when the wait ends.
+	 */
+	function waitForChallengeEnd() {
+		return new Promise( function ( resolve ) {
+			let isDone = false;
+			let unsubscribe;
+			const finish = function () {
+				if ( isDone ) {
+					return;
+				}
+
+				isDone = true;
+				clearTimeout( timer );
+				if ( typeof unsubscribe === 'function' ) {
+					try {
+						unsubscribe();
+					} catch {
+						// The wait is over either way.
+					}
+				}
+				resolve();
+			};
+			const timer = setTimeout( finish, MAX_CHALLENGE_WAIT_MS );
+
+			if ( typeof window.Blackbox.subscribe !== 'function' ) {
+				finish();
+				return;
+			}
+
+			try {
+				// The listener is called immediately with the current state.
+				unsubscribe = window.Blackbox.subscribe( function ( state ) {
+					if ( ! state || state.status !== 'challenge' ) {
+						finish();
+					}
+				} );
+			} catch {
+				finish();
+				return;
+			}
+
+			if ( isDone && typeof unsubscribe === 'function' ) {
+				try {
+					unsubscribe();
+				} catch {
+					// The wait is over either way.
+				}
+			}
+		} );
+	}
+
+	/**
+	 * Acquire a session ID with flush(), after any challenge it reports.
+	 *
+	 * After a challenge, a second flush() gets the session ID that is current
+	 * then, without waiting for another challenge.
 	 *
 	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
 	 */
-	fraudProtection.acquireSessionIdResult = function () {
-		if ( ! window.Blackbox || ! window.Blackbox.getSessionId ) {
-			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
-		}
+	function acquireByFlush() {
+		return flushOnce().then( function ( first ) {
+			if ( ! first.challengePending ) {
+				return first.result;
+			}
 
+			return waitForChallengeEnd()
+				.then( flushOnce )
+				.then( function ( second ) {
+					return second.result;
+				} );
+		} );
+	}
+
+	/**
+	 * Acquire a session ID with getSessionId(), for SDK versions without flush().
+	 *
+	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
+	 */
+	function acquireByGetSessionId() {
 		let timer;
 		const timeout = new Promise( function ( resolve ) {
 			timer = setTimeout( function () {
@@ -326,6 +468,36 @@
 
 		return Promise.race( [ session, timeout ] ).then( function ( result ) {
 			clearTimeout( timer );
+			return result;
+		} );
+	}
+
+	/**
+	 * Acquire a Blackbox session ID, or the reason why there is none.
+	 *
+	 * Uses flush(), so the session has the shopper's latest data when the
+	 * payment is verified. When flush() reports an active challenge, waits
+	 * for it to end before resolving. Falls back to getSessionId() when the
+	 * SDK has no flush().
+	 *
+	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
+	 * answer in time, `sdk_error` when it fails or returns no session ID, and
+	 * `sdk_unavailable` when its API is missing. Internal to the plugin's own
+	 * scripts.
+	 *
+	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
+	 */
+	fraudProtection.acquireSessionIdResult = function () {
+		let request;
+		if ( window.Blackbox && typeof window.Blackbox.flush === 'function' ) {
+			request = acquireByFlush();
+		} else if ( window.Blackbox && window.Blackbox.getSessionId ) {
+			request = acquireByGetSessionId();
+		} else {
+			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
+		}
+
+		return request.then( function ( result ) {
 			// The payment flows get their session ID here, so record it before
 			// the prepared slot can hand it out again.
 			markHandedOut( result.sessionId );

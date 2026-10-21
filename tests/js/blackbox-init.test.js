@@ -353,6 +353,312 @@ describe( 'blackbox-init', () => {
 		} );
 	} );
 
+	describe( 'acquireSessionIdResult with flush()', () => {
+		let mockFlush;
+		let mockSubscribe;
+		let stateListener;
+		let mockUnsubscribe;
+
+		function flushed( overrides = {} ) {
+			return Promise.resolve( {
+				sessionId: 'flushed-session-id',
+				challengePending: false,
+				outcome: 'ok',
+				...overrides,
+			} );
+		}
+
+		function setupWithFlush() {
+			setupAndLoad();
+			mockFlush = jest.fn( () => flushed() );
+			mockUnsubscribe = jest.fn();
+			stateListener = undefined;
+			mockSubscribe = jest.fn( ( listener ) => {
+				stateListener = listener;
+				listener( { status: 'challenge', sessionId: 'challenged-id' } );
+				return mockUnsubscribe;
+			} );
+			window.Blackbox.flush = mockFlush;
+			window.Blackbox.subscribe = mockSubscribe;
+		}
+
+		it( 'resolves with the session ID from flush(), with the configured deadline', async () => {
+			setupWithFlush();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( {
+				sessionId: 'flushed-session-id',
+				error: '',
+			} );
+			expect( mockFlush ).toHaveBeenCalledWith( { deadlineMs: 3000 } );
+			expect( mockGetSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it.each( [ 'timeout', 'error' ] )(
+			'keeps the session ID that flush() returns with the %s outcome',
+			async ( outcome ) => {
+				setupWithFlush();
+				mockFlush.mockImplementation( () => flushed( { outcome } ) );
+
+				await expect(
+					window.wcFraudProtection.acquireSessionIdResult()
+				).resolves.toEqual( {
+					sessionId: 'flushed-session-id',
+					error: '',
+				} );
+			}
+		);
+
+		it.each( [
+			[ 'timeout', 'timeout' ],
+			[ 'error', 'sdk_error' ],
+			[ 'ok', 'sdk_error' ],
+		] )(
+			'reports %s without a session ID as %s',
+			async ( outcome, error ) => {
+				setupWithFlush();
+				mockFlush.mockImplementation( () =>
+					flushed( { sessionId: '', outcome } )
+				);
+
+				await expect(
+					window.wcFraudProtection.acquireSessionIdResult()
+				).resolves.toEqual( { sessionId: '', error } );
+			}
+		);
+
+		it.each( [
+			[ 'rejects', () => Promise.reject( new Error( 'SDK error' ) ) ],
+			[
+				'throws',
+				() => {
+					throw new Error( 'SDK error' );
+				},
+			],
+			[ 'resolves with a non-object', () => Promise.resolve( 'id' ) ],
+			[
+				'resolves with a non-string session ID',
+				() => flushed( { sessionId: {} } ),
+			],
+		] )( 'reports an SDK error when flush() %s', async ( _, impl ) => {
+			setupWithFlush();
+			mockFlush.mockImplementation( impl );
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'sdk_error' } );
+		} );
+
+		it( 'reports a timeout when flush() never settles', async () => {
+			setupWithFlush();
+			mockFlush.mockReturnValue( new Promise( () => {} ) );
+
+			const resultPromise =
+				window.wcFraudProtection.acquireSessionIdResult();
+			let result;
+			resultPromise.then( ( value ) => {
+				result = value;
+			} );
+			await jest.advanceTimersByTimeAsync( 3000 );
+			expect( result ).toBeUndefined();
+			await jest.advanceTimersByTimeAsync( 500 );
+
+			expect( result ).toEqual( { sessionId: '', error: 'timeout' } );
+		} );
+
+		it( 'waits for an active challenge to end, then resolves with the current session ID', async () => {
+			setupWithFlush();
+			mockFlush
+				.mockImplementationOnce( () =>
+					flushed( {
+						sessionId: 'challenged-id',
+						challengePending: true,
+					} )
+				)
+				.mockImplementationOnce( () =>
+					flushed( { sessionId: 'challenged-id' } )
+				);
+
+			let result;
+			window.wcFraudProtection
+				.acquireSessionIdResult()
+				.then( ( value ) => {
+					result = value;
+				} );
+			await flushPromises();
+
+			expect( mockSubscribe ).toHaveBeenCalledTimes( 1 );
+			expect( mockFlush ).toHaveBeenCalledTimes( 1 );
+			expect( result ).toBeUndefined();
+
+			// The challenge takes longer than the session ID timeout.
+			await jest.advanceTimersByTimeAsync( 60 * 1000 );
+			expect( result ).toBeUndefined();
+
+			stateListener( { status: 'ready', sessionId: 'challenged-id' } );
+			await flushPromises();
+
+			expect( mockUnsubscribe ).toHaveBeenCalledTimes( 1 );
+			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+			expect( result ).toEqual( {
+				sessionId: 'challenged-id',
+				error: '',
+			} );
+		} );
+
+		it( 'resolves with the session ID that is current after the challenge', async () => {
+			setupWithFlush();
+			mockFlush
+				.mockImplementationOnce( () =>
+					flushed( {
+						sessionId: 'expired-id',
+						challengePending: true,
+					} )
+				)
+				.mockImplementationOnce( () =>
+					flushed( { sessionId: 'replacement-id' } )
+				);
+
+			const resultPromise =
+				window.wcFraudProtection.acquireSessionIdResult();
+			await flushPromises();
+			stateListener( { status: 'loading' } );
+
+			await expect( resultPromise ).resolves.toEqual( {
+				sessionId: 'replacement-id',
+				error: '',
+			} );
+		} );
+
+		it( 'does not wait again when the second flush() reports a challenge', async () => {
+			setupWithFlush();
+			mockFlush.mockImplementation( () =>
+				flushed( { challengePending: true } )
+			);
+
+			const resultPromise =
+				window.wcFraudProtection.acquireSessionIdResult();
+			await flushPromises();
+			stateListener( {
+				status: 'ready',
+				sessionId: 'flushed-session-id',
+			} );
+
+			await expect( resultPromise ).resolves.toEqual( {
+				sessionId: 'flushed-session-id',
+				error: '',
+			} );
+			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+			expect( mockSubscribe ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'stops waiting for a challenge after five minutes', async () => {
+			setupWithFlush();
+			mockFlush.mockImplementationOnce( () =>
+				flushed( { challengePending: true } )
+			);
+
+			let result;
+			window.wcFraudProtection
+				.acquireSessionIdResult()
+				.then( ( value ) => {
+					result = value;
+				} );
+			await flushPromises();
+			await jest.advanceTimersByTimeAsync( 5 * 60 * 1000 - 1 );
+			expect( result ).toBeUndefined();
+
+			await jest.advanceTimersByTimeAsync( 1 );
+
+			expect( mockUnsubscribe ).toHaveBeenCalledTimes( 1 );
+			expect( result ).toEqual( {
+				sessionId: 'flushed-session-id',
+				error: '',
+			} );
+		} );
+
+		it( 'unsubscribes when the challenge already ended at subscription', async () => {
+			setupWithFlush();
+			mockFlush.mockImplementationOnce( () =>
+				flushed( { challengePending: true } )
+			);
+			mockSubscribe.mockImplementation( ( listener ) => {
+				listener( {
+					status: 'ready',
+					sessionId: 'flushed-session-id',
+				} );
+				return mockUnsubscribe;
+			} );
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( {
+				sessionId: 'flushed-session-id',
+				error: '',
+			} );
+			expect( mockUnsubscribe ).toHaveBeenCalledTimes( 1 );
+			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+		} );
+
+		it.each( [
+			[
+				'is missing',
+				() => {
+					delete window.Blackbox.subscribe;
+				},
+			],
+			[
+				'throws',
+				() =>
+					mockSubscribe.mockImplementation( () => {
+						throw new Error( 'SDK error' );
+					} ),
+			],
+		] )(
+			'does not wait for a challenge when subscribe() %s',
+			async ( _, breakSubscribe ) => {
+				setupWithFlush();
+				mockFlush.mockImplementationOnce( () =>
+					flushed( { challengePending: true } )
+				);
+				breakSubscribe();
+
+				await expect(
+					window.wcFraudProtection.acquireSessionIdResult()
+				).resolves.toEqual( {
+					sessionId: 'flushed-session-id',
+					error: '',
+				} );
+				expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+			}
+		);
+
+		it( 'does not hand out the flushed session ID as the prepared one', async () => {
+			setupWithFlush();
+			mockFlush.mockImplementation( () =>
+				flushed( { sessionId: 'test-session-id' } )
+			);
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+		} );
+
+		it( 'does not prepare session IDs with flush()', async () => {
+			setupWithFlush();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+			expect( mockFlush ).not.toHaveBeenCalled();
+		} );
+	} );
+
 	describe( 'reset', () => {
 		it( 'calls Blackbox.reset() when available', () => {
 			setupAndLoad();
