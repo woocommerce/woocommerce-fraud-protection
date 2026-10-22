@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WcposCompat;
+use WCPOS\WooCommercePOS\Services\Auth;
 
 // Stub wcpos_request() and the WCPOS gateway base class if not loaded.
 require_once __DIR__ . '/../../../../stubs/wcpos.php';
@@ -40,6 +41,15 @@ class WcposCompatTest extends FraudProtectionUnitTestCase {
 		WC()->payment_gateways()->init();
 		\WCPOS_Request_Stub::$is_pos_request = true;
 
+		$cashier = self::factory()->user->create_and_get( array( 'role' => 'shop_manager' ) );
+		$cashier->add_cap( 'access_woocommerce_pos' );
+		$customer           = self::factory()->user->create( array( 'role' => 'customer' ) );
+		Auth::$valid_tokens = array(
+			'cashier-token'  => $cashier->ID,
+			'customer-token' => $customer,
+		);
+		$_GET['wcpos_jwt']  = 'cashier-token';
+
 		$this->sut = new WcposCompat();
 		$this->sut->register();
 	}
@@ -53,6 +63,8 @@ class WcposCompatTest extends FraudProtectionUnitTestCase {
 		remove_filter( 'woocommerce_available_payment_gateways', array( $this, 'add_pos_gateway' ) );
 		WC()->payment_gateways()->init();
 		\WCPOS_Request_Stub::$is_pos_request = false;
+		Auth::$valid_tokens                  = array();
+		unset( $_GET['wcpos_jwt'], $_GET['token'] );
 
 		parent::tearDown();
 	}
@@ -154,6 +166,57 @@ class WcposCompatTest extends FraudProtectionUnitTestCase {
 		$order_id                            = null === $created_via ? 0 : $this->create_order( $created_via );
 
 		$this->assertFalse( $this->apply_filter( false, $source, $request_data, $order_id ) );
+	}
+
+	/**
+	 * Token parameters that are not a valid token of a user who can access the POS.
+	 *
+	 * @return array<string, array{0: array<string, mixed>}>
+	 */
+	public function rejected_token_provider(): array {
+		return array(
+			'no token'                            => array( array() ),
+			'an empty token'                      => array( array( 'wcpos_jwt' => '' ) ),
+			'a non-string token'                  => array( array( 'wcpos_jwt' => array( 'cashier-token' ) ) ),
+			'an invalid token'                    => array( array( 'wcpos_jwt' => 'forged-token' ) ),
+			'the token of a non-POS user'         => array( array( 'wcpos_jwt' => 'customer-token' ) ),
+			'an invalid token before a valid one' => array(
+				array(
+					'wcpos_jwt' => 'forged-token',
+					'token'     => 'cashier-token',
+				),
+			),
+		);
+	}
+
+	/**
+	 * @testdox Defers to verification on a WCPOS request with $_dataName.
+	 * @dataProvider rejected_token_provider
+	 *
+	 * @param array<string, mixed> $token_params Token query parameters.
+	 */
+	public function test_defers_without_a_valid_cashier_token( array $token_params ): void {
+		unset( $_GET['wcpos_jwt'] );
+		foreach ( $token_params as $name => $value ) {
+			$_GET[ $name ] = $value;
+		}
+		$order_id = $this->create_order( 'woocommerce-pos' );
+
+		$this->assertFalse( $this->apply_filter( false, 'pay_for_order', array( 'payment_method' => 'pos_cash' ), $order_id ) );
+	}
+
+	/**
+	 * @testdox Accepts the cashier token in the legacy token parameter, like WCPOS.
+	 */
+	public function test_accepts_the_legacy_token_parameter(): void {
+		unset( $_GET['wcpos_jwt'] );
+		$_GET['token'] = 'cashier-token';
+		$order_id      = $this->create_order( 'woocommerce-pos' );
+
+		$result = $this->apply_filter( false, 'pay_for_order', array( 'payment_method' => 'pos_cash' ), $order_id );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $result );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
 	}
 
 	/**

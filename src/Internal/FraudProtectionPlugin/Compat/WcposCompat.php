@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
+use WCPOS\WooCommercePOS\Services\Auth;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -23,9 +24,11 @@ defined( 'ABSPATH' ) || exit;
  * The decision is supplied only when all of these hold:
  *
  * - the attempt pays an existing order (`pay_for_order`);
+ * - the request is a WCPOS request;
  * - WCPOS created the order, which it does only for an authenticated cashier;
- * - the request is a WCPOS request, for which WCPOS validates the cashier's
- *   token before WooCommerce processes the payment;
+ * - the request carries a valid WCPOS token of a user who can access the POS.
+ *   WCPOS also requires this token on its pay requests, but the check is
+ *   repeated here so that the decision does not depend on its hook order;
  * - the selected gateway is a WCPOS gateway.
  *
  * Other gateways used inside the POS, and WCPOS orders paid through the regular
@@ -56,6 +59,13 @@ class WcposCompat {
 	 * @var string
 	 */
 	private const POS_GATEWAY_CLASS = 'WCPOS\WooCommercePOS\Payments\Abstract_POS_Gateway';
+
+	/**
+	 * Capability that WCPOS gives to the users who can access the POS.
+	 *
+	 * @var string
+	 */
+	private const POS_CAPABILITY = 'access_woocommerce_pos';
 
 	/**
 	 * Register the supplied-decision filter.
@@ -93,12 +103,47 @@ class WcposCompat {
 			return $supplied_decision;
 		}
 
+		if ( ! $this->has_cashier_token() ) {
+			return $supplied_decision;
+		}
+
 		$payment_method = is_array( $request_data ) && is_string( $request_data['payment_method'] ?? null ) ? $request_data['payment_method'] : '';
 		if ( ! $this->is_pos_gateway( $payment_method ) ) {
 			return $supplied_decision;
 		}
 
 		return new SuppliedDecision( FraudDecision::Allow );
+	}
+
+	/**
+	 * Check whether the request carries a valid WCPOS token of a user who can access the POS.
+	 *
+	 * Reads the token where WCPOS reads it on its pay requests. WCPOS switches
+	 * the current user to the order's customer before the payment, so the
+	 * capability is checked on the token's user.
+	 *
+	 * @return bool Whether the request carries a valid cashier token.
+	 */
+	private function has_cashier_token(): bool {
+		if ( ! class_exists( Auth::class ) ) {
+			return false;
+		}
+
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- The token is the credential being checked, and is sanitized below.
+		$token = wp_unslash( $_GET['wcpos_jwt'] ?? $_GET['token'] ?? null );
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		if ( ! is_string( $token ) || '' === $token ) {
+			return false;
+		}
+
+		$decoded = Auth::instance()->validate_token( sanitize_text_field( $token ) );
+		if ( ! is_object( $decoded ) || is_wp_error( $decoded ) ) {
+			return false;
+		}
+
+		$user_id = $decoded->data->user->id ?? null;
+
+		return is_numeric( $user_id ) && (int) $user_id > 0 && user_can( (int) $user_id, self::POS_CAPABILITY );
 	}
 
 	/**
