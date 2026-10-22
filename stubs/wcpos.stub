@@ -1,0 +1,14 @@
+<?php
+/**
+ * PHPStan stubs for WooCommerce POS (WCPOS).
+ *
+ * Used by WcposCompat to recognize WCPOS requests.
+ */
+
+/**
+ * Whether the current request comes from the POS.
+ *
+ * @param string $type The type of request to check for.
+ * @return bool
+ */
+function wcpos_request( $type = 'all' ): bool {}

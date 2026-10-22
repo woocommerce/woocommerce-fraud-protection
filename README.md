@@ -166,15 +166,17 @@ Two hooks let an extension (e.g. a payment gateway with a non-standard checkout 
 
   `PaymentMethodData` can include the optional `merchant_identifier` and `merchant_identifier_type` fields. The type is `account` for PayPal, Stripe, and WooPayments, and `location` for Square; third-party gateways can provide other string values. When a gateway resolves an identifier, both fields are included in the verification request. If the identifier is unavailable, `PaymentMethodData::to_array()` contains a null identifier and the gateway type; the request filter removes the null identifier and keeps the type.
 
-- **`woocommerce_fraud_protection_skip_session_verify`** — return a `SuppliedDecision` to skip verification and have the built-in checkout protectors apply an earlier result. Use it for a flow that verified earlier in the same payment attempt, so the attempt is not scored twice.
+- **`woocommerce_fraud_protection_skip_session_verify`** — return a `SuppliedDecision` to skip verification and have the built-in checkout protectors apply an earlier result. Use it for a flow that verified earlier in the same payment attempt, so the attempt is not scored twice. A point-of-sale plugin can also use it for payments that its authenticated staff record, where no shopper browser is involved.
 
   Construct the result with the decision the attempt received and its response-backed session ID only when that ID can be stored on the current order. Never use a submitted or stale session ID. Pass null when the earlier result has no authorized order association. Only `FraudDecision::Allow` and `FraudDecision::Block` are accepted. A later callback can return another result.
 
   A callback with nothing to supply returns the value it received. A final value other than `SuppliedDecision`, or a `SuppliedDecision` with a non-actionable decision, runs normal verification. If a callback throws, verification also continues normally.
 
   ```php
-  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecision|false $supplied_decision, string $source, array $request_data, string $session_id );
+  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecision|false $supplied_decision, string $source, array $request_data, string $session_id, int $order_id );
   ```
+
+  `$order_id` is the order being paid, or `0` for flows that run before the order exists. It was added in 0.3.1; register the callback with five accepted arguments to receive it.
 
   `SuppliedDecision::$decision` and `SuppliedDecision::$session_id_for_order` are read-only.
 
