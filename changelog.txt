@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.3.1
+* Fixed - On classic checkouts built with FunnelKit, payment attempts are now analyzed with the shopper's browser session.
+
 2026-10-20 - version 0.3.0
 * Added - Stores where automatic blocking was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic blocking is turned off.
 * Updated - Automatic blocking is now on by default. Stores that turned it on, turned it off, or opted out of automatic enrollment keep their choice.
