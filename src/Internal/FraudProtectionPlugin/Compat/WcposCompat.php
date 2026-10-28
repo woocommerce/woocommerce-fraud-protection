@@ -36,6 +36,12 @@ defined( 'ABSPATH' ) || exit;
  * Other gateways used inside the POS, and orders paid through the regular pay
  * page, are verified as before.
  *
+ * Unlike other decisions to skip verification, this one relies on evidence
+ * from WCPOS rather than from this plugin: a cashier token that the class
+ * validates itself, so it cannot be forged by a shopper. A recorded session
+ * cannot serve instead, since a POS payment has no shopper browser, and the
+ * decision of an earlier attempt must not apply to this one.
+ *
  * Temporary: WCPOS can supply the same decision through the public filter, and
  * this class uses only the public API so that it can move there unchanged.
  */
