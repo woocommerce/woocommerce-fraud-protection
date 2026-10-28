@@ -21,6 +21,7 @@ let mockTakePreparedSessionId;
 
 beforeEach( () => {
 	delete window.wcFraudProtection;
+	delete window.wcFraudProtectionExpressCheckout;
 	delete window.wp;
 
 	filters = {};
@@ -83,6 +84,31 @@ describe( 'express-checkout', () => {
 			expect( mockTakePreparedSessionId ).toHaveBeenCalledTimes( 1 );
 		}
 	);
+
+	it( 'handles only the gateways it is configured for', () => {
+		window.wcFraudProtectionExpressCheckout = {
+			gateways: [ 'woocommerce_payments', 'unknown_gateway' ],
+		};
+		setupAndLoad();
+		const nativeData = {
+			[ NAMESPACE ]: { blackbox_session_id: 'gateway-session-id' },
+		};
+
+		expect( window.wp.hooks.addFilter ).toHaveBeenCalledTimes( 1 );
+		expect( applyFilter( STRIPE_FILTER, nativeData ) ).toBe( nativeData );
+		expect( applyFilter( WOOPAYMENTS_FILTER, {} ) ).toEqual( {
+			[ NAMESPACE ]: { blackbox_session_id: 'prepared-session-id' },
+		} );
+	} );
+
+	it( 'handles both gateways when the gateway list is missing or invalid', () => {
+		window.wcFraudProtectionExpressCheckout = { gateways: 'stripe' };
+		setupAndLoad();
+
+		expect( Object.keys( filters ).sort() ).toEqual(
+			[ STRIPE_FILTER, WOOPAYMENTS_FILTER ].sort()
+		);
+	} );
 
 	it( 'does not change the extension data object it receives', () => {
 		setupAndLoad();

@@ -44,7 +44,7 @@ Internal code has no backwards-compatibility guarantee and must not be used from
 
 Only when the class is explicitly part of the public API (consumed by other plugins or gateway integrations) does it go in `src/FraudProtection/`, with `Automattic\WooCommerce\FraudProtection` as its namespace. Public DTOs and enums live in `src/FraudProtection/Schemas/`.
 
-Before changing the public API, read the "Public API" section of `README.md` and inspect all current consumers. Released public hooks and JavaScript interfaces must remain compatible.
+Before changing the public API, read `docs/api-reference.md` and inspect all current consumers. Released public hooks and JavaScript interfaces must remain compatible.
 
 ## File Header
 

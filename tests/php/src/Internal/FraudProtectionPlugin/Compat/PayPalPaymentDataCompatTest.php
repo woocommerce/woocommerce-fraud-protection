@@ -9,13 +9,16 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 require_once dirname( __DIR__, 4 ) . '/Support/PayPalPPCPStubs.php';
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ApplePayPaymentTokenStub;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalConnectionStateStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalContainerStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalPaymentTokenStub;
@@ -57,6 +60,7 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		wp_set_current_user( $this->customer_id );
 		add_filter( 'woocommerce_payment_token_class', array( $this, 'map_paypal_token_class' ), 10, 2 );
 		$this->sut = new PayPalPaymentDataCompat();
+		$this->sut->init( new GatewayNativeSupport() );
 	}
 
 	/**
@@ -67,6 +71,18 @@ class PayPalPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		PayPalConnectionStateStub::set_sandbox( null );
 		PayPalContainerStub::reset();
 		parent::tearDown();
+	}
+
+	/**
+	 * @testdox Stands aside for every PayPal gateway when the main gateway declares native payment-data support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_payment_data(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		$resolved = new PaymentMethodData( 'ppcp-credit-card-gateway' );
+
+		$result = $this->sut->resolve( $resolved, array( 'funding_source' => 'venmo' ) );
+
+		$this->assertSame( $resolved, $result, 'The gateway resolves its own payment data' );
 	}
 
 	/**

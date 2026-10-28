@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionIntegration;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -38,6 +39,29 @@ defined( 'ABSPATH' ) || exit;
  *
  * Lives in Compat/ rather than as a top-level Protector because it targets
  * a third-party extension hook and is only relevant when Subscriptions is active.
+ *
+ * Native integration: Subscriptions is not a payment gateway, so it cannot declare native
+ * support through `WC_Payment_Gateway::supports()`. Once it verifies its change-payment-method
+ * form itself, it declares the `change_payment_method` integration under its own plugin slug
+ * through the `woocommerce_fraud_protection_native_integrations` filter, and this layer then
+ * stands aside on both the form render and the submission:
+ *
+ *     add_filter(
+ *         'woocommerce_fraud_protection_native_integrations',
+ *         function ( $integrations ) {
+ *             if ( is_array( $integrations ) ) {
+ *                 $integrations['woocommerce-subscriptions'][] = 'change_payment_method';
+ *             }
+ *             return $integrations;
+ *         }
+ *     );
+ *
+ * To integrate, Subscriptions loads the pay-form script when the form renders with
+ * `BlackboxScriptHandler::request_pay_for_order_script()`, reads the submission with
+ * `ClassicFormRequestData`, verifies it with `SessionVerifier::verify_session()` before
+ * `update_payment_method()` runs, and stops the change on a Block decision with the
+ * `MessageContext::Generic` message. A declaration under any other slug, or a declaration
+ * of another integration, keeps this layer on.
  */
 class SubscriptionsChangePaymentCompat {
 
@@ -48,6 +72,11 @@ class SubscriptionsChangePaymentCompat {
 	 * Historical rows can contain `subscriptions_change_payment_met`; future session readers must group both values.
 	 */
 	private const SOURCE = 'subscriptions_change_payment';
+
+	/**
+	 * Plugin slug under which WooCommerce Subscriptions declares its native integration.
+	 */
+	private const EXTENSION_SLUG = 'woocommerce-subscriptions';
 
 	/**
 	 * Session verifier instance.
@@ -71,22 +100,32 @@ class SubscriptionsChangePaymentCompat {
 	private BlackboxScriptHandler $blackbox_script_handler;
 
 	/**
+	 * Native extension support lookup.
+	 *
+	 * @var ExtensionNativeSupport
+	 */
+	private ExtensionNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionVerifier       $session_verifier        The session verifier instance.
-	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
-	 * @param BlackboxScriptHandler $blackbox_script_handler The shared Blackbox script handler.
+	 * @param SessionVerifier        $session_verifier        The session verifier instance.
+	 * @param BlockedSessionMessage  $blocked_session_message The blocked-session message generator.
+	 * @param BlackboxScriptHandler  $blackbox_script_handler The shared Blackbox script handler.
+	 * @param ExtensionNativeSupport $native_support          Native extension support lookup.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
 		BlockedSessionMessage $blocked_session_message,
-		BlackboxScriptHandler $blackbox_script_handler
+		BlackboxScriptHandler $blackbox_script_handler,
+		ExtensionNativeSupport $native_support
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
 		$this->blackbox_script_handler = $blackbox_script_handler;
+		$this->native_support          = $native_support;
 	}
 
 	/**
@@ -110,17 +149,20 @@ class SubscriptionsChangePaymentCompat {
 	 * @return void
 	 */
 	public function enqueue_pay_for_order_script(): void {
-		if ( ! $this->blackbox_script_handler->request_scripts() ) {
+		if ( $this->is_native() ) {
 			return;
 		}
 
-		wp_enqueue_script(
-			'wc-fraud-protection-pay-for-order',
-			plugins_url( 'assets/js/pay-for-order.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
-			array( 'wc-fraud-protection-blackbox-init', 'jquery' ),
-			WC_FRAUD_PROTECTION_VERSION,
-			array( 'in_footer' => true )
-		);
+		$this->blackbox_script_handler->request_pay_for_order_script();
+	}
+
+	/**
+	 * Check whether Subscriptions verifies its change-payment-method requests itself.
+	 *
+	 * @return bool
+	 */
+	private function is_native(): bool {
+		return $this->native_support->declared( self::EXTENSION_SLUG, FraudProtectionIntegration::CHANGE_PAYMENT_METHOD );
 	}
 
 	/**
@@ -142,6 +184,10 @@ class SubscriptionsChangePaymentCompat {
 	 * @return void
 	 */
 	public function verify_and_block( \WC_Order $subscription ): void {
+		if ( $this->is_native() ) {
+			return;
+		}
+
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by Subscriptions handler.
 		$request_data = $this->build_request_data( $_POST );
 

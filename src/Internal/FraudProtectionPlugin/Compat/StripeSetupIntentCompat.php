@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
@@ -30,6 +31,8 @@ defined( 'ABSPATH' ) || exit;
  *
  * The decision is kept for the form post of the same attempt, so that
  * AddPaymentMethodProtector applies it instead of verifying the session again.
+ *
+ * Stands aside once the gateway declares `fraud_protection_add_payment_method`.
  *
  * Fail-open: SessionVerifier handles all internal errors and returns ALLOW.
  */
@@ -77,6 +80,13 @@ class StripeSetupIntentCompat {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -84,15 +94,28 @@ class StripeSetupIntentCompat {
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
 	 * @param SessionIdNormalizer   $session_id_normalizer   The session ID normalizer.
+	 * @param GatewayNativeSupport  $native_support          Native gateway support lookup.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
 		BlockedSessionMessage $blocked_session_message,
-		SessionIdNormalizer $session_id_normalizer
+		SessionIdNormalizer $session_id_normalizer,
+		GatewayNativeSupport $native_support
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
 		$this->session_id_normalizer   = $session_id_normalizer;
+		$this->native_support          = $native_support;
+	}
+
+	/**
+	 * Check whether a Stripe gateway verifies its own add-payment-method requests.
+	 *
+	 * @param string $gateway_id The gateway of the current attempt; the main Stripe gateway is asked after it.
+	 * @return bool
+	 */
+	private function is_native( string $gateway_id ): bool {
+		return $this->native_support->declared( FraudProtectionFeature::ADD_PAYMENT_METHOD, $gateway_id, self::STRIPE_GATEWAY_PREFIX );
 	}
 
 	/**
@@ -124,13 +147,18 @@ class StripeSetupIntentCompat {
 			return $is_valid;
 		}
 
+		$request_data = $this->build_setup_intent_request_data();
+		if ( $this->is_native( $request_data['payment_method'] ) ) {
+			return $is_valid;
+		}
+
 		$submitted_session_id = $this->get_submitted_session_id();
 
 		$decision = $this->session_verifier->verify_session(
 			$submitted_session_id,
 			self::SOURCE,
 			0,
-			$this->build_setup_intent_request_data()
+			$request_data
 		);
 
 		$this->record_verification( $submitted_session_id, $decision );
@@ -168,7 +196,7 @@ class StripeSetupIntentCompat {
 		}
 
 		$payment_method = is_string( $request_data['payment_method'] ?? null ) ? $request_data['payment_method'] : '';
-		if ( ! str_starts_with( $payment_method, self::STRIPE_GATEWAY_PREFIX ) ) {
+		if ( ! str_starts_with( $payment_method, self::STRIPE_GATEWAY_PREFIX ) || $this->is_native( $payment_method ) ) {
 			return $supplied_decision;
 		}
 
@@ -211,7 +239,7 @@ class StripeSetupIntentCompat {
 	 * @return void
 	 */
 	public function enqueue_add_payment_method_script(): void {
-		if ( ! wp_script_is( self::ADD_PAYMENT_METHOD_SCRIPT_HANDLE, 'enqueued' ) || ! $this->has_available_stripe_gateway() ) {
+		if ( ! wp_script_is( self::ADD_PAYMENT_METHOD_SCRIPT_HANDLE, 'enqueued' ) || ! $this->has_available_stripe_gateway() || $this->is_native( self::STRIPE_GATEWAY_PREFIX ) ) {
 			return;
 		}
 

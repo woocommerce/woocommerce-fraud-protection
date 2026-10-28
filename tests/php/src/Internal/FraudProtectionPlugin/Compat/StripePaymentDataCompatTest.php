@@ -7,11 +7,14 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 
 // Stub WC_Stripe_API if the real class isn't loaded.
 // The following classes keep the names of the external API that they model.
@@ -211,6 +214,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->sut = new StripePaymentDataCompat();
+		$this->sut->init( new GatewayNativeSupport() );
 	}
 
 	/**
@@ -223,6 +227,31 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		}
 		WC_Stripe_Mode_Stub::set_live( true );
 		parent::tearDown();
+	}
+
+	/**
+	 * @testdox Stands aside for the whole Stripe family when the main gateway declares native payment-data support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_payment_data(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'stripe', array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+		$resolved = new PaymentMethodData( 'stripe_sepa_debit' );
+
+		$result = $this->sut->resolve( $resolved, array( 'wc-stripe-payment-method' => 'pm_123' ) );
+
+		$this->assertSame( $resolved, $result, 'The gateway resolves its own payment data' );
+	}
+
+	/**
+	 * @testdox Keeps resolving when the registered Stripe gateway declares no native support.
+	 */
+	public function test_resolves_when_gateway_declares_nothing(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'stripe', array( 'refunds' ) ) );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$result = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array( 'wc-stripe-payment-method' => 'pm_123' ) );
+
+		$this->assertSame( 'card', $result->to_array()['payment_type'] );
 	}
 
 	/**

@@ -9,6 +9,8 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExtensionNativeSupport;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSource;
@@ -55,6 +57,9 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	/** @var AutomaticProtectionSettingUpdater&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection_updater;
 
+	/** @var GatewayNativeSupport&\PHPUnit\Framework\MockObject\MockObject */
+	private $native_support;
+
 	/** @var array<string, callable> */
 	private array $wp_cli_hooks;
 
@@ -67,6 +72,9 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	/** @var string[] */
 	private array $wp_cli_successes;
 
+	/** @var array<int, array{format: string, items: array<int, array<string, string>>, fields: string|string[]}> */
+	private array $formatted_items;
+
 	/**
 	 * Set up test fixtures.
 	 */
@@ -77,6 +85,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->wp_cli_commands  = array();
 		$this->wp_cli_lines     = array();
 		$this->wp_cli_successes = array();
+		$this->formatted_items  = array();
 
 		$this->register_legacy_proxy_static_mocks(
 			array(
@@ -105,14 +114,27 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 				),
 			)
 		);
+		$this->register_legacy_proxy_function_mocks(
+			array(
+				'WP_CLI\\Utils\\format_items' => function ( string $format, array $items, $fields ): void {
+					$this->formatted_items[] = array(
+						'format' => $format,
+						'items'  => $items,
+						'fields' => $fields,
+					);
+				},
+			)
+		);
 
 		$this->schema_manager                = $this->createMock( SchemaManager::class );
 		$this->session_event_pruner          = $this->createMock( SessionEventPruner::class );
 		$this->merchant_facing_features_gate = $this->createMock( MerchantFacingFeaturesGate::class );
 		$this->automatic_protection          = $this->createMock( AutomaticProtectionSetting::class );
 		$this->automatic_protection_updater  = $this->createMock( AutomaticProtectionSettingUpdater::class );
-		$this->sut                           = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater );
+		$this->native_support                = $this->createMock( GatewayNativeSupport::class );
+		$this->native_support->method( 'get_declarations' )->willReturn( array() );
+		$this->sut = new FraudProtectionCommands();
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $this->native_support, new ExtensionNativeSupport() );
 	}
 
 	/**
@@ -160,6 +182,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 				'wc fraud-protection merchant-facing-features set',
 				'wc fraud-protection automatic-protection set',
 				'wc fraud-protection status',
+				'wc fraud-protection native-integrations list',
 				'wc fraud-protection database install',
 				'wc fraud-protection sessions prune',
 			),
@@ -295,6 +318,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertStringNotContainsString( 'code default', $output );
 		$this->assertStringNotContainsString( 'stored state', $output );
 		$this->assertMatchesRegularExpression( '/Jetpack blog ID: (?:[1-9][0-9]*|Unavailable)/', $output );
+		$this->assertStringNotContainsString( 'Native integrations', $output );
 		$this->assertStringContainsString( 'Required schema version:', $output );
 		$this->assertStringContainsString( 'Installed schema version:', $output );
 		$this->assertStringContainsString( 'Schema installation attempts: 3', $output );
@@ -326,6 +350,134 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 
 		$output = implode( "\n", $this->wp_cli_lines );
 		$this->assertStringContainsString( 'Merchant-facing features status: enabled', $output );
+	}
+
+	/**
+	 * @testdox The native integrations list has one row per integration: gateways first, then extensions.
+	 */
+	public function test_native_integrations_list_reports_declarations(): void {
+		$native_support = $this->createMock( GatewayNativeSupport::class );
+		$native_support->method( 'get_declarations' )->willReturn(
+			array(
+				'stripe'               => array( 'fraud_protection_payment_data', 'fraud_protection_express_checkout' ),
+				'woocommerce_payments' => array( 'fraud_protection_payment_data' ),
+			)
+		);
+		$extension_native_support = $this->createMock( ExtensionNativeSupport::class );
+		$extension_native_support->method( 'get_declarations' )->willReturn( array( 'my-extension' => array( 'change_payment_method' ) ) );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $native_support, $extension_native_support );
+
+		$this->sut->native_integrations_list( array(), array( 'format' => 'table' ) );
+
+		$this->assertSame(
+			array(
+				array(
+					'format' => 'table',
+					'items'  => array(
+						self::integration_row( 'gateway', 'stripe', 'fraud_protection_payment_data' ),
+						self::integration_row( 'gateway', 'stripe', 'fraud_protection_express_checkout' ),
+						self::integration_row( 'gateway', 'woocommerce_payments', 'fraud_protection_payment_data' ),
+						self::integration_row( 'extension', 'my-extension', 'change_payment_method' ),
+					),
+					'fields' => array( 'type', 'id', 'integration' ),
+				),
+			),
+			$this->formatted_items
+		);
+	}
+
+	/**
+	 * @testdox The native integrations list reads extension declarations from the filter, and has no rows without any.
+	 */
+	public function test_native_integrations_list_reads_extension_declarations_from_filter(): void {
+		$this->sut->native_integrations_list( array(), array() );
+		$this->assertSame( array(), $this->formatted_items[0]['items'] );
+
+		$declare = static fn() => array( 'my-extension' => array( 'change_payment_method', 'misspelled_integration' ) );
+		add_filter( 'woocommerce_fraud_protection_native_integrations', $declare );
+		try {
+			$this->sut->native_integrations_list( array(), array() );
+		} finally {
+			remove_filter( 'woocommerce_fraud_protection_native_integrations', $declare );
+		}
+
+		$this->assertSame(
+			array(
+				self::integration_row( 'extension', 'my-extension', 'change_payment_method' ),
+				self::integration_row( 'extension', 'my-extension', 'misspelled_integration' ),
+			),
+			$this->formatted_items[1]['items']
+		);
+	}
+
+	/**
+	 * @testdox The native integrations list passes the requested format and fields to WP-CLI.
+	 */
+	public function test_native_integrations_list_passes_format_and_fields(): void {
+		$this->sut->native_integrations_list( array(), array() );
+		$this->sut->native_integrations_list(
+			array(),
+			array(
+				'format' => 'json',
+				'fields' => 'id,integration',
+			)
+		);
+
+		$this->assertSame( 'table', $this->formatted_items[0]['format'] );
+		$this->assertSame( array( 'type', 'id', 'integration' ), $this->formatted_items[0]['fields'] );
+		$this->assertSame( 'json', $this->formatted_items[1]['format'] );
+		$this->assertSame( 'id,integration', $this->formatted_items[1]['fields'] );
+	}
+
+	/**
+	 * @testdox The native integrations list with --id prints only the integrations declared under that gateway ID or plugin slug, one per line.
+	 *
+	 * @dataProvider native_integrations_id_provider
+	 *
+	 * @param string   $id       Requested gateway ID or plugin slug.
+	 * @param string[] $expected Expected output lines.
+	 */
+	public function test_native_integrations_list_filters_by_id( string $id, array $expected ): void {
+		$native_support = $this->createMock( GatewayNativeSupport::class );
+		$native_support->method( 'get_declarations' )->willReturn(
+			array(
+				'stripe' => array( 'fraud_protection_payment_data', 'fraud_protection_express_checkout' ),
+				'shared' => array( 'fraud_protection_checkout' ),
+			)
+		);
+		$extension_native_support = $this->createMock( ExtensionNativeSupport::class );
+		$extension_native_support->method( 'get_declarations' )->willReturn(
+			array(
+				'my-extension' => array( 'change_payment_method' ),
+				'shared'       => array( 'fraud_protection_checkout', 'change_payment_method' ),
+			)
+		);
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $native_support, $extension_native_support );
+
+		$this->sut->native_integrations_list(
+			array(),
+			array(
+				'id'     => $id,
+				'format' => 'json',
+			)
+		);
+
+		$this->assertSame( $expected, $this->wp_cli_lines );
+		$this->assertSame( array(), $this->formatted_items, '--id must print plain lines instead of formatted rows' );
+	}
+
+	/**
+	 * Provide IDs for the native integrations list and the lines they print.
+	 *
+	 * @return array<string, array{string, string[]}>
+	 */
+	public function native_integrations_id_provider(): array {
+		return array(
+			'gateway ID'                         => array( 'stripe', array( 'fraud_protection_payment_data', 'fraud_protection_express_checkout' ) ),
+			'plugin slug'                        => array( 'my-extension', array( 'change_payment_method' ) ),
+			'ID used by a gateway and extension' => array( 'shared', array( 'fraud_protection_checkout', 'change_payment_method' ) ),
+			'ID without declarations'            => array( 'unknown', array() ),
+		);
 	}
 
 	/**
@@ -478,6 +630,22 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->sut->status();
 
 		$this->assertContains( 'Next session pruning action: In progress', $this->wp_cli_lines );
+	}
+
+	/**
+	 * Build one row of the native integrations list.
+	 *
+	 * @param string $type        Declaring component type.
+	 * @param string $id          Gateway ID or plugin slug.
+	 * @param string $integration Declared integration.
+	 * @return array{type: string, id: string, integration: string}
+	 */
+	private static function integration_row( string $type, string $id, string $integration ): array {
+		return array(
+			'type'        => $type,
+			'id'          => $id,
+			'integration' => $integration,
+		);
 	}
 
 	/**

@@ -15,6 +15,10 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Loads the shared browser scripts for payment-surface consumers.
+ *
+ * Resolve it from the WooCommerce container with
+ * `wc_get_container()->get( BlackboxScriptHandler::class )` rather than constructing it:
+ * the container supplies its dependencies through `init()`.
  */
 class BlackboxScriptHandler {
 
@@ -88,6 +92,34 @@ class BlackboxScriptHandler {
 		}
 
 		$this->enqueue_scripts( $blog_id );
+
+		return true;
+	}
+
+	/**
+	 * Request the shared scripts and the script that protects the `#order_review` pay form.
+	 *
+	 * For an extension with its own handler for WooCommerce's pay-for-order form, such as
+	 * a change-payment-method flow. The `wc-fraud-protection-pay-for-order` script holds
+	 * the form's submit until it has added the session ID as a hidden field; read it on the
+	 * server with {@see ClassicFormRequestData}. Call it from the hook that renders the form.
+	 *
+	 * @return bool True when the scripts are enqueued; false when the shared scripts are unavailable.
+	 *
+	 * @since 0.3.1
+	 */
+	public function request_pay_for_order_script(): bool {
+		if ( ! $this->request_scripts() ) {
+			return false;
+		}
+
+		wp_enqueue_script(
+			'wc-fraud-protection-pay-for-order',
+			plugins_url( 'assets/js/pay-for-order.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
+			array( 'wc-fraud-protection-blackbox-init', 'jquery' ),
+			WC_FRAUD_PROTECTION_VERSION,
+			array( 'in_footer' => true )
+		);
 
 		return true;
 	}

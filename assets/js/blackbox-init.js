@@ -395,7 +395,10 @@
 	/**
 	 * Keep a session ID ready for takePreparedSessionId().
 	 *
-	 * Internal to the plugin's own scripts.
+	 * Call it once when a payment surface that must add the session ID
+	 * synchronously (for example an express button's place-order data
+	 * filter) is set up. The prepared ID is refreshed after every reset()
+	 * and replaced once it is too old. Calling it again is a no-op.
 	 */
 	fraudProtection.prepareSessionId = function () {
 		if ( isPreparing ) {
@@ -409,8 +412,12 @@
 	/**
 	 * Hand out the prepared session ID for a payment attempt, at most once.
 	 *
-	 * For callers that must add the ID synchronously. A fresh session is
-	 * started for the next attempt. Internal to the plugin's own scripts.
+	 * For callers that must add the ID synchronously; callers that can wait
+	 * use acquireSessionId() instead. Each call hands out an ID for one
+	 * payment attempt: the same ID is never returned twice, and a fresh
+	 * session is started for the next attempt, so there is no need to call
+	 * reset() afterwards. Fail-open: an empty string means the attempt is
+	 * sent without a session ID.
 	 *
 	 * @return {string} Session ID, or an empty string when none is ready.
 	 */

@@ -38,10 +38,14 @@
 		</properties>
 	</rule>
 
+	<!-- The example plugins under examples/ use their own text domains. A phpcs:set annotation would
+	     leak into every file checked after it in the same process, so they are allowed here instead. -->
 	<rule ref="WordPress.WP.I18n">
 		<properties>
 			<property name="text_domain" type="array">
 				<element value="woocommerce-fraud-protection" />
+				<element value="fp-example-gateway" />
+				<element value="fp-example-subscriptions" />
 			</property>
 		</properties>
 	</rule>

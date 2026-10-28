@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
@@ -35,21 +36,15 @@ class ClassicFormDataExtractionTraitTestDouble {
 	public function test_build_request_data( array $form_data ): array {
 		return $this->build_request_data( $form_data );
 	}
-
-	/**
-	 * Public proxy for the private extract_payment_data() method.
-	 *
-	 * @return array Flat key-value map of payment-related POST fields.
-	 */
-	public function test_extract_payment_data(): array {
-		return $this->extract_payment_data();
-	}
 }
 // phpcs:enable Squiz.Classes.ClassFileName.NoMatch
 
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound
 /**
  * Tests for the ClassicFormDataExtractionTrait.
+ *
+ * The extraction rules themselves are covered by ClassicFormRequestDataTest; these
+ * tests pin that the trait delegates to the public class.
  *
  * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait
  */
@@ -80,276 +75,33 @@ class ClassicFormDataExtractionTraitTest extends FraudProtectionUnitTestCase {
 		parent::tearDown();
 	}
 
-	/*
-	|--------------------------------------------------------------------------
-	| get_submitted_session_id() Tests
-	|--------------------------------------------------------------------------
-	*/
-
 	/**
-	 * @testdox get_submitted_session_id() unslashes a string without text sanitization
+	 * @testdox get_submitted_session_id() returns what the public class reads from the POST body.
 	 */
-	public function test_get_submitted_session_id_unslashes_string(): void {
+	public function test_get_submitted_session_id_delegates_to_public_class(): void {
 		$_POST['wc_fraud_protection_session_id'] = "a\\\\b/<tag>?";
 
+		$this->assertSame( ( new ClassicFormRequestData() )->get_submitted_session_id(), $this->sut->test_get_submitted_session_id() );
 		$this->assertSame( 'a\b/<tag>?', $this->sut->test_get_submitted_session_id() );
 	}
 
 	/**
-	 * @testdox get_submitted_session_id() returns an empty string when the field is absent
+	 * @testdox build_request_data() returns what the public class builds.
 	 */
-	public function test_get_submitted_session_id_returns_empty_for_absent_field(): void {
-		$this->assertSame( '', $this->sut->test_get_submitted_session_id() );
-	}
-
-	/**
-	 * @testdox get_submitted_session_id() returns a non-string value unchanged
-	 *
-	 * @dataProvider submitted_non_string_provider
-	 *
-	 * @param mixed $value Submitted value.
-	 */
-	public function test_get_submitted_session_id_returns_non_string_unchanged( $value ): void {
-		$_POST['wc_fraud_protection_session_id'] = $value;
-
-		$this->assertSame( $value, $this->sut->test_get_submitted_session_id() );
-	}
-
-	/**
-	 * Submitted non-string values.
-	 *
-	 * @return array<string, array{mixed}>
-	 */
-	public function submitted_non_string_provider(): array {
-		return array(
-			'null'  => array( null ),
-			'array' => array( array( 'private' ) ),
+	public function test_build_request_data_delegates_to_public_class(): void {
+		$_POST     = array(
+			'payment_method'           => 'stripe',
+			'billing_city'             => 'Paris',
+			'wc-stripe-payment-method' => 'pm_123',
 		);
-	}
-
-	/*
-	|--------------------------------------------------------------------------
-	| build_request_data() Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox build_request_data() adds the reported reason for a missing session ID from the POST data.
-	 */
-	public function test_build_request_data_adds_session_id_error(): void {
-		$_POST['wc_fraud_protection_session_id_error'] = 'sdk\\_unavailable'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-
-		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
-
-		$this->assertSame( 'sdk_unavailable', $result['wc_fraud_protection_session_id_error'] ?? null );
-	}
-
-	/**
-	 * @testdox build_request_data() adds no reason when none, or a non-string one, was posted.
-	 *
-	 * @dataProvider missing_posted_session_id_error_provider
-	 *
-	 * @param array $post POST data.
-	 */
-	public function test_build_request_data_skips_missing_session_id_error( array $post ): void {
-		$_POST = $post; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-
-		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
-
-		$this->assertArrayNotHasKey( 'wc_fraud_protection_session_id_error', $result );
-	}
-
-	/**
-	 * POST data without a usable reason.
-	 *
-	 * @return array<string, array{array}>
-	 */
-	public function missing_posted_session_id_error_provider(): array {
-		return array(
-			'absent'     => array( array() ),
-			'non-string' => array( array( 'wc_fraud_protection_session_id_error' => array( 'timeout' ) ) ),
-		);
-	}
-
-	/**
-	 * @testdox build_request_data() includes payment_method from form data.
-	 */
-	public function test_build_request_data_includes_payment_method(): void {
-		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
-
-		$this->assertSame( 'stripe', $result['payment_method'] );
-	}
-
-	/**
-	 * @testdox build_request_data() omits address keys when form data has no address fields.
-	 */
-	public function test_build_request_data_omits_empty_addresses(): void {
-		$result = $this->sut->test_build_request_data( array( 'payment_method' => 'stripe' ) );
-
-		$this->assertArrayNotHasKey( 'billing_address', $result );
-		$this->assertArrayNotHasKey( 'shipping_address', $result );
-	}
-
-	/**
-	 * @testdox build_request_data() structures billing/shipping addresses from flat prefixed keys.
-	 */
-	public function test_build_request_data_structures_addresses(): void {
-		$form_data = array(
-			'billing_first_name'  => 'John',
-			'billing_last_name'   => 'Doe',
-			'billing_email'       => 'john@example.com',
-			'billing_phone'       => '555-0100',
-			'billing_country'     => 'US',
-			'billing_address_1'   => '123 Main St',
-			'billing_address_2'   => 'Apt 4',
-			'billing_city'        => 'Springfield',
-			'billing_state'       => 'IL',
-			'billing_postcode'    => '62701',
-			'shipping_first_name' => 'Jane',
-			'shipping_last_name'  => 'Doe',
-			'shipping_country'    => 'US',
-			'shipping_address_1'  => '456 Oak Ave',
-			'shipping_address_2'  => '',
-			'shipping_city'       => 'Springfield',
-			'shipping_state'      => 'IL',
-			'shipping_postcode'   => '62702',
-			'payment_method'      => 'stripe',
-		);
+		$form_data = $_POST; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Test supplies the form data.
 
 		$result = $this->sut->test_build_request_data( $form_data );
 
-		$this->assertSame(
-			array(
-				'first_name' => 'John',
-				'last_name'  => 'Doe',
-				'email'      => 'john@example.com',
-				'phone'      => '555-0100',
-				'country'    => 'US',
-				'address_1'  => '123 Main St',
-				'address_2'  => 'Apt 4',
-				'city'       => 'Springfield',
-				'state'      => 'IL',
-				'postcode'   => '62701',
-			),
-			$result['billing_address']
-		);
-
-		$this->assertSame(
-			array(
-				'first_name' => 'Jane',
-				'last_name'  => 'Doe',
-				'country'    => 'US',
-				'address_1'  => '456 Oak Ave',
-				'address_2'  => '',
-				'city'       => 'Springfield',
-				'state'      => 'IL',
-				'postcode'   => '62702',
-			),
-			$result['shipping_address']
-		);
-
+		$this->assertSame( ( new ClassicFormRequestData() )->build_request_data( $form_data ), $result );
 		$this->assertSame( 'stripe', $result['payment_method'] );
-	}
-
-	/**
-	 * @testdox build_request_data() skips an integer form key and keeps valid address data.
-	 */
-	public function test_build_request_data_skips_integer_key_and_keeps_address_data(): void {
-		$form_data = array();
-		parse_str( '0=bad&billing_city=Paris', $form_data );
-		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
-
-		$result = $this->sut->test_build_request_data( $form_data );
-
 		$this->assertSame( array( 'city' => 'Paris' ), $result['billing_address'] );
-	}
-
-	/*
-	|--------------------------------------------------------------------------
-	| extract_payment_data() Tests
-	|--------------------------------------------------------------------------
-	*/
-
-	/**
-	 * @testdox extract_payment_data() excludes known non-payment keys and prefixes.
-	 */
-	public function test_extract_payment_data_excludes_non_payment_keys(): void {
-		$_POST = array(
-			'wc_fraud_protection_session_id'       => 'sess-123',
-			'billing_first_name'                   => 'John',
-			'shipping_first_name'                  => 'John',
-			'order_comments'                       => 'Leave at door',
-			'account_username'                     => 'john',
-			'woocommerce_checkout_nonce'           => 'abc123',
-			'woocommerce_add_payment_method'       => '1',
-			'woocommerce-add-payment-method-nonce' => 'def456',
-			'_wpnonce'                             => 'xyz789',
-			'payment_method'                       => 'stripe',
-			'terms'                                => '1',
-			'terms-field'                          => '1',
-			'ship_to_different_address'            => '1',
-			'wc_order_attribution_source_type'     => 'typein',
-			'wc_order_attribution_utm_source'      => '(direct)',
-			'wc-stripe-payment-method'             => 'pm_123',
-			'wc-stripe-payment-token'              => 'new',
-			'some_gateway_data'                    => array( 'token' => 'tok_789' ),
-		);
-
-		$payment_data = $this->sut->test_extract_payment_data();
-
-		// Should include gateway-specific keys (strings and arrays).
-		$this->assertArrayHasKey( 'wc-stripe-payment-method', $payment_data );
-		$this->assertSame( 'pm_123', $payment_data['wc-stripe-payment-method'] );
-		$this->assertArrayHasKey( 'wc-stripe-payment-token', $payment_data );
-		$this->assertSame( array( 'token' => 'tok_789' ), $payment_data['some_gateway_data'] );
-
-		// Should exclude non-payment keys.
-		$this->assertArrayNotHasKey( 'billing_first_name', $payment_data );
-		$this->assertArrayNotHasKey( 'shipping_first_name', $payment_data );
-		$this->assertArrayNotHasKey( 'order_comments', $payment_data );
-		$this->assertArrayNotHasKey( 'account_username', $payment_data );
-		$this->assertArrayNotHasKey( 'woocommerce_checkout_nonce', $payment_data );
-		$this->assertArrayNotHasKey( 'woocommerce_add_payment_method', $payment_data );
-		$this->assertArrayNotHasKey( 'woocommerce-add-payment-method-nonce', $payment_data );
-		$this->assertArrayNotHasKey( '_wpnonce', $payment_data );
-		$this->assertArrayNotHasKey( 'terms', $payment_data );
-		$this->assertArrayNotHasKey( 'terms-field', $payment_data );
-		$this->assertArrayNotHasKey( 'ship_to_different_address', $payment_data );
-		$this->assertArrayNotHasKey( 'wc_fraud_protection_session_id', $payment_data );
-		$this->assertArrayNotHasKey( 'wc_order_attribution_source_type', $payment_data );
-		$this->assertArrayNotHasKey( 'wc_order_attribution_utm_source', $payment_data );
-	}
-
-	/**
-	 * @testdox Square classic checkout preserves wallet input and unrelated payment data.
-	 */
-	public function test_extract_payment_data_preserves_square_wallet_and_unrelated_data(): void {
-		$_POST = array(
-			'payment_method'                => 'square_credit_card',
-			'billing_first_name'            => 'Jane',
-			'wc-square-digital-wallet-type' => 'Google Pay',
-			'wc-square-payment-token'       => 'square-token',
-			'other_gateway_reference'       => 'preserved-value',
-		);
-
-		$payment_data = $this->sut->test_extract_payment_data();
-
-		$this->assertSame( 'Google Pay', $payment_data['wc-square-digital-wallet-type'] );
-		$this->assertSame( 'square-token', $payment_data['wc-square-payment-token'] );
-		$this->assertSame( 'preserved-value', $payment_data['other_gateway_reference'] );
-		$this->assertArrayNotHasKey( 'billing_first_name', $payment_data );
-	}
-
-	/**
-	 * @testdox extract_payment_data() skips an integer key and keeps valid gateway data.
-	 */
-	public function test_extract_payment_data_skips_integer_key_and_keeps_gateway_data(): void {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Test supplies the form data parsed by the trait.
-		parse_str( '0=bad&gateway_token=valid', $_POST );
-
-		$payment_data = $this->sut->test_extract_payment_data();
-
-		$this->assertSame( array( 'gateway_token' => 'valid' ), $payment_data );
+		$this->assertSame( 'pm_123', $result['payment_data']['wc-stripe-payment-method'] );
 	}
 }
 // phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound

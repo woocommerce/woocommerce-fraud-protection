@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -17,16 +18,35 @@ defined( 'ABSPATH' ) || exit;
  * Resolves Stripe gateway payment data into structured PaymentMethodData.
  *
  * Handles multiple Stripe gateway IDs (stripe, stripe_sepa, stripe_ideal, etc.)
- * and uses the Stripe API to retrieve payment method details.
+ * and uses the Stripe API to retrieve payment method details. Stands aside once
+ * the gateway declares `fraud_protection_payment_data`.
  */
 class StripePaymentDataCompat {
 
 	/**
-	 * Stripe gateway ID prefixes.
+	 * Stripe gateway ID prefix, which is also the main gateway ID.
 	 *
 	 * @var string
 	 */
 	private const GATEWAY_PREFIX = 'stripe';
+
+	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param GatewayNativeSupport $native_support Native gateway support lookup.
+	 */
+	final public function init( GatewayNativeSupport $native_support ): void {
+		$this->native_support = $native_support;
+	}
 
 	/**
 	 * Wallet names accepted from Stripe request and provider data.
@@ -63,6 +83,10 @@ class StripePaymentDataCompat {
 	 */
 	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
 		if ( ! $this->is_stripe_gateway( $resolved->get_gateway() ) ) {
+			return $resolved;
+		}
+
+		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $resolved->get_gateway(), self::GATEWAY_PREFIX ) ) {
 			return $resolved;
 		}
 

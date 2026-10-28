@@ -63,6 +63,13 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 	private ?\WC_Cart $original_woocommerce_cart = null;
 
 	/**
+	 * The gateway registration filter added by register_payment_gateways(), if any.
+	 *
+	 * @var ?callable
+	 */
+	private $payment_gateways_filter = null;
+
+	/**
 	 * Runs before each test.
 	 */
 	public function setUp(): void {
@@ -113,6 +120,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 
 		$this->restore_server_variables();
 		$this->remove_controller_logging_spy();
+		$this->unregister_payment_gateways();
 
 		// Any flow that reaches SessionIdentityManager::get_identity_id() sets this cookie for the rest of the request.
 		unset( $_COOKIE[ \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager::IDENTITY_COOKIE_NAME ] );
@@ -222,6 +230,51 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 
 		add_filter( 'pre_option_jetpack_options', $filter );
 		$this->jetpack_blog_id_filters[] = $filter;
+	}
+
+	/**
+	 * Register payment gateways with WooCommerce for the rest of the test.
+	 *
+	 * The gateways join WooCommerce's registered gateways, so `WC()->payment_gateways()`
+	 * returns them and their `supports()` declarations are visible to the plugin. The
+	 * registration is undone in {@see tearDown()}.
+	 *
+	 * @param \WC_Payment_Gateway ...$gateways Gateway instances to register.
+	 */
+	protected function register_payment_gateways( \WC_Payment_Gateway ...$gateways ): void {
+		$this->unregister_payment_gateways();
+
+		$this->payment_gateways_filter = static function ( $registered ) use ( $gateways ): array {
+			return array_merge( is_array( $registered ) ? $registered : array(), $gateways );
+		};
+
+		add_filter( 'woocommerce_payment_gateways', $this->payment_gateways_filter );
+		$this->reinitialize_payment_gateways();
+	}
+
+	/**
+	 * Undo {@see register_payment_gateways()}.
+	 */
+	private function unregister_payment_gateways(): void {
+		if ( null === $this->payment_gateways_filter ) {
+			return;
+		}
+
+		remove_filter( 'woocommerce_payment_gateways', $this->payment_gateways_filter );
+		$this->payment_gateways_filter = null;
+		$this->reinitialize_payment_gateways();
+	}
+
+	/**
+	 * Rebuild WooCommerce's registered gateway list from the current filters.
+	 *
+	 * WC_Payment_Gateways::init() adds to the existing list without clearing it, so the
+	 * list is emptied first; otherwise gateways registered by a test would survive it.
+	 */
+	private function reinitialize_payment_gateways(): void {
+		$gateways                   = WC()->payment_gateways();
+		$gateways->payment_gateways = array();
+		$gateways->init();
 	}
 
 	/**

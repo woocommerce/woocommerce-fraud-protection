@@ -123,6 +123,33 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox request_pay_for_order_script() enqueues the shared scripts and the pay-for-order script.
+	 */
+	public function test_request_pay_for_order_script_enqueues_pay_form_script(): void {
+		$this->mock_jetpack_blog_id( 42 );
+
+		$this->assertTrue( $this->sut->request_pay_for_order_script() );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-pay-for-order', 'enqueued' ) );
+
+		$script = wp_scripts()->query( 'wc-fraud-protection-pay-for-order', 'registered' );
+		$this->assertNotFalse( $script );
+		$this->assertSame( plugins_url( 'assets/js/pay-for-order.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ), $script->src );
+		$this->assertSame( array( 'wc-fraud-protection-blackbox-init', 'jquery' ), $script->deps );
+	}
+
+	/**
+	 * @testdox request_pay_for_order_script() enqueues nothing when the shared scripts are unavailable.
+	 */
+	public function test_request_pay_for_order_script_skips_without_shared_scripts(): void {
+		add_filter( 'pre_option_jetpack_options', '__return_empty_array' );
+
+		$this->assertFalse( $this->sut->request_pay_for_order_script() );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-pay-for-order', 'enqueued' ) );
+	}
+
+	/**
 	 * @testdox request_scripts() does not render the session identity or set the identity cookie.
 	 */
 	public function test_request_scripts_does_not_render_session_identity(): void {

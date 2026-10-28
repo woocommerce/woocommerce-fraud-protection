@@ -8,7 +8,7 @@ Before changing code:
 
 - Read the relevant issue, including its acceptance criteria and comments.
 - Check current `trunk` and the affected tests. Plans, line numbers, and class lists can become outdated.
-- Read [README.md](README.md) for setup, local testing, and the public API.
+- Read [README.md](README.md) for setup and local testing, and [docs/api-reference.md](docs/api-reference.md) for the public API.
 - Read the private `woo-fraud-protection-docs` repository for architecture, roadmap, or cross-repository contracts.
 - Use WooCommerce Core as a read-only reference. Do not modify Core files for work in this repository.
 - Load the matching project skill from `.ai/skills/`. Load `woocommerce-backend-dev` before writing PHP code or PHP tests, `woocommerce-frontend-dev` before writing code under `client/` or `tests/js/`, `woocommerce-copy-guidelines` for user-facing text, and `woocommerce-markdown` for documentation.
@@ -49,6 +49,7 @@ Layout:
     - `Database/`, `CLI/`, `Logging/`, `Notes/`, `Schemas/` — schema management, WP-CLI commands, logger, admin notes, and internal DTOs
 - `assets/` — browser scripts and styles served without a build
 - `client/` — React and TypeScript admin UI, compiled into `build/`
+- `docs/` — integration guide and public API reference for extension developers
 - `tests/php/`, `tests/js/` — PHPUnit and Jest tests; `tests/php/smoke/` holds the kill-switch smoke files
 
 Rules:
@@ -67,9 +68,9 @@ Rules:
 - Mark public hook callbacks and `init()` methods with `@internal`. Do not add a class-level `@internal` tag to classes in the internal namespace.
 - All user-facing text must be translatable with the `woocommerce-fraud-protection` text domain. Logs remain in English.
 
-When changing the public API, read the README public API section and inspect all current consumers. Released public hooks and JavaScript interfaces must remain compatible.
+When changing the public API, read [docs/api-reference.md](docs/api-reference.md) and inspect all current consumers. Released public hooks and JavaScript interfaces must remain compatible. Update the reference with every public API change, and the [integration guide](docs/integration-guide.md) when the change affects how an extension integrates.
 
-The released extension filters are `woocommerce_fraud_protection_resolved_payment_data` and `woocommerce_fraud_protection_skip_session_verify`. Gateway integrations that render payment surfaces resolve `BlackboxScriptHandler` from the WooCommerce container, call `request_scripts()`, and enqueue their browser script with `wc-fraud-protection-blackbox-init` as a dependency only when the call succeeds. Keep the `window.wcFraudProtection` methods `acquireSessionId()` and `reset()`, the `config.sessionIdField` value, and the init script handle compatible.
+The released extension filters are `woocommerce_fraud_protection_resolved_payment_data`, `woocommerce_fraud_protection_skip_session_verify`, and `woocommerce_fraud_protection_native_integrations`. Gateways declare a native integration by adding the `FraudProtectionFeature` strings to their `$supports` array; other extensions declare `FraudProtectionIntegration` strings under their own plugin slug through `woocommerce_fraud_protection_native_integrations`. The compatibility layers ask `GatewayNativeSupport` or `ExtensionNativeSupport` inside their hook callbacks, never at registration time, and stand aside when the matching feature or integration is declared. Keep `FraudProtectionIntegration` strings generic; a compatibility layer for an extension that is not a gateway checks that extension's slug, and its class documents the slug and integration. Gateway integrations that render payment surfaces resolve `BlackboxScriptHandler` from the WooCommerce container, call `request_scripts()` (or `request_pay_for_order_script()` for a classic `#order_review` form), and enqueue their browser script with `wc-fraud-protection-blackbox-init` as a dependency only when the call succeeds. Extensions with their own form handlers read the submission through `ClassicFormRequestData`. Keep the `window.wcFraudProtection` methods `acquireSessionId()`, `reset()`, `prepareSessionId()`, and `takePreparedSessionId()`, the `config.sessionIdField` value, the `wc-fraud-protection-pay-for-order` script handle, and the init script handle compatible. The `examples/` directory holds reference integrations that the test suite exercises; keep them working when the public API changes.
 
 ## Safety rules
 

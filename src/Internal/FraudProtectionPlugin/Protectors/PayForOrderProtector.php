@@ -132,16 +132,6 @@ class PayForOrderProtector {
 	 * @return void
 	 */
 	public function enqueue_pay_for_order_script(): void {
-		if ( ! $this->blackbox_script_handler->request_scripts() ) {
-			return;
-		}
-
-		wp_enqueue_script(
-			'wc-fraud-protection-pay-for-order',
-			plugins_url( 'assets/js/pay-for-order.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
-			array( 'wc-fraud-protection-blackbox-init', 'jquery' ),
-			WC_FRAUD_PROTECTION_VERSION,
-			array( 'in_footer' => true )
-		);
+		$this->blackbox_script_handler->request_pay_for_order_script();
 	}
 }
