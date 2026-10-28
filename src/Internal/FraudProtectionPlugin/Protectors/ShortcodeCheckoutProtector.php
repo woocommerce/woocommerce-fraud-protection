@@ -86,6 +86,8 @@ class ShortcodeCheckoutProtector {
 	public function register(): void {
 		add_action( 'woocommerce_checkout_process', array( $this, 'register_checkout_validation_verifier' ), PHP_INT_MAX );
 		add_action( 'woocommerce_checkout_before_order_review', array( $this, 'enqueue_shortcode_checkout_script' ), 10, 0 );
+		// Checkout templates such as FunnelKit's fire only this one of the two.
+		add_action( 'woocommerce_checkout_order_review', array( $this, 'enqueue_shortcode_checkout_script' ), 10, 0 );
 	}
 
 	/**

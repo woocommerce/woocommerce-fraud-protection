@@ -8,6 +8,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExpressCheckoutScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WcposCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
@@ -201,6 +202,15 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 		$this->assertNotFalse(
 			has_action( 'woocommerce_subscriptions_change_payment_after_submit' ),
 			'Subscriptions change-payment form render action should be registered via the controller'
+		);
+
+		$this->assertSame(
+			10,
+			has_filter(
+				'woocommerce_fraud_protection_skip_session_verify',
+				array( $container->get( WcposCompat::class ), 'supply_decision_for_pos_tender' )
+			),
+			'WCPOS decision filter should be registered via the controller'
 		);
 	}
 
