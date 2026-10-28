@@ -2,7 +2,6 @@
 
 YYYY-xx-xx - version 0.3.1
 * Fixed - Payments that a cashier records in WooCommerce POS, such as cash, are no longer checked for fraud, since no shopper browser is involved. Other payment methods used in the POS are still checked.
-* Dev - The `woocommerce_fraud_protection_skip_session_verify` filter now receives the order ID as a fifth argument.
 
 2026-10-20 - version 0.3.0
 * Added - Stores where automatic blocking was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic blocking is turned off.

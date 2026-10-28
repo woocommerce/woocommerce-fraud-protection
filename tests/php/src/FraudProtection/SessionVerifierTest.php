@@ -1203,28 +1203,6 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_session() passes the source, request data, session ID and order ID to the filter.
-	 */
-	public function test_verify_session_passes_the_order_id_to_the_filter(): void {
-		$filter_args  = null;
-		$request_data = array( 'payment_method' => 'mock' );
-
-		add_filter(
-			'woocommerce_fraud_protection_skip_session_verify',
-			function ( $supplied, ...$args ) use ( &$filter_args ) {
-				$filter_args = $args;
-				return new SuppliedDecision( FraudDecision::Allow );
-			},
-			10,
-			5
-		);
-
-		$this->sut->verify_session( 'test-session', 'pay_for_order', 123, $request_data );
-
-		$this->assertSame( array( 'pay_for_order', $request_data, 'test-session', 123 ), $filter_args );
-	}
-
-	/**
 	 * @testdox verify_session() verifies normally when the filter passes its default through.
 	 *
 	 * The standard WordPress shape for a consumer with nothing to say: return the

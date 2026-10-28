@@ -25,14 +25,16 @@ defined( 'ABSPATH' ) || exit;
  *
  * - the attempt pays an existing order (`pay_for_order`);
  * - the request is a WCPOS request;
- * - WCPOS created the order, which it does only for an authenticated cashier;
  * - the request carries a valid WCPOS token of a user who can access the POS.
  *   WCPOS also requires this token on its pay requests, but the check is
  *   repeated here so that the decision does not depend on its hook order;
  * - the selected gateway is a WCPOS gateway.
  *
- * Other gateways used inside the POS, and WCPOS orders paid through the regular
- * pay page, are verified as before.
+ * The order may have been created anywhere: a cashier can also take payment at
+ * the till for an order that the customer placed online.
+ *
+ * Other gateways used inside the POS, and orders paid through the regular pay
+ * page, are verified as before.
  *
  * Temporary: WCPOS can supply the same decision through the public filter, and
  * this class uses only the public API so that it can move there unchanged.
@@ -45,13 +47,6 @@ class WcposCompat {
 	 * @var string
 	 */
 	private const PAY_FOR_ORDER_SOURCE = 'pay_for_order';
-
-	/**
-	 * The `created_via` value of orders created by WCPOS.
-	 *
-	 * @var string
-	 */
-	private const CREATED_VIA = 'woocommerce-pos';
 
 	/**
 	 * Base class of the WCPOS payment gateways.
@@ -73,7 +68,7 @@ class WcposCompat {
 	 * @return void
 	 */
 	public function register(): void {
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this, 'supply_decision_for_pos_tender' ), 10, 5 );
+		add_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this, 'supply_decision_for_pos_tender' ), 10, 3 );
 	}
 
 	/**
@@ -84,22 +79,15 @@ class WcposCompat {
 	 * @param mixed $supplied_decision The earlier result to apply, or false.
 	 * @param mixed $source            Source identifier.
 	 * @param mixed $request_data      Request data with payment_method, payment_data, etc.
-	 * @param mixed $session_id        The Blackbox session ID being verified.
-	 * @param mixed $order_id          The WooCommerce order ID.
 	 * @return mixed The supplied result, or the value passed in to defer.
 	 */
-	public function supply_decision_for_pos_tender( mixed $supplied_decision, mixed $source, mixed $request_data, mixed $session_id, mixed $order_id = 0 ): mixed {
+	public function supply_decision_for_pos_tender( mixed $supplied_decision, mixed $source, mixed $request_data ): mixed {
 		// An earlier result for this attempt, possibly a block, stays in place.
 		if ( false !== $supplied_decision || self::PAY_FOR_ORDER_SOURCE !== $source ) {
 			return $supplied_decision;
 		}
 
 		if ( ! function_exists( 'wcpos_request' ) || true !== wcpos_request() ) {
-			return $supplied_decision;
-		}
-
-		$order = is_int( $order_id ) && $order_id > 0 ? wc_get_order( $order_id ) : null;
-		if ( ! $order instanceof \WC_Order || self::CREATED_VIA !== $order->get_created_via() ) {
 			return $supplied_decision;
 		}
 

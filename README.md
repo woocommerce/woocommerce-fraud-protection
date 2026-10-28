@@ -173,10 +173,8 @@ Two hooks let an extension (e.g. a payment gateway with a non-standard checkout 
   A callback with nothing to supply returns the value it received. A final value other than `SuppliedDecision`, or a `SuppliedDecision` with a non-actionable decision, runs normal verification. If a callback throws, verification also continues normally.
 
   ```php
-  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecision|false $supplied_decision, string $source, array $request_data, string $session_id, int $order_id );
+  apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecision|false $supplied_decision, string $source, array $request_data, string $session_id );
   ```
-
-  `$order_id` is the order being paid, or `0` for flows that run before the order exists. It was added in 0.3.1; register the callback with five accepted arguments to receive it.
 
   `SuppliedDecision::$decision` and `SuppliedDecision::$session_id_for_order` are read-only.
 
