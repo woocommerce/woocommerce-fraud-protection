@@ -571,7 +571,7 @@ add_filter(
 
 ### window.wcFraudProtection
 
-On pages where `BlackboxScriptHandler::request_scripts()` loaded the shared scripts, `window.wcFraudProtection` holds `config` and `takeSessionId()` by the time a script that depends on `wc-fraud-protection-blackbox-init` runs. The other methods are added only when the Blackbox SDK loaded, which it may not do, for example when a content blocker stops it. Check for each method when you call it, and send the request without a session ID when it is missing.
+On pages where `BlackboxScriptHandler::request_scripts()` loaded the shared scripts, `window.wcFraudProtection` holds `config`, `takeSessionId()`, `prepareSessionId()`, `takePreparedSessionId()` and `addSessionIdToExtensions()` by the time a script that depends on `wc-fraud-protection-blackbox-init` runs; without the Blackbox SDK they hand out no session ID. `acquireSessionId()` and `reset()` are added only when the SDK loaded, which it may not do, for example when a content blocker stops it. Check for each method when you call it, and send the request without a session ID when it is missing.
 
 | Member | Description |
 |--------|-------------|
@@ -580,9 +580,10 @@ On pages where `BlackboxScriptHandler::request_scripts()` loaded the shared scri
 | `reset(): void` | Starts a fresh session for the next payment attempt. Call it after each attempt that used `acquireSessionId()`. |
 | `prepareSessionId(): void` | For code that must add the session ID synchronously: call it once when the payment surface is set up, and a session ID is kept ready for `takePreparedSessionId()`. A prepared ID that gets too old is replaced on the shopper's next activity. Calling it again does nothing. |
 | `takePreparedSessionId(): string` | Hands out the prepared session ID for one payment attempt, or an empty string when none is ready. The same ID is never returned twice, and a fresh session starts for the next attempt, so no `reset()` call is needed. |
+| `addSessionIdToExtensions( extensions: object ): object` | For a Store API request whose extension data is built synchronously, such as an express button's. Returns a copy of `extensions` with the ID from `takePreparedSessionId()` under the `woocommerce/fraud-protection` namespace, as `blackbox_session_id`. It always removes a session ID already in the data, so an earlier attempt's ID is never sent again. A value that is not an object is returned unchanged. Since 0.3.1. |
 | `config.sessionIdField` | The name of the request field for the session ID: `SessionVerifier::SESSION_ID_FIELD`. The other `config` entries are internal. |
 
-A session ID belongs to one payment attempt: send each ID with exactly one request. The [integration guide](integration-guide.md#2-send-the-session-id) shows `takeSessionId()`, and its [express checkout section](integration-guide.md#express-checkout) shows `prepareSessionId()` and `takePreparedSessionId()`.
+A session ID belongs to one payment attempt: send each ID with exactly one request. The [integration guide](integration-guide.md#2-send-the-session-id) shows `takeSessionId()`, and its [express checkout section](integration-guide.md#express-checkout) shows `prepareSessionId()` and `addSessionIdToExtensions()`.
 
 ### Script handles
 
@@ -600,7 +601,7 @@ Your own integration script is yours to register, from your plugin's URL and wit
 | A classic form or AJAX request | The field named by `config.sessionIdField` (`wc_fraud_protection_session_id`). Your server code reads it and passes it to `verify_session()`. |
 | A Store API checkout (`/wc/store/v1/checkout` and `/wc/store/v1/checkout/{order_id}`) | The request's extension data, under the `woocommerce/fraud-protection` namespace, as `blackbox_session_id`. The plugin reads and verifies it. |
 
-A Store API checkout sent without the plugin's checkout scripts, such as an order placed by your own block-based payment button, carries the session ID like this:
+A Store API checkout sent without the plugin's checkout scripts, such as an order placed by your own block-based payment button, carries the session ID like this. Code that builds the extension data synchronously can use `addSessionIdToExtensions()` instead:
 
 ```js
 fetch( '/wp-json/wc/store/v1/checkout', {

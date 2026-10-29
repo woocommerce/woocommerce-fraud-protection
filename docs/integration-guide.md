@@ -246,33 +246,22 @@ PayPal Payments creates setup tokens both at checkout and when a payment method 
 
 **Implement:** add the session ID to the Store API checkout request your express buttons send. Put it in the request's extension data, under the `woocommerce/fraud-protection` namespace as `blackbox_session_id`. The plugin verifies that request like any other Store API checkout, so there is nothing to do on the server.
 
-Express buttons usually build their request in a synchronous callback. Prepare a session ID when the buttons are set up, and take it when the request is built. Each taken ID is used once, and a fresh session starts automatically, so there is no `reset()` call:
+Express buttons usually build their request in a synchronous callback. Prepare a session ID when the buttons are set up, and add it with `addSessionIdToExtensions()` when the request's extension data is built:
 
 ```js
 const fp = window.wcFraudProtection;
-const canPrepare =
-	fp &&
-	typeof fp.prepareSessionId === 'function' &&
-	typeof fp.takePreparedSessionId === 'function';
+const canAdd = fp && typeof fp.addSessionIdToExtensions === 'function';
 
 // When the express buttons are set up:
-if ( canPrepare ) {
+if ( canAdd ) {
 	fp.prepareSessionId();
 }
 
 // When the Store API checkout request is built:
-function addFraudProtectionData( extensions ) {
-	const data = Object.assign( {}, extensions );
-	delete data[ 'woocommerce/fraud-protection' ]; // Never resend an earlier attempt's ID.
-
-	const sessionId = canPrepare ? fp.takePreparedSessionId() : '';
-	if ( sessionId ) {
-		data[ 'woocommerce/fraud-protection' ] = { blackbox_session_id: sessionId };
-	}
-
-	return data;
-}
+const extensions = canAdd ? fp.addSessionIdToExtensions( buttonExtensions ) : buttonExtensions;
 ```
+
+`addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always removes a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out without one. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.1.
 
 Load the browser scripts on every page where the buttons render, as in [step 1](#1-load-the-browser-scripts). If your button code can wait for a promise, use `takeSessionId()` as in [step 2](#2-send-the-session-id) instead.
 

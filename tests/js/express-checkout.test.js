@@ -4,9 +4,10 @@
  * Tests for express-checkout.js — session ID in WooPayments and Stripe
  * express checkout extension data.
  *
- * express-checkout.js is an IIFE. We test it by setting up global mocks,
- * requiring the file (which executes the IIFE), and applying the filters
- * the way the gateways do.
+ * express-checkout.js is an IIFE. We test it by loading blackbox-init.js
+ * for the real wcFraudProtection.addSessionIdToExtensions(), replacing the
+ * prepared-session methods with mocks, requiring the file (which executes
+ * the IIFE), and applying the filters the way the gateways do.
  */
 
 const WOOPAYMENTS_FILTER =
@@ -40,11 +41,13 @@ function setupAndLoad() {
 	};
 	window.wcFraudProtection = {
 		config: { sessionIdField: 'wc_fraud_protection_session_id' },
-		acquireSessionId: jest.fn(),
-		reset: jest.fn(),
-		prepareSessionId: mockPrepareSessionId,
-		takePreparedSessionId: mockTakePreparedSessionId,
 	};
+
+	jest.isolateModules( () => {
+		require( '../../assets/js/blackbox-init' );
+	} );
+	window.wcFraudProtection.prepareSessionId = mockPrepareSessionId;
+	window.wcFraudProtection.takePreparedSessionId = mockTakePreparedSessionId;
 
 	jest.isolateModules( () => {
 		require( '../../assets/js/express-checkout' );
@@ -162,14 +165,18 @@ describe( 'express-checkout', () => {
 		expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
 	} );
 
-	it( 'returns the original data when taking the session ID throws', () => {
+	it( 'removes an earlier session ID when taking the session ID throws', () => {
 		mockTakePreparedSessionId.mockImplementation( () => {
 			throw new Error( 'broken' );
 		} );
 		setupAndLoad();
-		const original = { other: { value: 1 } };
 
-		expect( applyFilter( WOOPAYMENTS_FILTER, original ) ).toBe( original );
+		const result = applyFilter( WOOPAYMENTS_FILTER, {
+			other: { value: 1 },
+			[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
+		} );
+
+		expect( result ).toEqual( { other: { value: 1 } } );
 	} );
 
 	it( 'does not register filters when wp.hooks is missing', () => {

@@ -35,7 +35,7 @@
 	if (
 		! fraudProtection ||
 		typeof fraudProtection.prepareSessionId !== 'function' ||
-		typeof fraudProtection.takePreparedSessionId !== 'function' ||
+		typeof fraudProtection.addSessionIdToExtensions !== 'function' ||
 		! hooks ||
 		typeof hooks.addFilter !== 'function'
 	) {
@@ -45,31 +45,12 @@
 	/**
 	 * Add a fresh session ID to the express checkout extension data.
 	 *
-	 * Without a fresh ID, any session ID already in the data is removed: it can
-	 * come from the checkout form's earlier attempt and must not be sent again.
-	 *
 	 * @param {*} extensionData Extension data built by the gateway.
 	 * @return {*} The extension data with the session ID.
 	 */
 	function addSessionId( extensionData ) {
 		try {
-			if (
-				! extensionData ||
-				typeof extensionData !== 'object' ||
-				Array.isArray( extensionData )
-			) {
-				return extensionData;
-			}
-
-			const data = Object.assign( {}, extensionData );
-			delete data[ NAMESPACE ];
-
-			const sessionId = fraudProtection.takePreparedSessionId();
-			if ( sessionId ) {
-				data[ NAMESPACE ] = { blackbox_session_id: sessionId };
-			}
-
-			return data;
+			return fraudProtection.addSessionIdToExtensions( extensionData );
 		} catch {
 			return extensionData;
 		}

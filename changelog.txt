@@ -9,7 +9,7 @@ YYYY-xx-xx - version 0.3.1
 * Dev - Payment gateways can verify their own requests, such as creating an order at the payment provider, with the new `GatewayRequestVerifier` class, and reuse the decision for the checkout or payment-method submission that completes the same attempt, so the attempt is analyzed once.
 * Dev - Payment gateways can describe the payment instrument of their own attempts with the new `GatewayPaymentData` class, which runs their resolver only for their attempts and keeps the existing data when it fails.
 * Dev - The `window.wcFraudProtection.prepareSessionId()` and `takePreparedSessionId()` browser methods are now part of the public API, for payment surfaces that must add the session ID synchronously.
-* Dev - The new `window.wcFraudProtection.takeSessionId()` browser method resolves to a session ID for one payment attempt and starts a fresh session for the next one, so payment surfaces no longer call `reset()` themselves.
+* Dev - The new `window.wcFraudProtection.takeSessionId()` browser method resolves to a session ID for one payment attempt and starts a fresh session for the next one, so payment surfaces no longer call `reset()` themselves, and `addSessionIdToExtensions()` adds a prepared session ID to the extension data of a Store API request, such as an express button's.
 * Dev - The `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, was removed.
 
 2026-10-20 - version 0.3.0

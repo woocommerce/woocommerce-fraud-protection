@@ -332,7 +332,7 @@ describe( 'blackbox-init', () => {
 			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
 		} );
 
-		it( 'is the only method set when the SDK is missing', async () => {
+		it( 'sets only the methods that work without the SDK when it is missing', async () => {
 			window.wcFraudProtection = {
 				config: {
 					apiKey: 'test-key',
@@ -353,6 +353,79 @@ describe( 'blackbox-init', () => {
 			await expect(
 				window.wcFraudProtection.takeSessionId()
 			).resolves.toBe( '' );
+		} );
+	} );
+
+	describe( 'addSessionIdToExtensions', () => {
+		const NAMESPACE = 'woocommerce/fraud-protection';
+
+		it( 'adds the prepared session ID under the plugin namespace and starts a fresh session', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			const original = { 'woocommerce/order-attribution': { a: 1 } };
+
+			const result =
+				window.wcFraudProtection.addSessionIdToExtensions( original );
+
+			expect( result ).toEqual( {
+				'woocommerce/order-attribution': { a: 1 },
+				[ NAMESPACE ]: { blackbox_session_id: 'test-session-id' },
+			} );
+			expect( original ).toEqual( {
+				'woocommerce/order-attribution': { a: 1 },
+			} );
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'removes an earlier session ID when none is prepared', () => {
+			setupAndLoad();
+
+			expect(
+				window.wcFraudProtection.addSessionIdToExtensions( {
+					other: { a: 1 },
+					[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
+				} )
+			).toEqual( { other: { a: 1 } } );
+		} );
+
+		it.each( [
+			[ 'undefined', undefined ],
+			[ 'null', null ],
+			[ 'an array', [ 'value' ] ],
+			[ 'a string', 'value' ],
+		] )( 'returns %s unchanged', ( _, value ) => {
+			setupAndLoad();
+
+			expect(
+				window.wcFraudProtection.addSessionIdToExtensions( value )
+			).toBe( value );
+		} );
+
+		it( 'is set with the prepared-session methods when the SDK is missing', () => {
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
+
+			jest.isolateModules( () => {
+				require( '../../assets/js/blackbox-init' );
+			} );
+
+			expect( () =>
+				window.wcFraudProtection.prepareSessionId()
+			).not.toThrow();
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+			expect(
+				window.wcFraudProtection.addSessionIdToExtensions( {
+					[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
+				} )
+			).toEqual( {} );
 		} );
 	} );
 

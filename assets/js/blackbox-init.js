@@ -4,9 +4,11 @@
  * Configures the Blackbox JS SDK and exposes shared utilities on
  * window.wcFraudProtection for checkout integration scripts.
  * Only set when the SDK is present and configured. When the SDK is
- * missing, only acquireSessionIdResult() and takeSessionId() are set, so
- * the plugin's own scripts can still report why there is no session ID and
- * integrations can call takeSessionId() without checking for it.
+ * missing, only acquireSessionIdResult(), takeSessionId(),
+ * prepareSessionId(), takePreparedSessionId() and addSessionIdToExtensions()
+ * are set, so the plugin's own scripts can still report why there is no
+ * session ID and integrations can call those methods without checking for
+ * them.
  */
 ( function () {
 	'use strict';
@@ -26,6 +28,55 @@
 		return { sessionId: '', error };
 	}
 
+	// Store API extension data namespace and key the server reads the session ID from.
+	const EXTENSION_NAMESPACE = 'woocommerce/fraud-protection';
+	const EXTENSION_SESSION_ID_KEY = 'blackbox_session_id';
+
+	/**
+	 * Add a prepared session ID to the extension data of a Store API request.
+	 *
+	 * For express payment buttons that place the order through the Store API
+	 * and build the request's extension data synchronously. Returns a copy
+	 * with the ID from takePreparedSessionId() under the plugin's namespace.
+	 * A session ID already in the data always goes: it can come from an
+	 * earlier attempt and must not be sent again. Fail-open: without a
+	 * prepared ID the copy has none, and a value that is not an object is
+	 * returned unchanged.
+	 *
+	 * @param {*} extensions The request's extension data.
+	 * @return {*} The extension data to send.
+	 */
+	fraudProtection.addSessionIdToExtensions = function ( extensions ) {
+		if (
+			! extensions ||
+			typeof extensions !== 'object' ||
+			Array.isArray( extensions )
+		) {
+			return extensions;
+		}
+
+		let data;
+		try {
+			data = Object.assign( {}, extensions );
+			delete data[ EXTENSION_NAMESPACE ];
+		} catch {
+			return extensions;
+		}
+
+		try {
+			const sessionId = fraudProtection.takePreparedSessionId();
+			if ( typeof sessionId === 'string' && sessionId ) {
+				data[ EXTENSION_NAMESPACE ] = {
+					[ EXTENSION_SESSION_ID_KEY ]: sessionId,
+				};
+			}
+		} catch {
+			// Fail open: send the request without a session ID.
+		}
+
+		return data;
+	};
+
 	if (
 		! window.Blackbox ||
 		! window.Blackbox.configure ||
@@ -36,6 +87,10 @@
 		};
 		fraudProtection.takeSessionId = function () {
 			return Promise.resolve( '' );
+		};
+		fraudProtection.prepareSessionId = function () {};
+		fraudProtection.takePreparedSessionId = function () {
+			return '';
 		};
 		return;
 	}
