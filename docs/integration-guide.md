@@ -98,30 +98,22 @@ add_action(
 
 ### 2. Send the session ID
 
-In your script, acquire a session ID right before sending the request. Add it under the field name in `config.sessionIdField`, then reset for the next attempt. Check for the methods when you call them, not when your script loads, because they are attached only once the SDK has loaded:
+In your script, take a session ID with `takeSessionId()` right before sending the request, and add it under the field name in `config.sessionIdField`:
 
 ```js
-function withSessionId( body ) {
+async function addSessionId( body ) {
 	const fp = window.wcFraudProtection;
-
-	if ( ! fp || typeof fp.acquireSessionId !== 'function' ) {
-		return Promise.resolve( body ); // Fail open.
+	if ( fp && typeof fp.takeSessionId === 'function' ) {
+		body[ fp.config.sessionIdField ] = await fp.takeSessionId();
 	}
-
-	return fp.acquireSessionId().then( function ( sessionId ) {
-		body[ fp.config.sessionIdField ] = sessionId;
-		return body;
-	} );
+	return body;
 }
 
-withSessionId( { action: 'my_gateway_create_order' } ).then( function ( body ) {
-	// Send the request, then start a fresh session for the next attempt.
-	const fp = window.wcFraudProtection;
-	if ( fp && typeof fp.reset === 'function' ) {
-		fp.reset();
-	}
-} );
+const body = await addSessionId( { action: 'my_gateway_create_order' } );
+// Send the request with body.
 ```
+
+`takeSessionId()` never rejects. It resolves to an empty string when there is no session ID, for example when a content blocker stopped the SDK; send the request anyway. It also starts a fresh session for the next attempt, so there is no `reset()` call. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.1.
 
 A code path that must add the ID synchronously uses `prepareSessionId()` and `takePreparedSessionId()` instead; see [Express checkout](#express-checkout).
 
@@ -282,7 +274,7 @@ function addFraudProtectionData( extensions ) {
 }
 ```
 
-Load the browser scripts on every page where the buttons render, as in [step 1](#1-load-the-browser-scripts). If your button code can wait for a promise, `acquireSessionId()` followed by `reset()` works too.
+Load the browser scripts on every page where the buttons render, as in [step 1](#1-load-the-browser-scripts). If your button code can wait for a promise, use `takeSessionId()` as in [step 2](#2-send-the-session-id) instead.
 
 ### Change payment method forms
 

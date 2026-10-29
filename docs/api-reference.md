@@ -571,17 +571,18 @@ add_filter(
 
 ### window.wcFraudProtection
 
-On pages where `BlackboxScriptHandler::request_scripts()` loaded the shared scripts, `window.wcFraudProtection` holds `config`. The methods below are added once the Blackbox SDK has loaded, which can happen after your script runs or not at all, for example when a content blocker stops the SDK. Check for each method when you call it, and send the request without a session ID when it is missing.
+On pages where `BlackboxScriptHandler::request_scripts()` loaded the shared scripts, `window.wcFraudProtection` holds `config` and `takeSessionId()` by the time a script that depends on `wc-fraud-protection-blackbox-init` runs. The other methods are added only when the Blackbox SDK loaded, which it may not do, for example when a content blocker stops it. Check for each method when you call it, and send the request without a session ID when it is missing.
 
 | Member | Description |
 |--------|-------------|
-| `acquireSessionId(): Promise<string>` | Resolves to a session ID, or to an empty string on timeout or error. |
+| `takeSessionId(): Promise<string>` | Resolves to a session ID for one payment attempt, or to an empty string on timeout, error, or without the SDK; it never rejects. After handing out an ID, it starts a fresh session for the next attempt, so no `reset()` call is needed. Use it for code that can wait for a promise. Since 0.3.1. |
+| `acquireSessionId(): Promise<string>` | Resolves to a session ID, or to an empty string on timeout or error. Call `reset()` after the attempt that used it. |
 | `reset(): void` | Starts a fresh session for the next payment attempt. Call it after each attempt that used `acquireSessionId()`. |
 | `prepareSessionId(): void` | For code that must add the session ID synchronously: call it once when the payment surface is set up, and a session ID is kept ready for `takePreparedSessionId()`. A prepared ID that gets too old is replaced on the shopper's next activity. Calling it again does nothing. |
 | `takePreparedSessionId(): string` | Hands out the prepared session ID for one payment attempt, or an empty string when none is ready. The same ID is never returned twice, and a fresh session starts for the next attempt, so no `reset()` call is needed. |
 | `config.sessionIdField` | The name of the request field for the session ID: `SessionVerifier::SESSION_ID_FIELD`. The other `config` entries are internal. |
 
-A session ID belongs to one payment attempt: send each ID with exactly one request. The [integration guide](integration-guide.md#2-send-the-session-id) shows `acquireSessionId()` and `reset()`, and its [express checkout section](integration-guide.md#express-checkout) shows `prepareSessionId()` and `takePreparedSessionId()`.
+A session ID belongs to one payment attempt: send each ID with exactly one request. The [integration guide](integration-guide.md#2-send-the-session-id) shows `takeSessionId()`, and its [express checkout section](integration-guide.md#express-checkout) shows `prepareSessionId()` and `takePreparedSessionId()`.
 
 ### Script handles
 

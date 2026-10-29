@@ -350,6 +350,69 @@ describe( 'blackbox-init', () => {
 			await expect(
 				window.wcFraudProtection.acquireSessionIdResult()
 			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
+			await expect(
+				window.wcFraudProtection.takeSessionId()
+			).resolves.toBe( '' );
+		} );
+	} );
+
+	describe( 'takeSessionId', () => {
+		it( 'resolves with the session ID and starts a fresh session', async () => {
+			setupAndLoad();
+
+			await expect(
+				window.wcFraudProtection.takeSessionId()
+			).resolves.toBe( 'test-session-id' );
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'resolves with an empty string without a reset when getSessionId fails', async () => {
+			mockGetSessionId.mockReturnValue(
+				Promise.reject( new Error( 'SDK error' ) )
+			);
+			setupAndLoad();
+
+			await expect(
+				window.wcFraudProtection.takeSessionId()
+			).resolves.toBe( '' );
+			expect( mockReset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'resolves with an empty string after the configured timeout', async () => {
+			mockGetSessionId.mockReturnValue( new Promise( () => {} ) );
+			setupAndLoad();
+
+			const resultPromise = window.wcFraudProtection.takeSessionId();
+			await jest.advanceTimersByTimeAsync( 3000 );
+
+			await expect( resultPromise ).resolves.toBe( '' );
+			expect( mockReset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'resolves with the session ID when the reset throws', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.reset = () => {
+				throw new Error( 'Reset failed' );
+			};
+
+			await expect(
+				window.wcFraudProtection.takeSessionId()
+			).resolves.toBe( 'test-session-id' );
+		} );
+
+		it( 'never lets takePreparedSessionId() hand out the same session ID', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			await expect(
+				window.wcFraudProtection.takeSessionId()
+			).resolves.toBe( 'test-session-id' );
+			await flushPromises();
+
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
 		} );
 	} );
 

@@ -4,8 +4,9 @@
  * Configures the Blackbox JS SDK and exposes shared utilities on
  * window.wcFraudProtection for checkout integration scripts.
  * Only set when the SDK is present and configured. When the SDK is
- * missing, only acquireSessionIdResult() is set, so the plugin's own
- * scripts can still report why there is no session ID.
+ * missing, only acquireSessionIdResult() and takeSessionId() are set, so
+ * the plugin's own scripts can still report why there is no session ID and
+ * integrations can call takeSessionId() without checking for it.
  */
 ( function () {
 	'use strict';
@@ -32,6 +33,9 @@
 	) {
 		fraudProtection.acquireSessionIdResult = function () {
 			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
+		};
+		fraudProtection.takeSessionId = function () {
+			return Promise.resolve( '' );
 		};
 		return;
 	}
@@ -342,6 +346,32 @@
 		return fraudProtection
 			.acquireSessionIdResult()
 			.then( function ( result ) {
+				return result.sessionId;
+			} );
+	};
+
+	/**
+	 * Take a session ID for one payment attempt.
+	 *
+	 * Acquires the session ID and, when there is one, starts a fresh session
+	 * for the next attempt, like takePreparedSessionId(), so there is no need
+	 * to call reset() afterwards. Fail-open: never rejects, and an empty
+	 * string means the attempt is sent without a session ID. Also set when
+	 * the SDK is missing.
+	 *
+	 * @return {Promise<string>} Session ID, or an empty string.
+	 */
+	fraudProtection.takeSessionId = function () {
+		return fraudProtection
+			.acquireSessionIdResult()
+			.then( function ( result ) {
+				if ( result.sessionId ) {
+					try {
+						fraudProtection.reset();
+					} catch {
+						// Fail open: the attempt still gets its session ID.
+					}
+				}
 				return result.sessionId;
 			} );
 	};
