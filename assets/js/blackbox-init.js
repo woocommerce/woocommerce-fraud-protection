@@ -108,9 +108,6 @@
 	const PREPARED_SESSION_MAX_AGE_MS = 10 * 60 * 1000;
 	const PREPARATION_RETRY_DELAY_MS = 2000;
 	const MAX_PREPARATION_RETRIES = 2;
-	// flush() enforces the timeout itself. This margin only bounds an SDK
-	// that breaks that contract.
-	const FLUSH_GRACE_MS = 500;
 	// The shopper's next activity. A click on a cross-origin express button
 	// iframe only reaches this page as a window blur.
 	const ACTIVITY_EVENTS = [
@@ -317,7 +314,8 @@
 	 * Acquire a Blackbox session ID, or the reason why there is none.
 	 *
 	 * Uses flush(), so the session has the shopper's latest data when the
-	 * payment is verified. A challenge that flush() starts is not awaited.
+	 * payment is verified. flush() resolves by the deadline it is given. A
+	 * challenge that flush() starts is not awaited.
 	 *
 	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
 	 * answer in time, `sdk_error` when it fails or returns no session ID, and
@@ -347,15 +345,7 @@
 			flushed = Promise.resolve( withoutSessionId( 'sdk_error' ) );
 		}
 
-		let timer;
-		const timeout = new Promise( function ( resolve ) {
-			timer = setTimeout( function () {
-				resolve( withoutSessionId( 'timeout' ) );
-			}, fraudProtection.config.timeout + FLUSH_GRACE_MS );
-		} );
-
-		return Promise.race( [ flushed, timeout ] ).then( function ( result ) {
-			clearTimeout( timer );
+		return flushed.then( function ( result ) {
 			// The payment flows get their session ID here, so record it before
 			// the prepared slot can hand it out again.
 			markHandedOut( result.sessionId );

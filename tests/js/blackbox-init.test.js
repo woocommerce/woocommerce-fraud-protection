@@ -245,17 +245,15 @@ describe( 'blackbox-init', () => {
 			expect( mockFlush ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'resolves with empty string when flush() never settles', async () => {
-			mockFlush.mockReturnValue( new Promise( () => {} ) );
+		it( 'resolves with empty string when flush() times out without a session ID', async () => {
+			mockFlush.mockImplementation( () =>
+				flushed( { sessionId: '', outcome: 'timeout' } )
+			);
 			setupAndLoad();
 
-			const resultPromise = window.wcFraudProtection.acquireSessionId();
+			const sessionId = await window.wcFraudProtection.acquireSessionId();
 
-			const result = await jest
-				.advanceTimersByTimeAsync( 3500 )
-				.then( () => resultPromise );
-
-			expect( result ).toBe( '' );
+			expect( sessionId ).toBe( '' );
 		} );
 
 		it( 'resolves with empty string when flush() rejects', async () => {
@@ -346,23 +344,6 @@ describe( 'blackbox-init', () => {
 			await expect(
 				window.wcFraudProtection.acquireSessionId()
 			).resolves.toBe( '' );
-		} );
-
-		it( 'reports a timeout when flush() never settles', async () => {
-			mockFlush.mockReturnValue( new Promise( () => {} ) );
-			setupAndLoad();
-
-			const resultPromise =
-				window.wcFraudProtection.acquireSessionIdResult();
-			let result;
-			resultPromise.then( ( value ) => {
-				result = value;
-			} );
-			await jest.advanceTimersByTimeAsync( 3000 );
-			expect( result ).toBeUndefined();
-			await jest.advanceTimersByTimeAsync( 500 );
-
-			expect( result ).toEqual( { sessionId: '', error: 'timeout' } );
 		} );
 
 		it( 'does not wait for a challenge that flush() reports', async () => {
