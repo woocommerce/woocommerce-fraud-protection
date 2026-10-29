@@ -364,7 +364,7 @@
 	};
 
 	/**
-	 * Acquire a Blackbox session ID (fail-open: empty string on timeout/error).
+	 * Acquire a Blackbox session ID (fail-open: empty string when no session ID is available).
 	 *
 	 * @return {Promise<string>} Session ID or empty string.
 	 */
