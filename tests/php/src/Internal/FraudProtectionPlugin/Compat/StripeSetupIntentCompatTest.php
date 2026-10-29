@@ -17,6 +17,8 @@ use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripeSetupIntentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 
+require_once __DIR__ . '/../../../../stubs/wc-stripe-api.php';
+
 /**
  * Tests for the StripeSetupIntentCompat class.
  *
@@ -29,6 +31,10 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	private const SKIP_VERIFY_FILTER = 'woocommerce_fraud_protection_skip_session_verify';
 
 	private const RECORD_KEY = '_fraud_protection_stripe_setup_intent_verification';
+
+	private const SETUP_INTENT_ID = 'seti_123';
+
+	private const SETUP_INTENT_API = 'setup_intents/seti_123';
 
 	/**
 	 * The System Under Test.
@@ -79,6 +85,9 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut->register();
 
 		wp_set_current_user( self::factory()->user->create() );
+
+		\WC_Stripe_API::reset();
+		\WC_Stripe_API::set_mock_retrieve_response( self::SETUP_INTENT_API, $this->create_setup_intent( 'succeeded', 'pm_123' ) );
 	}
 
 	/**
@@ -101,8 +110,25 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		}
 
 		wp_set_current_user( 0 );
+		\WC_Stripe_API::reset();
 
 		parent::tearDown();
+	}
+
+	/**
+	 * Create a Stripe setup intent response.
+	 *
+	 * @param string $status         Setup intent status.
+	 * @param mixed  $payment_method Payment method ID, or the expanded payment method.
+	 * @return object
+	 */
+	private function create_setup_intent( string $status, $payment_method ): object {
+		return (object) array(
+			'id'             => self::SETUP_INTENT_ID,
+			'object'         => 'setup_intent',
+			'status'         => $status,
+			'payment_method' => $payment_method,
+		);
 	}
 
 	/**
@@ -160,11 +186,14 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Run the skip-verify filter as the add-payment-method form post does.
 	 *
-	 * @param string $session_id     Submitted session ID.
-	 * @param string $payment_method Submitted gateway ID.
+	 * @param string $session_id      Submitted session ID.
+	 * @param string $payment_method  Submitted gateway ID.
+	 * @param string $setup_intent_id Submitted Stripe setup intent ID; empty to submit none.
 	 * @return SuppliedDecision|false
 	 */
-	private function supply_for_add_payment_method( string $session_id, string $payment_method = 'stripe' ) {
+	private function supply_for_add_payment_method( string $session_id, string $payment_method = 'stripe', string $setup_intent_id = self::SETUP_INTENT_ID ) {
+		$payment_data = '' === $setup_intent_id ? array() : array( 'wc-stripe-setup-intent' => $setup_intent_id );
+
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		return apply_filters(
 			self::SKIP_VERIFY_FILTER,
@@ -172,10 +201,22 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 			'add_payment_method',
 			array(
 				'payment_method' => $payment_method,
-				'payment_data'   => array(),
+				'payment_data'   => $payment_data,
 			),
 			$session_id
 		);
+	}
+
+	/**
+	 * Verify a setup intent request for the session ID with the given decision.
+	 *
+	 * @param FraudDecision $decision The setup intent decision.
+	 */
+	private function verify_setup_intent( FraudDecision $decision ): void {
+		$this->set_setup_intent_post( array( SessionVerifier::SESSION_ID_FIELD => 'sess-stripe' ) );
+		$this->session_verifier->method( 'verify_session' )->willReturn( $decision );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'sess-stripe' );
+		$this->run_setup_intent_filter();
 	}
 
 	/**
@@ -324,6 +365,113 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 			'allow' => array( FraudDecision::Allow ),
 			'block' => array( FraudDecision::Block ),
 		);
+	}
+
+	/**
+	 * @testdox An ALLOW is reused unless the posted setup intent is read and holds another payment method.
+	 * @dataProvider setup_intents_without_another_payment_method
+	 *
+	 * @param string $setup_intent_id Posted setup intent ID; empty to post none.
+	 * @param mixed  $setup_intent    Stripe response for the setup intent.
+	 */
+	public function test_allow_reused_without_another_payment_method( string $setup_intent_id, $setup_intent ): void {
+		\WC_Stripe_API::set_mock_retrieve_response( self::SETUP_INTENT_API, $setup_intent );
+		$this->verify_setup_intent( FraudDecision::Allow );
+
+		$supplied = $this->supply_for_add_payment_method( 'sess-stripe', 'stripe', $setup_intent_id );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
+		$this->assertSame( FraudDecision::Allow, $supplied->decision );
+	}
+
+	/**
+	 * Setup intents, or failures to read them, that do not show another payment method.
+	 *
+	 * @return array<string, array{string, mixed}>
+	 */
+	public function setup_intents_without_another_payment_method(): array {
+		$matching = $this->create_setup_intent( 'succeeded', 'pm_123' );
+
+		return array(
+			'verified payment method'               => array( self::SETUP_INTENT_ID, $matching ),
+			'verified payment method, expanded'     => array( self::SETUP_INTENT_ID, $this->create_setup_intent( 'succeeded', (object) array( 'id' => 'pm_123' ) ) ),
+			'verified payment method, not complete' => array( self::SETUP_INTENT_ID, $this->create_setup_intent( 'requires_action', 'pm_123' ) ),
+			'no payment method'                     => array( self::SETUP_INTENT_ID, $this->create_setup_intent( 'requires_payment_method', null ) ),
+			'Stripe error'                          => array( self::SETUP_INTENT_ID, (object) array( 'error' => (object) array( 'message' => 'Rate limited' ) ) ),
+			'request failure'                       => array( self::SETUP_INTENT_ID, new \WP_Error( 'stripe_error', 'Connection failed' ) ),
+			'no response'                           => array( self::SETUP_INTENT_ID, null ),
+			'no setup intent posted'                => array( '', $matching ),
+		);
+	}
+
+	/**
+	 * @testdox An ALLOW is reused, and the failure is logged, when reading the setup intent throws.
+	 */
+	public function test_allow_reused_when_reading_setup_intent_throws(): void {
+		\WC_Stripe_API::set_mock_retrieve_response( self::SETUP_INTENT_API, new \RuntimeException( 'Stripe unavailable' ) );
+		$this->verify_setup_intent( FraudDecision::Allow );
+
+		$supplied = $this->supply_for_add_payment_method( 'sess-stripe' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
+		$this->assertSame( FraudDecision::Allow, $supplied->decision );
+		$this->assertLogged(
+			'warning',
+			'Reading the Stripe setup intent failed; keeping the setup intent decision',
+			array(
+				'event_source'    => 'add_payment_method',
+				'exception_class' => \RuntimeException::class,
+			)
+		);
+	}
+
+	/**
+	 * @testdox An ALLOW is not reused, and the form post verifies, when the setup intent holds another payment method.
+	 * @dataProvider setup_intents_with_another_payment_method
+	 *
+	 * @param mixed $setup_intent Stripe response for the setup intent.
+	 */
+	public function test_allow_not_reused_for_another_payment_method( $setup_intent ): void {
+		\WC_Stripe_API::set_mock_retrieve_response( self::SETUP_INTENT_API, $setup_intent );
+		$this->verify_setup_intent( FraudDecision::Allow );
+
+		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-stripe' ) );
+		$this->assertSame( array( self::SETUP_INTENT_API ), \WC_Stripe_API::get_retrieved() );
+		$this->assertLogged(
+			'info',
+			'Stripe setup intent holds another payment method than the verified one',
+			array( 'event_source' => 'add_payment_method' )
+		);
+
+		\WC_Stripe_API::set_mock_retrieve_response( self::SETUP_INTENT_API, $this->create_setup_intent( 'succeeded', 'pm_123' ) );
+		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-stripe' ), 'The decision must be retired' );
+	}
+
+	/**
+	 * Setup intents that hold another payment method than the verified one.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function setup_intents_with_another_payment_method(): array {
+		return array(
+			'completed'    => array( $this->create_setup_intent( 'succeeded', 'pm_other' ) ),
+			'not complete' => array( $this->create_setup_intent( 'requires_action', 'pm_other' ) ),
+			'expanded'     => array( $this->create_setup_intent( 'succeeded', (object) array( 'id' => 'pm_other' ) ) ),
+		);
+	}
+
+	/**
+	 * @testdox A BLOCK is reused without checking the setup intent.
+	 */
+	public function test_block_reused_without_setup_intent_check(): void {
+		\WC_Stripe_API::set_mock_retrieve_response( self::SETUP_INTENT_API, $this->create_setup_intent( 'succeeded', 'pm_other' ) );
+		$this->verify_setup_intent( FraudDecision::Block );
+
+		$supplied = $this->supply_for_add_payment_method( 'sess-stripe' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
+		$this->assertSame( FraudDecision::Block, $supplied->decision );
+		$this->assertSame( array(), \WC_Stripe_API::get_retrieved() );
 	}
 
 	/**

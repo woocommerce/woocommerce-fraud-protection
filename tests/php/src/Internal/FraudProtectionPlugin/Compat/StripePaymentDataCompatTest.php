@@ -13,55 +13,10 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
-// Stub WC_Stripe_API if the real class isn't loaded.
+require_once __DIR__ . '/../../../../stubs/wc-stripe-api.php';
+
 // The following classes keep the names of the external API that they model.
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Classes.ClassFileName.NoMatch, Squiz.Classes.ValidClassName.NotCamelCaps
-if ( ! class_exists( '\WC_Stripe_API', false ) ) {
-	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
-	/** Stripe API test stub. */
-	class WC_Stripe_API_Stub {
-
-		/**
-		 * Mock response to return from get_payment_method().
-		 *
-		 * @var mixed
-		 */
-		private static $mock_response;
-
-		/**
-		 * Reset mock state.
-		 *
-		 * @return void
-		 */
-		public static function reset(): void {
-			self::$mock_response = null;
-		}
-
-		/**
-		 * Set the mock response.
-		 *
-		 * @param mixed $response The response to return.
-		 */
-		public static function set_mock_response( $response ): void {
-			self::$mock_response = $response;
-		}
-
-		/**
-		 * Retrieve a payment method by ID.
-		 *
-		 * Mirrors the real WC_Stripe_API static method signature.
-		 *
-		 * @param string $payment_method_id The payment method ID.
-		 * @return mixed
-		 */
-		public static function get_payment_method( string $payment_method_id ) {
-			unset( $payment_method_id );
-			return self::$mock_response;
-		}
-	}
-
-	class_alias( __NAMESPACE__ . '\WC_Stripe_API_Stub', 'WC_Stripe_API' );
-}
 
 // Stub WC_Stripe_Mode if the real class isn't loaded.
 if ( ! class_exists( '\WC_Stripe_Mode', false ) ) {
