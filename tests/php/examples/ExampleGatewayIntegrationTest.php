@@ -172,6 +172,52 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The express button script loads with the shared scripts as a dependency when they are available, and without them otherwise.
+	 *
+	 * @dataProvider shared_scripts_provider
+	 *
+	 * @param bool $available Whether the store can load the shared scripts.
+	 */
+	public function test_express_button_script_depends_on_the_shared_scripts( bool $available ): void {
+		if ( $available ) {
+			$this->mock_jetpack_blog_id( 42 );
+		} else {
+			add_filter( 'pre_option_jetpack_options', '__return_empty_array' );
+		}
+		$gateway          = new \WC_Gateway_FP_Example();
+		$gateway->enabled = 'yes';
+		$this->register_payment_gateways( $gateway );
+		$this->add_product_to_cart();
+
+		try {
+			ob_start();
+			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+			do_action( 'woocommerce_proceed_to_checkout' );
+			$output = (string) ob_get_clean();
+
+			$this->assertStringContainsString( 'fp-example-express-button', $output );
+			$expected = $available ? array( 'wp-hooks', 'wc-fraud-protection-blackbox-init' ) : array( 'wp-hooks' );
+			$this->assertSame( $expected, wp_scripts()->query( 'fp-example-express', 'registered' )->deps );
+		} finally {
+			remove_filter( 'pre_option_jetpack_options', '__return_empty_array' );
+			wp_dequeue_script( 'fp-example-express' );
+			wp_deregister_script( 'fp-example-express' );
+		}
+	}
+
+	/**
+	 * Whether the shared scripts are available.
+	 *
+	 * @return array<string, array{bool}>
+	 */
+	public function shared_scripts_provider(): array {
+		return array(
+			'available'   => array( true ),
+			'unavailable' => array( false ),
+		);
+	}
+
+	/**
 	 * @testdox The checkout form carries the express reference from the redirect URL.
 	 */
 	public function test_checkout_form_carries_the_express_reference(): void {

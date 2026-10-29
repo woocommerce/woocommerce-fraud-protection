@@ -184,9 +184,17 @@ Loads the shared browser scripts on a payment surface.
 public function request_scripts(): bool
 ```
 
-Enqueues the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script, which sets up `window.wcFraudProtection`. Call it from the hook that renders your payment surface, and enqueue your own script with `wc-fraud-protection-blackbox-init` as a dependency only when it returns `true`. Calling it again in the same request returns `true` without enqueuing anything twice.
+Enqueues the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script, which sets up `window.wcFraudProtection`. Call it from the hook that renders your payment surface, and enqueue your own script with `wc-fraud-protection-blackbox-init` as a dependency only when it returns `true`; [`request_scripts_for()`](#request_scripts_for) does both for a script you already enqueue. Calling it again in the same request returns `true` without enqueuing anything twice.
 
 It returns `false` when the store has no Jetpack blog ID, and in requests that do not render a payment surface: admin pages, REST requests, post previews by an editor, the Customizer preview and the order-received page. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call.
+
+#### request_scripts_for()
+
+```php
+public function request_scripts_for( string $handle ): bool
+```
+
+Calls `request_scripts()` and, when it returns `true`, adds `wc-fraud-protection-blackbox-init` to the dependencies of your script `$handle`, so `window.wcFraudProtection` is set up before your script runs. Register or enqueue your script first, as you already do, and call this before the scripts are printed. When it returns `false`, nothing changes and your script loads without the shared scripts. It also returns `false`, loading nothing and logging a warning, when `$handle` is not registered or was already printed. Calling it again adds no second dependency. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call. Since 0.3.1.
 
 #### request_pay_for_order_script()
 
@@ -589,7 +597,7 @@ A session ID belongs to one payment attempt: send each ID with exactly one reque
 
 | Handle | Description |
 |--------|-------------|
-| `wc-fraud-protection-blackbox-init` | Sets up `window.wcFraudProtection`. Use it as a dependency of your integration script. |
+| `wc-fraud-protection-blackbox-init` | Sets up `window.wcFraudProtection`. Use it as a dependency of your integration script; `BlackboxScriptHandler::request_scripts_for()` adds it for you. |
 | `wc-fraud-protection-pay-for-order` | Adds the session ID to the `#order_review` form on submission. Enqueue it with `BlackboxScriptHandler::request_pay_for_order_script()`. |
 
 Your own integration script is yours to register, from your plugin's URL and with your plugin's version.

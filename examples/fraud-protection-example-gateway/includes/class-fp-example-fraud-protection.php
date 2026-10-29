@@ -113,15 +113,12 @@ class FP_Example_Fraud_Protection {
 			return;
 		}
 
-		// Request the shared Fraud Protection scripts for this payment surface. When they are
-		// unavailable (no Jetpack connection, an excluded context) the button still works and
-		// the server verifies the request without a session ID.
-		$dependencies = array( 'wp-hooks' );
-		if ( wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts() ) {
-			$dependencies[] = 'wc-fraud-protection-blackbox-init';
-		}
+		wp_enqueue_script( 'fp-example-express', plugins_url( 'assets/express.js', FP_EXAMPLE_GATEWAY_FILE ), array( 'wp-hooks' ), '0.1.0', true );
 
-		wp_enqueue_script( 'fp-example-express', plugins_url( 'assets/express.js', FP_EXAMPLE_GATEWAY_FILE ), $dependencies, '0.1.0', true );
+		// Request the shared Fraud Protection scripts for this payment surface, which the button
+		// script then depends on. When they are unavailable (no Jetpack connection, an excluded
+		// context) the button still works and the server verifies the request without a session ID.
+		wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts_for( 'fp-example-express' );
 		wp_localize_script(
 			'fp-example-express',
 			'fpExampleExpress',

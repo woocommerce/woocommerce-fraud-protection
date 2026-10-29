@@ -71,7 +71,7 @@ Most integrations combine the same three steps. The sections for each integratio
 
 ### 1. Load the browser scripts
 
-Request the shared scripts from the hook that renders your payment surface, then enqueue your own script with `wc-fraud-protection-blackbox-init` as a dependency. Enqueue your script only when the request succeeds:
+Enqueue your script as you already do, then call `request_scripts_for()` with its handle from the code that renders your payment surface:
 
 ```php
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
@@ -79,22 +79,14 @@ use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 add_action(
 	'my_gateway_payment_surface_render',
 	function (): void {
-		if ( ! wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts() ) {
-			return;
-		}
+		wp_enqueue_script( 'my-gateway-checkout', plugins_url( 'js/checkout.js', __FILE__ ), array(), '1.0.0', true );
 
-		wp_enqueue_script(
-			'my-gateway-fraud-protection',
-			plugins_url( 'js/fraud-protection.js', __FILE__ ),
-			array( 'wc-fraud-protection-blackbox-init' ),
-			'1.0.0',
-			array( 'in_footer' => true )
-		);
+		wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts_for( 'my-gateway-checkout' );
 	}
 );
 ```
 
-`request_scripts()` returns `false` when the store is not connected to Jetpack, or when the request cannot render a payment surface. Your requests then go out without a session ID and are still verified.
+`request_scripts_for()` loads the shared scripts and makes your script depend on `wc-fraud-protection-blackbox-init`, so `window.wcFraudProtection` is set up before your script runs. It changes nothing and returns `false` when the store is not connected to Jetpack, or when the request cannot render a payment surface: your script loads without the shared scripts, and your requests go out without a session ID and are still verified. Call it before the scripts are printed. A script that exists only for Fraud Protection can be enqueued only when the call returns `true`, using `request_scripts()` first and adding the dependency yourself.
 
 ### 2. Send the session ID
 

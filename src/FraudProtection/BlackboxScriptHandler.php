@@ -97,6 +97,43 @@ class BlackboxScriptHandler {
 	}
 
 	/**
+	 * Request the shared scripts for one of your scripts, and make it depend on them.
+	 *
+	 * Register or enqueue your script first, as you already do, then call this from the code
+	 * that renders the payment surface, before the scripts are printed. When the shared
+	 * scripts load, `$handle` gets `wc-fraud-protection-blackbox-init` as a dependency, so
+	 * `window.wcFraudProtection` is set up before your script runs. Otherwise nothing changes
+	 * and your script loads without it.
+	 *
+	 * @param string $handle Handle of a script registered with WordPress.
+	 * @return bool True when the shared scripts are enqueued and `$handle` depends on them; false when the shared scripts are unavailable, or `$handle` is not registered or was already printed.
+	 *
+	 * @since 0.3.1
+	 */
+	public function request_scripts_for( string $handle ): bool {
+		$scripts = wp_scripts();
+		$script  = $scripts->query( $handle, 'registered' );
+		if ( ! $script instanceof \_WP_Dependency || in_array( $handle, $scripts->done, true ) ) {
+			FraudProtectionController::log(
+				'warning',
+				'Shared scripts were requested for a script that is not registered or was already printed',
+				array( 'script_handle' => $handle )
+			);
+			return false;
+		}
+
+		if ( ! $this->request_scripts() ) {
+			return false;
+		}
+
+		if ( ! in_array( 'wc-fraud-protection-blackbox-init', $script->deps, true ) ) {
+			$script->deps[] = 'wc-fraud-protection-blackbox-init';
+		}
+
+		return true;
+	}
+
+	/**
 	 * Request the shared scripts and the script that protects the `#order_review` pay form.
 	 *
 	 * For an extension with its own handler for WooCommerce's pay-for-order form, such as
