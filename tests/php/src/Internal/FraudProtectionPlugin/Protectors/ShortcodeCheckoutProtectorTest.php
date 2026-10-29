@@ -101,6 +101,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		remove_all_actions( 'woocommerce_after_checkout_validation' );
 		remove_all_actions( 'woocommerce_checkout_process' );
 		remove_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ), 10 );
+		remove_action( 'woocommerce_checkout_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ), 10 );
 		remove_all_filters( 'woocommerce_add_error' );
 		$this->reset_fraud_protection_scripts();
 		$this->restore_checkout_options();
@@ -192,6 +193,32 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 
 		$this->render_checkout_shortcode();
 
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox A checkout template that fires only woocommerce_checkout_order_review enqueues the protector.
+	 *
+	 * FunnelKit's checkout template fires its own hook instead of
+	 * woocommerce_checkout_before_order_review, but still renders the order
+	 * review through woocommerce_checkout_order_review.
+	 */
+	public function test_order_review_render_enqueues_protector(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->init(
+			$this->session_verifier,
+			$this->blocked_session_message,
+			$this->make_blackbox_script_handler()
+		);
+		$this->add_product_to_cart();
+		$this->sut->register();
+
+		ob_start();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_checkout_order_review' );
+		ob_end_clean();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
 	}
 
@@ -308,7 +335,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	*/
 
 	/**
-	 * @testdox register() waits for checkout processing and hooks the checkout form render signal.
+	 * @testdox register() waits for checkout processing and hooks the checkout form render signals.
 	 */
 	public function test_register_hooks(): void {
 		$this->sut->register();
@@ -325,6 +352,10 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->assertSame(
 			10,
 			has_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ) )
+		);
+		$this->assertSame(
+			10,
+			has_action( 'woocommerce_checkout_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ) )
 		);
 		$this->assertFalse( has_action( 'wp_enqueue_scripts', array( $this->sut, 'enqueue_shortcode_checkout_script' ) ) );
 	}
