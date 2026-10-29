@@ -12,13 +12,16 @@ require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway
 
 use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\Proxies\LegacyProxy;
 
 /**
  * Exercises the example gateway's native integration through the plugin's real extension points.
@@ -33,11 +36,18 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	private \FP_Example_Fraud_Protection $integration;
 
 	/**
-	 * Mock session verifier installed in the container.
+	 * Mock session verifier behind the request verifier.
 	 *
 	 * @var SessionVerifier&\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $session_verifier;
+
+	/**
+	 * Request verifier installed in the container, with its decision reuse filter registered.
+	 *
+	 * @var GatewayRequestVerifier
+	 */
+	private GatewayRequestVerifier $request_verifier;
 
 	/**
 	 * Set up test fixtures.
@@ -50,7 +60,10 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		}
 
 		$this->session_verifier = $this->createMock( SessionVerifier::class );
-		$GLOBALS['wc_container']->replace( SessionVerifier::class, $this->session_verifier );
+		$this->request_verifier = new GatewayRequestVerifier();
+		$this->request_verifier->init( $this->session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->request_verifier->register();
+		$GLOBALS['wc_container']->replace( GatewayRequestVerifier::class, $this->request_verifier );
 
 		$this->integration = new \FP_Example_Fraud_Protection();
 		$this->integration->register();
@@ -60,15 +73,15 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {
-		$GLOBALS['wc_container']->reset_replacement( SessionVerifier::class );
+		$GLOBALS['wc_container']->reset_replacement( GatewayRequestVerifier::class );
 		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->integration, 'resolve_payment_data' ), 10 );
-		remove_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->integration, 'supply_express_decision' ), 10 );
+		remove_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->request_verifier, 'supply_reused_decision' ), 10 );
 		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_express_button' ), 30 );
 		remove_action( 'woocommerce_checkout_before_order_review', array( $this->integration, 'render_express_reference' ) );
 		remove_action( 'wc_ajax_' . \FP_Example_Fraud_Protection::AJAX_ACTION, array( $this->integration, 'handle_express_pay' ) );
 		remove_filter( 'wp_doing_ajax', '__return_true' );
 		remove_all_filters( 'wp_die_ajax_handler' );
-		WC()->session->set( 'fp_example_fraud_verification', null );
+		WC()->session->set( '_wc_fraud_protection_reusable_decisions', null );
 		WC()->cart->empty_cart();
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		unset( $_GET[ \FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD ] );
@@ -193,7 +206,7 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $response['success'] );
 		$this->assertStringContainsString( 'unable to process this request', $response['data']['message'] );
 		$this->assertArrayNotHasKey( 'redirect', $response['data'], 'A block creates no payment reference' );
-		$this->assertNull( WC()->session->get( 'fp_example_fraud_verification' ), 'A block leaves nothing to reuse' );
+		$this->assertNull( WC()->session->get( '_wc_fraud_protection_reusable_decisions' ), 'A block keeps nothing for reuse' );
 	}
 
 	/**

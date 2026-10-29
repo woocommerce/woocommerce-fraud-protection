@@ -10,7 +10,7 @@ An extension needs an integration when it moves part of a payment outside those 
 
 Three rules apply to every integration:
 
-- **Fraud Protection is optional.** Register your integration only when `class_exists( SessionVerifier::class )` is true, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
+- **Fraud Protection is optional.** Register your integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.3.1 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
 - **Fail open.** Never stop a payment because Fraud Protection is unavailable. Send a request without a session ID when you have none; the server still verifies it.
 - **Declare only what you implement.** A declaration switches off a compatibility layer, so a declared but unimplemented integration leaves that flow unprotected.
 
@@ -67,7 +67,7 @@ Run `wp wc fraud-protection native-integrations list`. It lists the declarations
 
 ## The building blocks
 
-Most integrations combine the same four steps. The sections for each integration show the part specific to it.
+Most integrations combine the same three steps. The sections for each integration show the part specific to it.
 
 ### 1. Load the browser scripts
 
@@ -125,97 +125,37 @@ withSessionId( { action: 'my_gateway_create_order' } ).then( function ( body ) {
 
 A code path that must add the ID synchronously uses `prepareSessionId()` and `takePreparedSessionId()` instead; see [Express checkout](#express-checkout).
 
-### 3. Verify the request on the server
+### 3. Verify the request and reuse its decision
 
-Pass the submitted session ID to `SessionVerifier::verify_session()` before you act on the request. Stop on a Block decision with the standard message:
+Verify each request your gateway handles itself with `GatewayRequestVerifier::verify_request()` before you act on it, and stop it on a Block decision with the standard message. When the request comes before a WooCommerce submission that the plugin also verifies, such as the checkout that completes a purchase your request started, reuse the decision for that submission, so the attempt is scored only once:
 
 ```php
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
-use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
-$verifier = wc_get_container()->get( SessionVerifier::class );
-$decision = $verifier->verify_session(
-	wp_unslash( $_POST[ SessionVerifier::SESSION_ID_FIELD ] ?? '' ),
-	'my_gateway_create_order',
-	0,
-	array(
-		'payment_method' => 'my_gateway',
-		'payment_data'   => array(),
-	)
-);
+$request = wc_get_container()->get( GatewayRequestVerifier::class )->verify_request( 'my_gateway_create_order', 'my_gateway' );
 
-if ( FraudDecision::Block === $decision ) {
+if ( $request->is_blocked() ) {
 	wp_send_json_error( array( 'message' => ( new BlockedSessionMessage() )->get_plaintext( MessageContext::Purchase ) ), 403 );
 }
+
+$provider_order_id = my_gateway_create_provider_order(); // Your own call.
+$request->reuse_decision_for( $provider_order_id );
 ```
 
-The second argument identifies your flow: a stable ASCII string of 32 characters or fewer. Use `MessageContext::Purchase` in purchase flows and `MessageContext::Generic` elsewhere, and `get_html()` instead of `get_plaintext()` for a notice rendered in a page.
+The first argument identifies your flow: a stable ASCII string of 32 characters or fewer. `verify_request()` reads the session ID from the request body, under the field name in `config.sessionIdField`: a form field, or a top-level property of a JSON body. When your request carries it anywhere else, such as in a nested JSON object, a header or a REST route parameter, pass the session ID you received as the fifth argument; otherwise the request is verified without it. Use `MessageContext::Purchase` in purchase flows and `MessageContext::Generic` elsewhere, and `get_html()` instead of `get_plaintext()` for a notice rendered in a page.
 
-### 4. Supply the decision to the final submission
-
-When your request comes before a WooCommerce submission that the plugin also verifies, such as the checkout that completes a purchase your request started, give that submission the decision your request received, so the attempt is scored only once.
-
-Keep a record in the WooCommerce session with the session ID that the verification resolved (`last_verified_session_id()`, not the one the browser sent). Also store a reference that only your server creates in that request, such as the ID of the order or setup intent at your payment provider:
+The reference you pass to `reuse_decision_for()` must be a value that only your server created while handling this request, such as the ID of the order or setup intent at your payment provider. The browser gets it from your response, and the final submission posts it back. Tell the plugin where to find it in that submission, once, while your plugin loads:
 
 ```php
-function my_gateway_remember_decision( string $session_id, FraudDecision $decision, string $reference ): void {
-	if ( ! WC()->session ) {
-		return;
-	}
-
-	WC()->session->set(
-		'my_gateway_fraud_decision',
-		'' === $session_id ? null : array(
-			'session_id' => $session_id,
-			'decision'   => $decision->value,
-			'reference'  => $reference,
-		)
-	);
-}
-```
-
-Then supply the record, at most once, to the submission that carries the same reference:
-
-```php
-use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
-
-add_filter(
-	'woocommerce_fraud_protection_skip_session_verify',
-	function ( $supplied, $source, $request_data ) {
-		if (
-			false !== $supplied
-			|| ! is_array( $request_data )
-			|| ! in_array( $source, array( 'blocks_checkout', 'shortcode_checkout', 'pay_for_order' ), true )
-			|| 'my_gateway' !== ( $request_data['payment_method'] ?? '' )
-			|| ! WC()->session
-		) {
-			return $supplied;
-		}
-
-		$record = WC()->session->get( 'my_gateway_fraud_decision' );
-		WC()->session->set( 'my_gateway_fraud_decision', null ); // One use only.
-
-		$reference = $request_data['payment_data']['my_gateway_order_id'] ?? '';
-		$decision  = is_string( $record['decision'] ?? null ) ? FraudDecision::tryFrom( $record['decision'] ) : null;
-
-		if (
-			! in_array( $decision, FraudDecision::ACTIONABLE, true )
-			|| '' === $reference
-			|| ( $record['reference'] ?? '' ) !== $reference
-		) {
-			return $supplied;
-		}
-
-		return new SuppliedDecision( $decision, $record['session_id'] );
-	},
-	10,
-	3
+wc_get_container()->get( GatewayRequestVerifier::class )->register_reference_reader(
+	'my_gateway',
+	fn( array $payment_data ) => $payment_data['my_gateway_order_id'] ?? ''
 );
 ```
 
-The `$source` values in the example are the ones the plugin's own checkout and Pay for order verifications pass; the "Add payment method" form passes `add_payment_method`. Return the incoming value whenever you have nothing to supply, so other callbacks and normal verification still work.
+The next submission paid with your gateway that carries the reference, with the same cart items, reuses the decision instead of being verified, once. Any other submission is verified normally. The [API reference](api-reference.md#gatewayrequestverifier) has the exact rules, and the lower-level [`SessionVerifier`](api-reference.md#sessionverifier) and [`woocommerce_fraud_protection_skip_session_verify`](api-reference.md#woocommerce_fraud_protection_skip_session_verify) for flows it does not cover.
 
 ## Integrations
 
@@ -261,8 +201,7 @@ add_filter(
 
 1. [Load the browser scripts](#1-load-the-browser-scripts) on the product, cart, checkout and Pay for order pages where your buttons render.
 2. [Send the session ID](#2-send-the-session-id) with the request.
-3. [Verify it](#3-verify-the-request-on-the-server) and stop on a Block decision with `MessageContext::Purchase`.
-4. [Supply the decision](#4-supply-the-decision-to-the-final-submission) to the checkout or Pay for order submission that completes the purchase.
+3. [Verify it](#3-verify-the-request-and-reuse-its-decision), stop on a Block decision with `MessageContext::Purchase`, and reuse the decision for the checkout or Pay for order submission that completes the purchase.
 
 ```php
 add_action(
@@ -270,33 +209,26 @@ add_action(
 	function (): void {
 		check_ajax_referer( 'my-gateway-create-order', 'security' );
 
-		$verifier = wc_get_container()->get( SessionVerifier::class );
-		$decision = $verifier->verify_session(
-			wp_unslash( $_POST[ SessionVerifier::SESSION_ID_FIELD ] ?? '' ),
-			'my_gateway_create_order',
-			0,
-			array( 'payment_method' => 'my_gateway', 'payment_data' => array() )
-		);
-
-		if ( FraudDecision::Block === $decision ) {
+		$request = wc_get_container()->get( GatewayRequestVerifier::class )->verify_request( 'my_gateway_create_order', 'my_gateway' );
+		if ( $request->is_blocked() ) {
 			wp_send_json_error( array( 'message' => ( new BlockedSessionMessage() )->get_plaintext( MessageContext::Purchase ) ), 403 );
 		}
 
 		$provider_order_id = my_gateway_create_provider_order(); // Your own call.
-		my_gateway_remember_decision( $verifier->last_verified_session_id(), $decision, $provider_order_id );
+		$request->reuse_decision_for( $provider_order_id );
 
 		wp_send_json_success( array( 'order_id' => $provider_order_id ) );
 	}
 );
 ```
 
-The checkout that follows then posts `my_gateway_order_id`, and the filter from step 4 supplies the decision to it.
+The checkout that follows then posts `my_gateway_order_id`, where the reader you passed to `register_reference_reader()` finds it.
 
 ### Add payment method requests
 
 **Declare:** `fraud_protection_add_payment_method` in the gateway's `$supports`.
 
-**Implement:** the same steps as [Checkout requests](#checkout-requests), for each request that checks or saves a payment method outside a purchase, such as creating a setup intent. These requests come from the My Account "Add payment method" form and from the WooCommerce Subscriptions change-payment-method form. Block with `MessageContext::Generic`, and supply the decision to the form submission (source `add_payment_method`):
+**Implement:** the same steps as [Checkout requests](#checkout-requests), for each request that checks or saves a payment method outside a purchase, such as creating a setup intent. These requests come from the My Account "Add payment method" form and from the WooCommerce Subscriptions change-payment-method form. Block with `MessageContext::Generic`, and reuse the decision for the form submission:
 
 ```php
 add_action(
@@ -304,25 +236,20 @@ add_action(
 	function (): void {
 		check_ajax_referer( 'my-gateway-setup-intent', 'security' );
 
-		$verifier = wc_get_container()->get( SessionVerifier::class );
-		$decision = $verifier->verify_session(
-			wp_unslash( $_POST[ SessionVerifier::SESSION_ID_FIELD ] ?? '' ),
-			'my_gateway_setup_intent',
-			0,
-			array( 'payment_method' => 'my_gateway', 'payment_data' => array() )
-		);
-
-		if ( FraudDecision::Block === $decision ) {
+		$request = wc_get_container()->get( GatewayRequestVerifier::class )->verify_request( 'my_gateway_setup_intent', 'my_gateway' );
+		if ( $request->is_blocked() ) {
 			wp_send_json_error( array( 'message' => ( new BlockedSessionMessage() )->get_plaintext( MessageContext::Generic ) ), 403 );
 		}
 
 		$setup_intent_id = my_gateway_create_setup_intent(); // Your own call.
-		my_gateway_remember_decision( $verifier->last_verified_session_id(), $decision, $setup_intent_id );
+		$request->reuse_decision_for( $setup_intent_id );
 
 		wp_send_json_success( array( 'setup_intent' => $setup_intent_id ) );
 	}
 );
 ```
+
+The reader you pass to `register_reference_reader()` serves both flows: return the setup intent ID when the submission carries one.
 
 PayPal Payments creates setup tokens both at checkout and when a payment method is saved. Its setup-token compatibility layer therefore stands aside only when both `fraud_protection_checkout` and `fraud_protection_add_payment_method` are declared, so PayPal Payments must declare the two together.
 
@@ -374,7 +301,11 @@ Load the browser scripts on every page where the buttons render, as in [step 1](
 
 ```php
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
 // While rendering the form:
 wc_get_container()->get( BlackboxScriptHandler::class )->request_pay_for_order_script();

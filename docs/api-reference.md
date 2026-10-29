@@ -8,6 +8,7 @@ This is the reference for every public part of WooCommerce Fraud Protection: the
 - [PHP services](#php-services)
     - [Obtaining the services](#obtaining-the-services)
     - [SessionVerifier](#sessionverifier)
+    - [GatewayRequestVerifier](#gatewayrequestverifier)
     - [BlackboxScriptHandler](#blackboxscripthandler)
     - [FraudProtectionReporter](#fraudprotectionreporter)
 - [PHP helpers](#php-helpers)
@@ -19,6 +20,7 @@ This is the reference for every public part of WooCommerce Fraud Protection: the
     - [FraudProtectionIntegration](#fraudprotectionintegration)
 - [Value objects](#value-objects)
     - [SuppliedDecision](#supplieddecision)
+    - [VerifiedRequest](#verifiedrequest)
     - [PaymentMethodData](#paymentmethoddata)
     - [PaymentInstrumentData](#paymentinstrumentdata)
     - [ReportContextData](#reportcontextdata)
@@ -52,7 +54,7 @@ Fraud Protection is optional for the extensions that integrate with it. Guard ea
 
 ### Obtaining the services
 
-`SessionVerifier`, `BlackboxScriptHandler` and `FraudProtectionReporter` receive their dependencies through an `init()` method that WooCommerce's dependency-injection container calls. Always resolve them from the container; an instance created with `new` is not initialized:
+`SessionVerifier`, `GatewayRequestVerifier`, `BlackboxScriptHandler` and `FraudProtectionReporter` receive their dependencies through an `init()` method that WooCommerce's dependency-injection container calls. Always resolve them from the container; an instance created with `new` is not initialized:
 
 ```php
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -97,7 +99,7 @@ The plugin's own verifications pass these sources, which `woocommerce_fraud_prot
 | `pay_for_order` | Pay for order page |
 | `add_payment_method` | My Account "Add payment method" form |
 
-The [integration guide](integration-guide.md#3-verify-the-request-on-the-server) shows a complete verification.
+A gateway verifying its own requests uses [`GatewayRequestVerifier`](#gatewayrequestverifier), which calls this method. The [integration guide](integration-guide.md#change-payment-method-forms) shows a direct call for a classic form.
 
 #### last_verified_session_id()
 
@@ -106,6 +108,51 @@ public function last_verified_session_id(): string
 ```
 
 The session ID that the last `verify_session()` call resolved and stored, or an empty string when that call supplied a decision, failed open, or got no usable session ID. Key any record of the decision by this ID, not by the one the browser sent.
+
+### GatewayRequestVerifier
+
+Verifies a request that a payment gateway handles itself, such as a create-order or setup-intent call, and reuses its decision for the WooCommerce submission that completes the same attempt, so the attempt is scored once. It wraps `SessionVerifier` and the `woocommerce_fraud_protection_skip_session_verify` filter, and keeps the decision record for you. Since 0.3.1.
+
+#### verify_request()
+
+```php
+public function verify_request( string $source, string $gateway_id, array $payment_data = array(), int $order_id = 0, mixed $session_id = null ): VerifiedRequest
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `$source` | A stable ASCII identifier of the request, 32 characters or fewer, as for `verify_session()`. |
+| `$gateway_id` | The ID of the gateway the request pays with. |
+| `$payment_data` | A flat map of the gateway fields that describe the payment instrument, passed to `woocommerce_fraud_protection_resolved_payment_data` callbacks. |
+| `$order_id` | The order the request pays for, or `0` before the order exists. |
+| `$session_id` | The session ID the browser sent. `null` reads it, together with the reason the browser reports for a missing ID, from the request body under `SessionVerifier::SESSION_ID_FIELD`: a form field, or a top-level property of a body sent as `application/json`. A form field wins over a JSON body. Pass it explicitly when the request carries it anywhere else, such as in a nested JSON object or a REST route parameter; otherwise the request is verified without it. |
+
+Returns a [`VerifiedRequest`](#verifiedrequest). Like `verify_session()`, it never throws, and errors produce `FraudDecision::Allow`. Check your nonce and permissions before calling it.
+
+#### register_reference_reader()
+
+```php
+public function register_reference_reader( string $gateway_id, callable $reference_reader ): void
+```
+
+Call it once while your plugin loads. Before the plugin verifies a later submission paid with `$gateway_id`, such as a checkout, Pay for order or payment-method submission, it calls `$reference_reader( array $payment_data, array $request_data, string $source )`. Return the reference the submission carries, or an empty string. The submission reuses the decision kept with `VerifiedRequest::reuse_decision_for()` instead of being verified when:
+
+- the reference matches the one passed to `reuse_decision_for()` for the gateway;
+- the cart items and quantities have not changed since `reuse_decision_for()` was called (a changed total alone does not count);
+- the submission's source differs from the source of the request that produced the decision.
+
+A decision is reused at most once. A reader that throws, or returns anything but a matching string, leads to a normal verification. A later call for the same gateway replaces the reader.
+
+```php
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
+
+wc_get_container()->get( GatewayRequestVerifier::class )->register_reference_reader(
+	'my_gateway',
+	fn( array $payment_data ) => $payment_data['my_gateway_order_id'] ?? ''
+);
+```
+
+The [integration guide](integration-guide.md#3-verify-the-request-and-reuse-its-decision) shows the full flow.
 
 ### BlackboxScriptHandler
 
@@ -261,6 +308,18 @@ new SuppliedDecision( FraudDecision $decision, ?string $session_id_for_order = n
 
 `$decision` is the decision the earlier verification returned; only `FraudDecision::Allow` and `FraudDecision::Block` are applied. `$session_id_for_order` is the session ID that verification resolved (`SessionVerifier::last_verified_session_id()`), which the plugin stores on the order being verified, or `null` when it has none. Never use a session ID submitted by the browser. Both properties are public and read-only.
 
+### VerifiedRequest
+
+The result of `GatewayRequestVerifier::verify_request()`. Since 0.3.1.
+
+| Method | Description |
+|--------|-------------|
+| `get_decision(): FraudDecision` | `FraudDecision::Allow` or `FraudDecision::Block`. |
+| `is_blocked(): bool` | `true` for a Block decision: stop the request with the [`BlockedSessionMessage`](#blockedsessionmessage). |
+| `reuse_decision_for( string $reference ): bool` | Keeps the decision for reuse by the submission that completes the attempt, matched by `$reference`: a value only your server created while handling this request, such as the ID of the order or setup intent at your payment provider. Each gateway keeps one reusable decision per customer session; a new one replaces the previous one. Returns `false`, keeping nothing, when the reference is empty or the verification resolved no session ID, for example because it failed open; the submission is then verified normally. |
+
+Obtain it from `verify_request()`; its constructor is internal.
+
 ### PaymentMethodData
 
 The payment data of an attempt, as passed to and returned from [`woocommerce_fraud_protection_resolved_payment_data`](#woocommerce_fraud_protection_resolved_payment_data). Immutable.
@@ -415,7 +474,7 @@ apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecis
 
 Return a [`SuppliedDecision`](#supplieddecision) to skip verification; the decision is enforced as if the verification had returned it. Return the incoming value when you have nothing to supply. A later callback can replace your result. Any other value, a `SuppliedDecision` whose decision is not in `FraudDecision::ACTIONABLE`, or a callback that throws, verifies normally.
 
-Supply a decision only to the attempt that received it: key your record by evidence your server produced in the earlier request, and use it once. The [integration guide](integration-guide.md#4-supply-the-decision-to-the-final-submission) shows the pattern. Since 0.1.0; returns a `SuppliedDecision` since 0.1.9.
+Supply a decision only to the attempt that received it: key your record by evidence your server produced in the earlier request, and use it once. [`GatewayRequestVerifier`](#gatewayrequestverifier) does this for a gateway's own requests; use the filter directly only for flows it does not cover. Since 0.1.0; returns a `SuppliedDecision` since 0.1.9.
 
 ### woocommerce_fraud_protection_native_integrations
 
