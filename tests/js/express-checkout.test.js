@@ -105,7 +105,7 @@ describe( 'express-checkout', () => {
 		} );
 	} );
 
-	it( 'removes an earlier session ID when no prepared session ID is ready', () => {
+	it( 'replaces an earlier session ID with not_ready when no prepared session ID is ready', () => {
 		mockTakePreparedSessionId.mockReturnValue( '' );
 		setupAndLoad();
 
@@ -114,15 +114,26 @@ describe( 'express-checkout', () => {
 			[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
 		} );
 
-		expect( result ).toEqual( { other: { value: 1 } } );
+		expect( result ).toEqual( {
+			other: { value: 1 },
+			[ NAMESPACE ]: { blackbox_session_id_error: 'not_ready' },
+		} );
 	} );
 
-	it( 'leaves the data without a session ID when none is ready', () => {
-		mockTakePreparedSessionId.mockReturnValue( '' );
-		setupAndLoad();
+	it.each( [
+		[ 'WooPayments', WOOPAYMENTS_FILTER ],
+		[ 'Stripe', STRIPE_FILTER ],
+	] )(
+		'reports not_ready in the %s extension data when no session ID is ready',
+		( _, filterName ) => {
+			mockTakePreparedSessionId.mockReturnValue( '' );
+			setupAndLoad();
 
-		expect( applyFilter( WOOPAYMENTS_FILTER, {} ) ).toEqual( {} );
-	} );
+			expect( applyFilter( filterName, {} ) ).toEqual( {
+				[ NAMESPACE ]: { blackbox_session_id_error: 'not_ready' },
+			} );
+		}
+	);
 
 	it.each( [
 		[ 'undefined', undefined ],

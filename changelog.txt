@@ -1,6 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.3.1
+* Fixed - On the classic checkout, payment attempts are analyzed with the shopper's browser session even when another plugin sends the order before the session is ready. A session that arrives too late for one attempt is used for the next.
+* Dev - Payment attempts without a browser session now report whether the plugin's scripts handled the request.
 * Fixed - Payments that a cashier records in WooCommerce POS, such as cash, are no longer checked for fraud, since no shopper browser is involved. Other payment methods used in the POS are still checked.
 * Fixed - Payment attempts are now analyzed with the shopper's browser session on some custom classic checkout templates, including FunnelKit.
 
