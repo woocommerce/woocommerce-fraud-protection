@@ -16,7 +16,17 @@ const EXISTING_IDENTITY = '0123456789abcdef0123456789abcdef';
 let mockConfigure;
 let mockInit;
 let mockGetSessionId;
+let mockFlush;
 let mockReset;
+
+function flushed( overrides = {} ) {
+	return Promise.resolve( {
+		sessionId: 'test-session-id',
+		challengePending: false,
+		outcome: 'ok',
+		...overrides,
+	} );
+}
 
 beforeEach( () => {
 	delete window.Blackbox;
@@ -33,6 +43,7 @@ beforeEach( () => {
 	mockConfigure = jest.fn();
 	mockInit = jest.fn( () => Promise.resolve() );
 	mockGetSessionId = jest.fn( () => Promise.resolve( 'test-session-id' ) );
+	mockFlush = jest.fn( () => flushed() );
 	mockReset = jest.fn( () => Promise.resolve() );
 } );
 
@@ -59,6 +70,7 @@ function setupAndLoad( configOverrides = {} ) {
 		configure: mockConfigure,
 		init: mockInit,
 		getSessionId: mockGetSessionId,
+		flush: mockFlush,
 		reset: mockReset,
 	};
 
@@ -224,30 +236,30 @@ describe( 'blackbox-init', () => {
 	} );
 
 	describe( 'acquireSessionId', () => {
-		it( 'resolves with session ID from getSessionId()', async () => {
+		it( 'resolves with the session ID from flush()', async () => {
 			setupAndLoad();
 
 			const sessionId = await window.wcFraudProtection.acquireSessionId();
 
 			expect( sessionId ).toBe( 'test-session-id' );
-			expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+			expect( mockFlush ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'resolves with empty string after the configured timeout when getSessionId never resolves', async () => {
-			mockGetSessionId.mockReturnValue( new Promise( () => {} ) );
+		it( 'resolves with empty string when flush() never settles', async () => {
+			mockFlush.mockReturnValue( new Promise( () => {} ) );
 			setupAndLoad();
 
 			const resultPromise = window.wcFraudProtection.acquireSessionId();
 
 			const result = await jest
-				.advanceTimersByTimeAsync( 3000 )
+				.advanceTimersByTimeAsync( 3500 )
 				.then( () => resultPromise );
 
 			expect( result ).toBe( '' );
 		} );
 
-		it( 'resolves with empty string when getSessionId rejects', async () => {
-			mockGetSessionId.mockReturnValue(
+		it( 'resolves with empty string when flush() rejects', async () => {
+			mockFlush.mockReturnValue(
 				Promise.reject( new Error( 'SDK error' ) )
 			);
 			setupAndLoad();
@@ -257,20 +269,9 @@ describe( 'blackbox-init', () => {
 			expect( sessionId ).toBe( '' );
 		} );
 
-		it( 'resolves with empty string when getSessionId resolves with non-string', async () => {
-			mockGetSessionId.mockReturnValue(
-				Promise.resolve( { message: 'Failed to fetch' } )
-			);
+		it( 'resolves with empty string when flush() is missing', async () => {
 			setupAndLoad();
-
-			const sessionId = await window.wcFraudProtection.acquireSessionId();
-
-			expect( sessionId ).toBe( '' );
-		} );
-
-		it( 'resolves with empty string when getSessionId is missing', async () => {
-			setupAndLoad();
-			delete window.Blackbox.getSessionId;
+			delete window.Blackbox.flush;
 
 			const sessionId = await window.wcFraudProtection.acquireSessionId();
 
@@ -279,118 +280,12 @@ describe( 'blackbox-init', () => {
 	} );
 
 	describe( 'acquireSessionIdResult', () => {
-		it( 'resolves with the session ID and no error', async () => {
+		it( 'resolves with the session ID from flush(), with the configured deadline', async () => {
 			setupAndLoad();
 
 			await expect(
 				window.wcFraudProtection.acquireSessionIdResult()
 			).resolves.toEqual( { sessionId: 'test-session-id', error: '' } );
-		} );
-
-		it( 'reports a timeout when getSessionId does not settle in time', async () => {
-			mockGetSessionId.mockReturnValue( new Promise( () => {} ) );
-			setupAndLoad();
-
-			const resultPromise =
-				window.wcFraudProtection.acquireSessionIdResult();
-			await jest.advanceTimersByTimeAsync( 3000 );
-
-			await expect( resultPromise ).resolves.toEqual( {
-				sessionId: '',
-				error: 'timeout',
-			} );
-		} );
-
-		it.each( [
-			[ 'rejects', () => Promise.reject( new Error( 'SDK error' ) ) ],
-			[
-				'throws',
-				() => {
-					throw new Error( 'SDK error' );
-				},
-			],
-			[ 'resolves with a non-string', () => Promise.resolve( {} ) ],
-			[ 'resolves with an empty string', () => Promise.resolve( '' ) ],
-		] )( 'reports an SDK error when getSessionId %s', async ( _, impl ) => {
-			mockGetSessionId.mockImplementation( impl );
-			setupAndLoad();
-
-			await expect(
-				window.wcFraudProtection.acquireSessionIdResult()
-			).resolves.toEqual( { sessionId: '', error: 'sdk_error' } );
-			await expect(
-				window.wcFraudProtection.acquireSessionId()
-			).resolves.toBe( '' );
-		} );
-
-		it( 'reports an unavailable SDK when getSessionId is missing', async () => {
-			setupAndLoad();
-			delete window.Blackbox.getSessionId;
-
-			await expect(
-				window.wcFraudProtection.acquireSessionIdResult()
-			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
-		} );
-
-		it( 'is the only method set when the SDK is missing', async () => {
-			window.wcFraudProtection = {
-				config: {
-					apiKey: 'test-key',
-					timeout: 3000,
-					sessionIdField: 'wc_fraud_protection_session_id',
-				},
-			};
-
-			jest.isolateModules( () => {
-				require( '../../assets/js/blackbox-init' );
-			} );
-
-			expect( window.wcFraudProtection.acquireSessionId ).toBeUndefined();
-			expect( window.wcFraudProtection.reset ).toBeUndefined();
-			await expect(
-				window.wcFraudProtection.acquireSessionIdResult()
-			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
-		} );
-	} );
-
-	describe( 'acquireSessionIdResult with flush()', () => {
-		let mockFlush;
-		let mockSubscribe;
-		let stateListener;
-		let mockUnsubscribe;
-
-		function flushed( overrides = {} ) {
-			return Promise.resolve( {
-				sessionId: 'flushed-session-id',
-				challengePending: false,
-				outcome: 'ok',
-				...overrides,
-			} );
-		}
-
-		function setupWithFlush() {
-			setupAndLoad();
-			mockFlush = jest.fn( () => flushed() );
-			mockUnsubscribe = jest.fn();
-			stateListener = undefined;
-			mockSubscribe = jest.fn( ( listener ) => {
-				stateListener = listener;
-				listener( { status: 'challenge', sessionId: 'challenged-id' } );
-				return mockUnsubscribe;
-			} );
-			window.Blackbox.flush = mockFlush;
-			window.Blackbox.subscribe = mockSubscribe;
-		}
-
-		it( 'resolves with the session ID from flush(), with the configured deadline', async () => {
-			setupWithFlush();
-
-			await expect(
-				window.wcFraudProtection.acquireSessionIdResult()
-			).resolves.toEqual( {
-				sessionId: 'flushed-session-id',
-				error: '',
-			} );
 			expect( mockFlush ).toHaveBeenCalledWith( { deadlineMs: 3000 } );
 			expect( mockGetSessionId ).not.toHaveBeenCalled();
 		} );
@@ -398,13 +293,13 @@ describe( 'blackbox-init', () => {
 		it.each( [ 'timeout', 'error' ] )(
 			'keeps the session ID that flush() returns with the %s outcome',
 			async ( outcome ) => {
-				setupWithFlush();
 				mockFlush.mockImplementation( () => flushed( { outcome } ) );
+				setupAndLoad();
 
 				await expect(
 					window.wcFraudProtection.acquireSessionIdResult()
 				).resolves.toEqual( {
-					sessionId: 'flushed-session-id',
+					sessionId: 'test-session-id',
 					error: '',
 				} );
 			}
@@ -417,10 +312,10 @@ describe( 'blackbox-init', () => {
 		] )(
 			'reports %s without a session ID as %s',
 			async ( outcome, error ) => {
-				setupWithFlush();
 				mockFlush.mockImplementation( () =>
 					flushed( { sessionId: '', outcome } )
 				);
+				setupAndLoad();
 
 				await expect(
 					window.wcFraudProtection.acquireSessionIdResult()
@@ -442,17 +337,20 @@ describe( 'blackbox-init', () => {
 				() => flushed( { sessionId: {} } ),
 			],
 		] )( 'reports an SDK error when flush() %s', async ( _, impl ) => {
-			setupWithFlush();
 			mockFlush.mockImplementation( impl );
+			setupAndLoad();
 
 			await expect(
 				window.wcFraudProtection.acquireSessionIdResult()
 			).resolves.toEqual( { sessionId: '', error: 'sdk_error' } );
+			await expect(
+				window.wcFraudProtection.acquireSessionId()
+			).resolves.toBe( '' );
 		} );
 
 		it( 'reports a timeout when flush() never settles', async () => {
-			setupWithFlush();
 			mockFlush.mockReturnValue( new Promise( () => {} ) );
+			setupAndLoad();
 
 			const resultPromise =
 				window.wcFraudProtection.acquireSessionIdResult();
@@ -467,195 +365,46 @@ describe( 'blackbox-init', () => {
 			expect( result ).toEqual( { sessionId: '', error: 'timeout' } );
 		} );
 
-		it( 'waits for an active challenge to end, then resolves with the current session ID', async () => {
-			setupWithFlush();
-			mockFlush
-				.mockImplementationOnce( () =>
-					flushed( {
-						sessionId: 'challenged-id',
-						challengePending: true,
-					} )
-				)
-				.mockImplementationOnce( () =>
-					flushed( { sessionId: 'challenged-id' } )
-				);
-
-			let result;
-			window.wcFraudProtection
-				.acquireSessionIdResult()
-				.then( ( value ) => {
-					result = value;
-				} );
-			await flushPromises();
-
-			expect( mockSubscribe ).toHaveBeenCalledTimes( 1 );
-			expect( mockFlush ).toHaveBeenCalledTimes( 1 );
-			expect( result ).toBeUndefined();
-
-			// The challenge takes longer than the session ID timeout.
-			await jest.advanceTimersByTimeAsync( 60 * 1000 );
-			expect( result ).toBeUndefined();
-
-			stateListener( { status: 'ready', sessionId: 'challenged-id' } );
-			await flushPromises();
-
-			expect( mockUnsubscribe ).toHaveBeenCalledTimes( 1 );
-			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
-			expect( result ).toEqual( {
-				sessionId: 'challenged-id',
-				error: '',
-			} );
-		} );
-
-		it( 'resolves with the session ID that is current after the challenge', async () => {
-			setupWithFlush();
-			mockFlush
-				.mockImplementationOnce( () =>
-					flushed( {
-						sessionId: 'expired-id',
-						challengePending: true,
-					} )
-				)
-				.mockImplementationOnce( () =>
-					flushed( { sessionId: 'replacement-id' } )
-				);
-
-			const resultPromise =
-				window.wcFraudProtection.acquireSessionIdResult();
-			await flushPromises();
-			stateListener( { status: 'loading' } );
-
-			await expect( resultPromise ).resolves.toEqual( {
-				sessionId: 'replacement-id',
-				error: '',
-			} );
-		} );
-
-		it( 'does not wait again when the second flush() reports a challenge', async () => {
-			setupWithFlush();
+		it( 'does not wait for a challenge that flush() reports', async () => {
 			mockFlush.mockImplementation( () =>
 				flushed( { challengePending: true } )
 			);
-
-			const resultPromise =
-				window.wcFraudProtection.acquireSessionIdResult();
-			await flushPromises();
-			stateListener( {
-				status: 'ready',
-				sessionId: 'flushed-session-id',
-			} );
-
-			await expect( resultPromise ).resolves.toEqual( {
-				sessionId: 'flushed-session-id',
-				error: '',
-			} );
-			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
-			expect( mockSubscribe ).toHaveBeenCalledTimes( 1 );
-		} );
-
-		it( 'stops waiting for a challenge after five minutes', async () => {
-			setupWithFlush();
-			mockFlush.mockImplementationOnce( () =>
-				flushed( { challengePending: true } )
-			);
-
-			let result;
-			window.wcFraudProtection
-				.acquireSessionIdResult()
-				.then( ( value ) => {
-					result = value;
-				} );
-			await flushPromises();
-			await jest.advanceTimersByTimeAsync( 5 * 60 * 1000 - 1 );
-			expect( result ).toBeUndefined();
-
-			await jest.advanceTimersByTimeAsync( 1 );
-
-			expect( mockUnsubscribe ).toHaveBeenCalledTimes( 1 );
-			expect( result ).toEqual( {
-				sessionId: 'flushed-session-id',
-				error: '',
-			} );
-		} );
-
-		it( 'unsubscribes when the challenge already ended at subscription', async () => {
-			setupWithFlush();
-			mockFlush.mockImplementationOnce( () =>
-				flushed( { challengePending: true } )
-			);
-			mockSubscribe.mockImplementation( ( listener ) => {
-				listener( {
-					status: 'ready',
-					sessionId: 'flushed-session-id',
-				} );
-				return mockUnsubscribe;
-			} );
+			setupAndLoad();
 
 			await expect(
 				window.wcFraudProtection.acquireSessionIdResult()
-			).resolves.toEqual( {
-				sessionId: 'flushed-session-id',
-				error: '',
-			} );
-			expect( mockUnsubscribe ).toHaveBeenCalledTimes( 1 );
-			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+			).resolves.toEqual( { sessionId: 'test-session-id', error: '' } );
+			expect( mockFlush ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it.each( [
-			[
-				'is missing',
-				() => {
-					delete window.Blackbox.subscribe;
+		it( 'reports an unavailable SDK when flush() is missing', async () => {
+			setupAndLoad();
+			delete window.Blackbox.flush;
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
+			expect( mockGetSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'is the only method set when the SDK is missing', async () => {
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
 				},
-			],
-			[
-				'throws',
-				() =>
-					mockSubscribe.mockImplementation( () => {
-						throw new Error( 'SDK error' );
-					} ),
-			],
-		] )(
-			'does not wait for a challenge when subscribe() %s',
-			async ( _, breakSubscribe ) => {
-				setupWithFlush();
-				mockFlush.mockImplementationOnce( () =>
-					flushed( { challengePending: true } )
-				);
-				breakSubscribe();
+			};
 
-				await expect(
-					window.wcFraudProtection.acquireSessionIdResult()
-				).resolves.toEqual( {
-					sessionId: 'flushed-session-id',
-					error: '',
-				} );
-				expect( mockFlush ).toHaveBeenCalledTimes( 2 );
-			}
-		);
+			jest.isolateModules( () => {
+				require( '../../assets/js/blackbox-init' );
+			} );
 
-		it( 'does not hand out the flushed session ID as the prepared one', async () => {
-			setupWithFlush();
-			mockFlush.mockImplementation( () =>
-				flushed( { sessionId: 'test-session-id' } )
-			);
-			window.wcFraudProtection.prepareSessionId();
-			await flushPromises();
-
-			await window.wcFraudProtection.acquireSessionIdResult();
-
-			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
-				''
-			);
-		} );
-
-		it( 'does not prepare session IDs with flush()', async () => {
-			setupWithFlush();
-			window.wcFraudProtection.prepareSessionId();
-			await flushPromises();
-
-			expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
-			expect( mockFlush ).not.toHaveBeenCalled();
+			expect( window.wcFraudProtection.acquireSessionId ).toBeUndefined();
+			expect( window.wcFraudProtection.reset ).toBeUndefined();
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
 		} );
 	} );
 
@@ -712,6 +461,15 @@ describe( 'blackbox-init', () => {
 			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
 				''
 			);
+		} );
+
+		it( 'is fetched with getSessionId(), not flush()', async () => {
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+			expect( mockFlush ).not.toHaveBeenCalled();
 		} );
 
 		it( 'is handed out once, then a fresh session is started', async () => {
@@ -773,8 +531,10 @@ describe( 'blackbox-init', () => {
 		it( 'is not prepared again after acquireSessionId() returned it, until an attempt finds none', async () => {
 			mockGetSessionId
 				.mockResolvedValueOnce( 'first-session-id' )
-				.mockResolvedValueOnce( 'first-session-id' )
 				.mockResolvedValueOnce( 'second-session-id' );
+			mockFlush.mockImplementation( () =>
+				flushed( { sessionId: 'first-session-id' } )
+			);
 			setupAndLoad();
 			window.wcFraudProtection.prepareSessionId();
 			await flushPromises();
@@ -806,8 +566,10 @@ describe( 'blackbox-init', () => {
 						resolveRefill = resolve;
 					} )
 				)
-				.mockResolvedValueOnce( 'second-session-id' )
 				.mockResolvedValueOnce( 'third-session-id' );
+			mockFlush.mockImplementation( () =>
+				flushed( { sessionId: 'second-session-id' } )
+			);
 			setupAndLoad();
 			window.wcFraudProtection.prepareSessionId();
 			await flushPromises();

@@ -1,8 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.3.1
-* Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when it is slow to update. When the shopper is asked to complete a verification step, the payment continues after it ends.
-* Dev - `window.wcFraudProtection.acquireSessionId()` now sends the shopper's latest session data before it resolves, and can take up to five minutes to resolve while the shopper completes a verification step.
+* Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when it is slow to update.
+* Dev - `window.wcFraudProtection.acquireSessionId()` now sends the shopper's latest session data before it resolves.
 * Fixed - Payments that a cashier records in WooCommerce POS, such as cash, are no longer checked for fraud, since no shopper browser is involved. Other payment methods used in the POS are still checked.
 * Fixed - Payment attempts are now analyzed with the shopper's browser session on some custom classic checkout templates, including FunnelKit.
 
