@@ -13,6 +13,13 @@
  * so the next attempt gets a fresh one. A checkout_error event does the
  * same, for failures reported without that request.
  *
+ * Another checkout_place_order handler can let the submit continue before
+ * the session ID is ready. The checkout request then leaves without the
+ * field, so the request itself gets the session ID prepared in advance, or
+ * the `not_ready` reason when none is ready. A session ID that arrives
+ * after such a request was sent is unused, and stays for the next attempt.
+ * The form is not submitted again for the attempt that already left.
+ *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
  */
 /* global jQuery */
@@ -21,6 +28,13 @@
 
 	// Forms that hold fields added by this script.
 	const formsWithFields = new Set();
+	// Prepared session IDs that checkout requests took because they left
+	// without the field. A session ID acquired for the same attempt is not sent again.
+	const usedSessionIds = new Set();
+	// The settings of the checkout request in flight.
+	let checkoutRequestInFlight = null;
+	// Checkout requests sent so far, to tell whether one left during an acquisition.
+	let checkoutRequestCount = 0;
 
 	/**
 	 * Acquire the session ID and, without one, the reason why.
@@ -64,8 +78,12 @@
 
 	/**
 	 * Remove the fields of a finished attempt and start a fresh session.
+	 *
+	 * @param {Object}  [request]         What the finished checkout request carried, when known.
+	 * @param {string}  request.sessionId Session ID the request carried, or an empty string.
+	 * @param {boolean} request.fromForm  Whether the fields came from the form.
 	 */
-	function resetAfterAttempt() {
+	function resetAfterAttempt( request ) {
 		const fraudProtection = window.wcFraudProtection;
 		if ( ! fraudProtection || ! fraudProtection.config ) {
 			return;
@@ -78,7 +96,18 @@
 			const $sessionIdField = $( form ).find(
 				'input[name="' + config.sessionIdField + '"]'
 			);
-			if ( $sessionIdField.val() ) {
+			const sessionId = $sessionIdField.val();
+			// Added after the request was sent, so no request used it yet.
+			if (
+				request &&
+				! request.fromForm &&
+				sessionId &&
+				! usedSessionIds.has( sessionId )
+			) {
+				return;
+			}
+
+			if ( sessionId ) {
 				sessionIdWasSent = true;
 			}
 			$sessionIdField.remove();
@@ -87,13 +116,147 @@
 					.find( 'input[name="' + config.sessionIdErrorField + '"]' )
 					.remove();
 			}
+			formsWithFields.delete( form );
 		} );
-		formsWithFields.clear();
 
-		// Without a session ID, the current session was not used.
+		// Without a session ID, the current session was not used. A request
+		// that took the prepared session ID already started a fresh one.
+		if ( request ) {
+			sessionIdWasSent = request.fromForm && !! request.sessionId;
+		}
 		if ( sessionIdWasSent && typeof fraudProtection.reset === 'function' ) {
 			fraudProtection.reset();
 		}
+	}
+
+	/**
+	 * Read the fields of a request body.
+	 *
+	 * @param {*} data Request body.
+	 * @return {URLSearchParams|FormData|null} The fields, or null when the body has none that can be read.
+	 */
+	function readFields( data ) {
+		if ( typeof data === 'string' ) {
+			return new URLSearchParams( data );
+		}
+
+		return data instanceof FormData || data instanceof URLSearchParams
+			? data
+			: null;
+	}
+
+	/**
+	 * Add fields to the body of a request before it is sent.
+	 *
+	 * A FormData or URLSearchParams body is copied, so the caller's object
+	 * stays unchanged in case it is sent again.
+	 *
+	 * @param {Object} settings jQuery AJAX settings.
+	 * @param {Object} fields   Field values, by name.
+	 */
+	function addFields( settings, fields ) {
+		if ( typeof settings.data === 'string' ) {
+			settings.data += ( settings.data ? '&' : '' ) + $.param( fields );
+			return;
+		}
+
+		const data =
+			settings.data instanceof FormData
+				? new FormData()
+				: new URLSearchParams();
+		settings.data.forEach( function ( value, name ) {
+			data.append( name, value );
+		} );
+		Object.keys( fields ).forEach( function ( name ) {
+			data.append( name, fields[ name ] );
+		} );
+		settings.data = data;
+	}
+
+	/**
+	 * Add the session ID to a checkout request that left without it.
+	 *
+	 * Takes the session ID prepared in advance, or reports `not_ready` when
+	 * none is ready.
+	 *
+	 * @param {Object} settings jQuery AJAX settings, before the request is sent.
+	 * @return {Object|undefined} What the request carries, when its body can be read.
+	 */
+	function completeCheckoutRequest( settings ) {
+		const fraudProtection = window.wcFraudProtection;
+		const fields = readFields( settings.data );
+		if (
+			! fraudProtection ||
+			! fraudProtection.config ||
+			( ! fraudProtection.acquireSessionIdResult &&
+				! fraudProtection.acquireSessionId ) ||
+			! fields
+		) {
+			return undefined;
+		}
+
+		const config = fraudProtection.config;
+		const sessionId = fields.get( config.sessionIdField );
+		const request = {
+			sessionId: typeof sessionId === 'string' ? sessionId : '',
+			fromForm: fields.has( config.sessionIdField ),
+		};
+
+		if ( ! request.fromForm ) {
+			request.sessionId =
+				typeof fraudProtection.takePreparedSessionId === 'function'
+					? fraudProtection.takePreparedSessionId()
+					: '';
+
+			const addedFields = {
+				[ config.sessionIdField ]: request.sessionId,
+			};
+			if ( ! request.sessionId && config.sessionIdErrorField ) {
+				addedFields[ config.sessionIdErrorField ] = 'not_ready';
+			}
+			addFields( settings, addedFields );
+			if ( request.sessionId ) {
+				usedSessionIds.add( request.sessionId );
+			}
+		}
+
+		return request;
+	}
+
+	/**
+	 * Track a checkout request until it completes.
+	 *
+	 * Uses the request's own callbacks rather than the global AJAX events,
+	 * which a request sent with `global: false` does not fire. The cleanup
+	 * runs as a complete callback, after the success and error callbacks that
+	 * report the checkout error.
+	 *
+	 * @param {Object} settings jQuery AJAX settings, before the request is sent.
+	 * @param {Object} jqXHR    The request.
+	 */
+	function trackCheckoutRequest( settings, jqXHR ) {
+		const request = completeCheckoutRequest( settings );
+
+		checkoutRequestInFlight = settings;
+		checkoutRequestCount++;
+
+		settings.complete = [].concat( settings.complete || [], function () {
+			if ( checkoutRequestInFlight === settings ) {
+				checkoutRequestInFlight = null;
+			}
+			resetAfterAttempt( request );
+		} );
+
+		// A beforeSend callback can cancel the request, and then the complete
+		// callbacks do not run.
+		jqXHR.fail( function ( xhr, status ) {
+			if (
+				status === 'canceled' &&
+				checkoutRequestInFlight === settings
+			) {
+				checkoutRequestInFlight = null;
+			}
+		} );
 	}
 
 	/**
@@ -136,7 +299,22 @@
 			return true;
 		}
 
+		const requestCount = checkoutRequestCount;
+
 		acquireSessionIdResult( fraudProtection ).then( function ( result ) {
+			// A checkout request that left without waiting already took it.
+			if ( usedSessionIds.has( result.sessionId ) ) {
+				return;
+			}
+
+			// A checkout request left without waiting, so this attempt is
+			// already sent. Keep a session ID for the next attempt, which the
+			// shopper starts, and let it acquire again when there is none.
+			const requestLeft = checkoutRequestCount !== requestCount;
+			if ( requestLeft && ! result.sessionId ) {
+				return;
+			}
+
 			setField( $form, config.sessionIdField, result.sessionId );
 			if (
 				! result.sessionId &&
@@ -147,17 +325,33 @@
 			}
 			formsWithFields.add( $form[ 0 ] );
 
-			$form.trigger( 'submit' );
+			if ( ! requestLeft ) {
+				$form.trigger( 'submit' );
+			}
 		} );
 
 		return false;
 	} );
 
-	$( document ).on( 'ajaxComplete', function ( event, xhr, settings ) {
+	// Keep a session ID ready for a checkout request that leaves without one.
+	if (
+		window.wcFraudProtection &&
+		typeof window.wcFraudProtection.prepareSessionId === 'function'
+	) {
+		window.wcFraudProtection.prepareSessionId();
+	}
+
+	$.ajaxPrefilter( function ( settings, originalSettings, jqXHR ) {
 		if ( isCheckoutRequest( settings ) ) {
-			resetAfterAttempt();
+			trackCheckoutRequest( settings, jqXHR );
 		}
 	} );
 
-	$( document.body ).on( 'checkout_error', resetAfterAttempt );
+	$( document.body ).on( 'checkout_error', function () {
+		// The checkout request reports its error before it completes, and
+		// the cleanup after it knows what the request carried.
+		if ( ! checkoutRequestInFlight ) {
+			resetAfterAttempt();
+		}
+	} );
 } )( jQuery );
