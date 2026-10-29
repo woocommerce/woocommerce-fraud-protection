@@ -28,8 +28,6 @@
 
 	// Forms that hold fields added by this script.
 	const formsWithFields = new Set();
-	// What each checkout request carried when it was sent, by its settings.
-	const checkoutRequests = new WeakMap();
 	// Prepared session IDs that checkout requests took because they left
 	// without the field. A session ID acquired for the same attempt is not sent again.
 	const usedSessionIds = new Set();
@@ -132,31 +130,76 @@
 	}
 
 	/**
+	 * Read the fields of a request body.
+	 *
+	 * @param {*} data Request body.
+	 * @return {URLSearchParams|FormData|null} The fields, or null when the body has none that can be read.
+	 */
+	function readFields( data ) {
+		if ( typeof data === 'string' ) {
+			return new URLSearchParams( data );
+		}
+
+		return data instanceof FormData || data instanceof URLSearchParams
+			? data
+			: null;
+	}
+
+	/**
+	 * Add fields to the body of a request before it is sent.
+	 *
+	 * A FormData or URLSearchParams body is copied, so the caller's object
+	 * stays unchanged in case it is sent again.
+	 *
+	 * @param {Object} settings jQuery AJAX settings.
+	 * @param {Object} fields   Field values, by name.
+	 */
+	function addFields( settings, fields ) {
+		if ( typeof settings.data === 'string' ) {
+			settings.data += ( settings.data ? '&' : '' ) + $.param( fields );
+			return;
+		}
+
+		const data =
+			settings.data instanceof FormData
+				? new FormData()
+				: new URLSearchParams();
+		settings.data.forEach( function ( value, name ) {
+			data.append( name, value );
+		} );
+		Object.keys( fields ).forEach( function ( name ) {
+			data.append( name, fields[ name ] );
+		} );
+		settings.data = data;
+	}
+
+	/**
 	 * Add the session ID to a checkout request that left without it.
 	 *
 	 * Takes the session ID prepared in advance, or reports `not_ready` when
-	 * none is ready. Records what the request carries for the cleanup after
-	 * it completes.
+	 * none is ready.
 	 *
 	 * @param {Object} settings jQuery AJAX settings, before the request is sent.
+	 * @return {Object|undefined} What the request carries, when its body can be read.
 	 */
 	function completeCheckoutRequest( settings ) {
 		const fraudProtection = window.wcFraudProtection;
+		const fields = readFields( settings.data );
 		if (
 			! fraudProtection ||
 			! fraudProtection.config ||
 			( ! fraudProtection.acquireSessionIdResult &&
 				! fraudProtection.acquireSessionId ) ||
-			typeof settings.data !== 'string'
+			! fields
 		) {
-			return;
+			return undefined;
 		}
 
 		const config = fraudProtection.config;
-		const params = new URLSearchParams( settings.data );
+		const sessionId = fields.get( config.sessionIdField );
 		const request = {
-			sessionId: params.get( config.sessionIdField ) || '',
-			fromForm: params.has( config.sessionIdField ),
+			sessionId: typeof sessionId === 'string' ? sessionId : '',
+			fromForm: fields.has( config.sessionIdField ),
 		};
 
 		if ( ! request.fromForm ) {
@@ -165,17 +208,55 @@
 					? fraudProtection.takePreparedSessionId()
 					: '';
 
-			const fields = { [ config.sessionIdField ]: request.sessionId };
+			const addedFields = {
+				[ config.sessionIdField ]: request.sessionId,
+			};
 			if ( ! request.sessionId && config.sessionIdErrorField ) {
-				fields[ config.sessionIdErrorField ] = 'not_ready';
+				addedFields[ config.sessionIdErrorField ] = 'not_ready';
 			}
-			settings.data += ( settings.data ? '&' : '' ) + $.param( fields );
+			addFields( settings, addedFields );
 			if ( request.sessionId ) {
 				usedSessionIds.add( request.sessionId );
 			}
 		}
 
-		checkoutRequests.set( settings, request );
+		return request;
+	}
+
+	/**
+	 * Track a checkout request until it completes.
+	 *
+	 * Uses the request's own callbacks rather than the global AJAX events,
+	 * which a request sent with `global: false` does not fire. The cleanup
+	 * runs as a complete callback, after the success and error callbacks that
+	 * report the checkout error.
+	 *
+	 * @param {Object} settings jQuery AJAX settings, before the request is sent.
+	 * @param {Object} jqXHR    The request.
+	 */
+	function trackCheckoutRequest( settings, jqXHR ) {
+		const request = completeCheckoutRequest( settings );
+
+		checkoutRequestInFlight = settings;
+		checkoutRequestCount++;
+
+		settings.complete = [].concat( settings.complete || [], function () {
+			if ( checkoutRequestInFlight === settings ) {
+				checkoutRequestInFlight = null;
+			}
+			resetAfterAttempt( request );
+		} );
+
+		// A beforeSend callback can cancel the request, and then the complete
+		// callbacks do not run.
+		jqXHR.fail( function ( xhr, status ) {
+			if (
+				status === 'canceled' &&
+				checkoutRequestInFlight === settings
+			) {
+				checkoutRequestInFlight = null;
+			}
+		} );
 	}
 
 	/**
@@ -260,25 +341,9 @@
 		window.wcFraudProtection.prepareSessionId();
 	}
 
-	$.ajaxPrefilter( function ( settings ) {
+	$.ajaxPrefilter( function ( settings, originalSettings, jqXHR ) {
 		if ( isCheckoutRequest( settings ) ) {
-			completeCheckoutRequest( settings );
-		}
-	} );
-
-	$( document ).on( 'ajaxSend', function ( event, xhr, settings ) {
-		if ( checkoutRequests.has( settings ) ) {
-			checkoutRequestInFlight = settings;
-			checkoutRequestCount++;
-		}
-	} );
-
-	$( document ).on( 'ajaxComplete', function ( event, xhr, settings ) {
-		if ( isCheckoutRequest( settings ) ) {
-			if ( checkoutRequestInFlight === settings ) {
-				checkoutRequestInFlight = null;
-			}
-			resetAfterAttempt( checkoutRequests.get( settings ) );
+			trackCheckoutRequest( settings, jqXHR );
 		}
 	} );
 

@@ -23,6 +23,7 @@ let $;
 let $form;
 let mockAcquireSessionId;
 let mockReset;
+let transport;
 
 beforeEach( () => {
 	document.body.innerHTML = '<form class="checkout"></form>';
@@ -33,6 +34,7 @@ beforeEach( () => {
 	} );
 	window.jQuery = $;
 	$form = $( 'form.checkout' );
+	transport = stubTransport();
 
 	delete window.wcFraudProtection;
 	jest.useFakeTimers();
@@ -42,7 +44,6 @@ beforeEach( () => {
 } );
 
 afterEach( () => {
-	$( document ).off( 'ajaxSend ajaxComplete' );
 	$( document.body ).off( 'checkout_error' );
 	document.body.innerHTML = '';
 	delete window.jQuery;
@@ -68,8 +69,14 @@ function addField( $target, name, value ) {
 	);
 }
 
-function completeAjax( url ) {
-	$( document ).trigger( 'ajaxComplete', [ {}, { url } ] );
+/**
+ * Send a request with the form's fields and complete it.
+ *
+ * @param {string} url Request URL.
+ */
+function completeRequest( url ) {
+	$.ajax( { type: 'POST', url, data: $form.serialize() } );
+	transport.completeNext();
 }
 
 function loadScript() {
@@ -122,12 +129,14 @@ function sendCheckoutRequest() {
 /**
  * Read a field from the data of a sent request.
  *
- * @param {string} data Sent data.
- * @param {string} name Field name.
+ * @param {string|FormData|URLSearchParams} data Sent data.
+ * @param {string}                          name Field name.
  * @return {string|null} Field value, or null when absent.
  */
 function sentField( data, name ) {
-	return new URLSearchParams( data ).get( name );
+	return (
+		typeof data === 'string' ? new URLSearchParams( data ) : data
+	).get( name );
 }
 
 describe( 'shortcode-checkout', () => {
@@ -213,7 +222,7 @@ describe( 'shortcode-checkout', () => {
 		$form.triggerHandler( 'checkout_place_order' );
 		await flushPromises();
 
-		completeAjax( '/?wc-ajax=checkout' );
+		completeRequest( '/?wc-ajax=checkout' );
 
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
 		expect( mockReset ).toHaveBeenCalledTimes( 1 );
@@ -230,7 +239,7 @@ describe( 'shortcode-checkout', () => {
 		$form.triggerHandler( 'checkout_place_order' );
 		await flushPromises();
 
-		completeAjax( url );
+		completeRequest( url );
 
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 1 );
 		expect( mockReset ).not.toHaveBeenCalled();
@@ -255,7 +264,7 @@ describe( 'shortcode-checkout', () => {
 		await flushPromises();
 
 		$( document.body ).trigger( 'checkout_error' );
-		completeAjax( '/?wc-ajax=checkout' );
+		completeRequest( '/?wc-ajax=checkout' );
 
 		expect( mockReset ).toHaveBeenCalledTimes( 1 );
 	} );
@@ -277,7 +286,7 @@ describe( 'shortcode-checkout', () => {
 		);
 		expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 
-		completeAjax( '/?wc-ajax=checkout' );
+		completeRequest( '/?wc-ajax=checkout' );
 
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
 		expect( $form.find( '#' + SESSION_ID_ERROR_FIELD ).length ).toBe( 0 );
@@ -319,7 +328,7 @@ describe( 'shortcode-checkout', () => {
 		expect( $form.find( '#' + SESSION_ID_ERROR_FIELD ).val() ).toBe(
 			'sdk_unavailable'
 		);
-		expect( () => completeAjax( '/?wc-ajax=checkout' ) ).not.toThrow();
+		expect( () => completeRequest( '/?wc-ajax=checkout' ) ).not.toThrow();
 	} );
 
 	it( 'keeps one field with the latest completed value', async () => {
@@ -387,7 +396,7 @@ describe( 'shortcode-checkout', () => {
 		expect( mockReset ).not.toHaveBeenCalled();
 
 		expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe( true );
-		completeAjax( '/?wc-ajax=checkout' );
+		completeRequest( '/?wc-ajax=checkout' );
 
 		expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
 		expect( $secondForm.find( '#' + SESSION_ID_FIELD ).val() ).toBe(
@@ -397,7 +406,6 @@ describe( 'shortcode-checkout', () => {
 	} );
 
 	describe( 'checkout requests', () => {
-		let transport;
 		let mockTakePreparedSessionId;
 		let resolveAcquisition;
 
@@ -405,7 +413,6 @@ describe( 'shortcode-checkout', () => {
 			$form.append(
 				'<input name="billing_email" value="a@example.com">'
 			);
-			transport = stubTransport();
 			mockTakePreparedSessionId = jest.fn( () => '' );
 			// The session ID arrives when the test decides.
 			mockAcquireSessionId.mockImplementation(
@@ -626,6 +633,153 @@ describe( 'shortcode-checkout', () => {
 			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
 				false
 			);
+		} );
+
+		it( 'tracks a checkout request sent without global AJAX events', async () => {
+			mockTakePreparedSessionId.mockReturnValue( 'sess-prepared' );
+			setup();
+
+			$form.triggerHandler( 'checkout_place_order' );
+			$.ajax( {
+				type: 'POST',
+				url: '/?wc-ajax=checkout',
+				data: $form.serialize(),
+				global: false,
+			} );
+			resolveAcquisition( 'sess-late' );
+			await flushPromises();
+
+			expect( sentField( transport.sent[ 0 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-prepared'
+			);
+			expect(
+				document.querySelector( 'form.checkout' ).submit
+			).not.toHaveBeenCalled();
+
+			// The next attempt sends the late session ID, then resets.
+			transport.completeNext();
+			expect( $form.triggerHandler( 'checkout_place_order' ) ).toBe(
+				true
+			);
+			$.ajax( {
+				type: 'POST',
+				url: '/?wc-ajax=checkout',
+				data: $form.serialize(),
+				global: false,
+			} );
+			transport.completeNext();
+
+			expect( sentField( transport.sent[ 1 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-late'
+			);
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it.each( [
+			[
+				'FormData',
+				() => {
+					const data = new FormData();
+					data.append( 'billing_email', 'a@example.com' );
+					return data;
+				},
+			],
+			[
+				'URLSearchParams',
+				() => new URLSearchParams( 'billing_email=a%40example.com' ),
+			],
+		] )(
+			'adds the prepared session ID to a checkout request with a %s body',
+			async ( _, createData ) => {
+				mockTakePreparedSessionId.mockReturnValue( 'sess-prepared' );
+				setup();
+				const data = createData();
+
+				$form.triggerHandler( 'checkout_place_order' );
+				$.ajax( {
+					type: 'POST',
+					url: '/?wc-ajax=checkout',
+					data,
+					processData: false,
+					contentType: false,
+				} );
+				resolveAcquisition( 'sess-late' );
+				await flushPromises();
+
+				expect(
+					sentField( transport.sent[ 0 ], SESSION_ID_FIELD )
+				).toBe( 'sess-prepared' );
+				expect(
+					sentField( transport.sent[ 0 ], 'billing_email' )
+				).toBe( 'a@example.com' );
+				expect( data.has( SESSION_ID_FIELD ) ).toBe( false );
+				expect(
+					document.querySelector( 'form.checkout' ).submit
+				).not.toHaveBeenCalled();
+			}
+		);
+
+		it( 'reports not_ready in a FormData checkout request when no session ID is prepared', () => {
+			setup();
+
+			$form.triggerHandler( 'checkout_place_order' );
+			$.ajax( {
+				type: 'POST',
+				url: '/?wc-ajax=checkout',
+				data: new FormData(),
+				processData: false,
+				contentType: false,
+			} );
+
+			expect( sentField( transport.sent[ 0 ], SESSION_ID_FIELD ) ).toBe(
+				''
+			);
+			expect(
+				sentField( transport.sent[ 0 ], SESSION_ID_ERROR_FIELD )
+			).toBe( 'not_ready' );
+		} );
+
+		it( 'cleans up on checkout_error after beforeSend cancels a checkout request', async () => {
+			setup();
+			$form.triggerHandler( 'checkout_place_order' );
+			resolveAcquisition( 'sess-form' );
+			await flushPromises();
+
+			$.ajax( {
+				type: 'POST',
+				url: '/?wc-ajax=checkout',
+				data: $form.serialize(),
+				beforeSend: () => false,
+			} );
+			$( document.body ).trigger( 'checkout_error' );
+
+			expect( transport.sent ).toHaveLength( 0 );
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'runs the caller complete callback before the cleanup', async () => {
+			setup();
+			$form.triggerHandler( 'checkout_place_order' );
+			resolveAcquisition( 'sess-form' );
+			await flushPromises();
+			let fieldInComplete;
+
+			$.ajax( {
+				type: 'POST',
+				url: '/?wc-ajax=checkout',
+				data: $form.serialize(),
+				complete() {
+					fieldInComplete = $form
+						.find( '#' + SESSION_ID_FIELD )
+						.val();
+				},
+			} );
+			transport.completeNext();
+
+			expect( fieldInComplete ).toBe( 'sess-form' );
+			expect( $form.find( '#' + SESSION_ID_FIELD ).length ).toBe( 0 );
 		} );
 
 		it( 'leaves other requests unchanged', () => {

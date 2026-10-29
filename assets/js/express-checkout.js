@@ -34,11 +34,12 @@
 	/**
 	 * Add a fresh session ID to the express checkout extension data.
 	 *
-	 * Without a fresh ID, any session ID already in the data is removed: it can
-	 * come from the checkout form's earlier attempt and must not be sent again.
+	 * Without a fresh ID, the data reports `not_ready` instead, replacing any
+	 * session ID already in it: that one can come from the checkout form's
+	 * earlier attempt and must not be sent again.
 	 *
 	 * @param {*} extensionData Extension data built by the gateway.
-	 * @return {*} The extension data with the session ID.
+	 * @return {*} The extension data with the session ID, or the reason why it has none.
 	 */
 	function addSessionId( extensionData ) {
 		try {
@@ -50,15 +51,13 @@
 				return extensionData;
 			}
 
-			const data = Object.assign( {}, extensionData );
-			delete data[ NAMESPACE ];
-
 			const sessionId = fraudProtection.takePreparedSessionId();
-			if ( sessionId ) {
-				data[ NAMESPACE ] = { blackbox_session_id: sessionId };
-			}
 
-			return data;
+			return Object.assign( {}, extensionData, {
+				[ NAMESPACE ]: sessionId
+					? { blackbox_session_id: sessionId }
+					: { blackbox_session_id_error: 'not_ready' },
+			} );
 		} catch {
 			return extensionData;
 		}
