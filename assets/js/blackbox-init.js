@@ -151,6 +151,9 @@
 	 *
 	 * Each try gets the same timeout as acquireSessionId(), so a session ID
 	 * that never arrives is tried again instead of keeping the slot waiting.
+	 * Uses getSessionId(), not flush(): ahead of the payment attempt there is
+	 * no newer data to send, and flush() could show a challenge before the
+	 * shopper starts a payment.
 	 */
 	function prepareSessionId() {
 		if ( ! isPreparing || ! window.Blackbox.getSessionId ) {
@@ -287,7 +290,32 @@
 	}
 
 	/**
+	 * Convert a flush() result into a session ID result.
+	 *
+	 * @param {*} flushed Value that flush() resolved with.
+	 * @return {{sessionId: string, error: string}} Session ID and error.
+	 */
+	function fromFlushResult( flushed ) {
+		if ( ! flushed || typeof flushed !== 'object' ) {
+			return withoutSessionId( 'sdk_error' );
+		}
+
+		// flush() keeps a valid session ID on a timeout or error.
+		if ( typeof flushed.sessionId === 'string' && flushed.sessionId ) {
+			return { sessionId: flushed.sessionId, error: '' };
+		}
+
+		return withoutSessionId(
+			flushed.outcome === 'timeout' ? 'timeout' : 'sdk_error'
+		);
+	}
+
+	/**
 	 * Acquire a Blackbox session ID, or the reason why there is none.
+	 *
+	 * Uses flush(), so the session has the shopper's latest data when the
+	 * payment is verified. flush() resolves by the deadline it is given. A
+	 * challenge that flush() starts is not awaited.
 	 *
 	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
 	 * answer in time, `sdk_error` when it fails or returns no session ID, and
@@ -297,35 +325,27 @@
 	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
 	 */
 	fraudProtection.acquireSessionIdResult = function () {
-		if ( ! window.Blackbox || ! window.Blackbox.getSessionId ) {
+		if (
+			! window.Blackbox ||
+			typeof window.Blackbox.flush !== 'function'
+		) {
 			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
 		}
 
-		let timer;
-		const timeout = new Promise( function ( resolve ) {
-			timer = setTimeout( function () {
-				resolve( withoutSessionId( 'timeout' ) );
-			}, fraudProtection.config.timeout );
-		} );
-
-		let session;
+		let flushed;
 		try {
-			session = Promise.resolve( window.Blackbox.getSessionId() ).then(
-				function ( result ) {
-					return typeof result === 'string' && result
-						? { sessionId: result, error: '' }
-						: withoutSessionId( 'sdk_error' );
-				},
-				function () {
-					return withoutSessionId( 'sdk_error' );
-				}
-			);
+			flushed = Promise.resolve(
+				window.Blackbox.flush( {
+					deadlineMs: fraudProtection.config.timeout,
+				} )
+			).then( fromFlushResult, function () {
+				return withoutSessionId( 'sdk_error' );
+			} );
 		} catch {
-			session = Promise.resolve( withoutSessionId( 'sdk_error' ) );
+			flushed = Promise.resolve( withoutSessionId( 'sdk_error' ) );
 		}
 
-		return Promise.race( [ session, timeout ] ).then( function ( result ) {
-			clearTimeout( timer );
+		return flushed.then( function ( result ) {
 			// The payment flows get their session ID here, so record it before
 			// the prepared slot can hand it out again.
 			markHandedOut( result.sessionId );
@@ -334,7 +354,7 @@
 	};
 
 	/**
-	 * Acquire a Blackbox session ID (fail-open: empty string on timeout/error).
+	 * Acquire a Blackbox session ID (fail-open: empty string when no session ID is available).
 	 *
 	 * @return {Promise<string>} Session ID or empty string.
 	 */

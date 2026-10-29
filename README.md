@@ -182,7 +182,7 @@ Two hooks let an extension (e.g. a payment gateway with a non-standard checkout 
 
 On pages where the Blackbox scripts are loaded, the plugin exposes a small API on `window.wcFraudProtection`:
 
-- **`acquireSessionId(): Promise<string>`** — resolves to a Blackbox session ID, or an empty string on timeout/error (fail-open). Send this value to the server under the field name in `window.wcFraudProtection.config.sessionIdField` (which mirrors `SessionVerifier::SESSION_ID_FIELD`); the server reads it back before calling `verify_session()`.
+- **`acquireSessionId(): Promise<string>`** — sends the shopper's latest session data, then resolves to a Blackbox session ID, or an empty string when no session ID is available (fail-open). A slow or failed send still resolves to the session ID when one exists. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. Send this value to the server under the field name in `window.wcFraudProtection.config.sessionIdField` (which mirrors `SessionVerifier::SESSION_ID_FIELD`); the server reads it back before calling `verify_session()`.
 - **`reset(): void`** — clears Blackbox state so a subsequent payment attempt gets a fresh session.
 
 `config.sessionIdField` is the only supported entry on `config`; the rest are internal to the plugin's own init script and may change. Other methods on `window.wcFraudProtection` are internal to the plugin's own scripts and may also change.
