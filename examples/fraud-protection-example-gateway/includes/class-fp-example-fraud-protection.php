@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
@@ -23,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
  * Three parts, matching the three features the gateway declares in its `$supports`:
  *
  * 1. `fraud_protection_payment_data`: {@see resolve_payment_data()} describes the payment
- *    instrument for the verification request.
+ *    instrument of the gateway's attempts for their verification.
  * 2. `fraud_protection_checkout`: the gateway's own "Express pay" request, an AJAX call made
  *    from the cart page like PayPal's create-order call, is verified by
  *    {@see handle_express_pay()} and stopped on a Block decision. The request creates a
@@ -68,7 +69,7 @@ class FP_Example_Fraud_Protection {
 			return;
 		}
 
-		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve_payment_data' ), 10, 2 );
+		wc_get_container()->get( GatewayPaymentData::class )->register_resolver( WC_Gateway_FP_Example::ID, array( $this, 'resolve_payment_data' ) );
 		// The checkout that completes an express payment posts the reference the express request created.
 		wc_get_container()->get( GatewayRequestVerifier::class )->register_reference_reader(
 			WC_Gateway_FP_Example::ID,
@@ -82,24 +83,18 @@ class FP_Example_Fraud_Protection {
 	/**
 	 * Describe the payment instrument of an attempt made with this gateway.
 	 *
-	 * Fraud Protection calls this for every attempt; the callback returns the incoming
-	 * value unchanged for other gateways.
+	 * Fraud Protection calls this only for this gateway's attempts.
 	 *
-	 * @param mixed $resolved                The payment data resolved so far.
-	 * @param mixed $checkout_payment_fields Flat key-value map of the submitted payment fields.
-	 * @return mixed The payment data to use.
+	 * @param array             $payment_fields Flat key-value map of the submitted payment fields.
+	 * @param PaymentMethodData $resolved       The payment data resolved so far.
+	 * @return PaymentMethodData The payment data to use.
 	 */
-	public function resolve_payment_data( $resolved, $checkout_payment_fields ) {
-		// Values from a filter are untrusted: another callback may have changed them.
-		if ( ! $resolved instanceof PaymentMethodData || WC_Gateway_FP_Example::ID !== $resolved->get_gateway() || ! is_array( $checkout_payment_fields ) ) {
-			return $resolved;
-		}
-
+	public function resolve_payment_data( array $payment_fields, PaymentMethodData $resolved ): PaymentMethodData {
 		$instrument = PaymentInstrumentData::from_array(
 			array(
-				'brand'  => $checkout_payment_fields['fp_example_card_brand'] ?? null,
-				'last4'  => $checkout_payment_fields['fp_example_card_last4'] ?? null,
-				'wallet' => $checkout_payment_fields['fp_example_wallet'] ?? null,
+				'brand'  => $payment_fields['fp_example_card_brand'] ?? null,
+				'last4'  => $payment_fields['fp_example_card_last4'] ?? null,
+				'wallet' => $payment_fields['fp_example_wallet'] ?? null,
 			)
 		);
 

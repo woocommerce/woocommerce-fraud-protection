@@ -7,6 +7,7 @@ YYYY-xx-xx - version 0.3.1
 * Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug through the new `woocommerce_fraud_protection_native_integrations` filter; a built-in compatibility layer for that extension then stands aside, and `wp wc fraud-protection native-integrations list` lists the declarations.
 * Dev - Extensions with their own form handlers can read the session ID and build the verification request with the new `ClassicFormRequestData` class, and protect a classic pay form with `BlackboxScriptHandler::request_pay_for_order_script()`.
 * Dev - Payment gateways can verify their own requests, such as creating an order at the payment provider, with the new `GatewayRequestVerifier` class, and reuse the decision for the checkout or payment-method submission that completes the same attempt, so the attempt is analyzed once.
+* Dev - Payment gateways can describe the payment instrument of their own attempts with the new `GatewayPaymentData` class, which runs their resolver only for their attempts and keeps the existing data when it fails.
 * Dev - The `window.wcFraudProtection.prepareSessionId()` and `takePreparedSessionId()` browser methods are now part of the public API, for payment surfaces that must add the session ID synchronously.
 * Dev - The `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, was removed.
 

@@ -163,20 +163,17 @@ The next submission paid with your gateway that carries the reference, with the 
 
 **Declare:** `fraud_protection_payment_data` in the gateway's `$supports`.
 
-**Implement:** hook `woocommerce_fraud_protection_resolved_payment_data` and return a `PaymentMethodData` that describes your own attempts. Return the incoming value unchanged for other gateways:
+**Implement:** while your plugin loads, register a resolver with `GatewayPaymentData::register_resolver()`. It returns a `PaymentMethodData` that describes your gateway's attempts:
 
 ```php
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 
-add_filter(
-	'woocommerce_fraud_protection_resolved_payment_data',
-	function ( $resolved, $payment_fields ) {
-		if ( ! $resolved instanceof PaymentMethodData || 'my_gateway' !== $resolved->get_gateway() || ! is_array( $payment_fields ) ) {
-			return $resolved;
-		}
-
+wc_get_container()->get( GatewayPaymentData::class )->register_resolver(
+	'my_gateway',
+	function ( array $payment_fields, PaymentMethodData $resolved ): PaymentMethodData {
 		$instrument = PaymentInstrumentData::from_array(
 			array(
 				'brand' => $payment_fields['my_gateway_card_brand'] ?? null,
@@ -185,13 +182,11 @@ add_filter(
 		);
 
 		return new PaymentMethodData( 'my_gateway', 'card', false, $instrument, PaymentMode::Live, 'acct_123', 'account' );
-	},
-	10,
-	2
+	}
 );
 ```
 
-`$payment_fields` holds the gateway fields submitted with the attempt, or the `payment_data` you passed to `verify_session()`. `$resolved` is pre-filled from the WooCommerce payment token when the shopper pays with a saved method.
+The plugin calls the resolver only for attempts paid with your gateway. `$payment_fields` holds the gateway fields submitted with the attempt, or the payment data you passed to `verify_request()`. `$resolved` is pre-filled from the WooCommerce payment token when the shopper pays with a saved method. Return `null` to keep it. If the resolver throws, or returns anything other than a `PaymentMethodData` for your gateway, the plugin keeps `$resolved`.
 
 ### Checkout requests
 

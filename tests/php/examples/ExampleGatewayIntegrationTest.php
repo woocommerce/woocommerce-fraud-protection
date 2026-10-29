@@ -12,6 +12,7 @@ require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway
 
 use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -50,6 +51,13 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	private GatewayRequestVerifier $request_verifier;
 
 	/**
+	 * Payment data service installed in the container, with its filter registered.
+	 *
+	 * @var GatewayPaymentData
+	 */
+	private GatewayPaymentData $payment_data;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -64,6 +72,9 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->request_verifier->init( $this->session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ) );
 		$this->request_verifier->register();
 		$GLOBALS['wc_container']->replace( GatewayRequestVerifier::class, $this->request_verifier );
+		$this->payment_data = new GatewayPaymentData();
+		$this->payment_data->register();
+		$GLOBALS['wc_container']->replace( GatewayPaymentData::class, $this->payment_data );
 
 		$this->integration = new \FP_Example_Fraud_Protection();
 		$this->integration->register();
@@ -74,7 +85,8 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	 */
 	public function tearDown(): void {
 		$GLOBALS['wc_container']->reset_replacement( GatewayRequestVerifier::class );
-		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->integration, 'resolve_payment_data' ), 10 );
+		$GLOBALS['wc_container']->reset_replacement( GatewayPaymentData::class );
+		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->payment_data, 'apply_resolver' ), 10 );
 		remove_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->request_verifier, 'supply_reused_decision' ), 10 );
 		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_express_button' ), 30 );
 		remove_action( 'woocommerce_checkout_before_order_review', array( $this->integration, 'render_express_reference' ) );

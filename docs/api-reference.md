@@ -9,6 +9,7 @@ This is the reference for every public part of WooCommerce Fraud Protection: the
     - [Obtaining the services](#obtaining-the-services)
     - [SessionVerifier](#sessionverifier)
     - [GatewayRequestVerifier](#gatewayrequestverifier)
+    - [GatewayPaymentData](#gatewaypaymentdata)
     - [BlackboxScriptHandler](#blackboxscripthandler)
     - [FraudProtectionReporter](#fraudprotectionreporter)
 - [PHP helpers](#php-helpers)
@@ -54,7 +55,7 @@ Fraud Protection is optional for the extensions that integrate with it. Guard ea
 
 ### Obtaining the services
 
-`SessionVerifier`, `GatewayRequestVerifier`, `BlackboxScriptHandler` and `FraudProtectionReporter` receive their dependencies through an `init()` method that WooCommerce's dependency-injection container calls. Always resolve them from the container; an instance created with `new` is not initialized:
+`SessionVerifier`, `GatewayRequestVerifier`, `BlackboxScriptHandler` and `FraudProtectionReporter` receive their dependencies through an `init()` method that WooCommerce's dependency-injection container calls. Always resolve them from the container; an instance created with `new` is not initialized. Resolve `GatewayPaymentData` from the container too, so your resolver reaches the instance the plugin registered:
 
 ```php
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -153,6 +154,25 @@ wc_get_container()->get( GatewayRequestVerifier::class )->register_reference_rea
 ```
 
 The [integration guide](integration-guide.md#3-verify-the-request-and-reuse-its-decision) shows the full flow.
+
+### GatewayPaymentData
+
+Describes the payment instrument of a gateway's attempts. It wraps the `woocommerce_fraud_protection_resolved_payment_data` filter, so the gateway's code runs only for its own attempts and cannot break other gateways' data. Since 0.3.1.
+
+#### register_resolver()
+
+```php
+public function register_resolver( string $gateway_id, callable $resolver ): void
+```
+
+Call it once while your plugin loads. Before each verification of an attempt paid with `$gateway_id`, the plugin calls `$resolver( array $payment_fields, PaymentMethodData $resolved )`:
+
+| Argument | Description |
+|----------|-------------|
+| `$payment_fields` | The flat map of gateway fields submitted with the attempt, or the `payment_data` passed to the verification. Always an array. |
+| `$resolved` | The data resolved so far: from the WooCommerce payment token of a saved payment method, or a `PaymentMethodData` that only holds the gateway ID. |
+
+Return a [`PaymentMethodData`](#paymentmethoddata) for `$gateway_id`, or `null` to keep `$resolved`. A resolver that throws, or returns another value or the data of another gateway, keeps `$resolved`, and the plugin logs a warning. A later call for the same gateway replaces the resolver. The [integration guide](integration-guide.md#payment-data) shows a resolver that builds the data from the payment fields.
 
 ### BlackboxScriptHandler
 
@@ -357,20 +377,14 @@ new PaymentMethodData(
 
 The wallet is an open string. The built-in gateway layers use `woopay`, `apple_pay`, `google_pay`, `amazon_pay`, `paypal`, `venmo`, `link`, `cash_app_pay`, `alipay`, `grabpay` and `wechat_pay`; use the same values where they apply.
 
-Use the `with_*()` methods to add to data that another callback or the payment token already resolved, without losing it:
+Use the `with_*()` methods to add to data that the payment token already resolved, without losing it:
 
 ```php
-add_filter(
-	'woocommerce_fraud_protection_resolved_payment_data',
-	function ( $resolved ) {
-		if ( ! $resolved instanceof PaymentMethodData || 'my_gateway' !== $resolved->get_gateway() ) {
-			return $resolved;
-		}
-
-		return $resolved
-			->with_transaction_mode( my_gateway_is_test_mode() ? PaymentMode::Test : PaymentMode::Live )
-			->with_merchant_identifier( my_gateway_account_id(), 'account' );
-	}
+wc_get_container()->get( GatewayPaymentData::class )->register_resolver(
+	'my_gateway',
+	fn( array $payment_fields, PaymentMethodData $resolved ) => $resolved
+		->with_transaction_mode( my_gateway_is_test_mode() ? PaymentMode::Test : PaymentMode::Live )
+		->with_merchant_identifier( my_gateway_account_id(), 'account' )
 );
 ```
 
@@ -455,7 +469,7 @@ apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMeth
 
 `$resolved` starts as the data resolved from the WooCommerce payment token of a saved payment method, or as a `PaymentMethodData` that only holds the gateway ID. `$payment_fields` is the flat map of gateway fields of the attempt: the `payment_data` passed to `SessionVerifier::verify_session()`. Return a `PaymentMethodData`. Any other value, or a callback that throws, falls back to the initial value. Since 0.1.0.
 
-A gateway that resolves its own data declares `fraud_protection_payment_data`; see the [integration guide](integration-guide.md#payment-data) for an example, and [PaymentMethodData](#paymentmethoddata) for one that adds to existing data.
+A gateway that resolves its own data declares `fraud_protection_payment_data` and registers a resolver with [`GatewayPaymentData`](#gatewaypaymentdata), which hooks this filter for it. Hook the filter directly only to change the data of attempts paid with other gateways.
 
 ### woocommerce_fraud_protection_skip_session_verify
 
