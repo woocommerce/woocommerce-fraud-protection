@@ -22,11 +22,11 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Integrates Blackbox fraud protection into the blocks-based checkout.
  *
- * Handles the getSessionId -> verify -> verdict flow:
+ * Handles the session ID -> verify -> verdict flow:
  * 1. Registers Store API extension data namespace for blackbox_session_id
  * 2. Extracts request data (including session_id) from the checkout POST request
  * 3. Calls verify() before payment processing, blocking on BLOCK decisions
- * 4. Enqueues the blocks-checkout.js script for getSessionId + setExtensionData
+ * 4. Enqueues the blocks-checkout.js script that acquires the session ID and sets extension data
  *
  * All hooks fire within the same HTTP request, so request data is stored
  * as a class property (no WC session or DB storage needed).
@@ -186,7 +186,7 @@ class BlocksCheckoutProtector {
 	 * Enqueue the blocks-checkout.js script.
 	 *
 	 * Called immediately before frontend Checkout block scripts are enqueued. The
-	 * script gates checkout on Blackbox.getSessionId() and sets the extension data
+	 * script gates checkout on the Blackbox session ID and sets the extension data
 	 * via wp.data.dispatch.
 	 *
 	 * WooCommerce's separate `woocommerce_blocks_checkout_enqueue_data` hook also
