@@ -376,6 +376,107 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Resolves the payment method that a posted setup intent holds instead of the posted one.
+	 * @dataProvider setup_intent_payment_method_provider
+	 *
+	 * @param mixed $payment_method The setup intent's payment method, as an ID or an expanded object.
+	 */
+	public function test_resolves_setup_intent_payment_method( $payment_method ): void {
+		\WC_Stripe_API::set_mock_retrieve_response( 'setup_intents/seti_123', (object) array( 'payment_method' => $payment_method ) );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array(
+				'wc-stripe-payment-method' => 'pm_posted',
+				'wc-stripe-setup-intent'   => 'seti_123',
+			)
+		)->to_array();
+
+		$this->assertSame( array( 'pm_saved' ), \WC_Stripe_API::get_requested_payment_methods() );
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+	}
+
+	/**
+	 * Payment methods of a setup intent.
+	 *
+	 * @return array<string, array{mixed}>
+	 */
+	public function setup_intent_payment_method_provider(): array {
+		return array(
+			'ID'       => array( 'pm_saved' ),
+			'expanded' => array( (object) array( 'id' => 'pm_saved' ) ),
+		);
+	}
+
+	/**
+	 * @testdox Resolves the posted payment method when the setup intent cannot be read or holds none.
+	 * @dataProvider unreadable_setup_intent_provider
+	 *
+	 * @param mixed $setup_intent_id Posted setup intent ID.
+	 * @param mixed $setup_intent    Stripe response for the setup intent.
+	 */
+	public function test_resolves_posted_payment_method_without_setup_intent_payment_method( $setup_intent_id, $setup_intent ): void {
+		\WC_Stripe_API::set_mock_retrieve_response( 'setup_intents/seti_123', $setup_intent );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array(
+				'wc-stripe-payment-method' => 'pm_posted',
+				'wc-stripe-setup-intent'   => $setup_intent_id,
+			)
+		)->to_array();
+
+		$this->assertSame( array( 'pm_posted' ), \WC_Stripe_API::get_requested_payment_methods() );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+	}
+
+	/**
+	 * Setup intents, or failures to read them, that give no payment method.
+	 *
+	 * @return array<string, array{mixed, mixed}>
+	 */
+	public function unreadable_setup_intent_provider(): array {
+		$setup_intent = (object) array( 'payment_method' => 'pm_saved' );
+
+		return array(
+			'no payment method'    => array( 'seti_123', (object) array( 'payment_method' => null ) ),
+			'empty payment method' => array( 'seti_123', (object) array( 'payment_method' => '' ) ),
+			'Stripe error'         => array( 'seti_123', (object) array( 'error' => (object) array( 'message' => 'Rate limited' ) ) ),
+			'request failure'      => array( 'seti_123', new \WP_Error( 'stripe_error', 'Connection failed' ) ),
+			'no response'          => array( 'seti_123', null ),
+			'empty setup intent'   => array( '', $setup_intent ),
+			'invalid setup intent' => array( array( 'seti_123' ), $setup_intent ),
+		);
+	}
+
+	/**
+	 * @testdox Resolves the posted payment method, and logs the failure, when reading the setup intent throws.
+	 */
+	public function test_resolves_posted_payment_method_when_reading_setup_intent_throws(): void {
+		\WC_Stripe_API::set_mock_retrieve_response( 'setup_intents/seti_123', new \RuntimeException( 'Stripe unavailable' ) );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$array = $this->sut->resolve(
+			new PaymentMethodData( 'stripe' ),
+			array(
+				'wc-stripe-payment-method' => 'pm_posted',
+				'wc-stripe-setup-intent'   => 'seti_123',
+			)
+		)->to_array();
+
+		$this->assertSame( array( 'pm_posted' ), \WC_Stripe_API::get_requested_payment_methods() );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertLogged(
+			'warning',
+			'Reading the Stripe setup intent failed; resolving the posted payment method',
+			array( 'exception_class' => \RuntimeException::class )
+		);
+	}
+
+	/**
 	 * @testdox Detects saved payment method via payment token key.
 	 */
 	public function test_detects_saved_payment_method(): void {

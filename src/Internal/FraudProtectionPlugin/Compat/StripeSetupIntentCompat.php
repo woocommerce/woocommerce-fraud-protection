@@ -39,6 +39,7 @@ defined( 'ABSPATH' ) || exit;
 class StripeSetupIntentCompat {
 
 	use ClassicFormDataExtractionTrait;
+	use StripeSetupIntentReaderTrait;
 
 	/** Setup-intent verification source. */
 	public const SOURCE = 'stripe_setup_intent_creation';
@@ -282,12 +283,12 @@ class StripeSetupIntentCompat {
 	 */
 	private function setup_intent_has_other_payment_method( array $request_data, string $payment_method_id ): bool {
 		$setup_intent_id = $request_data['payment_data'][ self::SETUP_INTENT_FIELD ] ?? null;
-		if ( ! is_string( $setup_intent_id ) || '' === $setup_intent_id || ! class_exists( '\WC_Stripe_API' ) ) {
+		if ( ! is_string( $setup_intent_id ) ) {
 			return false;
 		}
 
 		try {
-			$setup_intent = \WC_Stripe_API::retrieve( 'setup_intents/' . rawurlencode( $setup_intent_id ) );
+			$saved_payment_method = $this->get_setup_intent_payment_method_id( $setup_intent_id );
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
@@ -302,18 +303,7 @@ class StripeSetupIntentCompat {
 			return false;
 		}
 
-		if ( ! is_object( $setup_intent ) || is_wp_error( $setup_intent ) || ! empty( $setup_intent->error ) ) {
-			return false;
-		}
-
-		$saved_payment_method = $setup_intent->payment_method ?? null;
-		if ( is_object( $saved_payment_method ) ) {
-			$saved_payment_method = $saved_payment_method->id ?? null;
-		}
-
-		return is_string( $saved_payment_method )
-			&& '' !== $saved_payment_method
-			&& $payment_method_id !== $saved_payment_method;
+		return null !== $saved_payment_method && $payment_method_id !== $saved_payment_method;
 	}
 
 	/**
