@@ -143,6 +143,8 @@ class BlocksCheckoutProtector {
 		$session_id_error = self::get_submitted_session_id_error( $this->request_data['extensions'] );
 		if ( null !== $session_id_error ) {
 			$this->request_data[ SessionIdError::FIELD ] = $session_id_error;
+		} elseif ( ! self::has_submitted_session_id( $this->request_data['extensions'] ) ) {
+			$this->request_data[ SessionIdError::FIELD ] = SessionIdError::NOT_SUBMITTED;
 		}
 	}
 
@@ -243,15 +245,17 @@ class BlocksCheckoutProtector {
 				'endpoint'        => CheckoutSchema::IDENTIFIER,
 				'namespace'       => self::EXTENSION_NAMESPACE,
 				'schema_callback' => function () {
+					// Both are nullable: the Store API fills a missing key with null,
+					// where a string type would turn it into an empty string. A
+					// request without the plugin's scripts then keeps a null
+					// session ID, and requests that carry a session ID omit the reason.
 					return array(
 						'blackbox_session_id'       => array(
 							'description' => 'Blackbox session ID for fraud protection verification.',
-							'type'        => 'string',
+							'type'        => array( 'string', 'null' ),
 							'context'     => array( 'view', 'edit' ),
 							'readonly'    => true,
 						),
-						// Nullable: the Store API fills a missing key with null, and
-						// requests that carry a session ID omit this one.
 						'blackbox_session_id_error' => array(
 							'description' => 'Why the browser has no Blackbox session ID.',
 							'type'        => array( 'string', 'null' ),
@@ -297,7 +301,7 @@ class BlocksCheckoutProtector {
 	/**
 	 * Get the submitted session ID from the stored request data.
 	 *
-	 * @return mixed The submitted session ID, or an empty string if not found.
+	 * @return mixed The submitted session ID, or an empty string if not found or null.
 	 */
 	private function get_submitted_session_id(): mixed {
 		$extensions = $this->request_data['extensions'] ?? array();
@@ -308,11 +312,27 @@ class BlocksCheckoutProtector {
 
 		$fraud_data = $extensions[ self::EXTENSION_NAMESPACE ];
 
-		if ( ! is_array( $fraud_data ) || ! array_key_exists( 'blackbox_session_id', $fraud_data ) ) {
+		if ( ! is_array( $fraud_data ) ) {
 			return '';
 		}
 
-		return $fraud_data['blackbox_session_id'];
+		// The Store API fills a missing session ID with null.
+		return $fraud_data['blackbox_session_id'] ?? '';
+	}
+
+	/**
+	 * Check whether the submitted extension data carries a session ID value.
+	 *
+	 * The plugin's scripts always send one, empty when there is no session ID.
+	 * The Store API fills a missing key with null.
+	 *
+	 * @param mixed $extensions Submitted extension data.
+	 * @return bool Whether a non-null session ID value was submitted.
+	 */
+	private static function has_submitted_session_id( mixed $extensions ): bool {
+		return is_array( $extensions )
+			&& is_array( $extensions[ self::EXTENSION_NAMESPACE ] ?? null )
+			&& null !== ( $extensions[ self::EXTENSION_NAMESPACE ]['blackbox_session_id'] ?? null );
 	}
 
 	/**
