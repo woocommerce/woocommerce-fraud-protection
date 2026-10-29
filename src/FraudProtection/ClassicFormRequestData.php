@@ -83,6 +83,9 @@ class ClassicFormRequestData {
 		$session_id_error = $_POST[ SessionIdError::FIELD ] ?? null;
 		if ( is_string( $session_id_error ) ) {
 			$request_data[ SessionIdError::FIELD ] = sanitize_key( wp_unslash( $session_id_error ) );
+		} elseif ( ! array_key_exists( SessionVerifier::SESSION_ID_FIELD, $_POST ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is the caller's responsibility.
+			// The plugin's scripts always send the field, so they did not handle this request.
+			$request_data[ SessionIdError::FIELD ] = SessionIdError::NOT_SUBMITTED;
 		}
 
 		return $request_data;

@@ -253,7 +253,7 @@ if ( canAdd ) {
 const extensions = canAdd ? fp.addSessionIdToExtensions( buttonExtensions ) : buttonExtensions;
 ```
 
-`addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always removes a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out without one. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.1.
+`addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out with the reason instead of a session ID. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.1.
 
 Load the browser scripts on every page where the buttons render, as in [step 1](#1-load-the-browser-scripts). If your button code can wait for a promise, use `takeSessionId()` as in [step 2](#2-send-the-session-id) instead.
 

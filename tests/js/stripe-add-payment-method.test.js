@@ -12,9 +12,20 @@ const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
 const SESSION_ID_ERROR_FIELD = 'wc_fraud_protection_session_id_error';
 
 let $;
+let documentListeners;
 
 beforeEach( () => {
 	document.body.innerHTML = '<form id="add_payment_method"></form>';
+
+	// Each test loads the script again, so its document listeners are removed afterwards.
+	documentListeners = [];
+	const addEventListener = document.addEventListener.bind( document );
+	jest.spyOn( document, 'addEventListener' ).mockImplementation(
+		( ...args ) => {
+			documentListeners.push( args );
+			addEventListener( ...args );
+		}
+	);
 
 	jest.isolateModules( () => {
 		$ = require( 'jquery' );
@@ -26,10 +37,15 @@ beforeEach( () => {
 			sessionIdField: SESSION_ID_FIELD,
 			sessionIdErrorField: SESSION_ID_ERROR_FIELD,
 		},
+		reset: jest.fn(),
 	};
 } );
 
 afterEach( () => {
+	jest.restoreAllMocks();
+	documentListeners.forEach( ( args ) =>
+		document.removeEventListener( ...args )
+	);
 	document.body.innerHTML = '';
 	delete window.jQuery;
 	delete window.wcFraudProtection;
@@ -68,6 +84,44 @@ const setupIntentData = {
 	'wc-stripe-payment-type': 'card',
 	_ajax_nonce: 'nonce-value',
 };
+
+/**
+ * Send a setup intent request that the server answers with the given status and body.
+ *
+ * @param {number} status HTTP status.
+ * @param {Object} body   JSON response body.
+ * @return {Promise<void>} Resolves after the response callbacks have run.
+ */
+function sendSetupIntentRequest( status, body ) {
+	$.ajaxTransport( '+*', () => ( {
+		send( headers, complete ) {
+			complete( status, 'response', { text: JSON.stringify( body ) } );
+		},
+		abort() {},
+	} ) );
+
+	$.ajax( {
+		url: '/wp-admin/admin-ajax.php',
+		type: 'POST',
+		dataType: 'json',
+		data: setupIntentData,
+	} ).catch( () => {} );
+
+	// jQuery runs then() callbacks in a new task.
+	return new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+}
+
+function submitForm() {
+	document
+		.getElementById( 'add_payment_method' )
+		.dispatchEvent(
+			new Event( 'submit', { bubbles: true, cancelable: true } )
+		);
+}
+
+function formHasField( name ) {
+	return $( '#add_payment_method' ).find( `input[name="${ name }"]` ).length;
+}
 
 describe( 'stripe-add-payment-method', () => {
 	it( 'adds the form session ID to the setup intent request', () => {
@@ -123,6 +177,84 @@ describe( 'stripe-add-payment-method', () => {
 		} );
 
 		expect( params.has( SESSION_ID_FIELD ) ).toBe( false );
+	} );
+
+	it.each( [
+		[ 'is blocked', 200, { success: false, data: { error: {} } } ],
+		[ 'fails', 500, {} ],
+	] )(
+		'removes the attempt fields and resets the session when the setup intent request %s',
+		async ( _, status, body ) => {
+			addFormField( SESSION_ID_FIELD, 'sess-stripe' );
+			loadScript();
+
+			await sendSetupIntentRequest( status, body );
+
+			expect( formHasField( SESSION_ID_FIELD ) ).toBe( 0 );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		}
+	);
+
+	it( 'removes the session ID error without a reset when the request fails without a session ID', async () => {
+		addFormField( SESSION_ID_ERROR_FIELD, 'timeout' );
+		loadScript();
+
+		await sendSetupIntentRequest( 200, { success: false } );
+
+		expect( formHasField( SESSION_ID_ERROR_FIELD ) ).toBe( 0 );
+		expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+	} );
+
+	it( 'keeps the session ID after a successful setup intent request', async () => {
+		addFormField( SESSION_ID_FIELD, 'sess-stripe' );
+		loadScript();
+
+		await sendSetupIntentRequest( 200, { success: true, data: {} } );
+
+		expect( formHasField( SESSION_ID_FIELD ) ).toBe( 1 );
+		expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+	} );
+
+	it( 'ends the attempt on the next submit after a setup that did not complete', async () => {
+		addFormField( SESSION_ID_FIELD, 'sess-stripe' );
+		loadScript();
+		await sendSetupIntentRequest( 200, { success: true, data: {} } );
+
+		// add-payment-method.js listens on the form in the capture phase.
+		let fieldSeenByForm;
+		document.getElementById( 'add_payment_method' ).addEventListener(
+			'submit',
+			() => {
+				fieldSeenByForm = formHasField( SESSION_ID_FIELD );
+			},
+			true
+		);
+		submitForm();
+
+		expect( fieldSeenByForm ).toBe( 0 );
+		expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	it( 'keeps the session ID for the form post of a completed setup', async () => {
+		addFormField( SESSION_ID_FIELD, 'sess-stripe' );
+		loadScript();
+		await sendSetupIntentRequest( 200, { success: true, data: {} } );
+
+		addFormField( 'wc-stripe-setup-intent', 'seti_123' );
+		submitForm();
+
+		expect( formHasField( SESSION_ID_FIELD ) ).toBe( 1 );
+		expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+	} );
+
+	it( 'keeps the session ID on a submit before it is sent', () => {
+		addFormField( SESSION_ID_FIELD, 'sess-stripe' );
+		loadScript();
+
+		submitForm();
+
+		expect( formHasField( SESSION_ID_FIELD ) ).toBe( 1 );
+		expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 	} );
 
 	it( 'does nothing when wcFraudProtection is missing', () => {

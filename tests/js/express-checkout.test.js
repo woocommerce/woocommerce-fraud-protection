@@ -5,9 +5,9 @@
  * express checkout extension data.
  *
  * express-checkout.js is an IIFE. We test it by loading blackbox-init.js
- * for the real wcFraudProtection.addSessionIdToExtensions(), replacing the
- * prepared-session methods with mocks, requiring the file (which executes
- * the IIFE), and applying the filters the way the gateways do.
+ * with a minimal SDK for the real wcFraudProtection.addSessionIdToExtensions(),
+ * replacing the prepared-session methods with mocks, requiring the file
+ * (which executes the IIFE), and applying the filters the way the gateways do.
  */
 
 const WOOPAYMENTS_FILTER =
@@ -21,6 +21,7 @@ let mockPrepareSessionId;
 let mockTakePreparedSessionId;
 
 beforeEach( () => {
+	delete window.Blackbox;
 	delete window.wcFraudProtection;
 	delete window.wcFraudProtectionExpressCheckout;
 	delete window.wp;
@@ -30,7 +31,7 @@ beforeEach( () => {
 	mockTakePreparedSessionId = jest.fn( () => 'prepared-session-id' );
 } );
 
-function setupAndLoad() {
+function setupAndLoad( { sdk = true } = {} ) {
 	window.wp = {
 		hooks: {
 			addFilter: jest.fn( ( name, namespace, callback ) => {
@@ -42,12 +43,18 @@ function setupAndLoad() {
 	window.wcFraudProtection = {
 		config: { sessionIdField: 'wc_fraud_protection_session_id' },
 	};
+	if ( sdk ) {
+		window.Blackbox = { configure: jest.fn(), init: jest.fn() };
+	}
 
 	jest.isolateModules( () => {
 		require( '../../assets/js/blackbox-init' );
 	} );
-	window.wcFraudProtection.prepareSessionId = mockPrepareSessionId;
-	window.wcFraudProtection.takePreparedSessionId = mockTakePreparedSessionId;
+	if ( sdk ) {
+		window.wcFraudProtection.prepareSessionId = mockPrepareSessionId;
+		window.wcFraudProtection.takePreparedSessionId =
+			mockTakePreparedSessionId;
+	}
 
 	jest.isolateModules( () => {
 		require( '../../assets/js/express-checkout' );
@@ -134,7 +141,7 @@ describe( 'express-checkout', () => {
 		} );
 	} );
 
-	it( 'removes an earlier session ID when no prepared session ID is ready', () => {
+	it( 'replaces an earlier session ID with not_ready when no prepared session ID is ready', () => {
 		mockTakePreparedSessionId.mockReturnValue( '' );
 		setupAndLoad();
 
@@ -143,14 +150,37 @@ describe( 'express-checkout', () => {
 			[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
 		} );
 
-		expect( result ).toEqual( { other: { value: 1 } } );
+		expect( result ).toEqual( {
+			other: { value: 1 },
+			[ NAMESPACE ]: { blackbox_session_id_error: 'not_ready' },
+		} );
 	} );
 
-	it( 'leaves the data without a session ID when none is ready', () => {
-		mockTakePreparedSessionId.mockReturnValue( '' );
-		setupAndLoad();
+	it.each( [
+		[ 'WooPayments', WOOPAYMENTS_FILTER ],
+		[ 'Stripe', STRIPE_FILTER ],
+	] )(
+		'reports not_ready in the %s extension data when no session ID is ready',
+		( _, filterName ) => {
+			mockTakePreparedSessionId.mockReturnValue( '' );
+			setupAndLoad();
 
-		expect( applyFilter( WOOPAYMENTS_FILTER, {} ) ).toEqual( {} );
+			expect( applyFilter( filterName, {} ) ).toEqual( {
+				[ NAMESPACE ]: { blackbox_session_id_error: 'not_ready' },
+			} );
+		}
+	);
+
+	it( 'reports sdk_unavailable when the SDK did not load', () => {
+		setupAndLoad( { sdk: false } );
+
+		expect(
+			applyFilter( STRIPE_FILTER, {
+				[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
+			} )
+		).toEqual( {
+			[ NAMESPACE ]: { blackbox_session_id_error: 'sdk_unavailable' },
+		} );
 	} );
 
 	it.each( [
@@ -165,7 +195,7 @@ describe( 'express-checkout', () => {
 		expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
 	} );
 
-	it( 'removes an earlier session ID when taking the session ID throws', () => {
+	it( 'replaces an earlier session ID with not_ready when taking the session ID throws', () => {
 		mockTakePreparedSessionId.mockImplementation( () => {
 			throw new Error( 'broken' );
 		} );
@@ -176,7 +206,10 @@ describe( 'express-checkout', () => {
 			[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
 		} );
 
-		expect( result ).toEqual( { other: { value: 1 } } );
+		expect( result ).toEqual( {
+			other: { value: 1 },
+			[ NAMESPACE ]: { blackbox_session_id_error: 'not_ready' },
+		} );
 	} );
 
 	it( 'does not register filters when wp.hooks is missing', () => {

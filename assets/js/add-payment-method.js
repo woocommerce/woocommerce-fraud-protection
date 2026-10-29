@@ -15,7 +15,9 @@
  * prevents gateway handlers (e.g. Stripe tokenization) from starting
  * concurrent async work that would cause a double-POST.
  *
- * No reset needed — every outcome is a full page navigation.
+ * No reset needed — every form post ends in a full page navigation.
+ * Gateways that save the payment method through AJAX before the form
+ * post, such as Stripe, end failed attempts in their compat scripts.
  *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
  */

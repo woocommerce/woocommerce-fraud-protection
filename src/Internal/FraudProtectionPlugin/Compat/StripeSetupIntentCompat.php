@@ -31,6 +31,9 @@ defined( 'ABSPATH' ) || exit;
  *
  * The decision is kept for the form post of the same attempt, so that
  * AddPaymentMethodProtector applies it instead of verifying the session again.
+ * An ALLOW is not applied when the posted setup intent holds another payment
+ * method than the verified one, because the payment method of a setup intent
+ * can be changed in the browser after the setup intent request.
  *
  * Stands aside once the gateway declares `fraud_protection_add_payment_method`.
  *
@@ -57,6 +60,12 @@ class StripeSetupIntentCompat {
 
 	/** POST fields of the Stripe AJAX request that are not payment data. */
 	private const NON_PAYMENT_FIELDS = array( 'action', '_ajax_nonce' );
+
+	/** POST field of the Stripe AJAX request with the payment method ID. */
+	private const PAYMENT_METHOD_FIELD = 'wc-stripe-payment-method';
+
+	/** POST field of the add-payment-method form with the setup intent ID. */
+	private const SETUP_INTENT_FIELD = 'wc-stripe-setup-intent';
 
 	/**
 	 * Session verifier instance.
@@ -181,6 +190,8 @@ class StripeSetupIntentCompat {
 	 *
 	 * The record is single-use: it is retired on every add-payment-method
 	 * verification for a Stripe gateway, whether or not it matches.
+	 * An ALLOW is not applied when the posted setup intent holds another
+	 * payment method than the verified one; the request then verifies normally.
 	 *
 	 * @internal
 	 *
@@ -205,6 +216,19 @@ class StripeSetupIntentCompat {
 			$this->retire_verification_record();
 
 			if ( null === $record || '' === $session_id || $record['session_id'] !== $session_id || get_current_user_id() !== $record['user_id'] ) {
+				return $supplied_decision;
+			}
+
+			if (
+				FraudDecision::Allow === $record['decision']
+				&& $this->setup_intent_has_other_payment_method( $request_data, $record['payment_method_id'] )
+			) {
+				FraudProtectionController::log(
+					'info',
+					'Stripe setup intent holds another payment method than the verified one; add-payment-method request will verify',
+					array( 'event_source' => $source )
+				);
+
 				return $supplied_decision;
 			}
 
@@ -272,6 +296,55 @@ class StripeSetupIntentCompat {
 	}
 
 	/**
+	 * Check whether the posted setup intent holds a payment method other than the verified one.
+	 *
+	 * Stripe saves the payment method of the setup intent that the form posts,
+	 * which the browser can change after the setup intent request. Only a
+	 * setup intent that was read and holds another payment method counts:
+	 * when it cannot be read, Stripe cannot save its payment method either,
+	 * or the failure is not under the shopper's control.
+	 *
+	 * @param array  $request_data      Request data of the add-payment-method form post.
+	 * @param string $payment_method_id The payment method ID that was verified.
+	 * @return bool True when the setup intent holds another payment method.
+	 */
+	private function setup_intent_has_other_payment_method( array $request_data, string $payment_method_id ): bool {
+		$setup_intent_id = $request_data['payment_data'][ self::SETUP_INTENT_FIELD ] ?? null;
+		if ( ! is_string( $setup_intent_id ) || '' === $setup_intent_id || ! class_exists( '\WC_Stripe_API' ) ) {
+			return false;
+		}
+
+		try {
+			$setup_intent = \WC_Stripe_API::retrieve( 'setup_intents/' . rawurlencode( $setup_intent_id ) );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Reading the Stripe setup intent failed; keeping the setup intent decision',
+				array(
+					'event_source'      => self::ADD_PAYMENT_METHOD_SOURCE,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				)
+			);
+
+			return false;
+		}
+
+		if ( ! is_object( $setup_intent ) || is_wp_error( $setup_intent ) || ! empty( $setup_intent->error ) ) {
+			return false;
+		}
+
+		$saved_payment_method = $setup_intent->payment_method ?? null;
+		if ( is_object( $saved_payment_method ) ) {
+			$saved_payment_method = $saved_payment_method->id ?? null;
+		}
+
+		return is_string( $saved_payment_method )
+			&& '' !== $saved_payment_method
+			&& $payment_method_id !== $saved_payment_method;
+	}
+
+	/**
 	 * Build the verification request data from the Stripe AJAX request.
 	 *
 	 * The request carries the Stripe payment method type instead of the
@@ -304,6 +377,8 @@ class StripeSetupIntentCompat {
 	 *
 	 * Any earlier record is replaced. Nothing is stored when the request had no
 	 * session ID, because the form post would not have one to match.
+	 * The payment method ID of the request is kept so that an ALLOW is not
+	 * applied to a setup intent that holds another payment method.
 	 *
 	 * @param mixed         $submitted_session_id The session ID submitted with the AJAX request.
 	 * @param FraudDecision $decision             The applied decision.
@@ -322,10 +397,14 @@ class StripeSetupIntentCompat {
 				&& '' !== $session_id
 				&& in_array( $decision, FraudDecision::ACTIONABLE, true )
 			) {
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by Stripe. The value is sanitized below.
+				$payment_method_id = $_POST[ self::PAYMENT_METHOD_FIELD ] ?? null;
+
 				$record = array(
-					'session_id' => $session_id,
-					'decision'   => $decision,
-					'user_id'    => get_current_user_id(),
+					'session_id'        => $session_id,
+					'decision'          => $decision,
+					'user_id'           => get_current_user_id(),
+					'payment_method_id' => is_string( $payment_method_id ) ? sanitize_text_field( wp_unslash( $payment_method_id ) ) : '',
 				);
 			}
 
@@ -348,7 +427,7 @@ class StripeSetupIntentCompat {
 	/**
 	 * Read the current verification record from the WC session.
 	 *
-	 * @return ?array{session_id: string, decision: FraudDecision, user_id: int} The record, or null.
+	 * @return ?array{session_id: string, decision: FraudDecision, user_id: int, payment_method_id: string} The record, or null.
 	 */
 	private function get_verification_record(): ?array {
 		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
@@ -364,6 +443,11 @@ class StripeSetupIntentCompat {
 		$decision   = $stored['decision'] ?? null;
 		$user_id    = $stored['user_id'] ?? null;
 
+		$payment_method_id = $stored['payment_method_id'] ?? null;
+		if ( ! is_string( $payment_method_id ) ) {
+			$payment_method_id = '';
+		}
+
 		if (
 			'' === $session_id
 			|| ! $decision instanceof FraudDecision
@@ -375,9 +459,10 @@ class StripeSetupIntentCompat {
 		}
 
 		return array(
-			'session_id' => $session_id,
-			'decision'   => $decision,
-			'user_id'    => $user_id,
+			'session_id'        => $session_id,
+			'decision'          => $decision,
+			'user_id'           => $user_id,
+			'payment_method_id' => $payment_method_id,
 		);
 	}
 

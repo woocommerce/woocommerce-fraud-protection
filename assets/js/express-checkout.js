@@ -45,8 +45,12 @@
 	/**
 	 * Add a fresh session ID to the express checkout extension data.
 	 *
+	 * Without a fresh ID, the data reports `not_ready` instead, replacing any
+	 * session ID already in it: that one can come from the checkout form's
+	 * earlier attempt and must not be sent again.
+	 *
 	 * @param {*} extensionData Extension data built by the gateway.
-	 * @return {*} The extension data with the session ID.
+	 * @return {*} The extension data with the session ID, or the reason why it has none.
 	 */
 	function addSessionId( extensionData ) {
 		try {
