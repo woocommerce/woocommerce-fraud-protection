@@ -17,6 +17,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalPaymentDa
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripeSetupIntentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WcposCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
@@ -172,6 +173,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$container->get( PayPalDecisionReuse::class )->register();
 		$container->get( PayPalScriptCompat::class )->register();
 		$container->get( ExpressCheckoutScriptCompat::class )->register();
+		$container->get( StripeSetupIntentCompat::class )->register();
 		$container->get( SubscriptionsChangePaymentCompat::class )->register();
 		$container->get( WcposCompat::class )->register();
 	}

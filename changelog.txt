@@ -7,6 +7,7 @@ YYYY-xx-xx - version 0.3.1
 * Dev - Payment attempts without a browser session now report whether the plugin's scripts handled the request.
 * Fixed - Payments that a cashier records in WooCommerce POS, such as cash, are no longer checked for fraud, since no shopper browser is involved. Other payment methods used in the POS are still checked.
 * Fixed - Payment attempts are now analyzed with the shopper's browser session on some custom classic checkout templates, including FunnelKit.
+* Fixed - Cards saved with Stripe on the My Account "Add payment method" page are now analyzed before Stripe sends them to the card issuer, instead of after.
 
 2026-10-20 - version 0.3.0
 * Added - Stores where automatic blocking was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic blocking is turned off.

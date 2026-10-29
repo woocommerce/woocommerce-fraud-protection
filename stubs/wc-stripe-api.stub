@@ -22,6 +22,24 @@ class WC_Stripe_API {
 	 * @return mixed
 	 */
 	public static function get_payment_method( string $payment_method_id ) {}
+
+	/**
+	 * @param string $api The API path.
+	 * @return mixed
+	 */
+	public static function retrieve( $api ) {}
+
+	/**
+	 * @param string $api      The API path.
+	 * @param mixed  $response The mock response.
+	 * @return void
+	 */
+	public static function set_mock_retrieve_response( string $api, $response ): void {}
+
+	/**
+	 * @return string[]
+	 */
+	public static function get_retrieved(): array {}
 }
 
 class WC_Stripe {
