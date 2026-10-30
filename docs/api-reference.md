@@ -631,7 +631,7 @@ fetch( '/wp-json/wc/store/v1/checkout', {
 |-------|-------|
 | `type` | `gateway` or `extension` |
 | `id` | The gateway ID, or the plugin slug the extension declares under |
-| `integration` | The `FraudProtectionFeature` or `FraudProtectionIntegration` string. Unknown strings are listed too, so a misspelled declaration shows up. |
+| `integration` | The `FraudProtectionFeature` or `FraudProtectionIntegration` string. Gateway rows list only known `FraudProtectionFeature` strings. Extension rows list unknown strings too, so a misspelled extension declaration shows up. |
 
 It accepts the standard `--format` (`table`, `csv`, `json`, `yaml`, `count`) and `--fields` options:
 

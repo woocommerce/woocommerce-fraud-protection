@@ -189,8 +189,8 @@ class GatewayRequestVerifier {
 	 * or payment-method submission paid with `$gateway_id`, it calls `$reference_reader` with the
 	 * submission's payment data, its full request data and its verification source. Return the
 	 * reference that the submission carries, or an empty string. When it matches the reference
-	 * the gateway's last {@see VerifiedRequest::reuse_decision_for()} call, and the cart items have
-	 * not changed since, the submission reuses that decision instead of being verified, and the
+	 * passed to the gateway's last {@see VerifiedRequest::reuse_decision_for()} call, and the cart
+	 * items have not changed since, the submission reuses that decision instead of being verified, and the
 	 * decision is used up. A submission with the same source as the earlier request never reuses it.
 	 *
 	 * A later call for the same gateway replaces the reader.
