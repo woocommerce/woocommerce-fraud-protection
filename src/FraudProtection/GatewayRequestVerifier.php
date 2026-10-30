@@ -127,7 +127,7 @@ class GatewayRequestVerifier {
 	 * @param string $gateway_id   ID of the gateway the request pays with.
 	 * @param array  $payment_data Gateway fields that describe the payment instrument, passed to the resolved-payment-data filter.
 	 * @param int    $order_id     The WooCommerce order the request pays for, or 0 before the order exists.
-	 * @param mixed  $session_id   The session ID the browser sent. Null reads it from the request body under {@see SessionVerifier::SESSION_ID_FIELD}: a form field, or a top-level property of a JSON body.
+	 * @param mixed  $session_id   The session ID the browser sent. Null reads it, or the reason the browser reports for a missing one, from the request body under {@see SessionVerifier::SESSION_ID_FIELD}: a form field, or a top-level property of a JSON body.
 	 * @return VerifiedRequest The decision, which the submission that completes the attempt can reuse.
 	 *
 	 * @since 0.3.1
@@ -139,19 +139,26 @@ class GatewayRequestVerifier {
 		);
 
 		if ( null === $session_id ) {
+			// A browser without a session ID sends only the reason for it.
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is the caller's responsibility.
-			if ( array_key_exists( SessionVerifier::SESSION_ID_FIELD, $_POST ) ) {
+			if ( array_key_exists( SessionVerifier::SESSION_ID_FIELD, $_POST ) || array_key_exists( SessionIdError::FIELD, $_POST ) ) {
 				$session_id = ( new ClassicFormRequestData() )->get_submitted_session_id();
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is the caller's responsibility.
+				$session_id_sent = array_key_exists( SessionVerifier::SESSION_ID_FIELD, $_POST );
 				// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verification is the caller's responsibility. Strings are unslashed and sanitized below.
 				$session_id_error = is_string( $_POST[ SessionIdError::FIELD ] ?? null ) ? wp_unslash( $_POST[ SessionIdError::FIELD ] ) : null;
 			} else {
 				$body             = $this->get_json_body();
 				$session_id       = $body[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
+				$session_id_sent  = array_key_exists( SessionVerifier::SESSION_ID_FIELD, $body );
 				$session_id_error = $body[ SessionIdError::FIELD ] ?? null;
 			}
 
 			if ( is_string( $session_id_error ) ) {
 				$request_data[ SessionIdError::FIELD ] = sanitize_key( $session_id_error );
+			} elseif ( ! $session_id_sent ) {
+				// The plugin's scripts always send the session ID or the reason it is missing, so they did not handle this request.
+				$request_data[ SessionIdError::FIELD ] = SessionIdError::NOT_SUBMITTED;
 			}
 		}
 

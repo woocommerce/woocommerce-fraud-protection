@@ -127,7 +127,7 @@ public function verify_request( string $source, string $gateway_id, array $payme
 | `$gateway_id` | The ID of the gateway the request pays with. |
 | `$payment_data` | A flat map of the gateway fields that describe the payment instrument, passed to `woocommerce_fraud_protection_resolved_payment_data` callbacks. |
 | `$order_id` | The order the request pays for, or `0` before the order exists. |
-| `$session_id` | The session ID the browser sent. `null` reads it, together with the reason the browser reports for a missing ID, from the request body under `SessionVerifier::SESSION_ID_FIELD`: a form field, or a top-level property of a body sent as `application/json`. A form field wins over a JSON body. Pass it explicitly when the request carries it anywhere else, such as in a nested JSON object or a REST route parameter; otherwise the request is verified without it. |
+| `$session_id` | The session ID the browser sent. `null` reads it, together with the reason the browser reports for a missing ID, from the request body under `SessionVerifier::SESSION_ID_FIELD`: a form field, or a top-level property of a body sent as `application/json`. Form fields, even a reason sent without a session ID, win over a JSON body. Pass it explicitly when the request carries it anywhere else, such as in a nested JSON object or a REST route parameter; otherwise the request is verified without it. |
 
 Returns a [`VerifiedRequest`](#verifiedrequest). Like `verify_session()`, it never throws, and errors produce `FraudDecision::Allow`. Check your nonce and permissions before calling it.
 

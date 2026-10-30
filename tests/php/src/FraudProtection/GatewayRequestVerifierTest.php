@@ -217,6 +217,54 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/**
+	 * @testdox verify_request() reports the reason the browser sent for a missing session ID, or that no session ID field was sent.
+	 *
+	 * @dataProvider session_id_error_provider
+	 *
+	 * @param array<string, string> $post               The POST fields.
+	 * @param string                $content_type       The request content type.
+	 * @param string                $body               The raw request body.
+	 * @param string                $expected_session   The session ID that is verified.
+	 * @param string|null           $expected_error     The reported session ID error, or null for none.
+	 */
+	public function test_verify_request_reports_the_session_id_error( array $post, string $content_type, string $body, string $expected_session, ?string $expected_error ): void {
+		$_POST = $post;
+		$this->set_server_variables( array( 'CONTENT_TYPE' => $content_type ) );
+		$this->mock_request_body( $body );
+		$this->session_verifier->expects( $this->once() )
+			->method( 'verify_session' )
+			->with(
+				$expected_session,
+				self::SOURCE,
+				0,
+				$this->callback( fn( array $request_data ): bool => ( $request_data[ SessionIdError::FIELD ] ?? null ) === $expected_error )
+			)
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_request( self::SOURCE, self::GATEWAY_ID );
+	}
+
+	/**
+	 * Request bodies and the session ID error reported for them.
+	 *
+	 * @return array<string, array{array<string, string>, string, string, string, string|null}>
+	 */
+	public function session_id_error_provider(): array {
+		$form = 'application/x-www-form-urlencoded';
+		$json = 'application/json';
+
+		return array(
+			'posted reason without a session ID field' => array( array( SessionIdError::FIELD => 'timeout' ), $form, '', '', 'timeout' ),
+			'posted reason with a JSON content type'   => array( array( SessionIdError::FIELD => 'timeout' ), $json, '{"' . SessionVerifier::SESSION_ID_FIELD . '":"json-session"}', '', 'timeout' ),
+			'JSON reason without a session ID'         => array( array(), $json, '{"' . SessionIdError::FIELD . '":"sdk_unavailable"}', '', 'sdk_unavailable' ),
+			'posted session ID'                        => array( array( SessionVerifier::SESSION_ID_FIELD => 'posted-session' ), $form, '', 'posted-session', null ),
+			'empty JSON session ID'                    => array( array(), $json, '{"' . SessionVerifier::SESSION_ID_FIELD . '":""}', '', null ),
+			'no field in a form body'                  => array( array( 'other' => 'value' ), $form, '', '', SessionIdError::NOT_SUBMITTED ),
+			'no field in a JSON body'                  => array( array(), $json, '{"other":"value"}', '', SessionIdError::NOT_SUBMITTED ),
+		);
+	}
+
 	/*
 	|--------------------------------------------------------------------------
 	| Decision Reuse Tests
