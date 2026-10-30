@@ -6,13 +6,13 @@ This guide is for payment gateways and other WooCommerce extensions that want to
 
 Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no integration. Describing its payment instrument, though, gives each verification better data (see [Payment data](#payment-data)).
 
-An extension needs an integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. Fraud Protection ships compatibility layers that cover these flows for WooPayments, Stripe, PayPal Payments, Square and WooCommerce Subscriptions from the outside. A native integration does the same work inside the extension. When the extension declares it, the matching compatibility layer stands aside.
+An extension needs an integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. A native integration protects those flows inside the extension, and a declaration tells Fraud Protection that the extension does.
 
 Three rules apply to every integration:
 
 - **Fraud Protection is optional.** Register your integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.3.1 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
 - **Fail open.** Never stop a payment because Fraud Protection is unavailable. Send a request without a session ID when you have none; the server still verifies it.
-- **Declare only what you implement.** A declaration switches off a compatibility layer, so a declared but unimplemented integration leaves that flow unprotected.
+- **Declare only what you implement.** A declaration tells Fraud Protection that your extension protects that flow itself, so a declared but unimplemented integration can leave the flow unprotected.
 
 ## Choose your integrations
 
@@ -41,7 +41,7 @@ $this->supports = array(
 );
 ```
 
-If your plugin registers one gateway instance per payment method, declare the features on the main gateway. For the gateway families that have a compatibility layer, the plugin asks the gateway of the current attempt first and then the family's main gateway, so a declaration there covers every payment method.
+If your plugin registers one gateway instance per payment method, declare the features on every instance that implements them.
 
 ### Other extensions
 
@@ -59,7 +59,7 @@ add_filter(
 );
 ```
 
-Declare only under your own slug: each compatibility layer checks the slug of the extension it covers.
+Declare only under your own slug: Fraud Protection reads each extension's declarations under that extension's slug.
 
 ### Check the declaration
 
@@ -230,8 +230,6 @@ add_action(
 
 The reader you pass to `register_reference_reader()` serves both flows: return the setup intent ID when the submission carries one.
 
-PayPal Payments creates setup tokens both at checkout and when a payment method is saved. Its setup-token compatibility layer therefore stands aside only when both `fraud_protection_checkout` and `fraud_protection_add_payment_method` are declared, so PayPal Payments must declare the two together.
-
 ### Express checkout
 
 **Declare:** `fraud_protection_express_checkout` in the gateway's `$supports`.
@@ -293,8 +291,6 @@ if ( FraudDecision::Block === $decision ) {
 	exit;
 }
 ```
-
-WooCommerce Subscriptions is the extension this integration exists for: the plugin's compatibility layer for its form stands aside when `woocommerce-subscriptions` declares `change_payment_method`.
 
 ## Test your integration
 

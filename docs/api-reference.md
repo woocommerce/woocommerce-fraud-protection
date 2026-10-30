@@ -299,19 +299,17 @@ Converts a session ID value from an untrusted source into the form `verify_sessi
 
 ### FraudProtectionFeature
 
-The feature strings a payment gateway adds to its `$supports` array to declare a native integration. Each one switches off the matching compatibility layer for that gateway. Use the literal strings in your gateway; the constants are for code that runs with the plugin. Since 0.3.1.
+The feature strings a payment gateway adds to its `$supports` array to declare a native integration. Declare a feature only when your gateway implements all of it. Use the literal strings in your gateway; the constants are for code that runs with the plugin. Since 0.3.1.
 
-| Constant | String | The gateway commits to | Stands aside |
-|----------|--------|------------------------|--------------|
-| `PAYMENT_DATA` | `fraud_protection_payment_data` | Returning the payment type, instrument, transaction mode and merchant identifier for its own attempts through `woocommerce_fraud_protection_resolved_payment_data`. | The built-in payment-data resolver for the gateway. |
-| `CHECKOUT` | `fraud_protection_checkout` | Loading the browser scripts on its product, cart, checkout and Pay for order surfaces; sending the session ID with the requests that place or authorize a purchase outside the WooCommerce checkout submission; verifying them; blocking on a Block decision; and supplying the decision to the final checkout through `woocommerce_fraud_protection_skip_session_verify`. | The PayPal Payments request, script and decision-reuse layers on purchase surfaces. |
-| `ADD_PAYMENT_METHOD` | `fraud_protection_add_payment_method` | The same, for the requests that check or save a payment method on the My Account "Add payment method" form and the WooCommerce Subscriptions change-payment-method form, with the `MessageContext::Generic` message, and supplying the decision to the "Add payment method" form submission. | The Stripe setup-intent layer, and the PayPal Payments script layer on those forms. |
-| `EXPRESS_CHECKOUT` | `fraud_protection_express_checkout` | Adding the session ID to the Store API checkout request of its express payment buttons. | The built-in express checkout script for the gateway. |
-| `ALL` | — | Every feature above. | — |
+| Constant | String | The gateway commits to |
+|----------|--------|------------------------|
+| `PAYMENT_DATA` | `fraud_protection_payment_data` | Returning the payment type, instrument, transaction mode and merchant identifier for its own attempts through `woocommerce_fraud_protection_resolved_payment_data`. |
+| `CHECKOUT` | `fraud_protection_checkout` | Loading the browser scripts on its product, cart, checkout and Pay for order surfaces; sending the session ID with the requests that place or authorize a purchase outside the WooCommerce checkout submission; verifying them; blocking on a Block decision; and supplying the decision to the final checkout through `woocommerce_fraud_protection_skip_session_verify`. |
+| `ADD_PAYMENT_METHOD` | `fraud_protection_add_payment_method` | The same, for the requests that check or save a payment method on the My Account "Add payment method" form and the WooCommerce Subscriptions change-payment-method form, with the `MessageContext::Generic` message, and supplying the decision to the "Add payment method" form submission. |
+| `EXPRESS_CHECKOUT` | `fraud_protection_express_checkout` | Adding the session ID to the Store API checkout request of its express payment buttons. |
+| `ALL` | — | Every feature above. |
 
-The PayPal Payments setup-token layer stands aside only when both `fraud_protection_checkout` and `fraud_protection_add_payment_method` are declared, because the request does not tell a purchase from a saved payment method. With only one of them, the plugin stops adding the session ID on that feature's surfaces but still verifies setup-token requests there, without it.
-
-For WooPayments, Stripe, PayPal Payments and Square, which register one gateway instance per payment method, the plugin asks the gateway of the current attempt first and then the family's main gateway (`woocommerce_payments`, `stripe`, `ppcp-gateway`, `square_credit_card`). Code that runs before a gateway is selected, such as script loading, asks only the main gateway. The plugin asks inside its hook callbacks, after WordPress `init`, and does not check that a declaring gateway implements the feature.
+A plugin that registers one gateway instance per payment method declares the features on every instance that implements them. The plugin reads declarations inside its hook callbacks, after WordPress `init`, and does not check that a declaring gateway implements the feature.
 
 ### FraudProtectionIntegration
 
@@ -321,8 +319,6 @@ The integration strings an extension that is not a payment gateway declares unde
 |----------|--------|--------------------------|
 | `CHANGE_PAYMENT_METHOD` | `change_payment_method` | Loading the browser scripts on its change-payment-method form, verifying each submission before the payment method changes, and stopping the change on a Block decision. |
 | `ALL` | — | Every integration above. |
-
-The compatibility layer for the WooCommerce Subscriptions change-payment-method form stands aside when `woocommerce-subscriptions` declares `change_payment_method`.
 
 ## Value objects
 
@@ -371,7 +367,7 @@ new PaymentMethodData(
 | `$is_saved_payment_method` | Whether the shopper pays with a saved payment method. |
 | `$instrument` | The instrument details; an empty instrument when `null`. |
 | `$transaction_mode` | Whether the gateway runs in test or live mode. |
-| `$merchant_identifier`, `$merchant_identifier_type` | The merchant's account or location at the provider, and its type. The built-in layers use `account` for PayPal, Stripe and WooPayments and `location` for Square; other gateways can use other strings. When only the type is known, pass `null` as the identifier: the type is still sent. |
+| `$merchant_identifier`, `$merchant_identifier_type` | The merchant's account or location at the provider, and its type. PayPal, Stripe and WooPayments use `account`, and Square uses `location`; other gateways can use other strings. When only the type is known, pass `null` as the identifier: the type is still sent. |
 
 | Method | Description |
 |--------|-------------|
@@ -383,7 +379,7 @@ new PaymentMethodData(
 | `with_instrument_wallet_if_empty( ?string $wallet ): self` | A copy with the wallet, only when the instrument has none. Since 0.2.7. |
 | `to_array(): array` | The data as an array. |
 
-The wallet is an open string. The built-in gateway layers use `woopay`, `apple_pay`, `google_pay`, `amazon_pay`, `paypal`, `venmo`, `link`, `cash_app_pay`, `alipay`, `grabpay` and `wechat_pay`; use the same values where they apply.
+The wallet is an open string. Known wallets use `woopay`, `apple_pay`, `google_pay`, `amazon_pay`, `paypal`, `venmo`, `link`, `cash_app_pay`, `alipay`, `grabpay` and `wechat_pay`; use the same values where they apply.
 
 Use the `with_*()` methods to add to data that the payment token already resolved, without losing it:
 
@@ -506,7 +502,7 @@ Filter. Lets extensions that are not payment gateways declare native integration
 apply_filters( 'woocommerce_fraud_protection_native_integrations', array<string, string[]> $integrations );
 ```
 
-The array maps a plugin slug to the [`FraudProtectionIntegration`](#fraudprotectionintegration) strings that the extension implements. Add your entry under your own slug and return the array. The plugin applies the filter when a compatibility layer needs the answer, inside its hook callbacks. A non-array result, or a callback that throws, keeps every compatibility layer on; entries with an invalid key or value are skipped. See the [integration guide](integration-guide.md#other-extensions) for the declaration.
+The array maps a plugin slug to the [`FraudProtectionIntegration`](#fraudprotectionintegration) strings that the extension implements. Add your entry under your own slug and return the array. The plugin applies the filter inside its hook callbacks, not while plugins load. A non-array result, or a callback that throws, counts as no declarations; entries with an invalid key or value are skipped. See the [integration guide](integration-guide.md#other-extensions) for the declaration.
 
 ### woocommerce_fraud_protection_automated_decision
 
@@ -559,7 +555,7 @@ add_action(
 
 ### woocommerce_payment_gateway_supports
 
-WooCommerce's own filter, applied by `WC_Payment_Gateway::supports()`. The plugin reads gateway feature declarations through `supports()`, so a callback at a late priority can force the answer. For example, a site can turn a compatibility layer back on for a gateway release whose native integration is broken:
+WooCommerce's own filter, applied by `WC_Payment_Gateway::supports()`. The plugin reads gateway feature declarations through `supports()`, so a callback at a late priority can force the answer. For example, a site can withdraw a declaration for a gateway release whose native integration is broken:
 
 ```php
 add_filter(
