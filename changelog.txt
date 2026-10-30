@@ -9,6 +9,15 @@ YYYY-xx-xx - version 0.3.1
 * Fixed - Payment attempts are now analyzed with the shopper's browser session on some custom classic checkout templates, including FunnelKit.
 * Fixed - Cards saved with Stripe on the My Account "Add payment method" page are now analyzed before Stripe sends them to the card issuer, instead of after.
 * Fixed - When a card saved with Stripe on the My Account "Add payment method" page is changed after it is first submitted, the card that Stripe saves is now the one analyzed.
+* Dev - Payment gateways can declare a native Fraud Protection integration by adding `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, or `fraud_protection_express_checkout` to their supported features, and the new `wp wc fraud-protection native-integrations list` command lists the declaring gateways.
+* Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug through the new `woocommerce_fraud_protection_native_integrations` filter, and `wp wc fraud-protection native-integrations list` lists the declarations.
+* Dev - Payment gateways can load the shared browser scripts for one of their own scripts with the new `BlackboxScriptHandler::request_scripts_for()`, which makes that script depend on them only when they load.
+* Dev - Extensions with their own form handlers can read the session ID and build the verification request with the new `ClassicFormRequestData` class, and protect a classic pay form with `BlackboxScriptHandler::request_pay_for_order_script()`.
+* Dev - Payment gateways can verify their own requests, such as creating an order at the payment provider, with the new `GatewayRequestVerifier` class, and reuse the decision for the checkout or payment-method submission that completes the same attempt, so the attempt is analyzed once.
+* Dev - Payment gateways can describe the payment instrument of their own attempts with the new `GatewayPaymentData` class, which runs their resolver only for their attempts and keeps the existing data when it fails. Resolvers and `GatewayRequestVerifier` reference readers can be registered for a gateway ID or for every gateway ID with a given prefix.
+* Dev - The `window.wcFraudProtection.prepareSessionId()` and `takePreparedSessionId()` browser methods are now part of the public API, for payment surfaces that must add the session ID synchronously.
+* Dev - The new `window.wcFraudProtection.takeSessionId()` browser method resolves to a session ID for one payment attempt and starts a fresh session for the next one, so payment surfaces no longer call `reset()` themselves, and `addSessionIdToExtensions()` adds a prepared session ID to the extension data of a Store API request, such as an express button's.
+* Dev - The `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, was removed.
 
 2026-10-20 - version 0.3.0
 * Added - Stores where automatic blocking was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic blocking is turned off.

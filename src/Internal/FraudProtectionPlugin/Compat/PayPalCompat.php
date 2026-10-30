@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -21,8 +22,22 @@ defined( 'ABSPATH' ) || exit;
  * Integrates Blackbox fraud protection into PayPal Payments express checkout flows.
  *
  * Verifies protected PayPal requests and blocks their transport when required.
+ * Stands aside once the main PayPal gateway declares `fraud_protection_checkout`, except
+ * for setup-token requests, which also need `fraud_protection_add_payment_method`.
  */
 class PayPalCompat {
+
+	/**
+	 * Main PayPal Payments gateway ID, asked for the native-support declaration.
+	 */
+	public const MAIN_GATEWAY_ID = 'ppcp-gateway';
+
+	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
 
 	/**
 	 * Session verifier instance.
@@ -75,17 +90,44 @@ class PayPalCompat {
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
 	 * @param SessionIdNormalizer   $session_id_normalizer    The session ID normalizer.
 	 * @param PayPalDecisionReuse   $decision_reuse           The PayPal decision reuse service.
+	 * @param GatewayNativeSupport  $native_support           Native gateway support lookup.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
 		BlockedSessionMessage $blocked_session_message,
 		SessionIdNormalizer $session_id_normalizer,
-		PayPalDecisionReuse $decision_reuse
+		PayPalDecisionReuse $decision_reuse,
+		GatewayNativeSupport $native_support
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
 		$this->session_id_normalizer   = $session_id_normalizer;
 		$this->decision_reuse          = $decision_reuse;
+		$this->native_support          = $native_support;
+	}
+
+	/**
+	 * Check whether PayPal Payments verifies its own requests of the given origin.
+	 *
+	 * Order and vault-order requests belong to a purchase. Setup tokens are created both at
+	 * checkout and when a payment method is saved, and the request does not reliably tell
+	 * which, so this layer stands aside for them only when both features are declared.
+	 *
+	 * @param string $origin Verification source of the request.
+	 * @return bool
+	 */
+	private function is_native( string $origin ): bool {
+		$features = PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $origin
+			? array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD )
+			: array( FraudProtectionFeature::CHECKOUT );
+
+		foreach ( $features as $feature ) {
+			if ( ! $this->native_support->declared( $feature, self::MAIN_GATEWAY_ID ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -114,6 +156,10 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function verify_and_block_create_order( $data ): void {
+		if ( $this->is_native( PayPalDecisionReuse::ORDER_CREATION_SOURCE ) ) {
+			return;
+		}
+
 		$request_data         = is_array( $data ) ? $this->prepare_create_order_payment_data( $data ) : array();
 		$submitted_session_id = $request_data[ SessionVerifier::SESSION_ID_FIELD ] ?? '';
 		$can_store_result     = '' !== $this->session_id_normalizer->normalize_stored( $submitted_session_id );
@@ -159,7 +205,7 @@ class PayPalCompat {
 			return $args;
 		}
 		$origin = $this->protected_request_origin( $args, $url );
-		if ( '' === $origin ) {
+		if ( '' === $origin || $this->is_native( $origin ) ) {
 			return $args;
 		}
 
@@ -225,6 +271,10 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function associate_paypal_order_with_verification( $order ): void {
+		if ( $this->is_native( PayPalDecisionReuse::ORDER_CREATION_SOURCE ) ) {
+			return;
+		}
+
 		$session_id = $this->session_recorded_this_request;
 		$origin     = $this->origin_recorded_this_request;
 
@@ -243,7 +293,7 @@ class PayPalCompat {
 	 * @return void
 	 */
 	public function persist_session_id_to_wc_order( $order ): void {
-		if ( ! $order instanceof \WC_Order ) {
+		if ( ! $order instanceof \WC_Order || $this->is_native( PayPalDecisionReuse::ORDER_CREATION_SOURCE ) ) {
 			return;
 		}
 

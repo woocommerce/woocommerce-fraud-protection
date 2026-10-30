@@ -9,15 +9,18 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 require_once dirname( __DIR__, 4 ) . '/Support/PayPalPPCPStubs.php';
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalContainerStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalJsonResponseCapture;
@@ -84,7 +87,7 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
 		$this->session_id_normalizer   = new SessionIdNormalizer();
 		$this->decision_reuse          = new PayPalDecisionReuse();
-		$this->decision_reuse->init( $this->session_id_normalizer );
+		$this->decision_reuse->init( $this->session_id_normalizer, new GatewayNativeSupport() );
 		$this->blocked_session_message
 			->method( 'get_plaintext' )
 			->willReturn( 'We are unable to process this request online. Please contact support (test@example.com) to complete your purchase.' );
@@ -94,7 +97,53 @@ class PayPalCompatTest extends FraudProtectionUnitTestCase {
 			$this->session_verifier,
 			$this->blocked_session_message,
 			$this->session_id_normalizer,
-			$this->decision_reuse
+			$this->decision_reuse,
+			new GatewayNativeSupport()
+		);
+	}
+
+	/**
+	 * @testdox The PayPal purchase request hooks stand aside when the main PayPal gateway declares native checkout support.
+	 */
+	public function test_stands_aside_for_purchase_requests_when_gateway_declares_native_checkout(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->session_verifier->expects( $this->never() )->method( 'verify_session' );
+		$this->session_verifier->expects( $this->never() )->method( 'persist_verified_session_id_to_order' );
+
+		$this->sut->verify_and_block_create_order( array( SessionVerifier::SESSION_ID_FIELD => 'test-session-abc' ) );
+		$this->run_protected_request( 'wc_ajax_ppc-vault-create-order', array( 'method' => 'POST' ), '/v2/checkout/orders' );
+		$this->sut->associate_paypal_order_with_verification( new FakePayPalOrder( 'PP-123' ) );
+		$this->sut->persist_session_id_to_wc_order( \WC_Helper_Order::create_order() );
+
+		$this->assertNull( WC()->session->get( '_fraud_protection_paypal_verification' ), 'No verification record is written' );
+	}
+
+	/**
+	 * @testdox The setup-token request stands aside only when both checkout and add-payment-method support are declared.
+	 *
+	 * @dataProvider setup_token_declaration_provider
+	 *
+	 * @param string[] $features      Features the main PayPal gateway declares.
+	 * @param bool     $expect_verify Whether the setup-token request is still verified.
+	 */
+	public function test_setup_token_request_needs_both_features( array $features, bool $expect_verify ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', $features ) );
+		$this->configure_paypal_request_data( array( SessionVerifier::SESSION_ID_FIELD => 'browser-session' ) );
+		$this->session_verifier
+			->expects( $expect_verify ? $this->once() : $this->never() )
+			->method( 'verify_session' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->run_setup_token_request();
+	}
+
+	/** @return array<string, array{string[], bool}> */
+	public function setup_token_declaration_provider(): array {
+		return array(
+			'checkout only'           => array( array( FraudProtectionFeature::CHECKOUT ), true ),
+			'add payment method only' => array( array( FraudProtectionFeature::ADD_PAYMENT_METHOD ), true ),
+			'both'                    => array( array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD ), false ),
 		);
 	}
 

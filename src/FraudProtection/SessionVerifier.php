@@ -27,6 +27,10 @@ defined( 'ABSPATH' ) || exit;
  *
  * Fail-open: verify_session() never throws. All internal errors (payment
  * data resolution, API call, decision handler) result in an ALLOW decision.
+ *
+ * Resolve it from the WooCommerce container with
+ * `wc_get_container()->get( SessionVerifier::class )` rather than constructing it:
+ * the container supplies its dependencies through `init()`.
  */
 class SessionVerifier {
 

@@ -16,6 +16,10 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Fraud protection reporter class.
+ *
+ * Resolve it from the WooCommerce container with
+ * `wc_get_container()->get( FraudProtectionReporter::class )` rather than constructing it:
+ * the container supplies its dependencies through `init()`.
  */
 class FraudProtectionReporter {
 

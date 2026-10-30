@@ -7,7 +7,7 @@ description: Build or modify the WooCommerce Fraud Protection admin UI in client
 
 The merchant-facing admin UI lives in `client/` and renders as one React application inside the WooCommerce settings page. This skill captures the architecture and the conventions that the reviews of the checkout attempts list (#142), the merchant rules pages (#145 to #148 and #153), and the polish pass (#155) converged on. Following them is what makes new UI pass review the first time.
 
-The browser scripts under `assets/js/` (checkout, pay-for-order, add-payment-method, PayPal, Blackbox init) are plain, unbuilt JavaScript. They are outside this skill except for their tests; the public API rules in `AGENTS.md` and `README.md` govern them.
+The browser scripts under `assets/js/` (checkout, pay-for-order, add-payment-method, PayPal, Blackbox init) are plain, unbuilt JavaScript. They are outside this skill except for their tests; the public API rules in `AGENTS.md` and `docs/api-reference.md` govern them.
 
 ## When to Use This Skill
 

@@ -7,16 +7,27 @@
  * request's extension data through a synchronous filter, so a session ID is
  * prepared ahead of time and added there. Errors leave the data unchanged.
  *
+ * Only the gateways listed in wcFraudProtectionExpressCheckout.gateways are
+ * handled: a gateway that sends the session ID itself is left out, so its
+ * session ID is not replaced. Without the list, both gateways are handled.
+ *
  * Depends on blackbox-init.js (wcFraudProtection) and wp-hooks.
  */
 ( function () {
 	'use strict';
 
 	const NAMESPACE = 'woocommerce/fraud-protection';
-	const EXTENSION_DATA_FILTERS = [
-		'wcpay.express-checkout.cart-place-order-extension-data',
-		'wcstripe.express-checkout.cart-place-order-extension-data',
-	];
+	const EXTENSION_DATA_FILTERS = {
+		woocommerce_payments:
+			'wcpay.express-checkout.cart-place-order-extension-data',
+		stripe: 'wcstripe.express-checkout.cart-place-order-extension-data',
+	};
+
+	const settings = window.wcFraudProtectionExpressCheckout;
+	const gateways =
+		settings && Array.isArray( settings.gateways )
+			? settings.gateways
+			: Object.keys( EXTENSION_DATA_FILTERS );
 
 	const fraudProtection = window.wcFraudProtection;
 	const hooks = window.wp && window.wp.hooks;
@@ -24,7 +35,7 @@
 	if (
 		! fraudProtection ||
 		typeof fraudProtection.prepareSessionId !== 'function' ||
-		typeof fraudProtection.takePreparedSessionId !== 'function' ||
+		typeof fraudProtection.addSessionIdToExtensions !== 'function' ||
 		! hooks ||
 		typeof hooks.addFilter !== 'function'
 	) {
@@ -43,28 +54,25 @@
 	 */
 	function addSessionId( extensionData ) {
 		try {
-			if (
-				! extensionData ||
-				typeof extensionData !== 'object' ||
-				Array.isArray( extensionData )
-			) {
-				return extensionData;
-			}
-
-			const sessionId = fraudProtection.takePreparedSessionId();
-
-			return Object.assign( {}, extensionData, {
-				[ NAMESPACE ]: sessionId
-					? { blackbox_session_id: sessionId }
-					: { blackbox_session_id_error: 'not_ready' },
-			} );
+			return fraudProtection.addSessionIdToExtensions( extensionData );
 		} catch {
 			return extensionData;
 		}
 	}
 
-	EXTENSION_DATA_FILTERS.forEach( function ( filterName ) {
-		hooks.addFilter( filterName, NAMESPACE, addSessionId );
+	gateways.forEach( function ( gateway ) {
+		if (
+			Object.prototype.hasOwnProperty.call(
+				EXTENSION_DATA_FILTERS,
+				gateway
+			)
+		) {
+			hooks.addFilter(
+				EXTENSION_DATA_FILTERS[ gateway ],
+				NAMESPACE,
+				addSessionId
+			);
+		}
 	} );
 
 	fraudProtection.prepareSessionId();

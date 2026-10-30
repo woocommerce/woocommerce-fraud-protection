@@ -7,11 +7,14 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SquarePaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 
 // Stub wc_square() in the global namespace if not loaded.
 require_once __DIR__ . '/../../../../stubs/wc-square.php';
@@ -37,6 +40,7 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->sut = new SquarePaymentDataCompat();
+		$this->sut->init( new GatewayNativeSupport() );
 	}
 
 	/**
@@ -47,6 +51,18 @@ class SquarePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		\WC_Square_Settings_Stub::set_location_id( null );
 		\WC_Square_Settings_Stub::set_location_id_throws( false );
 		parent::tearDown();
+	}
+
+	/**
+	 * @testdox Stands aside for Cash App Pay when the main Square gateway declares native payment-data support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_payment_data(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'square_credit_card', array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		$resolved = new PaymentMethodData( 'square_cash_app_pay' );
+
+		$result = $this->sut->resolve( $resolved, array() );
+
+		$this->assertSame( $resolved, $result, 'The gateway resolves its own payment data' );
 	}
 
 	/**
