@@ -24,6 +24,11 @@ class WC_Stripe_API {
 	public static function get_payment_method( string $payment_method_id ) {}
 
 	/**
+	 * @return string[]
+	 */
+	public static function get_requested_payment_methods(): array {}
+
+	/**
 	 * @param string $api The API path.
 	 * @return mixed
 	 */

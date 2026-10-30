@@ -40,14 +40,22 @@ class WC_Stripe_API_Stub {
 	private static array $retrieved = array();
 
 	/**
+	 * Payment method IDs passed to get_payment_method().
+	 *
+	 * @var string[]
+	 */
+	private static array $requested_payment_methods = array();
+
+	/**
 	 * Reset mock state.
 	 *
 	 * @return void
 	 */
 	public static function reset(): void {
-		self::$mock_response           = null;
-		self::$mock_retrieve_responses = array();
-		self::$retrieved               = array();
+		self::$mock_response             = null;
+		self::$mock_retrieve_responses   = array();
+		self::$retrieved                 = array();
+		self::$requested_payment_methods = array();
 	}
 
 	/**
@@ -79,6 +87,15 @@ class WC_Stripe_API_Stub {
 	}
 
 	/**
+	 * Get the payment method IDs passed to get_payment_method().
+	 *
+	 * @return string[]
+	 */
+	public static function get_requested_payment_methods(): array {
+		return self::$requested_payment_methods;
+	}
+
+	/**
 	 * Retrieve a payment method by ID.
 	 *
 	 * Mirrors the real WC_Stripe_API static method signature.
@@ -87,7 +104,7 @@ class WC_Stripe_API_Stub {
 	 * @return mixed
 	 */
 	public static function get_payment_method( string $payment_method_id ) {
-		unset( $payment_method_id );
+		self::$requested_payment_methods[] = $payment_method_id;
 		return self::$mock_response;
 	}
 

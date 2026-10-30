@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -17,9 +18,13 @@ defined( 'ABSPATH' ) || exit;
  * Resolves Stripe gateway payment data into structured PaymentMethodData.
  *
  * Handles multiple Stripe gateway IDs (stripe, stripe_sepa, stripe_ideal, etc.)
- * and uses the Stripe API to retrieve payment method details.
+ * and uses the Stripe API to retrieve payment method details. On an
+ * add-payment-method form post, the details are those of the payment method
+ * that the posted setup intent holds.
  */
 class StripePaymentDataCompat {
+
+	use StripeSetupIntentReaderTrait;
 
 	/**
 	 * Stripe gateway ID prefixes.
@@ -27,6 +32,20 @@ class StripePaymentDataCompat {
 	 * @var string
 	 */
 	private const GATEWAY_PREFIX = 'stripe';
+
+	/**
+	 * Add-payment-method form field with the setup intent ID.
+	 *
+	 * @var string
+	 */
+	private const SETUP_INTENT_FIELD = 'wc-stripe-setup-intent';
+
+	/**
+	 * Filter applied by WooCommerce before the gateway saves an add-payment-method form post.
+	 *
+	 * @var string
+	 */
+	private const ADD_PAYMENT_METHOD_FORM_FILTER = 'woocommerce_add_payment_method_form_is_valid';
 
 	/**
 	 * Wallet names accepted from Stripe request and provider data.
@@ -73,7 +92,9 @@ class StripePaymentDataCompat {
 			->with_transaction_mode( $transaction_mode )
 			->with_merchant_identifier( $merchant_identifier, 'account' );
 
-		$pm_id = $checkout_payment_fields['wc-stripe-payment-method'] ?? ( $checkout_payment_fields['stripe_source'] ?? '' );
+		$pm_id = $this->resolve_setup_intent_payment_method_id( $checkout_payment_fields )
+			?? $checkout_payment_fields['wc-stripe-payment-method']
+			?? ( $checkout_payment_fields['stripe_source'] ?? '' );
 		if ( empty( $pm_id ) ) {
 			return $resolved->with_instrument_wallet_if_empty( $request_wallet );
 		}
@@ -133,6 +154,47 @@ class StripePaymentDataCompat {
 		);
 
 		return $result->with_instrument_wallet_if_empty( $existing_wallet ?? $provider_wallet ?? $request_wallet );
+	}
+
+	/**
+	 * Resolve the payment method ID of the posted Stripe setup intent.
+	 *
+	 * On My Account > Add payment method, Stripe saves the payment method of
+	 * the posted setup intent instead of the posted payment method ID, and the
+	 * browser can change it after the setup intent request.
+	 *
+	 * Stripe reads the setup intent only on that form post, right after
+	 * WooCommerce applies `woocommerce_add_payment_method_form_is_valid`. In any
+	 * other request, Stripe processes the posted payment method ID, so a posted
+	 * setup intent is ignored.
+	 *
+	 * @param array $checkout_payment_fields Flat key-value map of checkout payment fields.
+	 * @return ?string The payment method ID, or null when no setup intent applies or it cannot be read.
+	 */
+	private function resolve_setup_intent_payment_method_id( array $checkout_payment_fields ): ?string {
+		if ( ! doing_filter( self::ADD_PAYMENT_METHOD_FORM_FILTER ) ) {
+			return null;
+		}
+
+		$setup_intent_id = $checkout_payment_fields[ self::SETUP_INTENT_FIELD ] ?? null;
+		if ( ! is_string( $setup_intent_id ) ) {
+			return null;
+		}
+
+		try {
+			return $this->get_setup_intent_payment_method_id( $setup_intent_id );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Reading the Stripe setup intent failed; resolving the posted payment method',
+				array(
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				)
+			);
+
+			return null;
+		}
 	}
 
 	/**
