@@ -10,6 +10,7 @@ This is the reference for every public part of WooCommerce Fraud Protection: the
     - [SessionVerifier](#sessionverifier)
     - [GatewayRequestVerifier](#gatewayrequestverifier)
     - [GatewayPaymentData](#gatewaypaymentdata)
+    - [Gateway ID patterns](#gateway-id-patterns)
     - [BlackboxScriptHandler](#blackboxscripthandler)
     - [FraudProtectionReporter](#fraudprotectionreporter)
 - [PHP helpers](#php-helpers)
@@ -136,13 +137,15 @@ Returns a [`VerifiedRequest`](#verifiedrequest). Like `verify_session()`, it nev
 public function register_reference_reader( string $gateway_id, callable $reference_reader ): void
 ```
 
-Call it once while your plugin loads. Before the plugin verifies a later submission paid with `$gateway_id`, such as a checkout, Pay for order or payment-method submission, it calls `$reference_reader( array $payment_data, array $request_data, string $source )`. Return the reference the submission carries, or an empty string. The submission reuses the decision kept with `VerifiedRequest::reuse_decision_for()` instead of being verified when:
+Call it once while your plugin loads. Before the plugin verifies a later submission paid with a gateway that `$gateway_id` matches, such as a checkout, Pay for order or payment-method submission, it calls `$reference_reader( array $payment_data, array $request_data, string $source )`. Return the reference the submission carries, or an empty string. The submission reuses the decision kept with `VerifiedRequest::reuse_decision_for()` instead of being verified when:
 
-- the reference matches the one passed to `reuse_decision_for()` for the gateway;
+- the reference matches the one passed to `reuse_decision_for()` for a gateway that `$gateway_id` matches;
 - the cart items and quantities have not changed since `reuse_decision_for()` was called (a changed total alone does not count);
 - the submission's source differs from the source of the request that produced the decision.
 
-A decision is reused at most once. A reader that throws, or returns anything but a matching string, leads to a normal verification. A later call for the same gateway replaces the reader.
+A decision is reused at most once. A reader that throws, or returns anything but a matching string, leads to a normal verification. A later call with the same `$gateway_id` replaces the reader.
+
+`$gateway_id` is a gateway ID or a [gateway ID pattern](#gateway-id-patterns). The gateways that one pattern matches share one reusable decision, so a request verified for one of them can be completed by a submission with another.
 
 ```php
 use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
@@ -165,14 +168,26 @@ Describes the payment instrument of a gateway's attempts. It wraps the `woocomme
 public function register_resolver( string $gateway_id, callable $resolver ): void
 ```
 
-Call it once while your plugin loads. Before each verification of an attempt paid with `$gateway_id`, the plugin calls `$resolver( array $payment_fields, PaymentMethodData $resolved )`:
+Call it once while your plugin loads. `$gateway_id` is a gateway ID or a [gateway ID pattern](#gateway-id-patterns). Before each verification of an attempt paid with a gateway that it matches, the plugin calls `$resolver( array $payment_fields, PaymentMethodData $resolved )`:
 
 | Argument | Description |
 |----------|-------------|
 | `$payment_fields` | The flat map of gateway fields submitted with the attempt, or the `payment_data` passed to the verification. Always an array. |
 | `$resolved` | The data resolved so far: from the WooCommerce payment token of a saved payment method, or a `PaymentMethodData` that only holds the gateway ID. |
 
-Return a [`PaymentMethodData`](#paymentmethoddata) for `$gateway_id`, or `null` to keep `$resolved`. A resolver that throws, or returns another value or the data of another gateway, keeps `$resolved`, and the plugin logs a warning. A later call for the same gateway replaces the resolver. The [integration guide](integration-guide.md#payment-data) shows a resolver that builds the data from the payment fields.
+Return a [`PaymentMethodData`](#paymentmethoddata) for the attempt's gateway, or `null` to keep `$resolved`. A resolver that throws, or returns another value or the data of another gateway, keeps `$resolved`, and the plugin logs a warning. A later call with the same `$gateway_id` replaces the resolver. The [integration guide](integration-guide.md#payment-data) shows a resolver that builds the data from the payment fields.
+
+### Gateway ID patterns
+
+`GatewayRequestVerifier::register_reference_reader()` and `GatewayPaymentData::register_resolver()` take a gateway ID or a pattern. A pattern ends with `*` and matches every gateway ID that starts with the text before it, so a plugin that registers one gateway per payment method can register once for all of them:
+
+| `$gateway_id` | Matches |
+|---------------|---------|
+| `my_gateway` | `my_gateway` only |
+| `my_gateway_*` | `my_gateway_card`, `my_gateway_sepa`, and any other ID that starts with `my_gateway_` |
+| `my_gateway*` | `my_gateway` and every ID that starts with it |
+
+When several registrations match a gateway, the one for its exact ID wins, and otherwise the longest pattern. A `*` anywhere but at the end is an ordinary character, and `*` alone matches no gateway.
 
 ### BlackboxScriptHandler
 
@@ -340,7 +355,7 @@ The result of `GatewayRequestVerifier::verify_request()`. Since 0.3.1.
 |--------|-------------|
 | `get_decision(): FraudDecision` | `FraudDecision::Allow` or `FraudDecision::Block`. |
 | `is_blocked(): bool` | `true` for a Block decision: stop the request with the [`BlockedSessionMessage`](#blockedsessionmessage). |
-| `reuse_decision_for( string $reference ): bool` | Keeps the decision for reuse by the submission that completes the attempt, matched by `$reference`: a value only your server created while handling this request, such as the ID of the order or setup intent at your payment provider. Each gateway keeps one reusable decision per customer session; a new one replaces the previous one. Returns `false`, keeping nothing, when the reference is empty or the verification resolved no session ID, for example because it failed open; the submission is then verified normally. |
+| `reuse_decision_for( string $reference ): bool` | Keeps the decision for reuse by the submission that completes the attempt, matched by `$reference`: a value only your server created while handling this request, such as the ID of the order or setup intent at your payment provider. Each gateway keeps one reusable decision per customer session, shared with the other gateways its reference reader's [pattern](#gateway-id-patterns) matches; a new one replaces the previous one. Returns `false`, keeping nothing, when the reference is empty or the verification resolved no session ID, for example because it failed open; the submission is then verified normally. |
 
 Obtain it from `verify_request()`; its constructor is internal.
 

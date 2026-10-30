@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\FraudProtection;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\GatewayIdPattern;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -34,14 +35,14 @@ defined( 'ABSPATH' ) || exit;
 class GatewayPaymentData {
 
 	/**
-	 * Resolvers registered through {@see register_resolver()}, keyed by gateway ID.
+	 * Resolvers registered through {@see register_resolver()}, keyed by gateway ID pattern.
 	 *
 	 * @var array<string, callable>
 	 */
 	private array $resolvers = array();
 
 	/**
-	 * Resolvers of the plugin's compatibility layers and the gateways whose declaration covers each one, keyed by gateway ID.
+	 * Resolvers of the plugin's compatibility layers and the gateways whose declaration covers each one, keyed by gateway ID pattern.
 	 *
 	 * @var array<string, array{resolver: callable, covering_gateway_ids: string[]}>
 	 */
@@ -78,18 +79,22 @@ class GatewayPaymentData {
 	 * Register the resolver that describes the payment instrument of a gateway's attempts.
 	 *
 	 * Call it once while your plugin loads. The plugin calls `$resolver` only for attempts paid
-	 * with `$gateway_id`, with two arguments:
+	 * with a gateway that `$gateway_id` matches, with two arguments:
 	 *
 	 * - `array $payment_fields`: the gateway fields submitted with the attempt, or the payment
 	 *   data passed to the verification. Always an array.
 	 * - `PaymentMethodData $resolved`: the data resolved so far, pre-filled from the WooCommerce
 	 *   payment token when the customer pays with a saved method.
 	 *
-	 * Return a {@see PaymentMethodData} for `$gateway_id`, or null to keep `$resolved`. A resolver
-	 * that throws, or returns another value or the data of another gateway, keeps `$resolved`.
-	 * A later call for the same gateway replaces the resolver.
+	 * Return a {@see PaymentMethodData} for the attempt's gateway, or null to keep `$resolved`. A
+	 * resolver that throws, or returns another value or the data of another gateway, keeps
+	 * `$resolved`. A later call with the same `$gateway_id` replaces the resolver.
 	 *
-	 * @param string   $gateway_id ID of the gateway, as in the attempt's payment method.
+	 * End `$gateway_id` with `*` to match every gateway whose ID starts with the text before it,
+	 * such as `my_gateway_*` for one gateway per payment method. An exact gateway ID takes
+	 * precedence over a pattern, and a longer pattern over a shorter one.
+	 *
+	 * @param string   $gateway_id ID of the gateway, as in the attempt's payment method, or a prefix followed by `*`.
 	 * @param callable $resolver   Receives `array $payment_fields, PaymentMethodData $resolved` and returns `?PaymentMethodData`.
 	 *
 	 * @since 0.3.1
@@ -101,13 +106,13 @@ class GatewayPaymentData {
 	/**
 	 * Register the resolver of one of the plugin's compatibility layers.
 	 *
-	 * It runs only while the gateway has no resolver of its own from {@see register_resolver()}
-	 * and neither it nor a covering gateway declares {@see FraudProtectionFeature::PAYMENT_DATA},
+	 * It runs only while no resolver from {@see register_resolver()} matches the attempt's gateway
+	 * and neither that gateway nor a covering gateway declares {@see FraudProtectionFeature::PAYMENT_DATA},
 	 * so a gateway's native integration always replaces it, whichever registers first.
 	 *
 	 * @internal
 	 *
-	 * @param string   $gateway_id              ID of the gateway, as in the attempt's payment method.
+	 * @param string   $gateway_id              ID of the gateway, or a prefix followed by `*`, as for {@see register_resolver()}.
 	 * @param callable $resolver                Same contract as for {@see register_resolver()}.
 	 * @param string   ...$covering_gateway_ids Gateways whose declaration also covers `$gateway_id`, such as the main gateway of its family.
 	 */
@@ -189,15 +194,21 @@ class GatewayPaymentData {
 	 * Get the resolver that describes a gateway's attempts.
 	 *
 	 * @param string $gateway_id The attempt's gateway.
-	 * @return callable|null The gateway's own resolver, else a compatibility layer's that the gateway has not replaced.
+	 * @return callable|null The best-matching gateway resolver, else a compatibility layer's that the gateway has not replaced.
 	 */
 	private function get_resolver( string $gateway_id ): ?callable {
-		if ( isset( $this->resolvers[ $gateway_id ] ) ) {
-			return $this->resolvers[ $gateway_id ];
+		$pattern = GatewayIdPattern::find_best_match( array_keys( $this->resolvers ), $gateway_id );
+		if ( null !== $pattern ) {
+			return $this->resolvers[ $pattern ];
 		}
 
-		$compatibility = $this->compatibility_resolvers[ $gateway_id ] ?? null;
-		if ( null === $compatibility || $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $gateway_id, ...$compatibility['covering_gateway_ids'] ) ) {
+		$pattern = GatewayIdPattern::find_best_match( array_keys( $this->compatibility_resolvers ), $gateway_id );
+		if ( null === $pattern ) {
+			return null;
+		}
+
+		$compatibility = $this->compatibility_resolvers[ $pattern ];
+		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $gateway_id, ...$compatibility['covering_gateway_ids'] ) ) {
 			return null;
 		}
 

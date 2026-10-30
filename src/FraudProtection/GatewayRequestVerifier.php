@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\FraudProtection;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\GatewayIdPattern;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 
@@ -41,7 +42,7 @@ defined( 'ABSPATH' ) || exit;
 class GatewayRequestVerifier {
 
 	/**
-	 * WooCommerce session key of the reusable decision records, keyed by gateway ID.
+	 * WooCommerce session key of the reusable decision records, keyed by the pattern of the reference reader that reads them.
 	 */
 	private const REUSABLE_DECISIONS_SESSION_KEY = '_wc_fraud_protection_reusable_decisions';
 
@@ -67,14 +68,14 @@ class GatewayRequestVerifier {
 	private LegacyProxy $legacy_proxy;
 
 	/**
-	 * Reference readers registered through {@see register_reference_reader()}, keyed by gateway ID.
+	 * Reference readers registered through {@see register_reference_reader()}, keyed by gateway ID pattern.
 	 *
 	 * @var array<string, callable>
 	 */
 	private array $reference_readers = array();
 
 	/**
-	 * Reference readers of the plugin's compatibility layers, keyed by gateway ID, with the features
+	 * Reference readers of the plugin's compatibility layers, keyed by gateway ID pattern, with the features
 	 * each one implements and the gateways whose declarations cover it.
 	 *
 	 * @var array<string, array{features: string[], covering_gateway_ids: string[], reader: callable}>
@@ -186,16 +187,21 @@ class GatewayRequestVerifier {
 	 * Register how to read the reference of a reusable decision from the gateway's later submissions.
 	 *
 	 * Call it once while your plugin loads. Before the plugin verifies a checkout, Pay for order
-	 * or payment-method submission paid with `$gateway_id`, it calls `$reference_reader` with the
-	 * submission's payment data, its full request data and its verification source. Return the
-	 * reference that the submission carries, or an empty string. When it matches the reference
-	 * passed to the gateway's last {@see VerifiedRequest::reuse_decision_for()} call, and the cart
-	 * items have not changed since, the submission reuses that decision instead of being verified, and the
-	 * decision is used up. A submission with the same source as the earlier request never reuses it.
+	 * or payment-method submission paid with a gateway that `$gateway_id` matches, it calls
+	 * `$reference_reader` with the submission's payment data, its full request data and its
+	 * verification source. Return the reference that the submission carries, or an empty string.
+	 * When it matches the reference passed to the last {@see VerifiedRequest::reuse_decision_for()}
+	 * call for a gateway that `$gateway_id` matches, and the cart items have not changed since, the
+	 * submission reuses that decision instead of being verified, and the decision is used up. A
+	 * submission with the same source as the earlier request never reuses it.
 	 *
-	 * A later call for the same gateway replaces the reader.
+	 * End `$gateway_id` with `*` to match every gateway whose ID starts with the text before it,
+	 * such as `my_gateway_*` for one gateway per payment method. The matched gateways then share
+	 * one reusable decision, so a request verified for one of them can complete with another.
+	 * An exact gateway ID takes precedence over a pattern, and a longer pattern over a shorter one.
+	 * A later call with the same `$gateway_id` replaces the reader.
 	 *
-	 * @param string   $gateway_id       ID of the gateway, as in the submission's payment method.
+	 * @param string   $gateway_id       ID of the gateway, as in the submission's payment method, or a prefix followed by `*`.
 	 * @param callable $reference_reader Receives `array $payment_data, array $request_data, string $source` and returns the reference as a string.
 	 *
 	 * @since 0.3.1
@@ -207,16 +213,16 @@ class GatewayRequestVerifier {
 	/**
 	 * Register the reference reader of one of the plugin's compatibility layers.
 	 *
-	 * It runs only while the gateway has no reader of its own from
-	 * {@see register_reference_reader()} and not all of `$features` are declared, each by the
-	 * gateway or a covering gateway, so a gateway's native integration always replaces it,
+	 * It runs only while no reader from {@see register_reference_reader()} matches the submission's
+	 * gateway and not all of `$features` are declared, each by that gateway or a covering
+	 * gateway, so a gateway's native integration always replaces it,
 	 * whichever registers first. A layer that stands aside for some of its flows on fewer
 	 * declarations checks them in its reader, which receives the submission's source.
 	 *
 	 * @internal
 	 *
-	 * @param string   $gateway_id              ID of the gateway, as in the submission's payment method.
-	 * @param string[] $features                The {@see FraudProtectionFeature} values the compatibility layer implements for the gateway. Without any, the reader never stands aside.
+	 * @param string   $gateway_id              ID of the gateway, or a prefix followed by `*`, as for {@see register_reference_reader()}.
+	 * @param string[] $features               The {@see FraudProtectionFeature} values the compatibility layer implements for the gateway. Without any, the reader never stands aside.
 	 * @param callable $reference_reader        Same contract as for {@see register_reference_reader()}.
 	 * @param string   ...$covering_gateway_ids Gateways whose declarations also cover `$gateway_id`, such as the main gateway of its family.
 	 */
@@ -229,32 +235,55 @@ class GatewayRequestVerifier {
 	}
 
 	/**
-	 * Get the reference reader for a gateway's submissions.
+	 * Find the reference reader for a gateway's submissions.
 	 *
 	 * @param string $gateway_id The submission's gateway.
-	 * @return callable|null The gateway's own reader, else a compatibility layer's that the gateway has not replaced.
+	 * @return array{pattern: string, reader: callable}|null The best-matching gateway reader, else a compatibility layer's that the gateway has not replaced, with the pattern it is registered under.
 	 */
-	private function get_reference_reader( string $gateway_id ): ?callable {
-		if ( isset( $this->reference_readers[ $gateway_id ] ) ) {
-			return $this->reference_readers[ $gateway_id ];
+	private function find_reference_reader( string $gateway_id ): ?array {
+		$pattern = GatewayIdPattern::find_best_match( array_keys( $this->reference_readers ), $gateway_id );
+		if ( null !== $pattern ) {
+			return array(
+				'pattern' => $pattern,
+				'reader'  => $this->reference_readers[ $pattern ],
+			);
 		}
 
-		$compatibility = $this->compatibility_reference_readers[ $gateway_id ] ?? null;
-		if ( null === $compatibility ) {
+		$pattern = GatewayIdPattern::find_best_match( array_keys( $this->compatibility_reference_readers ), $gateway_id );
+		if ( null === $pattern ) {
 			return null;
 		}
 
+		$compatibility = $this->compatibility_reference_readers[ $pattern ];
+		$match         = array(
+			'pattern' => $pattern,
+			'reader'  => $compatibility['reader'],
+		);
+
 		if ( array() === $compatibility['features'] ) {
-			return $compatibility['reader'];
+			return $match;
 		}
 
 		foreach ( $compatibility['features'] as $feature ) {
 			if ( ! $this->native_support->declared( $feature, $gateway_id, ...$compatibility['covering_gateway_ids'] ) ) {
-				return $compatibility['reader'];
+				return $match;
 			}
 		}
 
 		return null;
+	}
+
+	/**
+	 * Get the key of a gateway's reusable decision record.
+	 *
+	 * Gateways matched by the same reference reader share one record, so a request verified for
+	 * one of them can be completed by a submission with another.
+	 *
+	 * @param string $gateway_id The gateway ID.
+	 * @return string The pattern of the gateway's reference reader, or the gateway ID when no reader matches it.
+	 */
+	private function get_record_key( string $gateway_id ): string {
+		return $this->find_reference_reader( $gateway_id )['pattern'] ?? $gateway_id;
 	}
 
 	/**
@@ -277,17 +306,19 @@ class GatewayRequestVerifier {
 			return $supplied_decision;
 		}
 
-		$reference_reader = $this->get_reference_reader( $gateway_id );
+		$reference_reader = $this->find_reference_reader( $gateway_id );
 		if ( null === $reference_reader ) {
 			return $supplied_decision;
 		}
 
+		$record_key = $reference_reader['pattern'];
+
 		try {
 			$records = $this->get_reusable_decisions();
-			$record  = $this->validate_record( $records[ $gateway_id ] ?? null );
+			$record  = $this->validate_record( $records[ $record_key ] ?? null );
 			if ( null === $record ) {
-				if ( isset( $records[ $gateway_id ] ) ) {
-					unset( $records[ $gateway_id ] );
+				if ( isset( $records[ $record_key ] ) ) {
+					unset( $records[ $record_key ] );
 					$this->set_reusable_decisions( $records );
 				}
 				return $supplied_decision;
@@ -298,13 +329,13 @@ class GatewayRequestVerifier {
 			}
 
 			$payment_data = is_array( $request_data['payment_data'] ?? null ) ? $request_data['payment_data'] : array();
-			$reference    = $reference_reader( $payment_data, $request_data, $source );
+			$reference    = $reference_reader['reader']( $payment_data, $request_data, $source );
 			if ( ! is_string( $reference ) || '' === $reference || ! hash_equals( $record['reference'], $reference ) ) {
 				return $supplied_decision;
 			}
 
 			// One use only: the decision belongs to this attempt alone.
-			unset( $records[ $gateway_id ] );
+			unset( $records[ $record_key ] );
 			$this->set_reusable_decisions( $records );
 
 			// Changed cart items make a new attempt, which is verified normally.
@@ -346,12 +377,13 @@ class GatewayRequestVerifier {
 				return false;
 			}
 
-			$records = $this->get_reusable_decisions();
-			unset( $records[ $gateway_id ] );
+			$record_key = $this->get_record_key( $gateway_id );
+			$records    = $this->get_reusable_decisions();
+			unset( $records[ $record_key ] );
 
 			$stored = '' !== $session_id && '' !== $reference && in_array( $decision, FraudDecision::ACTIONABLE, true );
 			if ( $stored ) {
-				$records[ $gateway_id ] = array(
+				$records[ $record_key ] = array(
 					'source'     => $source,
 					'session_id' => $session_id,
 					'decision'   => $decision->value,
@@ -441,7 +473,7 @@ class GatewayRequestVerifier {
 	/**
 	 * Write the reusable decision records to the WooCommerce session.
 	 *
-	 * @param array<string, mixed> $records The records, keyed by gateway ID.
+	 * @param array<string, mixed> $records The records, keyed as {@see get_record_key()} returns.
 	 */
 	private function set_reusable_decisions( array $records ): void {
 		WC()->session->set( self::REUSABLE_DECISIONS_SESSION_KEY, array() === $records ? null : $records );

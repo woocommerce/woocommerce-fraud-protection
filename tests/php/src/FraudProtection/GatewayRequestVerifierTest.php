@@ -398,6 +398,32 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The gateways matched by a reference reader for a prefix share one reusable decision.
+	 */
+	public function test_prefix_reader_shares_the_decision_among_matching_gateways(): void {
+		$this->sut->register_reference_reader( 'family_*', static fn( array $payment_data ) => $payment_data[ self::REFERENCE_FIELD ] ?? '' );
+		$this->verify( FraudDecision::Block, 'resolved-session', 'family_card' )->reuse_decision_for( 'order-123' );
+
+		$this->assertFalse( $this->supply( 'order-123', 'shortcode_checkout', 'other_gateway' ), 'A gateway outside the prefix does not reuse it' );
+		$supplied = $this->supply( 'order-123', 'shortcode_checkout', 'family_sepa' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
+		$this->assertSame( FraudDecision::Block, $supplied->decision );
+		$this->assertFalse( $this->supply( 'order-123', 'shortcode_checkout', 'family_card' ), 'The decision is used up for the whole prefix' );
+	}
+
+	/**
+	 * @testdox A gateway with a reference reader for its exact ID keeps its reusable decision apart from a reader for a prefix that also matches it.
+	 */
+	public function test_exact_reader_keeps_its_decision_apart_from_prefix_reader(): void {
+		$this->sut->register_reference_reader( 'my_*', static fn( array $payment_data ) => $payment_data[ self::REFERENCE_FIELD ] ?? '' );
+		$this->verify( FraudDecision::Allow )->reuse_decision_for( 'order-123' );
+
+		$this->assertFalse( $this->supply( 'order-123', 'shortcode_checkout', 'my_other_gateway' ) );
+		$this->assertInstanceOf( SuppliedDecision::class, $this->supply( 'order-123' ) );
+	}
+
+	/**
 	 * @testdox An earlier supplied decision is returned unchanged and leaves the reusable decision in place.
 	 */
 	public function test_earlier_supplied_decision_wins(): void {
@@ -513,6 +539,24 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 			'The compatibility reader must not run'
 		);
 		$this->assertInstanceOf( SuppliedDecision::class, $this->supply( 'order-123' ) );
+	}
+
+	/**
+	 * @testdox A compatibility layer's reference reader for a prefix serves the matching gateways until the gateway family registers a reader of its own.
+	 */
+	public function test_compatibility_prefix_reader_serves_matching_gateways_until_replaced(): void {
+		$this->sut->register_compatibility_reference_reader( 'compat*', array( FraudProtectionFeature::CHECKOUT ), self::compatibility_reader(), self::COMPAT_MAIN_GATEWAY_ID );
+		$this->verify( FraudDecision::Allow, 'resolved-session', self::COMPAT_MAIN_GATEWAY_ID )->reuse_decision_for( 'compat-123' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $this->supply_with_payment_data( array( self::COMPAT_REFERENCE_FIELD => 'compat-123' ), self::COMPAT_GATEWAY_ID ) );
+
+		$this->sut->register_reference_reader( 'compat_*', static fn( array $payment_data ) => $payment_data[ self::REFERENCE_FIELD ] ?? '' );
+		$this->verify( FraudDecision::Allow, 'resolved-session', self::COMPAT_MAIN_GATEWAY_ID )->reuse_decision_for( 'compat-456' );
+
+		$this->assertFalse(
+			$this->supply_with_payment_data( array( self::COMPAT_REFERENCE_FIELD => 'compat-456' ), self::COMPAT_GATEWAY_ID ),
+			'The compatibility reader no longer runs for the gateways the new reader matches'
+		);
 	}
 
 	/**

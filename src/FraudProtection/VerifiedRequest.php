@@ -66,6 +66,7 @@ final class VerifiedRequest {
 	 * reuses this decision instead of a new verification, once.
 	 *
 	 * Each gateway keeps one reusable decision per customer session: a new one replaces the previous one.
+	 * The gateways that one reference reader pattern matches share that decision.
 	 * Nothing is kept when the verification produced no session ID to attach the decision to,
 	 * for example when it failed open; the submission is then verified normally.
 	 *

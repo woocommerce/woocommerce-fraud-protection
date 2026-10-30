@@ -191,6 +191,42 @@ class GatewayPaymentDataTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A resolver registered for a gateway ID prefix describes the attempts of every gateway with that prefix, and only those.
+	 */
+	public function test_prefix_resolver_describes_matching_gateways(): void {
+		$this->sut->register_resolver( 'my_*', static fn( array $payment_fields, PaymentMethodData $resolved ) => new PaymentMethodData( $resolved->get_gateway(), 'card' ) );
+
+		$this->assertSame( 'card', $this->apply( new PaymentMethodData( self::GATEWAY_ID ), array() )->to_array()['payment_type'] );
+		$this->assertSame( 'card', $this->apply( new PaymentMethodData( 'my_other_gateway' ), array() )->to_array()['payment_type'] );
+		$this->assertNull( $this->apply( new PaymentMethodData( 'other_gateway' ), array() )->to_array()['payment_type'] );
+	}
+
+	/**
+	 * @testdox The resolver registered for the exact gateway ID takes precedence over one for a prefix, whichever registers first.
+	 *
+	 * @testWith [true]
+	 *           [false]
+	 *
+	 * @param bool $prefix_first Whether the prefix resolver registers first.
+	 */
+	public function test_exact_resolver_takes_precedence_over_prefix_resolver( bool $prefix_first ): void {
+		$prefix_resolver = function () {
+			$this->fail( 'The prefix resolver must not run' );
+		};
+		if ( $prefix_first ) {
+			$this->sut->register_resolver( 'my_*', $prefix_resolver );
+		}
+		$this->sut->register_resolver( self::GATEWAY_ID, static fn() => self::card( 'amex' ) );
+		if ( ! $prefix_first ) {
+			$this->sut->register_resolver( 'my_*', $prefix_resolver );
+		}
+
+		$resolved = $this->apply( new PaymentMethodData( self::GATEWAY_ID ), array() );
+
+		$this->assertSame( 'amex', $resolved->to_array()['instrument']['brand'] );
+	}
+
+	/**
 	 * @testdox A compatibility layer's resolver describes the gateway's attempts while the gateway has no resolver of its own.
 	 */
 	public function test_compatibility_resolver_runs_without_a_gateway_resolver(): void {
@@ -224,6 +260,41 @@ class GatewayPaymentDataTest extends FraudProtectionUnitTestCase {
 		$resolved = $this->apply( new PaymentMethodData( self::GATEWAY_ID ), array() );
 
 		$this->assertSame( 'amex', $resolved->to_array()['instrument']['brand'] );
+	}
+
+	/**
+	 * @testdox A gateway resolver for a prefix replaces a compatibility layer's resolver for the exact gateway ID.
+	 */
+	public function test_gateway_prefix_resolver_replaces_exact_compatibility_resolver(): void {
+		$this->sut->register_compatibility_resolver(
+			self::GATEWAY_ID,
+			function () {
+				$this->fail( 'The compatibility resolver must not run' );
+			}
+		);
+		$this->sut->register_resolver( 'my_*', static fn() => self::card( 'amex' ) );
+
+		$resolved = $this->apply( new PaymentMethodData( self::GATEWAY_ID ), array() );
+
+		$this->assertSame( 'amex', $resolved->to_array()['instrument']['brand'] );
+	}
+
+	/**
+	 * @testdox A compatibility layer's resolver for a prefix stands aside for the attempt's gateway when that gateway or a covering gateway declares native payment data support.
+	 *
+	 * @dataProvider payment_data_declaration_provider
+	 *
+	 * @param string $declaring_gateway_id The gateway that declares the feature.
+	 * @param bool   $runs                 Whether the compatibility resolver still runs.
+	 */
+	public function test_compatibility_prefix_resolver_stands_aside_when_payment_data_is_declared( string $declaring_gateway_id, bool $runs ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( $declaring_gateway_id, array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		$this->sut->register_compatibility_resolver( 'my*', static fn() => self::card( 'visa' ), self::MAIN_GATEWAY_ID );
+		$incoming = new PaymentMethodData( self::GATEWAY_ID );
+
+		$resolved = $this->apply( $incoming, array() );
+
+		$this->assertSame( $runs, $incoming !== $resolved );
 	}
 
 	/**

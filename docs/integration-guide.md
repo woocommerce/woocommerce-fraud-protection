@@ -41,7 +41,7 @@ $this->supports = array(
 );
 ```
 
-If your plugin registers one gateway instance per payment method, declare the features on every instance that implements them.
+If your plugin registers one gateway instance per payment method, declare the features on every instance that implements them. The resolvers and reference readers you register below can cover all those instances at once with a [gateway ID pattern](api-reference.md#gateway-id-patterns), such as `my_gateway_*`.
 
 ### Other extensions
 
