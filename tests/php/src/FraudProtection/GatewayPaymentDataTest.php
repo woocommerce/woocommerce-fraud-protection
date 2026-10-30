@@ -7,10 +7,13 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\FraudProtection;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 
 /**
@@ -21,6 +24,8 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 class GatewayPaymentDataTest extends FraudProtectionUnitTestCase {
 
 	private const GATEWAY_ID = 'my_gateway';
+
+	private const MAIN_GATEWAY_ID = 'my';
 
 	/**
 	 * The System Under Test.
@@ -36,6 +41,7 @@ class GatewayPaymentDataTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->sut = new GatewayPaymentData();
+		$this->sut->init( new GatewayNativeSupport() );
 		$this->sut->register();
 	}
 
@@ -182,6 +188,73 @@ class GatewayPaymentDataTest extends FraudProtectionUnitTestCase {
 		$resolved = $this->apply( new PaymentMethodData( self::GATEWAY_ID ), array() );
 
 		$this->assertSame( 'amex', $resolved->to_array()['instrument']['brand'] );
+	}
+
+	/**
+	 * @testdox A compatibility layer's resolver describes the gateway's attempts while the gateway has no resolver of its own.
+	 */
+	public function test_compatibility_resolver_runs_without_a_gateway_resolver(): void {
+		$this->sut->register_compatibility_resolver( self::GATEWAY_ID, static fn() => self::card( 'visa' ) );
+
+		$resolved = $this->apply( new PaymentMethodData( self::GATEWAY_ID ), array() );
+
+		$this->assertSame( 'visa', $resolved->to_array()['instrument']['brand'] );
+	}
+
+	/**
+	 * @testdox The gateway's own resolver replaces a compatibility layer's, whichever registers first.
+	 *
+	 * @testWith [true]
+	 *           [false]
+	 *
+	 * @param bool $compatibility_first Whether the compatibility layer registers before the gateway.
+	 */
+	public function test_gateway_resolver_replaces_compatibility_resolver( bool $compatibility_first ): void {
+		$compatibility_resolver = function () {
+			$this->fail( 'The compatibility resolver must not run' );
+		};
+		if ( $compatibility_first ) {
+			$this->sut->register_compatibility_resolver( self::GATEWAY_ID, $compatibility_resolver );
+			$this->sut->register_resolver( self::GATEWAY_ID, static fn() => self::card( 'amex' ) );
+		} else {
+			$this->sut->register_resolver( self::GATEWAY_ID, static fn() => self::card( 'amex' ) );
+			$this->sut->register_compatibility_resolver( self::GATEWAY_ID, $compatibility_resolver );
+		}
+
+		$resolved = $this->apply( new PaymentMethodData( self::GATEWAY_ID ), array() );
+
+		$this->assertSame( 'amex', $resolved->to_array()['instrument']['brand'] );
+	}
+
+	/**
+	 * @testdox A compatibility layer's resolver stands aside when the gateway or a covering gateway declares native payment data support.
+	 *
+	 * @dataProvider payment_data_declaration_provider
+	 *
+	 * @param string $declaring_gateway_id The gateway that declares the feature.
+	 * @param bool   $runs                 Whether the compatibility resolver still runs.
+	 */
+	public function test_compatibility_resolver_stands_aside_when_payment_data_is_declared( string $declaring_gateway_id, bool $runs ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( $declaring_gateway_id, array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		$this->sut->register_compatibility_resolver( self::GATEWAY_ID, static fn() => self::card( 'visa' ), self::MAIN_GATEWAY_ID );
+		$incoming = new PaymentMethodData( self::GATEWAY_ID );
+
+		$resolved = $this->apply( $incoming, array() );
+
+		$this->assertSame( $runs, $incoming !== $resolved );
+	}
+
+	/**
+	 * Declaring gateways and whether the compatibility resolver still runs.
+	 *
+	 * @return array<string, array{string, bool}>
+	 */
+	public function payment_data_declaration_provider(): array {
+		return array(
+			'the gateway'                      => array( self::GATEWAY_ID, false ),
+			'the covering gateway'             => array( self::MAIN_GATEWAY_ID, false ),
+			'a gateway that does not cover it' => array( 'other_gateway', true ),
+		);
 	}
 
 	/**

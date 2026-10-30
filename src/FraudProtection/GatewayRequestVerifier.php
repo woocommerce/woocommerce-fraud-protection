@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
@@ -27,6 +28,9 @@ defined( 'ABSPATH' ) || exit;
  * - {@see register_reference_reader()} tells the plugin how to read that reference from the
  *   gateway's later submissions. The submission that carries it gets the kept decision instead of a new
  *   verification, so the attempt is scored once.
+ *
+ * A gateway's reference reader always takes precedence over the plugin's built-in
+ * compatibility layer for that gateway, whatever the order of registration.
  *
  * Resolve it from the WooCommerce container with
  * `wc_get_container()->get( GatewayRequestVerifier::class )` rather than constructing it:
@@ -70,18 +74,35 @@ class GatewayRequestVerifier {
 	private array $reference_readers = array();
 
 	/**
+	 * Reference readers of the plugin's compatibility layers, keyed by gateway ID, with the features
+	 * each one implements and the gateways whose declarations cover it.
+	 *
+	 * @var array<string, array{features: string[], covering_gateway_ids: string[], reader: callable}>
+	 */
+	private array $compatibility_reference_readers = array();
+
+	/**
+	 * Native gateway support checker.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionVerifier     $session_verifier      The session verifier instance.
-	 * @param SessionIdNormalizer $session_id_normalizer The session ID normalizer.
-	 * @param LegacyProxy         $legacy_proxy          The legacy proxy instance.
+	 * @param SessionVerifier      $session_verifier      The session verifier instance.
+	 * @param SessionIdNormalizer  $session_id_normalizer The session ID normalizer.
+	 * @param LegacyProxy          $legacy_proxy          The legacy proxy instance.
+	 * @param GatewayNativeSupport $native_support        Native gateway support checker.
 	 */
-	final public function init( SessionVerifier $session_verifier, SessionIdNormalizer $session_id_normalizer, LegacyProxy $legacy_proxy ): void {
+	final public function init( SessionVerifier $session_verifier, SessionIdNormalizer $session_id_normalizer, LegacyProxy $legacy_proxy, GatewayNativeSupport $native_support ): void {
 		$this->session_verifier      = $session_verifier;
 		$this->session_id_normalizer = $session_id_normalizer;
 		$this->legacy_proxy          = $legacy_proxy;
+		$this->native_support        = $native_support;
 	}
 
 	/**
@@ -184,6 +205,59 @@ class GatewayRequestVerifier {
 	}
 
 	/**
+	 * Register the reference reader of one of the plugin's compatibility layers.
+	 *
+	 * It runs only while the gateway has no reader of its own from
+	 * {@see register_reference_reader()} and not all of `$features` are declared, each by the
+	 * gateway or a covering gateway, so a gateway's native integration always replaces it,
+	 * whichever registers first. A layer that stands aside for some of its flows on fewer
+	 * declarations checks them in its reader, which receives the submission's source.
+	 *
+	 * @internal
+	 *
+	 * @param string   $gateway_id              ID of the gateway, as in the submission's payment method.
+	 * @param string[] $features                The {@see FraudProtectionFeature} values the compatibility layer implements for the gateway. Without any, the reader never stands aside.
+	 * @param callable $reference_reader        Same contract as for {@see register_reference_reader()}.
+	 * @param string   ...$covering_gateway_ids Gateways whose declarations also cover `$gateway_id`, such as the main gateway of its family.
+	 */
+	public function register_compatibility_reference_reader( string $gateway_id, array $features, callable $reference_reader, string ...$covering_gateway_ids ): void {
+		$this->compatibility_reference_readers[ $gateway_id ] = array(
+			'features'             => array_values( array_filter( $features, 'is_string' ) ),
+			'covering_gateway_ids' => $covering_gateway_ids,
+			'reader'               => $reference_reader,
+		);
+	}
+
+	/**
+	 * Get the reference reader for a gateway's submissions.
+	 *
+	 * @param string $gateway_id The submission's gateway.
+	 * @return callable|null The gateway's own reader, else a compatibility layer's that the gateway has not replaced.
+	 */
+	private function get_reference_reader( string $gateway_id ): ?callable {
+		if ( isset( $this->reference_readers[ $gateway_id ] ) ) {
+			return $this->reference_readers[ $gateway_id ];
+		}
+
+		$compatibility = $this->compatibility_reference_readers[ $gateway_id ] ?? null;
+		if ( null === $compatibility ) {
+			return null;
+		}
+
+		if ( array() === $compatibility['features'] ) {
+			return $compatibility['reader'];
+		}
+
+		foreach ( $compatibility['features'] as $feature ) {
+			if ( ! $this->native_support->declared( $feature, $gateway_id, ...$compatibility['covering_gateway_ids'] ) ) {
+				return $compatibility['reader'];
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Supply a reusable decision to the submission that carries its reference.
 	 *
 	 * @internal
@@ -199,7 +273,12 @@ class GatewayRequestVerifier {
 		}
 
 		$gateway_id = $request_data['payment_method'] ?? null;
-		if ( ! is_string( $gateway_id ) || ! isset( $this->reference_readers[ $gateway_id ] ) || ! function_exists( 'WC' ) || ! WC()->session ) {
+		if ( ! is_string( $gateway_id ) || ! function_exists( 'WC' ) || ! WC()->session ) {
+			return $supplied_decision;
+		}
+
+		$reference_reader = $this->get_reference_reader( $gateway_id );
+		if ( null === $reference_reader ) {
 			return $supplied_decision;
 		}
 
@@ -219,7 +298,7 @@ class GatewayRequestVerifier {
 			}
 
 			$payment_data = is_array( $request_data['payment_data'] ?? null ) ? $request_data['payment_data'] : array();
-			$reference    = ( $this->reference_readers[ $gateway_id ] )( $payment_data, $request_data, $source );
+			$reference    = $reference_reader( $payment_data, $request_data, $source );
 			if ( ! is_string( $reference ) || '' === $reference || ! hash_equals( $record['reference'], $reference ) ) {
 				return $supplied_decision;
 			}

@@ -69,10 +69,11 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier = $this->createMock( SessionVerifier::class );
 		$this->request_verifier = new GatewayRequestVerifier();
-		$this->request_verifier->init( $this->session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->request_verifier->init( $this->session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ), new GatewayNativeSupport() );
 		$this->request_verifier->register();
 		$GLOBALS['wc_container']->replace( GatewayRequestVerifier::class, $this->request_verifier );
 		$this->payment_data = new GatewayPaymentData();
+		$this->payment_data->init( new GatewayNativeSupport() );
 		$this->payment_data->register();
 		$GLOBALS['wc_container']->replace( GatewayPaymentData::class, $this->payment_data );
 

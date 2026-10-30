@@ -7,12 +7,15 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\FraudProtection;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 
@@ -29,6 +32,12 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 	private const SOURCE = 'my_gateway_create_order';
 
 	private const REFERENCE_FIELD = 'my_gateway_order_id';
+
+	private const COMPAT_GATEWAY_ID = 'compat_gateway';
+
+	private const COMPAT_MAIN_GATEWAY_ID = 'compat';
+
+	private const COMPAT_REFERENCE_FIELD = 'compat_order_id';
 
 	/**
 	 * The System Under Test.
@@ -52,7 +61,7 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->session_verifier = $this->createMock( SessionVerifier::class );
 		$this->sut              = new GatewayRequestVerifier();
-		$this->sut->init( $this->session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->sut->init( $this->session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ), new GatewayNativeSupport() );
 		$this->sut->register();
 		$this->sut->register_reference_reader( self::GATEWAY_ID, static fn( array $payment_data ) => $payment_data[ self::REFERENCE_FIELD ] ?? '' );
 
@@ -464,6 +473,88 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 		);
 	}
 
+	/*
+	|--------------------------------------------------------------------------
+	| Compatibility layer reference readers
+	|--------------------------------------------------------------------------
+	*/
+
+	/**
+	 * @testdox A compatibility layer's reference reader supplies the decision while the gateway has no reader of its own.
+	 */
+	public function test_compatibility_reader_supplies_without_a_gateway_reader(): void {
+		$this->sut->register_compatibility_reference_reader( self::COMPAT_GATEWAY_ID, array( FraudProtectionFeature::CHECKOUT ), self::compatibility_reader() );
+		$this->verify( FraudDecision::Block, 'resolved-session', self::COMPAT_GATEWAY_ID )->reuse_decision_for( 'compat-123' );
+
+		$supplied = $this->supply_with_payment_data( array( self::COMPAT_REFERENCE_FIELD => 'compat-123' ), self::COMPAT_GATEWAY_ID );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
+		$this->assertSame( FraudDecision::Block, $supplied->decision );
+	}
+
+	/**
+	 * @testdox The gateway's own reference reader replaces a compatibility layer's, whichever registers first.
+	 *
+	 * @testWith [true]
+	 *           [false]
+	 *
+	 * @param bool $compatibility_first Whether the compatibility layer registers before the gateway.
+	 */
+	public function test_gateway_reader_replaces_compatibility_reader( bool $compatibility_first ): void {
+		// setUp() registered the gateway's reader first; registering it again puts it after the compatibility layer's.
+		$this->sut->register_compatibility_reference_reader( self::GATEWAY_ID, array( FraudProtectionFeature::CHECKOUT ), self::compatibility_reader() );
+		if ( $compatibility_first ) {
+			$this->sut->register_reference_reader( self::GATEWAY_ID, static fn( array $payment_data ) => $payment_data[ self::REFERENCE_FIELD ] ?? '' );
+		}
+		$this->verify( FraudDecision::Allow )->reuse_decision_for( 'order-123' );
+
+		$this->assertFalse(
+			$this->supply_with_payment_data( array( self::COMPAT_REFERENCE_FIELD => 'order-123' ) ),
+			'The compatibility reader must not run'
+		);
+		$this->assertInstanceOf( SuppliedDecision::class, $this->supply( 'order-123' ) );
+	}
+
+	/**
+	 * @testdox A compatibility layer's reference reader stands aside only when all the features it implements are declared by the gateway or a covering gateway.
+	 *
+	 * @dataProvider compatibility_declaration_provider
+	 *
+	 * @param string[] $implemented_features The features the compatibility layer implements.
+	 * @param string   $declaring_gateway_id The gateway that declares features.
+	 * @param string[] $declared_features    The features it declares.
+	 * @param bool     $supplied             Whether the compatibility reader supplies the decision.
+	 */
+	public function test_compatibility_reader_stands_aside_when_its_features_are_declared( array $implemented_features, string $declaring_gateway_id, array $declared_features, bool $supplied ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( $declaring_gateway_id, $declared_features ) );
+		$this->sut->register_compatibility_reference_reader( self::COMPAT_GATEWAY_ID, $implemented_features, self::compatibility_reader(), self::COMPAT_MAIN_GATEWAY_ID );
+		$this->verify( FraudDecision::Allow, 'resolved-session', self::COMPAT_GATEWAY_ID )->reuse_decision_for( 'compat-123' );
+
+		$result = $this->supply_with_payment_data( array( self::COMPAT_REFERENCE_FIELD => 'compat-123' ), self::COMPAT_GATEWAY_ID, 'add_payment_method' );
+
+		$this->assertSame( $supplied, $result instanceof SuppliedDecision );
+	}
+
+	/**
+	 * Implemented and declared features, and whether the compatibility reader still runs.
+	 *
+	 * @return array<string, array{string[], string, string[], bool}>
+	 */
+	public function compatibility_declaration_provider(): array {
+		$add_payment_method = array( FraudProtectionFeature::ADD_PAYMENT_METHOD );
+		$both               = array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD );
+
+		return array(
+			'the implemented feature'          => array( $add_payment_method, self::COMPAT_GATEWAY_ID, $add_payment_method, false ),
+			'another feature'                  => array( $add_payment_method, self::COMPAT_GATEWAY_ID, array( FraudProtectionFeature::CHECKOUT ), true ),
+			'both implemented features'        => array( $both, self::COMPAT_GATEWAY_ID, $both, false ),
+			'one of two implemented features'  => array( $both, self::COMPAT_GATEWAY_ID, array( FraudProtectionFeature::CHECKOUT ), true ),
+			'by the covering gateway'          => array( $add_payment_method, self::COMPAT_MAIN_GATEWAY_ID, $add_payment_method, false ),
+			'by a gateway that does not cover' => array( $add_payment_method, 'unrelated_gateway', $add_payment_method, true ),
+			'no implemented features'          => array( array(), self::COMPAT_GATEWAY_ID, $both, true ),
+		);
+	}
+
 	/**
 	 * Make the raw request body readable through the legacy proxy.
 	 *
@@ -484,15 +575,43 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 	 *
 	 * @param FraudDecision $decision            The decision.
 	 * @param string        $resolved_session_id The session ID the verification resolves.
+	 * @param string        $gateway_id          The request's gateway.
 	 * @return \Automattic\WooCommerce\FraudProtection\VerifiedRequest
 	 */
-	private function verify( FraudDecision $decision, string $resolved_session_id = 'resolved-session' ): \Automattic\WooCommerce\FraudProtection\VerifiedRequest {
+	private function verify( FraudDecision $decision, string $resolved_session_id = 'resolved-session', string $gateway_id = self::GATEWAY_ID ): \Automattic\WooCommerce\FraudProtection\VerifiedRequest {
 		$session_verifier = $this->createMock( SessionVerifier::class );
 		$session_verifier->method( 'verify_session' )->willReturn( $decision );
 		$session_verifier->method( 'last_verified_session_id' )->willReturn( $resolved_session_id );
-		$this->sut->init( $session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ) );
+		$this->sut->init( $session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ), new GatewayNativeSupport() );
 
-		return $this->sut->verify_request( self::SOURCE, self::GATEWAY_ID, array(), 0, 'browser-session' );
+		return $this->sut->verify_request( self::SOURCE, $gateway_id, array(), 0, 'browser-session' );
+	}
+
+	/**
+	 * Run the skip filter for a later submission with the given payment data.
+	 *
+	 * @param array<string, string> $payment_data The submission's payment data.
+	 * @param string                $gateway_id   The submission's payment method.
+	 * @param string                $source       The submission's verification source.
+	 * @return mixed
+	 */
+	private function supply_with_payment_data( array $payment_data, string $gateway_id = self::GATEWAY_ID, string $source = 'shortcode_checkout' ) {
+		$request_data = array(
+			'payment_method' => $gateway_id,
+			'payment_data'   => $payment_data,
+		);
+
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		return apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, 'checkout-session' );
+	}
+
+	/**
+	 * Build a compatibility layer's reference reader.
+	 *
+	 * @return callable
+	 */
+	private static function compatibility_reader(): callable {
+		return static fn( array $payment_data ) => $payment_data[ self::COMPAT_REFERENCE_FIELD ] ?? '';
 	}
 
 	/**

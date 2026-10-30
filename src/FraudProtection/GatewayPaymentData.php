@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\FraudProtection;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
@@ -21,8 +22,12 @@ defined( 'ABSPATH' ) || exit;
  * {@see PaymentMethodData} it returns. Attempts paid with other gateways never reach it, and
  * a resolver that throws or returns anything else keeps the data resolved so far.
  *
+ * A gateway's resolver always takes precedence over the plugin's built-in compatibility
+ * layer for that gateway, whatever the order of registration.
+ *
  * Resolve it from the WooCommerce container with
- * `wc_get_container()->get( GatewayPaymentData::class )` rather than constructing it.
+ * `wc_get_container()->get( GatewayPaymentData::class )` rather than constructing it:
+ * the container supplies its dependencies through `init()`.
  *
  * @since 0.3.1
  */
@@ -34,6 +39,31 @@ class GatewayPaymentData {
 	 * @var array<string, callable>
 	 */
 	private array $resolvers = array();
+
+	/**
+	 * Resolvers of the plugin's compatibility layers and the gateways whose declaration covers each one, keyed by gateway ID.
+	 *
+	 * @var array<string, array{resolver: callable, covering_gateway_ids: string[]}>
+	 */
+	private array $compatibility_resolvers = array();
+
+	/**
+	 * Native gateway support checker.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
+	 * Initialize dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param GatewayNativeSupport $native_support Native gateway support checker.
+	 */
+	final public function init( GatewayNativeSupport $native_support ): void {
+		$this->native_support = $native_support;
+	}
 
 	/**
 	 * Register the filter that runs the resolvers.
@@ -69,6 +99,26 @@ class GatewayPaymentData {
 	}
 
 	/**
+	 * Register the resolver of one of the plugin's compatibility layers.
+	 *
+	 * It runs only while the gateway has no resolver of its own from {@see register_resolver()}
+	 * and neither it nor a covering gateway declares {@see FraudProtectionFeature::PAYMENT_DATA},
+	 * so a gateway's native integration always replaces it, whichever registers first.
+	 *
+	 * @internal
+	 *
+	 * @param string   $gateway_id              ID of the gateway, as in the attempt's payment method.
+	 * @param callable $resolver                Same contract as for {@see register_resolver()}.
+	 * @param string   ...$covering_gateway_ids Gateways whose declaration also covers `$gateway_id`, such as the main gateway of its family.
+	 */
+	public function register_compatibility_resolver( string $gateway_id, callable $resolver, string ...$covering_gateway_ids ): void {
+		$this->compatibility_resolvers[ $gateway_id ] = array(
+			'resolver'             => $resolver,
+			'covering_gateway_ids' => $covering_gateway_ids,
+		);
+	}
+
+	/**
 	 * Run the resolver registered for the attempt's gateway.
 	 *
 	 * @internal
@@ -83,7 +133,7 @@ class GatewayPaymentData {
 		}
 
 		$gateway_id = $resolved->get_gateway();
-		$resolver   = $this->resolvers[ $gateway_id ] ?? null;
+		$resolver   = $this->get_resolver( $gateway_id );
 		if ( null === $resolver ) {
 			return $resolved;
 		}
@@ -133,5 +183,24 @@ class GatewayPaymentData {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Get the resolver that describes a gateway's attempts.
+	 *
+	 * @param string $gateway_id The attempt's gateway.
+	 * @return callable|null The gateway's own resolver, else a compatibility layer's that the gateway has not replaced.
+	 */
+	private function get_resolver( string $gateway_id ): ?callable {
+		if ( isset( $this->resolvers[ $gateway_id ] ) ) {
+			return $this->resolvers[ $gateway_id ];
+		}
+
+		$compatibility = $this->compatibility_resolvers[ $gateway_id ] ?? null;
+		if ( null === $compatibility || $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $gateway_id, ...$compatibility['covering_gateway_ids'] ) ) {
+			return null;
+		}
+
+		return $compatibility['resolver'];
 	}
 }
