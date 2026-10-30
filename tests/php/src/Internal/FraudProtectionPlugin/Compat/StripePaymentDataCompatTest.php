@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripePaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -163,6 +164,13 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	private StripePaymentDataCompat $sut;
 
 	/**
+	 * The gateway payment data service that the compatibility layer registers with.
+	 *
+	 * @var GatewayPaymentData
+	 */
+	private GatewayPaymentData $gateway_payment_data;
+
+	/**
 	 * Filter that WooCommerce applies before the gateway saves an add-payment-method form post.
 	 */
 	private const ADD_PAYMENT_METHOD_FORM_FILTER = 'woocommerce_add_payment_method_form_is_valid';
@@ -173,8 +181,12 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 
+		$this->gateway_payment_data = new GatewayPaymentData();
+		$this->gateway_payment_data->init( new GatewayNativeSupport() );
+
 		$this->sut = new StripePaymentDataCompat();
-		$this->sut->init( new GatewayNativeSupport() );
+		$this->sut->init( $this->gateway_payment_data );
+		$this->sut->register();
 	}
 
 	/**
@@ -197,9 +209,32 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 		$resolved = new PaymentMethodData( 'stripe_sepa_debit' );
 
-		$result = $this->sut->resolve( $resolved, array( 'wc-stripe-payment-method' => 'pm_123' ) );
+		$result = $this->resolve( $resolved, array( 'wc-stripe-payment-method' => 'pm_123' ) );
 
 		$this->assertSame( $resolved, $result, 'The gateway resolves its own payment data' );
+	}
+
+	/**
+	 * @testdox A declaration on one Stripe payment method gateway covers only that payment method.
+	 */
+	public function test_payment_method_gateway_declaration_covers_only_its_attempts(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'stripe_sepa_debit', array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+		$resolved = new PaymentMethodData( 'stripe_sepa_debit' );
+
+		$this->assertSame( $resolved, $this->resolve( $resolved, array( 'wc-stripe-payment-method' => 'pm_123' ) ) );
+		$this->assertSame( 'card', $this->resolve( new PaymentMethodData( 'stripe' ), array( 'wc-stripe-payment-method' => 'pm_123' ) )->to_array()['payment_type'] );
+	}
+
+	/**
+	 * @testdox Stands aside for the gateways that Stripe's own resolver covers.
+	 */
+	public function test_stands_aside_for_stripe_resolver(): void {
+		$this->gateway_payment_data->register_resolver( 'stripe_*', static fn( array $fields, PaymentMethodData $resolved ) => new PaymentMethodData( $resolved->get_gateway(), 'from_stripe' ) );
+		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
+
+		$this->assertSame( 'from_stripe', $this->resolve( new PaymentMethodData( 'stripe_sepa_debit' ), array( 'wc-stripe-payment-method' => 'pm_123' ) )->to_array()['payment_type'] );
+		$this->assertSame( 'card', $this->resolve( new PaymentMethodData( 'stripe' ), array( 'wc-stripe-payment-method' => 'pm_123' ) )->to_array()['payment_type'], 'The main gateway is not covered' );
 	}
 
 	/**
@@ -209,7 +244,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->register_payment_gateways( new FakeNativeGateway( 'stripe', array( 'refunds' ) ) );
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array( 'wc-stripe-payment-method' => 'pm_123' ) );
+		$result = $this->resolve( new PaymentMethodData( 'stripe' ), array( 'wc-stripe-payment-method' => 'pm_123' ) );
 
 		$this->assertSame( 'card', $result->to_array()['payment_type'] );
 	}
@@ -220,7 +255,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_returns_resolved_for_non_stripe(): void {
 		$resolved = new PaymentMethodData( 'woocommerce_payments', 'card' );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -234,7 +269,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_returns_resolved_for_missing_pm_id(): void {
 		$resolved = new PaymentMethodData( 'stripe' );
 
-		$result = $this->sut->resolve( $resolved, array( 'express_payment_type' => 'google_pay' ) );
+		$result = $this->resolve( $resolved, array( 'express_payment_type' => 'google_pay' ) );
 
 		$array = $result->to_array();
 		$this->assertSame( 'stripe', $array['gateway'] );
@@ -248,7 +283,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_passes_through_resolved_data(): void {
 		$existing = new PaymentMethodData( 'stripe', 'card', false );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			$existing,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -265,7 +300,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_handles_stripe_gateway_id(): void {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -279,7 +314,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_includes_account_identifier(): void {
 		WC_Stripe_Account_Stub::set_account_data( array( 'id' => ' acct_123 ' ) );
 
-		$array = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
+		$array = $this->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
 
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
@@ -297,7 +332,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		WC_Stripe_Account_Stub::set_account_data( $account_data );
 		WC_Stripe_Account_Stub::set_throws( $throws );
 
-		$array = $this->sut->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
+		$array = $this->resolve( new PaymentMethodData( 'stripe' ), array() )->to_array();
 
 		$this->assertNull( $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
@@ -324,7 +359,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		\WC_Stripe_API::set_mock_response( $response );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe_sepa_debit' ),
 			array( 'wc-stripe-payment-method' => 'pm_sepa_123' )
 		);
@@ -345,7 +380,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		\WC_Stripe_API::set_mock_response( $response );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe_ideal' ),
 			array( 'wc-stripe-payment-method' => 'pm_ideal_123' )
 		);
@@ -360,7 +395,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		WC_Stripe_Account_Stub::set_account_data( array( 'id' => 'acct_123' ) );
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_card_123' )
 		);
@@ -401,7 +436,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_extracts_from_stripe_source(): void {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'stripe_source' => 'src_legacy_123' )
 		);
@@ -552,7 +587,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_detects_saved_payment_method(): void {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_saved_123',
@@ -569,7 +604,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_not_saved_when_payment_token_is_new(): void {
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_new_123',
@@ -587,7 +622,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		// Mock response is null by default (set in setUp via reset).
 		$resolved = new PaymentMethodData( 'stripe' );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -605,7 +640,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$resolved = new PaymentMethodData( 'stripe' );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -621,7 +656,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_does_not_match_stripe_partial_prefix(): void {
 		$resolved = new PaymentMethodData( 'stripez_custom' );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -636,7 +671,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		WC_Stripe_Mode_Stub::set_live( false );
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -651,7 +686,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		WC_Stripe_Mode_Stub::set_live( true );
 		\WC_Stripe_API::set_mock_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -667,7 +702,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$resolved = new PaymentMethodData( 'stripe', 'card', true );
 
-		$result = $this->sut->resolve( $resolved, array() );
+		$result = $this->resolve( $resolved, array() );
 
 		$this->assertNotSame( $resolved, $result );
 		$array = $result->to_array();
@@ -685,7 +720,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$resolved = new PaymentMethodData( 'stripe', 'card', true );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			$resolved,
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		);
@@ -708,7 +743,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		\WC_Stripe_API::set_mock_response( $response );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'stripe_sepa_debit' ),
 			array( 'wc-stripe-payment-method' => 'pm_sepa_123' )
 		);
@@ -727,7 +762,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @param string $expected_wallet Expected wallet value.
 	 */
 	public function test_normalizes_express_payment_type( string $express_payment_type, string $expected_wallet ): void {
-		$array = $this->sut->resolve(
+		$array = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'express_payment_type' => $express_payment_type )
 		)->to_array();
@@ -763,7 +798,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @param mixed $express_payment_type Submitted Stripe value.
 	 */
 	public function test_ignores_invalid_express_payment_type( $express_payment_type ): void {
-		$array = $this->sut->resolve(
+		$array = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'express_payment_type' => $express_payment_type )
 		)->to_array();
@@ -795,7 +830,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_preserves_request_wallet_when_provider_lookup_fails(): void {
 		\WC_Stripe_API::set_mock_response( new \WP_Error( 'stripe_error', 'Connection failed' ) );
 
-		$array = $this->sut->resolve(
+		$array = $this->resolve(
 			new PaymentMethodData( 'stripe', 'card' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_123',
@@ -816,7 +851,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$response->card->wallet->type = 'apple_pay';
 		\WC_Stripe_API::set_mock_response( $response );
 
-		$array = $this->sut->resolve(
+		$array = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array(
 				'wc-stripe-payment-method' => 'pm_123',
@@ -840,7 +875,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$response->type = $payment_type;
 		\WC_Stripe_API::set_mock_response( $response );
 
-		$array = $this->sut->resolve(
+		$array = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		)->to_array();
@@ -882,7 +917,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$response->card->wallet->type = $provider_wallet;
 		\WC_Stripe_API::set_mock_response( $response );
 
-		$array = $this->sut->resolve(
+		$array = $this->resolve(
 			new PaymentMethodData( 'stripe' ),
 			array( 'wc-stripe-payment-method' => 'pm_123' )
 		)->to_array();
@@ -924,7 +959,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			PaymentInstrumentData::from_array( array( 'wallet' => 'existing_wallet' ) )
 		);
 
-		$array = $this->sut->resolve(
+		$array = $this->resolve(
 			$resolved,
 			array(
 				'wc-stripe-payment-method' => 'pm_123',
@@ -935,6 +970,17 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 'existing_wallet', $array['instrument']['wallet'] );
 		$this->assertSame( '4242', $array['instrument']['last4'] );
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
+	}
+
+	/**
+	 * Resolve payment data through the gateway payment data service, as the resolved-payment-data filter does.
+	 *
+	 * @param PaymentMethodData $resolved       Previously resolved data.
+	 * @param array             $payment_fields Payment fields of the attempt.
+	 * @return PaymentMethodData
+	 */
+	private function resolve( PaymentMethodData $resolved, array $payment_fields ): PaymentMethodData {
+		return $this->gateway_payment_data->apply_resolver( $resolved, $payment_fields );
 	}
 
 	/**
@@ -949,7 +995,7 @@ class StripePaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @return PaymentMethodData The resolved data.
 	 */
 	private function resolve_during_hook( ?string $hook, array $checkout_payment_fields ): PaymentMethodData {
-		$resolve = fn() => $this->sut->resolve( new PaymentMethodData( 'stripe' ), $checkout_payment_fields );
+		$resolve = fn() => $this->resolve( new PaymentMethodData( 'stripe' ), $checkout_payment_fields );
 		if ( null === $hook ) {
 			return $resolve();
 		}
