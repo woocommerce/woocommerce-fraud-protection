@@ -133,6 +133,10 @@ The test environment uses port 8889 by default. Add a gitignored `.wp-env.phpuni
 
 Use `npm run test:php` to run PHPUnit directly against an existing WordPress test installation. Set `WC_DIR` to an existing WooCommerce plugin directory when the bootstrap cannot locate it. This path requires the WordPress test library, a MySQL database, and the WooCommerce test framework. The CI workflows prepare these dependencies with `tests/bin/install-wp-tests.sh`.
 
+## Documentation
+
+The [documentation index](docs/README.md) lists everything under `docs/`: a tutorial on WooCommerce checkouts, payment gateways and the plugin's pipeline, and a reference for the plugin's internals.
+
 ## Public API
 
 Payment gateways and other extensions integrate with the plugin through its public API:
