@@ -1,14 +1,6 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-YYYY-xx-xx - version 0.3.1
-* Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when it is slow to update.
-* Dev - `window.wcFraudProtection.acquireSessionId()` now sends the shopper's latest session data before it resolves.
-* Fixed - On the classic checkout, payment attempts are analyzed with the shopper's browser session even when another plugin sends the order before the session is ready. A session that arrives too late for one attempt is used for the next.
-* Dev - Payment attempts without a browser session now report whether the plugin's scripts handled the request.
-* Fixed - Payments that a cashier records in WooCommerce POS, such as cash, are no longer checked for fraud, since no shopper browser is involved. Other payment methods used in the POS are still checked.
-* Fixed - Payment attempts are now analyzed with the shopper's browser session on some custom classic checkout templates, including FunnelKit.
-* Fixed - Cards saved with Stripe on the My Account "Add payment method" page are now analyzed before Stripe sends them to the card issuer, instead of after.
-* Fixed - When a card saved with Stripe on the My Account "Add payment method" page is changed after it is first submitted, the card that Stripe saves is now the one analyzed.
+YYYY-xx-xx - version 0.3.2
 * Dev - Payment gateways can declare a native Fraud Protection integration by adding `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, or `fraud_protection_express_checkout` to their supported features, and the new `wp wc fraud-protection native-integrations list` command lists the declaring gateways.
 * Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug through the new `woocommerce_fraud_protection_native_integrations` filter, and `wp wc fraud-protection native-integrations list` lists the declarations.
 * Dev - Payment gateways can load the shared browser scripts for one of their own scripts with the new `BlackboxScriptHandler::request_scripts_for()`, which makes that script depend on them only when they load.
@@ -18,6 +10,16 @@ YYYY-xx-xx - version 0.3.1
 * Dev - The `window.wcFraudProtection.prepareSessionId()` and `takePreparedSessionId()` browser methods are now part of the public API, for payment surfaces that must add the session ID synchronously.
 * Dev - The new `window.wcFraudProtection.takeSessionId()` browser method resolves to a session ID for one payment attempt and starts a fresh session for the next one, so payment surfaces no longer call `reset()` themselves, and `addSessionIdToExtensions()` adds a prepared session ID to the extension data of a Store API request, such as an express button's.
 * Dev - The `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, was removed.
+
+2026-11-02 - version 0.3.1
+* Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when sending that activity is slow.
+* Fixed - On the classic checkout, payment attempts are analyzed with the shopper's browser session even when another plugin or theme sends the order before the session is ready.
+* Fixed - Payment attempts are now analyzed with the shopper's browser session on some custom classic checkout templates, including FunnelKit.
+* Fixed - Cards saved with Stripe on the My Account "Add payment method" page are now analyzed before Stripe sends them to the card issuer, instead of after.
+* Fixed - When a card saved with Stripe on the My Account "Add payment method" page is changed after it is first submitted, the card that Stripe saves is now the one analyzed.
+* Fixed - Cash and other payments that a cashier records with the WooCommerce POS plugin's own payment methods are no longer analyzed, since no shopper browser is involved; other payment methods used in the POS are still analyzed.
+* Dev - `window.wcFraudProtection.acquireSessionId()` now sends the shopper's latest session data before it resolves.
+* Dev - Payment attempts without a browser session now report whether the plugin's scripts handled the request.
 
 2026-10-20 - version 0.3.0
 * Added - Stores where automatic blocking was turned on by default get an Inbox note that links to the Fraud prevention settings. The note leaves the Inbox if automatic blocking is turned off.
