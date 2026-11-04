@@ -48,13 +48,13 @@ Extend `FraudProtectionUnitTestCase`, which extends WooCommerce's `WC_Unit_Test_
 
 ### Mocking the service
 
-The service call goes through Jetpack's connection client, which uses `wp_remote_request()`. Tests can answer it with a `pre_http_request` filter, or mock `ApiClient` where the test is about something else.
+The service call goes through Jetpack's connection client, which uses [`wp_remote_request()`](https://developer.wordpress.org/reference/functions/wp_remote_request/). Tests can answer it with a [`pre_http_request`](https://developer.wordpress.org/reference/hooks/pre_http_request/) filter, or mock `ApiClient` where the test is about something else.
 
 ### Rules
 
 From [AGENTS.md](../../AGENTS.md#tests):
 
-- Test observable behavior through real WooCommerce flows where practical: gateways through `get_available_payment_gateways()`, REST requests through `rest_get_server()->dispatch()`, actions and output through the real hook.
+- Test observable behavior through real WooCommerce flows where practical: gateways through [`get_available_payment_gateways()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateways.html#method_get_available_payment_gateways), REST requests through [`rest_get_server()->dispatch()`](https://developer.wordpress.org/reference/classes/wp_rest_server/dispatch/), actions and output through the real hook.
 - Mock an external request or collaborator at its direct boundary. Don't use an unrelated filter just to control setup.
 - Remove hooks and options a test creates.
 - Test behavior the plugin owns, not WooCommerce's.
@@ -63,7 +63,7 @@ From [AGENTS.md](../../AGENTS.md#tests):
 
 Jest tests under `tests/js/` cover each browser script and the settings app.
 
-- Browser-script tests load the file from `assets/js/` into JSDOM, with fakes for `Blackbox`, `jQuery`, `wp.data`, `wp.hooks` and `fetch`, and drive it with events.
+- Browser-script tests load the file from `assets/js/` into JSDOM, with fakes for `Blackbox`, `jQuery`, [`wp.data`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-data/), [`wp.hooks`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-hooks/) and `fetch`, and drive it with events.
 - Settings app tests (`*.test.tsx`) render components with Testing Library.
 - `@wordpress/ui` injects its CSS at runtime, which doesn't happen in Jest. Check styling in a browser.
 

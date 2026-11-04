@@ -32,12 +32,12 @@ This reference describes each script under `assets/js/`: when it loads, what it 
 |--------|------|-----------|------------|
 | `wc-fraud-protection-blackbox` | `https://blackbox-api.wp.com/v1/dist/v.js` | `BlackboxScriptHandler` | none |
 | `wc-fraud-protection-blackbox-init` | `blackbox-init.js` | `BlackboxScriptHandler` | `wc-fraud-protection-blackbox` |
-| `wc-fraud-protection-blocks-checkout` | `blocks-checkout.js` | `BlocksCheckoutProtector`; `PayPalScriptCompat` on the Cart block | init, `wp-data`, `wc-blocks-checkout-events` |
+| `wc-fraud-protection-blocks-checkout` | `blocks-checkout.js` | `BlocksCheckoutProtector`; `PayPalScriptCompat` on the Cart block | init, [`wp-data`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-data/), `wc-blocks-checkout-events` |
 | `wc-fraud-protection-shortcode-checkout` | `shortcode-checkout.js` | `ShortcodeCheckoutProtector` | init, `jquery` |
 | `wc-fraud-protection-pay-for-order` | `pay-for-order.js` | `PayForOrderProtector`, `SubscriptionsChangePaymentCompat`, `request_pay_for_order_script()` | init, `jquery` |
 | `wc-fraud-protection-add-payment-method` | `add-payment-method.js` | `AddPaymentMethodProtector` | init, `jquery` |
 | `wc-fraud-protection-stripe-add-payment-method` | `stripe-add-payment-method.js` | `StripeSetupIntentCompat` | add-payment-method, `jquery` |
-| `wc-fraud-protection-express-checkout` | `express-checkout.js` | `ExpressCheckoutScriptCompat` | init, `wp-hooks` |
+| `wc-fraud-protection-express-checkout` | `express-checkout.js` | `ExpressCheckoutScriptCompat` | init, [`wp-hooks`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-hooks/) |
 | `wc-fraud-protection-paypal-express` | `paypal-express.js` | `PayPalScriptCompat` | init |
 
 `wc-fraud-protection-blackbox-init` and `wc-fraud-protection-pay-for-order` are public handles. The others may change.
@@ -104,10 +104,10 @@ Details that matter:
 
 Runs on pages with the Checkout block.
 
-- **On submit:** registers an `onCheckoutValidation` callback. WooCommerce Blocks waits for its promise before sending the request. The callback acquires the session ID and calls `wp.data.dispatch( 'wc/store/checkout' ).setExtensionData( 'woocommerce/fraud-protection', { blackbox_session_id, blackbox_session_id_error? }, true )`.
-- **After a failure:** `onCheckoutFail` calls `reset()`. The shopper stays on the page and the next attempt needs a new ID.
+- **On submit:** registers an [`onCheckoutValidation`](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/checkout-flow-and-events/#oncheckoutvalidation) callback. WooCommerce Blocks waits for its promise before sending the request. The callback acquires the session ID and calls `wp.data.dispatch( 'wc/store/checkout' ).setExtensionData( 'woocommerce/fraud-protection', { blackbox_session_id, blackbox_session_id_error? }, true )`.
+- **After a failure:** [`onCheckoutFail`](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/checkout-flow-and-events/#oncheckoutfail) calls `reset()`. The shopper stays on the page and the next attempt needs a new ID.
 - **After success:** no reset. The page navigates to the order confirmation.
-- **When the attempt stops in the browser:** a gateway can reject the card details after validation, before the request is sent. The checkout store goes back to idle without `onCheckoutFail`. A `wp.data.subscribe()` watcher notices that an acquired ID was never sent and resets.
+- **When the attempt stops in the browser:** a gateway can reject the card details after validation, before the request is sent. The checkout store goes back to idle without `onCheckoutFail`. A [`wp.data.subscribe()`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-data/#subscribe) watcher notices that an acquired ID was never sent and resets.
 
 The Store API fills missing extension keys with `null`. The server uses that to tell "the script ran and had no ID" (an empty string) from "the script didn't run" (`null`).
 
@@ -167,7 +167,7 @@ On Add payment method, Stripe sends `wc_stripe_create_and_confirm_setup_intent` 
 Loaded where WooPayments or Stripe enqueued their express button scripts, for the gateways that don't declare `fraud_protection_express_checkout`. `wcFraudProtectionExpressCheckout.gateways` lists them.
 
 1. Calls `prepareSessionId()`.
-2. Adds a `wp.hooks` filter, under the `woocommerce/fraud-protection` namespace, to `wcpay.express-checkout.cart-place-order-extension-data` and `wcstripe.express-checkout.cart-place-order-extension-data`.
+2. Adds a [`wp.hooks`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-hooks/) filter, under the `woocommerce/fraud-protection` namespace, to `wcpay.express-checkout.cart-place-order-extension-data` and `wcstripe.express-checkout.cart-place-order-extension-data`.
 3. The filter returns `addSessionIdToExtensions( extensionData )`.
 
 The filter always replaces an existing session ID: on the checkout page, the extension data can still hold the ID from an earlier checkout-form attempt.

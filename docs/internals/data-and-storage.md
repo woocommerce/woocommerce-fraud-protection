@@ -25,7 +25,7 @@ Everything the plugin stores, where, for how long, and who reads it. Use it when
 
 ## Database tables
 
-Both tables are created only while `MerchantListsFeature` is enabled. That gate is hardcoded to `true`, so turning the feature off is a code change and a release, not a per-site setting. `{prefix}` is `$wpdb->prefix`.
+Both tables are created only while `MerchantListsFeature` is enabled. That gate is hardcoded to `true`, so turning the feature off is a code change and a release, not a per-site setting. `{prefix}` is [`$wpdb->prefix`](https://developer.wordpress.org/reference/classes/wpdb/).
 
 ### `{prefix}wc_fraud_protection_sessions`
 
@@ -84,7 +84,7 @@ The active ruleset is cached in the object cache (group `wc_fraud_protection`, k
 
 ## WooCommerce session keys
 
-The WooCommerce session (`WC()->session`) is server-side storage tied to the shopper's session cookie. It lasts across requests, which makes it the right place for per-attempt records.
+The WooCommerce session ([`WC()->session`](https://woocommerce.github.io/code-reference/classes/WC-Session-Handler.html)) is server-side storage tied to the shopper's session cookie. It lasts across requests, which makes it the right place for per-attempt records.
 
 | Key | Written by | Content | Lifetime |
 |-----|------------|---------|----------|
@@ -96,7 +96,7 @@ The WooCommerce session (`WC()->session`) is server-side storage tied to the sho
 | `_fraud_protection_paypal_verification` | `PayPalDecisionReuse` | The latest PayPal request decision: create-order and vault-order decisions are bound to the PayPal order, setup-token decisions to the session ID and cart | Marked used on reuse, then retired |
 | `_fraud_protection_stripe_setup_intent_verification` | `StripeSetupIntentCompat` | Setup-intent decision: session ID, decision, user, payment method | One use |
 
-`WC()->session->set()` marks the session as changed, and WooCommerce writes it to the database at shutdown. Write only when the value changes.
+[`WC()->session->set()`](https://woocommerce.github.io/code-reference/classes/WC-Session.html#method_set) marks the session as changed, and WooCommerce writes it to the database at shutdown. Write only when the value changes.
 
 ## Order meta
 
@@ -104,7 +104,7 @@ The WooCommerce session (`WC()->session`) is server-side storage tied to the sho
 |-----|------------|---------|
 | `_wc_fraud_protection_session_id` | `SessionVerifier`, `PayPalCompat` | Session ID of the verification that covered the order. `FraudProtectionReporter` reads it to report outcomes. Public constant `SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY`. |
 
-Order meta goes through the WooCommerce order API (`update_meta_data()`, `save_meta_data()`), so it works with both the posts table and HPOS order tables.
+Order meta goes through the WooCommerce order API ([`update_meta_data()`](https://woocommerce.github.io/code-reference/classes/WC-Data.html#method_update_meta_data), [`save_meta_data()`](https://woocommerce.github.io/code-reference/classes/WC-Data.html#method_save_meta_data)), so it works with both the posts table and HPOS order tables.
 
 ## User meta
 
@@ -153,10 +153,10 @@ Fields the plugin reads from requests. Public ones are in the [API reference](..
 
 `SchemaManager` installs and upgrades the tables. The plugin can run as a must-use plugin, which has no activation hook, so:
 
-- the install is checked on `init` and runs when the stored version is older than the code's (not under WP-CLI, where `wp wc fraud-protection database install` does it);
+- the install is checked on [`init`](https://developer.wordpress.org/reference/hooks/init/) and runs when the stored version is older than the code's (not under WP-CLI, where `wp wc fraud-protection database install` does it);
 - it runs only while `MerchantListsFeature` is enabled;
-- `dbDelta()` doesn't report failures reliably, so after running it the manager checks that every expected column and index exists (by name; types aren't compared), and only then stamps the version;
-- errors are captured from `$EZSQL_ERROR`, because later queries clear `$wpdb->last_error`;
+- [`dbDelta()`](https://developer.wordpress.org/reference/functions/dbdelta/) doesn't report failures reliably, so after running it the manager checks that every expected column and index exists (by name; types aren't compared), and only then stamps the version;
+- errors are captured from `$EZSQL_ERROR`, because later queries clear [`$wpdb->last_error`](https://developer.wordpress.org/reference/classes/wpdb/);
 - a failed install is retried at most once an hour and abandoned after 24 failures; the state is kept in `woocommerce_fraud_protection_db_install_state`;
 - the version check uses "installed version is at least the code's version", so rolling back to an older plugin doesn't re-run migrations.
 

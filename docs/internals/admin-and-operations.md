@@ -2,6 +2,8 @@
 
 This reference covers the parts of the plugin that merchants and operators see: the settings app, its REST routes, Inbox notes, WP-CLI commands, logging, telemetry, and how the plugin is deployed and switched off.
 
+WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+
 ## Contents
 
 - [Feature gates](#feature-gates)
@@ -32,7 +34,7 @@ The code gates are switched by releasing a new version. The option gate can be s
 | Path | Content |
 |------|---------|
 | `client/admin-settings/` | App entry point, settings page, rules page, navigation |
-| `client/admin-settings/components/`, `data/`, `hooks/` | The app's components, `@wordpress/data` stores, and React hooks |
+| `client/admin-settings/components/`, `data/`, `hooks/` | The app's components, [`@wordpress/data`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-data/) stores, and React hooks |
 | `client/admin-checkout-attempts/` | Checkout attempts list (DataViews), rule chips, the "enable protection" drawer |
 | `client/ui-compat/` | Stand-ins for `@wordpress/ui` components missing from the version WooCommerce bundles, with the upstream names, so switching back is an import change |
 | `client/list-state.ts`, `persisted-state.ts`, `rest-api.ts` | List state, preferences kept in the browser's `localStorage`, and REST helpers |
@@ -129,7 +131,7 @@ The [AGENTS.md logging section](../../AGENTS.md#hooks-logging-and-errors) has th
 
 `SettingsTelemetry`:
 
-- adds the plugin's settings state, 30-day attempt outcome counts and rule counts to WooCommerce's usage tracking (`woocommerce_tracker_data`);
+- adds the plugin's settings state, 30-day attempt outcome counts and rule counts to WooCommerce's usage tracking ([`woocommerce_tracker_data`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-tracker.html#source-view.385));
 - records its own Tracks events, `fraud_protection_automatic_protection_changed` and `fraud_protection_rule_changed`;
 - adds a view-source property to the settings page's Tracks events.
 

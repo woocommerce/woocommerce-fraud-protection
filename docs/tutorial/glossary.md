@@ -12,31 +12,31 @@ Terms used across the documentation, grouped by area. Each entry links to where 
 
 | Term | Meaning |
 |------|---------|
-| **Action** | A hook that announces a moment: `do_action()` fires it, `add_action()` attaches to it. |
-| **Filter** | A hook that lets callbacks change a value: `apply_filters()` fires it, `add_filter()` attaches to it. |
+| **Action** | A hook that announces a moment: [`do_action()`](https://developer.wordpress.org/reference/functions/do_action/) fires it, [`add_action()`](https://developer.wordpress.org/reference/functions/add_action/) attaches to it. |
+| **Filter** | A hook that lets callbacks change a value: [`apply_filters()`](https://developer.wordpress.org/reference/functions/apply_filters/) fires it, [`add_filter()`](https://developer.wordpress.org/reference/functions/add_filter/) attaches to it. |
 | **Priority** | The order in which callbacks attached to the same hook run. Lower runs first; the default is 10. |
 | **Must-use plugin (MU-plugin)** | A plugin in `wp-content/mu-plugins/` that always loads and skips WordPress's plugin header checks. |
 | **Nonce** | A short-lived WordPress token that protects a form or request against cross-site request forgery. Not authentication. Not the same as a payment nonce. |
-| **Classic checkout** | The checkout rendered by the `[woocommerce_checkout]` shortcode, posted to `?wc-ajax=checkout`. See [chapter 1](01-woocommerce-checkout.md#the-classic-checkout-step-by-step). |
+| **Classic checkout** | The checkout rendered by the [`[woocommerce_checkout]`](https://woocommerce.com/document/woocommerce-shortcodes/) shortcode, posted to `?wc-ajax=checkout`. See [chapter 1](01-woocommerce-checkout.md#the-classic-checkout-step-by-step). |
 | **Block checkout** | The checkout rendered by the `woocommerce/checkout` block, posted to the Store API. See [chapter 1](01-woocommerce-checkout.md#the-block-checkout-step-by-step). |
 | **Shortcode checkout** | Same as classic checkout. The plugin's code uses this name. |
-| **Store API** | WooCommerce's public REST API for the storefront, under `/wp-json/wc/store/v1/`. The block checkout and cart use it. |
+| **Store API** | WooCommerce's public REST API for the storefront, under [`/wp-json/wc/store/v1/`](https://developer.woocommerce.com/docs/apis/store-api/). The block checkout and cart use it. |
 | **Extension data (`extensions`)** | Extra data that extensions attach to a Store API request, under their own namespace. |
 | **Cart-Token** | A signed token that identifies a Store API session without a cookie. |
-| **WooCommerce session** | Server-side storage for one shopper (`WC()->session`), tied to a cookie or Cart-Token. Not the fraud-detection session. |
+| **WooCommerce session** | Server-side storage for one shopper ([`WC()->session`](https://woocommerce.github.io/code-reference/classes/WC-Session-Handler.html)), tied to a cookie or Cart-Token. Not the fraud-detection session. |
 | **Pay for order** | The page that pays an existing unpaid order: `/checkout/order-pay/{id}/`. See [chapter 1](01-woocommerce-checkout.md#pay-for-order). |
 | **Add payment method** | The My Account page where a customer saves a payment method without buying. See [chapter 1](01-woocommerce-checkout.md#add-payment-method-and-saved-cards). |
 | **Draft order** | An order with status `checkout-draft`, created by the block checkout before payment. |
 | **HPOS** | High-Performance Order Storage: orders in custom tables instead of posts. Use the order CRUD API. |
-| **Payment token** | A saved payment method in WooCommerce (`WC_Payment_Token_CC` and others), owned by a customer and a gateway. |
-| **WooCommerce container** | WooCommerce's dependency-injection container, `wc_get_container()`. The plugin resolves its classes from it. |
+| **Payment token** | A saved payment method in WooCommerce ([`WC_Payment_Token_CC`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Token-CC.html) and others), owned by a customer and a gateway. |
+| **WooCommerce container** | WooCommerce's dependency-injection container, [`wc_get_container()`](https://woocommerce.github.io/code-reference/namespaces/default.html#function_wc_get_container). The plugin resolves its classes from it. |
 | **Action Scheduler** | WooCommerce's job queue for background tasks. |
 
 ## Payments
 
 | Term | Meaning |
 |------|---------|
-| **Payment gateway** | A WooCommerce class (`WC_Payment_Gateway`) that takes payment through a payment provider. See [chapter 2](02-payment-gateways.md). |
+| **Payment gateway** | A WooCommerce class ([`WC_Payment_Gateway`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html)) that takes payment through a payment provider. See [chapter 2](02-payment-gateways.md). |
 | **Payment provider (processor)** | The company that moves the money: Stripe, PayPal, Square, WooPayments (built on Stripe). |
 | **Acquirer** | The merchant's bank, which accepts card payments on the merchant's behalf. |
 | **Issuer** | The cardholder's bank, which approves or declines a payment. |
@@ -89,7 +89,7 @@ Terms used across the documentation, grouped by area. Each entry links to where 
 | **Protector** | A plugin class that verifies one WooCommerce flow and enforces the decision. |
 | **Compatibility layer** | A plugin class that does the same for one gateway's or extension's own flow. |
 | **Native integration** | A gateway or extension that protects its own flows with the public API and declares it, so the matching compatibility layer stands aside. |
-| **Feature (`FraudProtectionFeature`)** | A string a gateway declares in `$supports`, such as `fraud_protection_checkout`. |
+| **Feature (`FraudProtectionFeature`)** | A string a gateway declares in [`$supports`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#property_supports), such as `fraud_protection_checkout`. |
 | **Integration (`FraudProtectionIntegration`)** | A string another extension declares through a filter, such as `change_payment_method`. |
 | **Supplied decision** | A decision returned through `woocommerce_fraud_protection_skip_session_verify`, which skips the service call. |
 | **Decision reuse** | Applying the decision of a gateway's earlier request to the submission that completes the same attempt. |

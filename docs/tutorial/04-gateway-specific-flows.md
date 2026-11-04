@@ -2,6 +2,8 @@
 
 The protectors from [chapter 3](03-fraud-protection.md) cover WooCommerce's own forms. Many real payments don't go only through those forms. This chapter explains where they leave them, how the plugin's compatibility layers protect them, and how gateways and other extensions can take over that work through native integrations.
 
+WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+
 ## Contents
 
 - [Where the generic protectors fall short](#where-the-generic-protectors-fall-short)
@@ -17,7 +19,7 @@ The protectors from [chapter 3](03-fraud-protection.md) cover WooCommerce's own 
 
 ## Where the generic protectors fall short
 
-A protector verifies the request that WooCommerce hands to the gateway. That works when the gateway does all its work inside `process_payment()` or `add_payment_method()`. It fails in four situations:
+A protector verifies the request that WooCommerce hands to the gateway. That works when the gateway does all its work inside [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) or [`add_payment_method()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_add_payment_method). It fails in four situations:
 
 | Situation | Example | What goes wrong without help |
 |-----------|---------|------------------------------|
@@ -30,7 +32,7 @@ There's also a fifth, quieter gap: the protectors know the gateway ID but not mu
 
 ## The compatibility layers
 
-Each gap has a class under `src/Internal/FraudProtectionPlugin/Compat/`. They register from `FraudProtectionController::register_compat_layers()` at `woocommerce_loaded`.
+Each gap has a class under `src/Internal/FraudProtectionPlugin/Compat/`. They register from `FraudProtectionController::register_compat_layers()` at [`woocommerce_loaded`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-woocommerce.html#source-view.301).
 
 | Layer | Extension | What it does |
 |-------|-----------|--------------|
@@ -70,7 +72,7 @@ WooPayments and Stripe show Apple Pay, Google Pay and similar buttons on product
 
 `ExpressCheckoutScriptCompat` fixes that:
 
-1. On `wp_enqueue_scripts` (at `PHP_INT_MAX`), it checks whether a gateway enqueued its express button script, `WCPAY_EXPRESS_CHECKOUT_ECE` or `wc_stripe_express_checkout`.
+1. On [`wp_enqueue_scripts`](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/) (at `PHP_INT_MAX`), it checks whether a gateway enqueued its express button script, `WCPAY_EXPRESS_CHECKOUT_ECE` or `wc_stripe_express_checkout`.
 2. If so, it loads the shared scripts and `express-checkout.js`.
 3. `express-checkout.js` calls `prepareSessionId()` once, and adds a filter to each gateway's extension-data hook (`wcpay.express-checkout.cart-place-order-extension-data`, `wcstripe.express-checkout.cart-place-order-extension-data`).
 4. When the gateway builds the Store API request, the filter adds the prepared session ID with `addSessionIdToExtensions()`.
@@ -116,13 +118,13 @@ The last condition matters. The browser holds the setup intent's client secret, 
 
 ## WooCommerce Subscriptions: change payment method
 
-A subscriber can change the payment method of a subscription from My Account. Subscriptions renders WooCommerce's Pay for order form for this, but handles the submission itself, so `woocommerce_before_pay_action` never fires.
+A subscriber can change the payment method of a subscription from My Account. Subscriptions renders WooCommerce's Pay for order form for this, but handles the submission itself, so [`woocommerce_before_pay_action`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.567) never fires.
 
 `SubscriptionsChangePaymentCompat`:
 
 - loads `pay-for-order.js` from `woocommerce_subscriptions_change_payment_after_submit`;
 - verifies on `woocommerce_subscription_change_payment_method_via_pay_shortcode`, which Subscriptions fires after its nonce check;
-- on a `Block`, adds the notice, redirects and exits, so neither `update_payment_method()` nor `process_payment()` runs.
+- on a `Block`, adds the notice, redirects and exits, so neither `update_payment_method()` nor [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) runs.
 
 Renewals have no browser and are not verified. They charge a payment method that was verified when it was added or changed.
 
@@ -140,8 +142,8 @@ The compatibility layers work, but they're fragile and they live in the wrong pl
 
 The pieces:
 
-- **Declarations.** A gateway adds `FraudProtectionFeature` strings to its `$supports` array: `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, `fraud_protection_express_checkout`. Other extensions add `FraudProtectionIntegration` strings, such as `change_payment_method`, under their plugin slug through the `woocommerce_fraud_protection_native_integrations` filter.
-- **Standing aside.** Each compatibility layer asks `GatewayNativeSupport` or `ExtensionNativeSupport` inside its hook callbacks whether the matching feature is declared, and does nothing if it is. The check must run inside the callbacks: gateway instances don't exist until `WC_Payment_Gateways` initializes them, after `init`.
+- **Declarations.** A gateway adds `FraudProtectionFeature` strings to its [`$supports`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#property_supports) array: `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, `fraud_protection_express_checkout`. Other extensions add `FraudProtectionIntegration` strings, such as `change_payment_method`, under their plugin slug through the `woocommerce_fraud_protection_native_integrations` filter.
+- **Standing aside.** Each compatibility layer asks `GatewayNativeSupport` or `ExtensionNativeSupport` inside its hook callbacks whether the matching feature is declared, and does nothing if it is. The check must run inside the callbacks: gateway instances don't exist until [`WC_Payment_Gateways`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateways.html) initializes them, after [`init`](https://developer.wordpress.org/reference/hooks/init/).
 - **Public building blocks.** `GatewayPaymentData`, `GatewayRequestVerifier`, `BlackboxScriptHandler::request_scripts_for()`, `ClassicFormRequestData`, and the browser methods `takeSessionId()`, `prepareSessionId()`, `takePreparedSessionId()` and `addSessionIdToExtensions()`.
 
 A gateway switches a built-in layer off by **declaring** the matching feature; registering a resolver or reference reader alone doesn't. `GatewayPaymentData` and `GatewayRequestVerifier` also have internal `register_compatibility_*()` methods, so that future layers built on those public services give way to a gateway's own registration, whichever registers first. No current layer uses them yet.
