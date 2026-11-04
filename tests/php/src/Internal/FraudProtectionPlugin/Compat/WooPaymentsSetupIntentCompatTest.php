@@ -228,6 +228,13 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The verification source fits the 32 characters that SessionVerifier keeps, so it reaches filters, logs, and stored rows unchanged.
+	 */
+	public function test_source_fits_session_verifier_limit(): void {
+		$this->assertLessThanOrEqual( 32, mb_strlen( WooPaymentsSetupIntentCompat::SOURCE ) );
+	}
+
+	/**
 	 * @testdox The setup intent request is verified with the session ID and WooPayments payment data, and is allowed on ALLOW.
 	 */
 	public function test_verifies_setup_intent_request_and_allows(): void {
@@ -238,7 +245,7 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 			->method( 'verify_session' )
 			->with(
 				'sess-wcpay',
-				WooPaymentsSetupIntentCompat::SOURCE,
+				'wcpay_setup_intent_creation',
 				0,
 				array(
 					'payment_method' => 'woocommerce_payments',

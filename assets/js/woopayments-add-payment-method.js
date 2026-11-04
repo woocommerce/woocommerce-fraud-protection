@@ -119,8 +119,12 @@
 	/**
 	 * Add the form's attempt fields to a setup intent request body.
 	 *
+	 * A field that the request already has is left as it is. It still counts
+	 * as sent when it has the form's value, so that a failed request ends the
+	 * attempt whoever added the field.
+	 *
 	 * @param {*} body The request body.
-	 * @return {boolean} True when fields were added.
+	 * @return {boolean} True when the request carries any of the form's attempt fields.
 	 */
 	function addAttemptFields( body ) {
 		if (
@@ -131,42 +135,49 @@
 		}
 
 		const sessionIdField = fraudProtection.config.sessionIdField;
-		let added = false;
-		let sessionIdAdded = false;
+		let sent = false;
+		let sessionIdSent = false;
 		[ sessionIdField, fraudProtection.config.sessionIdErrorField ].forEach(
 			function ( name ) {
-				if ( ! name || body.has( name ) ) {
+				if ( ! name ) {
 					return;
 				}
 
 				const value = getFormFieldValue( name );
-				if ( value ) {
-					body.append( name, value );
-					added = true;
-					sessionIdAdded = sessionIdAdded || name === sessionIdField;
+				if ( ! value ) {
+					return;
 				}
+
+				if ( ! body.has( name ) ) {
+					body.append( name, value );
+				} else if ( body.get( name ) !== value ) {
+					return;
+				}
+
+				sent = true;
+				sessionIdSent = sessionIdSent || name === sessionIdField;
 			}
 		);
 
-		if ( added ) {
+		if ( sent ) {
 			attemptFieldsWereSent = true;
-			sessionIdWasSent = sessionIdAdded;
+			sessionIdWasSent = sessionIdSent;
 		}
 
-		return added;
+		return sent;
 	}
 
 	window.fetch = function ( resource, options ) {
-		let added = false;
+		let sent = false;
 		try {
-			added = addAttemptFields( options && options.body );
+			sent = addAttemptFields( options && options.body );
 		} catch {
 			// Fail open.
 		}
 
 		const result = originalFetch.apply( window, arguments );
 
-		if ( added ) {
+		if ( sent ) {
 			try {
 				// Registered before the caller gets the response, so the body
 				// is cloned before the caller reads it.

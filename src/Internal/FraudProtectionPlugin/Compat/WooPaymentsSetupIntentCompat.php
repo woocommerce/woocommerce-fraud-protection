@@ -42,8 +42,8 @@ class WooPaymentsSetupIntentCompat {
 	use ClassicFormDataExtractionTrait;
 	use WooPaymentsSetupIntentReaderTrait;
 
-	/** Setup-intent verification source. */
-	public const SOURCE = 'woopayments_setup_intent_creation';
+	/** Setup-intent verification source. SessionVerifier caps sources at 32 characters. */
+	public const SOURCE = 'wcpay_setup_intent_creation';
 
 	/** Source of the add-payment-method form post that can reuse the decision. */
 	private const ADD_PAYMENT_METHOD_SOURCE = 'add_payment_method';

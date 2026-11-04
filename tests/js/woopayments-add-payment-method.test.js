@@ -114,10 +114,11 @@ function sentBody( fields ) {
  * Send a setup intent request that the server answers with the given body,
  * or that fails when the body is an Error.
  *
- * @param {Object|Error} body JSON response body, or the fetch failure.
+ * @param {Object|Error} body          JSON response body, or the fetch failure.
+ * @param {Object}       requestFields Fields that the request has besides the setup intent fields.
  * @return {Promise<Object|undefined>} What the caller reads from the response.
  */
-async function sendSetupIntentRequest( body ) {
+async function sendSetupIntentRequest( body, requestFields = {} ) {
 	if ( body instanceof Error ) {
 		fetchMock.mockRejectedValue( body );
 	} else {
@@ -132,7 +133,7 @@ async function sendSetupIntentRequest( body ) {
 	try {
 		const response = await window.fetch( '/wp-admin/admin-ajax.php', {
 			method: 'POST',
-			body: buildBody( setupIntentFields ),
+			body: buildBody( { ...setupIntentFields, ...requestFields } ),
 		} );
 		read = await response.json();
 	} catch {
@@ -193,6 +194,52 @@ describe( 'woopayments-add-payment-method', () => {
 		} );
 
 		expect( body.getAll( SESSION_ID_FIELD ) ).toEqual( [ 'sess-request' ] );
+	} );
+
+	it.each( [
+		[
+			'the form session ID',
+			SESSION_ID_FIELD,
+			'sess-wcpay',
+			{ [ SESSION_ID_FIELD ]: 'sess-wcpay' },
+			1,
+		],
+		[
+			'the form session ID error',
+			SESSION_ID_ERROR_FIELD,
+			'timeout',
+			{ [ SESSION_ID_ERROR_FIELD ]: 'timeout' },
+			0,
+		],
+	] )(
+		'ends the attempt when a request that already has %s fails',
+		async ( _, name, value, requestFields, resets ) => {
+			addFormField( name, value );
+			loadScript();
+
+			await sendSetupIntentRequest( { success: false }, requestFields );
+
+			expect(
+				fetchMock.mock.calls[ 0 ][ 1 ].body.getAll( name )
+			).toEqual( [ value ] );
+			expect( formHasField( name ) ).toBe( 0 );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes(
+				resets
+			);
+		}
+	);
+
+	it( 'keeps the attempt when a request with another session ID fails', async () => {
+		addFormField( SESSION_ID_FIELD, 'sess-form' );
+		loadScript();
+
+		await sendSetupIntentRequest(
+			{ success: false },
+			{ [ SESSION_ID_FIELD ]: 'sess-request' }
+		);
+
+		expect( formHasField( SESSION_ID_FIELD ) ).toBe( 1 );
+		expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 	} );
 
 	it( 'leaves other requests unchanged', () => {
