@@ -423,7 +423,6 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		);
 
 		$seed_position = new \ReflectionMethod( RuleStore::class, 'seed_position' );
-		$seed_position->setAccessible( true );
 		try {
 			$this->expectException( \RuntimeException::class );
 			$seed_position->invoke( $store, FraudDecision::Allow );
@@ -458,7 +457,6 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		);
 
 		$seed_position = new \ReflectionMethod( RuleStore::class, 'seed_position' );
-		$seed_position->setAccessible( true );
 		try {
 			$this->expectException( \RuntimeException::class );
 			$seed_position->invoke( $store, FraudDecision::Allow );

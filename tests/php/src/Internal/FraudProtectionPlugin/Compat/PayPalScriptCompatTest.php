@@ -903,7 +903,6 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertInstanceOf( AbstractBlock::class, $block_type->render_callback[0] );
 
 		$property = new \ReflectionProperty( AbstractBlock::class, 'enqueued_assets' );
-		$property->setAccessible( true );
 		$previous = (bool) $property->getValue( $block_type->render_callback[0] );
 		$property->setValue( $block_type->render_callback[0], $state );
 
