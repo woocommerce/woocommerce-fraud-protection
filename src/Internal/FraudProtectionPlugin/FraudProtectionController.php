@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEnabledNote;
@@ -237,6 +239,8 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->schema_manager->register();
 		$this->session_event_pruner->register();
 		$this->session_verifier->register();
+		wc_get_container()->get( GatewayRequestVerifier::class )->register();
+		wc_get_container()->get( GatewayPaymentData::class )->register();
 		$this->blocks_checkout_protector->register();
 		$this->shortcode_checkout_protector->register();
 		$this->add_payment_method_protector->register();

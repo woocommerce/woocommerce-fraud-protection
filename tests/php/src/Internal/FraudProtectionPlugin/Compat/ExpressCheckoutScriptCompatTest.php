@@ -9,8 +9,11 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Blocks\BlockTypes\AbstractBlock;
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExpressCheckoutScriptCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 
 /**
  * Tests for the ExpressCheckoutScriptCompat class.
@@ -40,7 +43,7 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->sut = new ExpressCheckoutScriptCompat();
-		$this->sut->init( $this->make_blackbox_script_handler() );
+		$this->sut->init( $this->make_blackbox_script_handler(), new GatewayNativeSupport() );
 	}
 
 	/**
@@ -101,6 +104,52 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Leaves a gateway's express buttons alone when that gateway declares native express checkout support.
+	 */
+	public function test_stands_aside_for_gateway_declaring_native_express_checkout(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->register_payment_gateways( new FakeNativeGateway( 'stripe', array( FraudProtectionFeature::EXPRESS_CHECKOUT ) ) );
+		$this->sut->register();
+		$this->register_gateway_handle( 'wc_stripe_express_checkout', true );
+
+		$this->run_wp_enqueue_scripts();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ), 'Stripe sends the session ID itself' );
+
+		$this->register_gateway_handle( 'WCPAY_EXPRESS_CHECKOUT_ECE', true );
+		$this->run_wp_enqueue_scripts();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ), 'WooPayments declared nothing and keeps the compatibility script' );
+		$this->assertSame( array( 'woocommerce_payments' ), $this->get_express_script_gateways(), 'The script must leave Stripe\'s express checkout data alone' );
+	}
+
+	/**
+	 * @testdox Without native declarations, the express checkout script handles both gateways.
+	 */
+	public function test_script_handles_every_gateway_without_declarations(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->register();
+		$this->register_gateway_handle( 'wc_stripe_express_checkout', true );
+
+		$this->run_wp_enqueue_scripts();
+
+		$this->assertSame( array( 'woocommerce_payments', 'stripe' ), $this->get_express_script_gateways() );
+	}
+
+	/**
+	 * Get the gateway list localized for the express checkout script.
+	 *
+	 * @return mixed The `gateways` value, or null when nothing was localized.
+	 */
+	private function get_express_script_gateways() {
+		$data = wp_scripts()->get_data( 'wc-fraud-protection-express-checkout', 'data' );
+		$this->assertIsString( $data );
+		$this->assertSame( 1, preg_match( '/var wcFraudProtectionExpressCheckout = (\{.*?\});/', $data, $matches ) );
+
+		return json_decode( $matches[1], true )['gateways'] ?? null;
+	}
+
+	/**
 	 * @testdox Does not load scripts when an express button script is only registered.
 	 */
 	public function test_skips_registered_but_not_enqueued_express_button_script(): void {
@@ -133,7 +182,7 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 	public function test_skips_when_shared_scripts_are_unavailable(): void {
 		$handler = $this->createMock( BlackboxScriptHandler::class );
 		$handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
-		$this->sut->init( $handler );
+		$this->sut->init( $handler, new GatewayNativeSupport() );
 		$this->register_gateway_handle( 'WCPAY_EXPRESS_CHECKOUT_ECE', true );
 
 		$this->sut->enqueue_express_checkout_script_if_buttons_enqueued();

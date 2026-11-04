@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -17,6 +18,7 @@ defined( 'ABSPATH' ) || exit;
  * Resolves the PayPal Payments merchant identifier and transaction mode into PaymentMethodData.
  *
  * This compat resolves saved wallet data and the PayPal merchant identifier and transaction mode.
+ * Stands aside once the gateway declares `fraud_protection_payment_data`.
  */
 class PayPalPaymentDataCompat {
 
@@ -26,6 +28,31 @@ class PayPalPaymentDataCompat {
 	 * @var string
 	 */
 	private const GATEWAY_PREFIX = 'ppcp-';
+
+	/**
+	 * Main PayPal Payments gateway ID.
+	 *
+	 * @var string
+	 */
+	private const MAIN_GATEWAY_ID = 'ppcp-gateway';
+
+	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param GatewayNativeSupport $native_support Native gateway support lookup.
+	 */
+	final public function init( GatewayNativeSupport $native_support ): void {
+		$this->native_support = $native_support;
+	}
 
 	/**
 	 * Wallet names resolved from dedicated PayPal Payments gateways.
@@ -69,6 +96,10 @@ class PayPalPaymentDataCompat {
 	 */
 	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields = array() ): PaymentMethodData {
 		if ( ! $this->is_paypal_gateway( $resolved->get_gateway() ) ) {
+			return $resolved;
+		}
+
+		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $resolved->get_gateway(), self::MAIN_GATEWAY_ID ) ) {
 			return $resolved;
 		}
 

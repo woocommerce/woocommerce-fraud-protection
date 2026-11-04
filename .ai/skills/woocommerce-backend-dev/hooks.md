@@ -9,7 +9,7 @@
 
 ## Adding Hooks
 
-Add public hooks only when an extension contract is required. Released hooks must be maintained (see "Hooks, logging, and errors" in `AGENTS.md`). The released extension filters are `woocommerce_fraud_protection_resolved_payment_data` and `woocommerce_fraud_protection_skip_session_verify`; their contracts are documented in the "Public API" section of `README.md`.
+Add public hooks only when an extension contract is required. Released hooks must be maintained (see "Hooks, logging, and errors" in `AGENTS.md`). The released public hooks and their contracts are documented in the "Hooks" section of `docs/api-reference.md`.
 
 Prefix plugin hook names with `woocommerce_fraud_protection_`.
 

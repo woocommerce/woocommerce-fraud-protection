@@ -8,11 +8,16 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Loads Fraud Protection browser scripts on PayPal payment surfaces.
+ *
+ * Stands aside on product, cart, checkout and pay-for-order surfaces once the main PayPal
+ * gateway declares `fraud_protection_checkout`, and on the add-payment-method and
+ * change-payment-method forms once it declares `fraud_protection_add_payment_method`.
  */
 class PayPalScriptCompat {
 
@@ -44,14 +49,23 @@ class PayPalScriptCompat {
 	private BlackboxScriptHandler $blackbox_script_handler;
 
 	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param BlackboxScriptHandler $blackbox_script_handler The shared script handler.
+	 * @param GatewayNativeSupport  $native_support          Native gateway support lookup.
 	 */
-	final public function init( BlackboxScriptHandler $blackbox_script_handler ): void {
+	final public function init( BlackboxScriptHandler $blackbox_script_handler, GatewayNativeSupport $native_support ): void {
 		$this->blackbox_script_handler = $blackbox_script_handler;
+		$this->native_support          = $native_support;
 	}
 
 	/**
@@ -77,13 +91,42 @@ class PayPalScriptCompat {
 	}
 
 	/**
-	 * Request the shared scripts and enqueue the PayPal fetch interceptor.
+	 * Enqueue the PayPal fetch interceptor for a purchase surface.
 	 *
 	 * @internal
 	 *
 	 * @return void
 	 */
 	public function enqueue_paypal_script(): void {
+		if ( $this->is_native( array( FraudProtectionFeature::CHECKOUT ) ) ) {
+			return;
+		}
+
+		$this->enqueue_interceptor();
+	}
+
+	/**
+	 * Check whether PayPal Payments declares every feature that covers a payment surface.
+	 *
+	 * @param string[] $features Features that cover the surface.
+	 * @return bool
+	 */
+	private function is_native( array $features ): bool {
+		foreach ( $features as $feature ) {
+			if ( ! $this->native_support->declared( $feature, PayPalCompat::MAIN_GATEWAY_ID ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Request the shared scripts and enqueue the PayPal fetch interceptor.
+	 *
+	 * @return void
+	 */
+	private function enqueue_interceptor(): void {
 		if ( ! $this->blackbox_script_handler->request_scripts() ) {
 			return;
 		}
@@ -165,7 +208,8 @@ class PayPalScriptCompat {
 
 		$this->enqueue_when_paypal_scripts_are_ready(
 			array( $this, __FUNCTION__ ),
-			array( self::LEGACY_SMART_BUTTON_HANDLE, self::SDK_V6_BOOT_HANDLE )
+			array( self::LEGACY_SMART_BUTTON_HANDLE, self::SDK_V6_BOOT_HANDLE ),
+			array( FraudProtectionFeature::CHECKOUT )
 		);
 	}
 
@@ -193,7 +237,11 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_if_smart_button_enqueued(): void {
-		$this->enqueue_when_paypal_scripts_are_ready( array( $this, __FUNCTION__ ), array( self::LEGACY_SMART_BUTTON_HANDLE ) );
+		$this->enqueue_when_paypal_scripts_are_ready(
+			array( $this, __FUNCTION__ ),
+			array( self::LEGACY_SMART_BUTTON_HANDLE ),
+			array( FraudProtectionFeature::CHECKOUT )
+		);
 	}
 
 	/**
@@ -214,6 +262,9 @@ class PayPalScriptCompat {
 	/**
 	 * Enqueue the interceptor when PayPal's add-payment-method script is active.
 	 *
+	 * Used by the My Account add-payment-method form and the Subscriptions
+	 * change-payment-method form.
+	 *
 	 * @internal
 	 *
 	 * @return void
@@ -221,7 +272,8 @@ class PayPalScriptCompat {
 	public function enqueue_paypal_script_if_add_payment_method_enqueued(): void {
 		$this->enqueue_when_paypal_scripts_are_ready(
 			array( $this, __FUNCTION__ ),
-			array( self::LEGACY_ADD_PAYMENT_METHOD_HANDLE, self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
+			array( self::LEGACY_ADD_PAYMENT_METHOD_HANDLE, self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE ),
+			array( FraudProtectionFeature::ADD_PAYMENT_METHOD )
 		);
 	}
 
@@ -230,8 +282,13 @@ class PayPalScriptCompat {
 	 *
 	 * @param callable $callback Method to rerun after script enqueueing.
 	 * @param string[] $handles  PayPal payment script handles for the surface.
+	 * @param string[] $features Features that cover the surface; the interceptor stands aside when all are declared.
 	 */
-	private function enqueue_when_paypal_scripts_are_ready( callable $callback, array $handles ): void {
+	private function enqueue_when_paypal_scripts_are_ready( callable $callback, array $handles, array $features ): void {
+		if ( $this->is_native( $features ) ) {
+			return;
+		}
+
 		if ( ! did_action( 'wp_enqueue_scripts' ) ) {
 			add_action( 'wp_enqueue_scripts', $callback, PHP_INT_MAX, 0 );
 			return;
@@ -239,7 +296,7 @@ class PayPalScriptCompat {
 
 		foreach ( $handles as $handle ) {
 			if ( $this->is_script_enqueued( $handle ) ) {
-				$this->enqueue_paypal_script();
+				$this->enqueue_interceptor();
 				return;
 			}
 		}
@@ -253,15 +310,25 @@ class PayPalScriptCompat {
 	 * @return void
 	 */
 	public function enqueue_paypal_script_for_sdk_v6(): void {
-		$payment_script_enqueued = ( $this->is_sdk_v6_payment_page() && $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE ) )
-			|| $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE )
-			|| $this->is_script_enqueued( self::SDK_V6_VAULT_HANDLE );
-
-		if ( ! $payment_script_enqueued ) {
-			return;
+		// Features that cover each active surface. The vault component can save a
+		// payment method at checkout or outside a purchase, so it needs both.
+		$surfaces = array();
+		if ( $this->is_sdk_v6_payment_page() && $this->is_script_enqueued( self::SDK_V6_BOOT_HANDLE ) ) {
+			$surfaces[] = array( FraudProtectionFeature::CHECKOUT );
+		}
+		if ( $this->is_script_enqueued( self::SDK_V6_ADD_PAYMENT_METHOD_HANDLE ) ) {
+			$surfaces[] = array( FraudProtectionFeature::ADD_PAYMENT_METHOD );
+		}
+		if ( $this->is_script_enqueued( self::SDK_V6_VAULT_HANDLE ) ) {
+			$surfaces[] = array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD );
 		}
 
-		$this->enqueue_paypal_script();
+		foreach ( $surfaces as $features ) {
+			if ( ! $this->is_native( $features ) ) {
+				$this->enqueue_interceptor();
+				return;
+			}
+		}
 	}
 
 	/**

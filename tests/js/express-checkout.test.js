@@ -4,9 +4,10 @@
  * Tests for express-checkout.js — session ID in WooPayments and Stripe
  * express checkout extension data.
  *
- * express-checkout.js is an IIFE. We test it by setting up global mocks,
- * requiring the file (which executes the IIFE), and applying the filters
- * the way the gateways do.
+ * express-checkout.js is an IIFE. We test it by loading blackbox-init.js
+ * with a minimal SDK for the real wcFraudProtection.addSessionIdToExtensions(),
+ * replacing the prepared-session methods with mocks, requiring the file
+ * (which executes the IIFE), and applying the filters the way the gateways do.
  */
 
 const WOOPAYMENTS_FILTER =
@@ -20,7 +21,9 @@ let mockPrepareSessionId;
 let mockTakePreparedSessionId;
 
 beforeEach( () => {
+	delete window.Blackbox;
 	delete window.wcFraudProtection;
+	delete window.wcFraudProtectionExpressCheckout;
 	delete window.wp;
 
 	filters = {};
@@ -28,7 +31,7 @@ beforeEach( () => {
 	mockTakePreparedSessionId = jest.fn( () => 'prepared-session-id' );
 } );
 
-function setupAndLoad() {
+function setupAndLoad( { sdk = true } = {} ) {
 	window.wp = {
 		hooks: {
 			addFilter: jest.fn( ( name, namespace, callback ) => {
@@ -39,11 +42,19 @@ function setupAndLoad() {
 	};
 	window.wcFraudProtection = {
 		config: { sessionIdField: 'wc_fraud_protection_session_id' },
-		acquireSessionId: jest.fn(),
-		reset: jest.fn(),
-		prepareSessionId: mockPrepareSessionId,
-		takePreparedSessionId: mockTakePreparedSessionId,
 	};
+	if ( sdk ) {
+		window.Blackbox = { configure: jest.fn(), init: jest.fn() };
+	}
+
+	jest.isolateModules( () => {
+		require( '../../assets/js/blackbox-init' );
+	} );
+	if ( sdk ) {
+		window.wcFraudProtection.prepareSessionId = mockPrepareSessionId;
+		window.wcFraudProtection.takePreparedSessionId =
+			mockTakePreparedSessionId;
+	}
 
 	jest.isolateModules( () => {
 		require( '../../assets/js/express-checkout' );
@@ -83,6 +94,31 @@ describe( 'express-checkout', () => {
 			expect( mockTakePreparedSessionId ).toHaveBeenCalledTimes( 1 );
 		}
 	);
+
+	it( 'handles only the gateways it is configured for', () => {
+		window.wcFraudProtectionExpressCheckout = {
+			gateways: [ 'woocommerce_payments', 'unknown_gateway' ],
+		};
+		setupAndLoad();
+		const nativeData = {
+			[ NAMESPACE ]: { blackbox_session_id: 'gateway-session-id' },
+		};
+
+		expect( window.wp.hooks.addFilter ).toHaveBeenCalledTimes( 1 );
+		expect( applyFilter( STRIPE_FILTER, nativeData ) ).toBe( nativeData );
+		expect( applyFilter( WOOPAYMENTS_FILTER, {} ) ).toEqual( {
+			[ NAMESPACE ]: { blackbox_session_id: 'prepared-session-id' },
+		} );
+	} );
+
+	it( 'handles both gateways when the gateway list is missing or invalid', () => {
+		window.wcFraudProtectionExpressCheckout = { gateways: 'stripe' };
+		setupAndLoad();
+
+		expect( Object.keys( filters ).sort() ).toEqual(
+			[ STRIPE_FILTER, WOOPAYMENTS_FILTER ].sort()
+		);
+	} );
 
 	it( 'does not change the extension data object it receives', () => {
 		setupAndLoad();
@@ -135,6 +171,18 @@ describe( 'express-checkout', () => {
 		}
 	);
 
+	it( 'reports sdk_unavailable when the SDK did not load', () => {
+		setupAndLoad( { sdk: false } );
+
+		expect(
+			applyFilter( STRIPE_FILTER, {
+				[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
+			} )
+		).toEqual( {
+			[ NAMESPACE ]: { blackbox_session_id_error: 'sdk_unavailable' },
+		} );
+	} );
+
 	it.each( [
 		[ 'undefined', undefined ],
 		[ 'null', null ],
@@ -147,14 +195,21 @@ describe( 'express-checkout', () => {
 		expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
 	} );
 
-	it( 'returns the original data when taking the session ID throws', () => {
+	it( 'replaces an earlier session ID with not_ready when taking the session ID throws', () => {
 		mockTakePreparedSessionId.mockImplementation( () => {
 			throw new Error( 'broken' );
 		} );
 		setupAndLoad();
-		const original = { other: { value: 1 } };
 
-		expect( applyFilter( WOOPAYMENTS_FILTER, original ) ).toBe( original );
+		const result = applyFilter( WOOPAYMENTS_FILTER, {
+			other: { value: 1 },
+			[ NAMESPACE ]: { blackbox_session_id: 'used-session-id' },
+		} );
+
+		expect( result ).toEqual( {
+			other: { value: 1 },
+			[ NAMESPACE ]: { blackbox_session_id_error: 'not_ready' },
+		} );
 	} );
 
 	it( 'does not register filters when wp.hooks is missing', () => {

@@ -4,8 +4,11 @@
  * Configures the Blackbox JS SDK and exposes shared utilities on
  * window.wcFraudProtection for checkout integration scripts.
  * Only set when the SDK is present and configured. When the SDK is
- * missing, only acquireSessionIdResult() is set, so the plugin's own
- * scripts can still report why there is no session ID.
+ * missing, only acquireSessionIdResult(), takeSessionId(),
+ * prepareSessionId(), takePreparedSessionId() and addSessionIdToExtensions()
+ * are set, so the plugin's own scripts can still report why there is no
+ * session ID and integrations can call those methods without checking for
+ * them.
  */
 ( function () {
 	'use strict';
@@ -25,6 +28,64 @@
 		return { sessionId: '', error };
 	}
 
+	// Store API extension data namespace and key the server reads the session ID from.
+	const EXTENSION_NAMESPACE = 'woocommerce/fraud-protection';
+	const EXTENSION_SESSION_ID_KEY = 'blackbox_session_id';
+	const EXTENSION_SESSION_ID_ERROR_KEY = 'blackbox_session_id_error';
+
+	// Why addSessionIdToExtensions() has no session ID to add.
+	let missingSessionIdReason = 'not_ready';
+
+	/**
+	 * Add a prepared session ID to the extension data of a Store API request.
+	 *
+	 * For express payment buttons that place the order through the Store API
+	 * and build the request's extension data synchronously. Returns a copy
+	 * with the ID from takePreparedSessionId() under the plugin's namespace.
+	 * Without a prepared ID, the copy reports why there is none instead:
+	 * `not_ready`, or `sdk_unavailable` when the SDK is missing. A session ID
+	 * already in the data always goes: it can come from an earlier attempt
+	 * and must not be sent again. Fail-open: a value that is not an object is
+	 * returned unchanged.
+	 *
+	 * @param {*} extensions The request's extension data.
+	 * @return {*} The extension data to send.
+	 */
+	fraudProtection.addSessionIdToExtensions = function ( extensions ) {
+		if (
+			! extensions ||
+			typeof extensions !== 'object' ||
+			Array.isArray( extensions )
+		) {
+			return extensions;
+		}
+
+		let data;
+		try {
+			data = Object.assign( {}, extensions );
+			delete data[ EXTENSION_NAMESPACE ];
+		} catch {
+			return extensions;
+		}
+
+		let sessionId = '';
+		try {
+			sessionId = fraudProtection.takePreparedSessionId();
+		} catch {
+			// Fail open: send the request without a session ID.
+		}
+
+		data[ EXTENSION_NAMESPACE ] =
+			typeof sessionId === 'string' && sessionId
+				? { [ EXTENSION_SESSION_ID_KEY ]: sessionId }
+				: {
+						[ EXTENSION_SESSION_ID_ERROR_KEY ]:
+							missingSessionIdReason,
+				  };
+
+		return data;
+	};
+
 	if (
 		! window.Blackbox ||
 		! window.Blackbox.configure ||
@@ -33,6 +94,14 @@
 		fraudProtection.acquireSessionIdResult = function () {
 			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
 		};
+		fraudProtection.takeSessionId = function () {
+			return Promise.resolve( '' );
+		};
+		fraudProtection.prepareSessionId = function () {};
+		fraudProtection.takePreparedSessionId = function () {
+			return '';
+		};
+		missingSessionIdReason = 'sdk_unavailable';
 		return;
 	}
 
@@ -367,6 +436,32 @@
 	};
 
 	/**
+	 * Take a session ID for one payment attempt.
+	 *
+	 * Acquires the session ID and, when there is one, starts a fresh session
+	 * for the next attempt, like takePreparedSessionId(), so there is no need
+	 * to call reset() afterwards. Fail-open: never rejects, and an empty
+	 * string means the attempt is sent without a session ID. Also set when
+	 * the SDK is missing.
+	 *
+	 * @return {Promise<string>} Session ID, or an empty string.
+	 */
+	fraudProtection.takeSessionId = function () {
+		return fraudProtection
+			.acquireSessionIdResult()
+			.then( function ( result ) {
+				if ( result.sessionId ) {
+					try {
+						fraudProtection.reset();
+					} catch {
+						// Fail open: the attempt still gets its session ID.
+					}
+				}
+				return result.sessionId;
+			} );
+	};
+
+	/**
 	 * Reset Blackbox state. Silently no-ops if reset is unavailable.
 	 */
 	fraudProtection.reset = function () {
@@ -415,7 +510,10 @@
 	/**
 	 * Keep a session ID ready for takePreparedSessionId().
 	 *
-	 * Internal to the plugin's own scripts.
+	 * Call it once when a payment surface that must add the session ID
+	 * synchronously (for example an express button's place-order data
+	 * filter) is set up. The prepared ID is refreshed after every reset()
+	 * and replaced once it is too old. Calling it again is a no-op.
 	 */
 	fraudProtection.prepareSessionId = function () {
 		if ( isPreparing ) {
@@ -429,8 +527,12 @@
 	/**
 	 * Hand out the prepared session ID for a payment attempt, at most once.
 	 *
-	 * For callers that must add the ID synchronously. A fresh session is
-	 * started for the next attempt. Internal to the plugin's own scripts.
+	 * For callers that must add the ID synchronously; callers that can wait
+	 * use acquireSessionId() instead. Each call hands out an ID for one
+	 * payment attempt: the same ID is never returned twice, and a fresh
+	 * session is started for the next attempt, so there is no need to call
+	 * reset() afterwards. Fail-open: an empty string means the attempt is
+	 * sent without a session ID.
 	 *
 	 * @return {string} Session ID, or an empty string when none is ready.
 	 */

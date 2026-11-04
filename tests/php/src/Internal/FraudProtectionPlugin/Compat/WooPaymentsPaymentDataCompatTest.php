@@ -7,12 +7,15 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 
 // Stub WooPayments classes if not loaded. Tests inject API mocks via \WC_Payments::set_api_client().
 // The following classes keep the names of the external API that they model.
@@ -343,6 +346,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		parent::setUp();
 
 		$this->sut = new WooPaymentsPaymentDataCompat();
+		$this->sut->init( new GatewayNativeSupport() );
 	}
 
 	/**
@@ -356,6 +360,19 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		WC_Payments_Account_Service_Stub::reset();
 		WC_Payments_API_Client_Stub::reset();
 		parent::tearDown();
+	}
+
+	/**
+	 * @testdox Stands aside for the whole WooPayments family when the main gateway declares native payment-data support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_payment_data(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'woocommerce_payments', array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		\WC_Payments::set_live( false );
+		$resolved = new PaymentMethodData( 'woocommerce_payments_sepa_debit' );
+
+		$result = $this->sut->resolve( $resolved, array( 'wcpay-payment-method' => 'pm_123' ) );
+
+		$this->assertSame( $resolved, $result, 'The gateway resolves its own payment data' );
 	}
 
 	/**

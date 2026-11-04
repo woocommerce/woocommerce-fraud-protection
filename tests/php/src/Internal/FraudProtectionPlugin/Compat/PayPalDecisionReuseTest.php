@@ -7,13 +7,16 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalSubscriptionsStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 
 /**
@@ -36,7 +39,27 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		}
 		$normalizer           = new SessionIdNormalizer();
 		$this->decision_reuse = new PayPalDecisionReuse();
-		$this->decision_reuse->init( $normalizer );
+		$this->decision_reuse->init( $normalizer, new GatewayNativeSupport() );
+	}
+
+	/**
+	 * @testdox The supplied-decision filter stands aside, leaving the record untouched, when the PayPal gateway declares native checkout support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_checkout(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$this->decision_reuse->record_verification( PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'scored-session', FraudDecision::Block, true );
+
+		$result = $this->decision_reuse->supply_decision_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-credit-card-gateway' ),
+			'other-session'
+		);
+
+		$this->assertFalse( $result );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record, 'A non-matching record is retired by the compat layer; a native gateway owns it instead' );
+		$this->assertFalse( $record['used'] );
 	}
 
 	/**
