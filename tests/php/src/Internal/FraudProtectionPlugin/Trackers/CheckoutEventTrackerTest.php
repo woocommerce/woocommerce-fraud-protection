@@ -379,7 +379,7 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The shortcode update callback omits an array-valued field and keeps valid fields.
+	 * @testdox The shortcode update callback omits a malformed field and keeps valid fields.
 	 *
 	 * @dataProvider malformed_shortcode_field_provider
 	 *
@@ -430,6 +430,14 @@ class CheckoutEventTrackerTest extends FraudProtectionUnitTestCase {
 			),
 			'array mapped text field' => array(
 				'billing_first_name[]=bad&billing_country=US&billing_city=Paris&payment_method=cod',
+				$event_with_payment,
+			),
+			'NUL byte in field value' => array(
+				"billing_email=te\0st&billing_country=US&billing_city=Paris&payment_method=cod",
+				$event_with_payment,
+			),
+			'NUL byte in field name'  => array(
+				"billing_first\0_name=bad&billing_country=US&billing_city=Paris&payment_method=cod",
 				$event_with_payment,
 			),
 		);

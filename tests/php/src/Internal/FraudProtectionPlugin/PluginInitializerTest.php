@@ -250,7 +250,6 @@ class PluginInitializerTest extends FraudProtectionUnitTestCase {
 		$this->used_reasons[] = $reason;
 
 		$method = new \ReflectionMethod( PluginInitializer::class, 'should_emit_bail_notice' );
-		$method->setAccessible( true );
 
 		return (bool) $method->invoke( null, $reason );
 	}

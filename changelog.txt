@@ -1,5 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
+YYYY-xx-xx - version 0.3.2
+* Fixed - When a classic checkout update contains a NUL byte, only the malformed field is ignored. Previously, the fields after it were ignored, and on PHP 8.6 the update was not tracked and an error was logged.
+
 2026-11-02 - version 0.3.1
 * Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when sending that activity is slow.
 * Fixed - On the classic checkout, payment attempts are analyzed with the shopper's browser session even when another plugin or theme sends the order before the session is ready.

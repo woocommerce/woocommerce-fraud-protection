@@ -785,7 +785,6 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	 */
 	public function test_duplicate_rule_messages( string $type, ?string $existing_action, string $expected ): void {
 		$method = new \ReflectionMethod( RulesRestController::class, 'duplicate_rule_message' );
-		$method->setAccessible( true );
 
 		$this->assertSame( $expected, $method->invoke( $this->sut, $type, $existing_action ) );
 	}
