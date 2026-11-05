@@ -66,6 +66,13 @@ class WooPaymentsSetupIntentCompat {
 	/** POST field of the WooPayments AJAX request with the payment method ID. */
 	private const PAYMENT_METHOD_FIELD = 'wcpay-payment-method';
 
+	/**
+	 * POST fields that WooPayments reads the payment method ID from, in the order it checks them.
+	 *
+	 * @see \WCPay\Payment_Information::get_payment_method_from_request()
+	 */
+	private const PAYMENT_METHOD_SOURCE_FIELDS = array( 'wcpay-confirmation-token', self::PAYMENT_METHOD_FIELD, 'wcpay-payment-method-sepa' );
+
 	/** POST field of the add-payment-method form with the setup intent ID. */
 	private const SETUP_INTENT_FIELD = 'wcpay-setup-intent';
 
@@ -127,9 +134,11 @@ class WooPaymentsSetupIntentCompat {
 	 * WooPayments applies right before it sends the setup intent to its server.
 	 * WooPayments also applies it when it saves a card for a zero-total order
 	 * at checkout, where the checkout protectors verify instead, so only the
-	 * add-payment-method AJAX request is handled. On BLOCK it responds with the
-	 * WooPayments error shape and terminates via wp_send_json_error(), so the
-	 * record is written first.
+	 * add-payment-method AJAX request is handled. The payment method that the
+	 * request confirms is verified, which can differ from the posted
+	 * `wcpay-payment-method` field. On BLOCK it responds with the WooPayments
+	 * error shape and terminates via wp_send_json_error(), so the record is
+	 * written first.
 	 *
 	 * @internal
 	 *
@@ -142,15 +151,16 @@ class WooPaymentsSetupIntentCompat {
 		}
 
 		$submitted_session_id = $this->get_submitted_session_id();
+		$payment_method_id    = $this->get_confirmed_payment_method_id( $request );
 
 		$decision = $this->session_verifier->verify_session(
 			$submitted_session_id,
 			self::SOURCE,
 			0,
-			$this->build_setup_intent_request_data()
+			$this->build_setup_intent_request_data( $payment_method_id )
 		);
 
-		$this->record_verification( $submitted_session_id, $decision );
+		$this->record_verification( $submitted_session_id, $decision, $payment_method_id );
 
 		if ( FraudDecision::Block === $decision ) {
 			wp_send_json_error(
@@ -305,14 +315,52 @@ class WooPaymentsSetupIntentCompat {
 	}
 
 	/**
+	 * Get the payment method ID that the WooPayments setup intent request confirms.
+	 *
+	 * Read from the filtered request, which holds the value WooPayments sends.
+	 * When it cannot be read there, the POST fields are checked in the order
+	 * WooPayments checks them.
+	 *
+	 * @param mixed $request The WooPayments setup intent request.
+	 * @return string The payment method ID, or an empty string.
+	 */
+	private function get_confirmed_payment_method_id( $request ): string {
+		$payment_method_id = null;
+		try {
+			if ( is_object( $request ) && method_exists( $request, 'get_param' ) ) {
+				$payment_method_id = $request->get_param( 'payment_method' );
+			}
+		} catch ( \Throwable ) {
+			$payment_method_id = null;
+		}
+
+		if ( is_string( $payment_method_id ) && '' !== $payment_method_id ) {
+			return $payment_method_id;
+		}
+
+		foreach ( self::PAYMENT_METHOD_SOURCE_FIELDS as $field ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by WooPayments. The value is sanitized below.
+			$value = $_POST[ $field ] ?? null;
+			if ( is_string( $value ) && '' !== $value ) {
+				return sanitize_text_field( wp_unslash( $value ) );
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Build the verification request data from the WooPayments AJAX request.
 	 *
 	 * The request does not carry the gateway ID. WooPayments only sends it from
-	 * the card gateway, so that gateway ID is used.
+	 * the card gateway, so that gateway ID is used. The payment method that the
+	 * request confirms replaces the posted `wcpay-payment-method` field, so
+	 * that its details are resolved.
 	 *
+	 * @param string $payment_method_id The payment method ID that the request confirms; empty when unknown.
 	 * @return array Request data.
 	 */
-	private function build_setup_intent_request_data(): array {
+	private function build_setup_intent_request_data( string $payment_method_id ): array {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooPayments before this filter runs.
 		$request_data = $this->build_request_data( $_POST );
 
@@ -320,6 +368,10 @@ class WooPaymentsSetupIntentCompat {
 
 		foreach ( self::NON_PAYMENT_FIELDS as $field ) {
 			unset( $request_data['payment_data'][ $field ] );
+		}
+
+		if ( '' !== $payment_method_id ) {
+			$request_data['payment_data'][ self::PAYMENT_METHOD_FIELD ] = $payment_method_id;
 		}
 
 		return $request_data;
@@ -330,14 +382,15 @@ class WooPaymentsSetupIntentCompat {
 	 *
 	 * Any earlier record is replaced. Nothing is stored when the request had no
 	 * session ID, because the form post would not have one to match.
-	 * The payment method ID of the request is kept so that an ALLOW is not
-	 * applied to a setup intent that holds another payment method.
+	 * The verified payment method ID is kept so that an ALLOW is not applied
+	 * to a setup intent that holds another payment method.
 	 *
 	 * @param mixed         $submitted_session_id The session ID submitted with the AJAX request.
 	 * @param FraudDecision $decision             The applied decision.
+	 * @param string        $payment_method_id    The verified payment method ID; empty when unknown.
 	 * @return void
 	 */
-	private function record_verification( $submitted_session_id, FraudDecision $decision ): void {
+	private function record_verification( $submitted_session_id, FraudDecision $decision, string $payment_method_id ): void {
 		try {
 			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
 				return;
@@ -350,14 +403,11 @@ class WooPaymentsSetupIntentCompat {
 				&& '' !== $session_id
 				&& in_array( $decision, FraudDecision::ACTIONABLE, true )
 			) {
-				// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by WooPayments. The value is sanitized below.
-				$payment_method_id = $_POST[ self::PAYMENT_METHOD_FIELD ] ?? null;
-
 				$record = array(
 					'session_id'        => $session_id,
 					'decision'          => $decision,
 					'user_id'           => get_current_user_id(),
-					'payment_method_id' => is_string( $payment_method_id ) ? sanitize_text_field( wp_unslash( $payment_method_id ) ) : '',
+					'payment_method_id' => $payment_method_id,
 				);
 			}
 

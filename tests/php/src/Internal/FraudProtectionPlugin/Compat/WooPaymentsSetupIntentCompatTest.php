@@ -137,10 +137,11 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Run the setup intent request filter, capturing a JSON block response instead of dying.
 	 *
-	 * @param bool $in_ajax_request Whether the filter runs within the WooPayments setup intent AJAX action.
+	 * @param bool    $in_ajax_request Whether the filter runs within the WooPayments setup intent AJAX action.
+	 * @param ?object $request         The filtered WooPayments request; an object without parameters when null.
 	 * @return array{blocked: bool, output: string, request_unchanged: bool}
 	 */
-	private function run_setup_intent_filter( bool $in_ajax_request = true ): array {
+	private function run_setup_intent_filter( bool $in_ajax_request = true, ?object $request = null ): array {
 		add_filter( 'wp_doing_ajax', '__return_true' );
 		$die_handler = function () {
 			return function () {
@@ -149,7 +150,7 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		};
 		add_filter( 'wp_die_ajax_handler', $die_handler );
 
-		$request      = new \stdClass();
+		$request      = $request ?? new \stdClass();
 		$result       = null;
 		$apply_filter = function () use ( $request, &$result ) {
 			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
@@ -262,6 +263,105 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->assertFalse( $outcome['blocked'], 'An allowed request must reach WooPayments' );
 		$this->assertTrue( $outcome['request_unchanged'], 'The WooPayments request must be returned unchanged' );
+	}
+
+	/**
+	 * @testdox The payment method that WooPayments confirms is verified and recorded, not the posted wcpay-payment-method.
+	 * @dataProvider confirmed_payment_method_sources
+	 *
+	 * @param object $request  The filtered WooPayments request.
+	 * @param string $expected The payment method ID that must be verified.
+	 */
+	public function test_verifies_and_records_confirmed_payment_method( object $request, string $expected ): void {
+		$this->set_setup_intent_post(
+			array(
+				SessionVerifier::SESSION_ID_FIELD => 'sess-wcpay',
+				'wcpay-confirmation-token'        => 'pm_token',
+			)
+		);
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'sess-wcpay' );
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with(
+				'sess-wcpay',
+				WooPaymentsSetupIntentCompat::SOURCE,
+				0,
+				$this->callback(
+					function ( array $request_data ) use ( $expected ): bool {
+						return ( $request_data['payment_data']['wcpay-payment-method'] ?? null ) === $expected;
+					}
+				)
+			)
+			->willReturn( FraudDecision::Allow );
+
+		$outcome = $this->run_setup_intent_filter( true, $request );
+
+		$this->assertTrue( $outcome['request_unchanged'], 'The WooPayments request must be returned unchanged' );
+
+		Get_Setup_Intention::set_mock_setup_intent( self::SETUP_INTENT_ID, $expected );
+		$supplied = $this->supply_for_add_payment_method( 'sess-wcpay' );
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied, 'The ALLOW must be kept for a setup intent that holds the verified payment method' );
+		$this->assertSame( FraudDecision::Allow, $supplied->decision );
+	}
+
+	/**
+	 * Filtered WooPayments requests, and the payment method ID that must be verified for each.
+	 *
+	 * The POST data has wcpay-payment-method pm_123 and wcpay-confirmation-token pm_token.
+	 *
+	 * @return array<string, array{object, string}>
+	 */
+	public function confirmed_payment_method_sources(): array {
+		return array(
+			'request parameter'        => array( $this->create_woopayments_request( 'pm_confirmed' ), 'pm_confirmed' ),
+			'confirmation token field' => array( new \stdClass(), 'pm_token' ),
+			'unreadable request'       => array( $this->create_woopayments_request( new \RuntimeException( 'Uninitialized parameter' ) ), 'pm_token' ),
+			'empty request parameter'  => array( $this->create_woopayments_request( '' ), 'pm_token' ),
+		);
+	}
+
+	/**
+	 * Create a WooPayments request whose payment_method parameter has the given value.
+	 *
+	 * @param string|\Throwable $payment_method The parameter value, or the exception that reading it throws.
+	 * @return object The request.
+	 */
+	private function create_woopayments_request( $payment_method ): object {
+		return new class( $payment_method ) {
+			/**
+			 * The parameter value, or the exception that reading it throws.
+			 *
+			 * @var string|\Throwable
+			 */
+			private $payment_method;
+
+			/**
+			 * Constructor.
+			 *
+			 * @param string|\Throwable $payment_method The parameter value, or the exception that reading it throws.
+			 */
+			public function __construct( $payment_method ) {
+				$this->payment_method = $payment_method;
+			}
+
+			/**
+			 * Get a request parameter, as WooPayments requests do.
+			 *
+			 * @param string $key Parameter name.
+			 * @return mixed The value.
+			 * @throws \Throwable When the parameter cannot be read.
+			 */
+			public function get_param( $key ) {
+				if ( 'payment_method' !== $key ) {
+					return null;
+				}
+				if ( $this->payment_method instanceof \Throwable ) {
+					throw $this->payment_method;
+				}
+				return $this->payment_method;
+			}
+		};
 	}
 
 	/**
