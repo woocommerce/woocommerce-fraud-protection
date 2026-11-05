@@ -338,6 +338,54 @@ describe( 'woopayments-add-payment-method', () => {
 		expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 	} );
 
+	it( 'keeps the session ID of a newer attempt when an earlier request fails after it', async () => {
+		const respond = [];
+		fetchMock.mockImplementation(
+			() =>
+				new Promise( ( resolve ) => {
+					respond.push( ( body ) => {
+						const response = {
+							json: () => Promise.resolve( body ),
+							clone: () => response,
+						};
+						resolve( response );
+					} );
+				} )
+		);
+		const send = () =>
+			window.fetch( '/wp-admin/admin-ajax.php', {
+				method: 'POST',
+				body: buildBody( setupIntentFields ),
+			} );
+		const settle = () =>
+			new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+		addFormField( SESSION_ID_FIELD, 'sess-first' );
+		loadScript();
+		send();
+
+		// A second submit while the first request runs starts a new attempt.
+		submitForm();
+		expect( formHasField( SESSION_ID_FIELD ) ).toBe( 0 );
+		addFormField( SESSION_ID_FIELD, 'sess-second' );
+		send();
+
+		respond[ 0 ]( { success: false, data: { error: {} } } );
+		await settle();
+		respond[ 1 ]( { success: true, data: {} } );
+		await settle();
+
+		expect(
+			fetchMock.mock.calls[ 1 ][ 1 ].body.get( SESSION_ID_FIELD )
+		).toBe( 'sess-second' );
+		expect( formHasField( SESSION_ID_FIELD ) ).toBe( 1 );
+		expect(
+			document.querySelector( `input[name="${ SESSION_ID_FIELD }"]` )
+				.value
+		).toBe( 'sess-second' );
+		expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+	} );
+
 	it( 'keeps the session ID for the form post of a completed setup', async () => {
 		addFormField( SESSION_ID_FIELD, 'sess-wcpay' );
 		loadScript();

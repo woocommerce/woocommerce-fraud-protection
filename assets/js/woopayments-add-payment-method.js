@@ -13,6 +13,11 @@
  * fails, and otherwise on the next submit that is not WooPayments' final form
  * post. A successful setup keeps the session ID for that form post.
  *
+ * Only the latest request's attempt is ended, and only the form fields that
+ * still hold the values it sent are removed. A request that fails after a
+ * newer one was sent, for example after a double submit, leaves the newer
+ * attempt's fields for its form post.
+ *
  * Depends on add-payment-method.js (and through it wcFraudProtection).
  */
 ( function () {
@@ -37,11 +42,13 @@
 		return;
 	}
 
-	// True when the form's attempt fields were sent with a setup intent request.
-	let attemptFieldsWereSent = false;
-
-	// True when the session ID in the form was sent with a setup intent request.
-	let sessionIdWasSent = false;
+	/**
+	 * The form's attempt fields that the latest setup intent request carried,
+	 * or null when that attempt has ended.
+	 *
+	 * @type {?{fields: Object<string, string>}}
+	 */
+	let latestAttempt = null;
 
 	/**
 	 * Get the add-payment-method form.
@@ -84,31 +91,36 @@
 	}
 
 	/**
-	 * Remove the attempt fields that were sent, and reset the session when a
-	 * session ID was sent, so that the next submit acquires a new one.
+	 * End an attempt when it is the latest one: remove the form fields that
+	 * still hold the values it sent, and reset the session when its session ID
+	 * was removed, so that the next submit acquires a new one.
+	 *
+	 * @param {?{fields: Object<string, string>}} attempt The attempt to end.
 	 */
-	function endAttempt() {
-		if ( ! attemptFieldsWereSent ) {
+	function endAttempt( attempt ) {
+		if ( ! attempt || attempt !== latestAttempt ) {
 			return;
 		}
 
-		const resetSession = sessionIdWasSent;
-		attemptFieldsWereSent = false;
-		sessionIdWasSent = false;
+		latestAttempt = null;
 
 		try {
-			[
-				fraudProtection.config.sessionIdField,
-				fraudProtection.config.sessionIdErrorField,
-			].forEach( function ( name ) {
-				if ( name ) {
-					getFormFields( name ).forEach( function ( field ) {
+			const sessionIdField = fraudProtection.config.sessionIdField;
+			let sessionIdRemoved = false;
+			Object.keys( attempt.fields ).forEach( function ( name ) {
+				getFormFields( name ).forEach( function ( field ) {
+					if ( field.value === attempt.fields[ name ] ) {
 						field.remove();
-					} );
-				}
+						sessionIdRemoved =
+							sessionIdRemoved || name === sessionIdField;
+					}
+				} );
 			} );
 
-			if ( resetSession && typeof fraudProtection.reset === 'function' ) {
+			if (
+				sessionIdRemoved &&
+				typeof fraudProtection.reset === 'function'
+			) {
 				fraudProtection.reset();
 			}
 		} catch {
@@ -124,61 +136,63 @@
 	 * attempt whoever added the field.
 	 *
 	 * @param {*} body The request body.
-	 * @return {boolean} True when the request carries any of the form's attempt fields.
+	 * @return {?{fields: Object<string, string>}} The attempt that the request carries, or null when it carries none of the form's attempt fields.
 	 */
 	function addAttemptFields( body ) {
 		if (
 			! ( body instanceof window.FormData ) ||
 			body.get( 'action' ) !== SETUP_INTENT_ACTION
 		) {
-			return false;
+			return null;
 		}
 
-		const sessionIdField = fraudProtection.config.sessionIdField;
-		let sent = false;
-		let sessionIdSent = false;
-		[ sessionIdField, fraudProtection.config.sessionIdErrorField ].forEach(
-			function ( name ) {
-				if ( ! name ) {
-					return;
-				}
-
-				const value = getFormFieldValue( name );
-				if ( ! value ) {
-					return;
-				}
-
-				if ( ! body.has( name ) ) {
-					body.append( name, value );
-				} else if ( body.get( name ) !== value ) {
-					return;
-				}
-
-				sent = true;
-				sessionIdSent = sessionIdSent || name === sessionIdField;
+		const fields = {};
+		[
+			fraudProtection.config.sessionIdField,
+			fraudProtection.config.sessionIdErrorField,
+		].forEach( function ( name ) {
+			if ( ! name ) {
+				return;
 			}
-		);
 
-		if ( sent ) {
-			attemptFieldsWereSent = true;
-			sessionIdWasSent = sessionIdSent;
+			const value = getFormFieldValue( name );
+			if ( ! value ) {
+				return;
+			}
+
+			if ( ! body.has( name ) ) {
+				body.append( name, value );
+			} else if ( body.get( name ) !== value ) {
+				return;
+			}
+
+			fields[ name ] = value;
+		} );
+
+		if ( ! Object.keys( fields ).length ) {
+			return null;
 		}
 
-		return sent;
+		latestAttempt = { fields };
+		return latestAttempt;
 	}
 
 	window.fetch = function ( resource, options ) {
-		let sent = false;
+		let attempt = null;
 		try {
-			sent = addAttemptFields( options && options.body );
+			attempt = addAttemptFields( options && options.body );
 		} catch {
 			// Fail open.
 		}
 
 		const result = originalFetch.apply( window, arguments );
 
-		if ( sent ) {
+		if ( attempt ) {
 			try {
+				const end = function () {
+					endAttempt( attempt );
+				};
+
 				// Registered before the caller gets the response, so the body
 				// is cloned before the caller reads it.
 				Promise.resolve( result )
@@ -187,10 +201,10 @@
 					} )
 					.then( function ( data ) {
 						if ( ! data || data.success !== true ) {
-							endAttempt();
+							end();
 						}
 					} )
-					.catch( endAttempt );
+					.catch( end );
 			} catch {
 				// Fail open.
 			}
@@ -213,7 +227,7 @@
 					return;
 				}
 
-				endAttempt();
+				endAttempt( latestAttempt );
 			} catch {
 				// Fail open.
 			}
