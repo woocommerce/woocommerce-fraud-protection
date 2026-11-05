@@ -2,7 +2,7 @@
 
 This reference describes how the plugin's code is organized, how it starts, how its components get their dependencies, and every WordPress, WooCommerce and third-party hook it uses. For the reasoning behind the design, read [chapter 3 of the tutorial](../tutorial/03-fraud-protection.md) first.
 
-WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+WordPress hooks link to the WordPress developer reference. WooCommerce hooks link to WooCommerce's documentation where it describes them; the others have no stable page, so look them up by name in the [WooCommerce codebase](https://github.com/woocommerce/woocommerce/tree/trunk/plugins/woocommerce).
 
 ## Contents
 
@@ -121,13 +121,13 @@ class MyComponent {
 - Resolved instances are shared: `wc_get_container()->get( X::class )` returns the same instance every time. This is how, for example, `GatewayRequestVerifier` keeps the reference readers that gateways registered.
 - `FraudProtectionController` owns registration. A new component is added to `register_compat_layers()` or `handle_init()`, not registered by itself.
 - WP-CLI commands register from `PluginInitializer`, outside the controller.
-- `FraudProtectionController::log()` is a static facade over `FraudProtectionLogger`. It works once the controller has been resolved, which happens at [`woocommerce_loaded`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-woocommerce.html#source-view.301).
+- `FraudProtectionController::log()` is a static facade over `FraudProtectionLogger`. It works once the controller has been resolved, which happens at `woocommerce_loaded`.
 
 ## Registration timing
 
 | When | What registers | Why |
 |------|----------------|-----|
-| Plugin file load | Kill switches, Core feature filter, [`woocommerce_loaded`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-woocommerce.html#source-view.301) hook | Before anything else, and without autoloading |
+| Plugin file load | Kill switches, Core feature filter, `woocommerce_loaded` hook | Before anything else, and without autoloading |
 | `woocommerce_loaded` | Compatibility layers, managed translation updates, and the WP-CLI `after_wp_load` callback that adds the commands | Gateways fire some hooks before [`init`](https://developer.wordpress.org/reference/hooks/init/); WooCommerce's container is ready |
 | `init` (default priority) | Everything else | Matches when WooCommerce initializes the session, cart and gateways |
 | `init` priority 0 | Managed translation loading | Translations must load before any string is used |
@@ -135,7 +135,7 @@ class MyComponent {
 Two consequences:
 
 - **Gateway instances don't exist at registration time.** [`WC()->payment_gateways()`](https://woocommerce.github.io/code-reference/classes/WooCommerce.html#method_payment_gateways) initializes them later. Anything that asks a gateway about itself, such as `GatewayNativeSupport::declared()`, must run inside a hook callback.
-- **Hook priorities are intentional.** For example, `ShortcodeCheckoutProtector` registers its verifier from [`woocommerce_checkout_process`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1392) so it attaches only during a real checkout, and runs at `PHP_INT_MAX` so it sees every other validator's errors. Follow the nearest existing component when adding a hook.
+- **Hook priorities are intentional.** For example, `ShortcodeCheckoutProtector` registers its verifier from `woocommerce_checkout_process` so it attaches only during a real checkout, and runs at `PHP_INT_MAX` so it sees every other validator's errors. Follow the nearest existing component when adding a hook.
 
 ## Hook map
 
@@ -146,7 +146,7 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 | Hook | Type | Component | Purpose |
 |------|------|-----------|---------|
 | `woocommerce_feature_fraud_protection_enabled` (999) | filter | `PluginInitializer` | Turn off WooCommerce Core's built-in feature |
-| [`woocommerce_loaded`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-woocommerce.html#source-view.301) | action | `PluginInitializer` | Start the plugin |
+| `woocommerce_loaded` | action | `PluginInitializer` | Start the plugin |
 | [`init`](https://developer.wordpress.org/reference/hooks/init/) | action | `FraudProtectionController` | Register first-party components |
 | `init` (0) | action | `PluginInitializer` | Load managed translations |
 | [`plugins_url`](https://developer.wordpress.org/reference/hooks/plugins_url/) (0) | filter | MU-plugin loader | Fix asset URLs on managed installations |
@@ -156,13 +156,13 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 
 | Hook | Type | Component | Purpose |
 |------|------|-----------|---------|
-| [`woocommerce_store_api_checkout_update_order_from_request`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-utilities-checkouttrait.html#source-view.254) | action | `BlocksCheckoutProtector` | Keep the Store API request data for this request |
-| [`woocommerce_store_api_checkout_order_processed`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-routes-v1-checkout.html#source-view.695) | action | `BlocksCheckoutProtector` | Verify; throw `RouteException` on a block |
-| [`woocommerce_checkout_process`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1392) (`PHP_INT_MAX`) | action | `ShortcodeCheckoutProtector` | Attach the validator for this checkout |
-| [`woocommerce_after_checkout_validation`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1070) (`PHP_INT_MAX`) | action | `ShortcodeCheckoutProtector` | Verify; add a [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) on a block |
-| [`woocommerce_before_pay_action`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.567) | action | `PayForOrderProtector` | Verify; add an error notice on a block |
-| [`woocommerce_add_payment_method_form_is_valid`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.648) | filter | `AddPaymentMethodProtector` | Verify; return `false` on a block |
-| [`woocommerce_checkout_order_created`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.521) | action | `SessionVerifier` | Copy the session ID to the new classic-checkout order |
+| `woocommerce_store_api_checkout_update_order_from_request` | action | `BlocksCheckoutProtector` | Keep the Store API request data for this request |
+| `woocommerce_store_api_checkout_order_processed` | action | `BlocksCheckoutProtector` | Verify; throw `RouteException` on a block |
+| `woocommerce_checkout_process` (`PHP_INT_MAX`) | action | `ShortcodeCheckoutProtector` | Attach the validator for this checkout |
+| `woocommerce_after_checkout_validation` (`PHP_INT_MAX`) | action | `ShortcodeCheckoutProtector` | Verify; add a [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) on a block |
+| `woocommerce_before_pay_action` | action | `PayForOrderProtector` | Verify; add an error notice on a block |
+| `woocommerce_add_payment_method_form_is_valid` | filter | `AddPaymentMethodProtector` | Verify; return `false` on a block |
+| `woocommerce_checkout_order_created` | action | `SessionVerifier` | Copy the session ID to the new classic-checkout order |
 | `woocommerce_fraud_protection_skip_session_verify` | filter | `GatewayRequestVerifier`, `PayPalDecisionReuse`, `StripeSetupIntentCompat`, `WcposCompat` | Supply a decision kept from an earlier request, or the POS decision |
 | `woocommerce_fraud_protection_resolved_payment_data` | filter | `GatewayPaymentData`, payment-data compatibility layers | Resolve the payment instrument |
 
@@ -170,13 +170,13 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 
 | Hook | Type | Component | Purpose |
 |------|------|-----------|---------|
-| [`woocommerce_blocks_enqueue_checkout_block_scripts_before`](https://woocommerce.github.io/code-reference/files/woocommerce-src-blocks-blocktypes-checkout.html#source-view.213) | action | `BlocksCheckoutProtector` | Load `blocks-checkout.js` |
-| [`woocommerce_checkout_before_order_review`](https://woocommerce.github.io/code-reference/files/woocommerce-templates-checkout-form-checkout.html#source-view.56), [`woocommerce_checkout_order_review`](https://woocommerce.github.io/code-reference/files/woocommerce-templates-checkout-form-checkout.html#source-view.59) | action | `ShortcodeCheckoutProtector` | Load `shortcode-checkout.js`; the second covers templates that fire only it |
-| [`before_woocommerce_pay_form`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-shortcodes-class-wc-shortcode-checkout.html#source-view.219) | action | `PayForOrderProtector` | Load `pay-for-order.js` |
-| [`woocommerce_add_payment_method_form_bottom`](https://woocommerce.github.io/code-reference/files/woocommerce-templates-myaccount-form-add-payment-method.html#source-view.50) | action | `AddPaymentMethodProtector` | Load `add-payment-method.js` |
+| `woocommerce_blocks_enqueue_checkout_block_scripts_before` | action | `BlocksCheckoutProtector` | Load `blocks-checkout.js` |
+| `woocommerce_checkout_before_order_review`, `woocommerce_checkout_order_review` | action | `ShortcodeCheckoutProtector` | Load `shortcode-checkout.js`; the second covers templates that fire only it |
+| `before_woocommerce_pay_form` | action | `PayForOrderProtector` | Load `pay-for-order.js` |
+| `woocommerce_add_payment_method_form_bottom` | action | `AddPaymentMethodProtector` | Load `add-payment-method.js` |
 | `woocommerce_add_payment_method_form_bottom` (20) | action | `StripeSetupIntentCompat` | Load `stripe-add-payment-method.js` |
 | [`wp_enqueue_scripts`](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/) (`PHP_INT_MAX`) | action | `ExpressCheckoutScriptCompat` | Load `express-checkout.js` where express buttons are enqueued |
-| PayPal render hooks, mini-cart hooks, `woocommerce_blocks_enqueue_checkout_block_scripts_before` and [`woocommerce_blocks_enqueue_cart_block_scripts_before`](https://woocommerce.github.io/code-reference/files/woocommerce-src-blocks-blocktypes-cart.html#source-view.134), `wp_enqueue_scripts` (mostly at priority 20) | action/filter | `PayPalScriptCompat` | Load `paypal-express.js` on PayPal surfaces, and `blocks-checkout.js` on the Cart block |
+| PayPal render hooks, mini-cart hooks, `woocommerce_blocks_enqueue_checkout_block_scripts_before` and `woocommerce_blocks_enqueue_cart_block_scripts_before`, `wp_enqueue_scripts` (mostly at priority 20) | action/filter | `PayPalScriptCompat` | Load `paypal-express.js` on PayPal surfaces, and `blocks-checkout.js` on the Cart block |
 | `woocommerce_subscriptions_change_payment_after_submit` | action | `SubscriptionsChangePaymentCompat` | Load `pay-for-order.js` on the change-payment-method form |
 
 ### Third-party flows
@@ -194,28 +194,28 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 
 | Hook | Type | Component | Purpose |
 |------|------|-----------|---------|
-| [`internal_woocommerce_cart_item_{added,updated,removed}_from_user_request`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-ajax.html#source-view.578) | action | `CartEventTracker` | Record cart changes made by the shopper |
-| [`woocommerce_cart_item_restored`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-cart.html#source-view.1535) | action | `CartEventTracker` | Record a restored item |
+| `internal_woocommerce_cart_item_{added,updated,removed}_from_user_request` | action | `CartEventTracker` | Record cart changes made by the shopper |
+| `woocommerce_cart_item_restored` | action | `CartEventTracker` | Record a restored item |
 | [`template_redirect`](https://developer.wordpress.org/reference/hooks/template_redirect/) | action | `CartEventTracker`, `CheckoutEventTracker` | Record cart and checkout page loads |
-| [`woocommerce_checkout_update_order_review`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-ajax.html#source-view.408) | action | `CheckoutEventTracker` | Record classic checkout field updates |
-| [`woocommerce_store_api_checkout_update_customer_from_request`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-routes-v1-checkout.html#source-view.954) | action | `CheckoutEventTracker` | Record block checkout updates |
-| [`woocommerce_checkout_order_processed`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1441), [`woocommerce_store_api_checkout_order_processed`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-routes-v1-checkout.html#source-view.695) | action | `CheckoutEventTracker` | Record an order placed |
-| [`woocommerce_order_status_changed`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-order.html#source-view.478) | action | `CheckoutEventTracker` | Clear the events once the order is paid |
-| [`before_woocommerce_add_payment_method`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-shortcodes-class-wc-shortcode-my-account.html#source-view.818) | action | `PaymentMethodEventTracker` | Record an add-payment-method page load |
-| [`woocommerce_new_payment_token`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-data-stores-class-wc-payment-token-data-store.html#source-view.74) | action | `PaymentMethodEventTracker` | Record a saved payment method |
-| [`woocommerce_set_cookie_options`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-wc-core-functions.html#source-view.951) | filter | `SessionIdentityManager` | Set `SameSite` on the identity cookie |
+| `woocommerce_checkout_update_order_review` | action | `CheckoutEventTracker` | Record classic checkout field updates |
+| `woocommerce_store_api_checkout_update_customer_from_request` | action | `CheckoutEventTracker` | Record block checkout updates |
+| `woocommerce_checkout_order_processed`, `woocommerce_store_api_checkout_order_processed` | action | `CheckoutEventTracker` | Record an order placed |
+| `woocommerce_order_status_changed` | action | `CheckoutEventTracker` | Clear the events once the order is paid |
+| `before_woocommerce_add_payment_method` | action | `PaymentMethodEventTracker` | Record an add-payment-method page load |
+| `woocommerce_new_payment_token` | action | `PaymentMethodEventTracker` | Record a saved payment method |
+| `woocommerce_set_cookie_options` | filter | `SessionIdentityManager` | Set `SameSite` on the identity cookie |
 
 ### Admin and maintenance
 
 | Hook | Type | Component | Purpose |
 |------|------|-----------|---------|
-| [`woocommerce_get_settings_pages`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-admin-class-wc-admin-settings.html#source-view.64) | filter | `FraudProtectionController` | Add the Fraud prevention settings tab |
+| `woocommerce_get_settings_pages` | filter | `FraudProtectionController` | Add the Fraud prevention settings tab |
 | [`admin_enqueue_scripts`](https://developer.wordpress.org/reference/hooks/admin_enqueue_scripts/) | action | `FraudProtectionController` | Load the settings app |
-| [`woocommerce_admin_get_user_data_fields`](https://woocommerce.github.io/code-reference/files/woocommerce-src-internal-admin-wcadminuser.html#source-view.158) | filter | `FraudProtectionController` | Allow the plugin's per-user preferences |
+| `woocommerce_admin_get_user_data_fields` | filter | `FraudProtectionController` | Allow the plugin's per-user preferences |
 | [`admin_init`](https://developer.wordpress.org/reference/hooks/admin_init/) | action | Notes | Add, update or retire Inbox notes |
 | [`add_option_`](https://developer.wordpress.org/reference/hooks/add_option_option/), [`update_option_`](https://developer.wordpress.org/reference/hooks/update_option_option/), [`delete_option_`](https://developer.wordpress.org/reference/hooks/delete_option_option/) for the automatic-protection and merchant-facing options | action | `AutomaticProtectionEnabledNote` | Keep the Inbox note in step with the settings |
-| [`woocommerce_rest_api_get_rest_namespaces`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-rest-api-server.html#source-view.93) | filter | REST controllers (through WooCommerce's `RestApiControllerBase`) | Register the plugin's REST routes |
-| [`woocommerce_tracker_data`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-tracker.html#source-view.385), [`woocommerce_tracks_event_properties`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-tracks-class-wc-site-tracking.html#source-view.79) | filter | `SettingsTelemetry` | Add settings state, outcome counts and rule counts to WooCommerce usage tracking, and a view source to Tracks events |
+| `woocommerce_rest_api_get_rest_namespaces` | filter | REST controllers (through WooCommerce's `RestApiControllerBase`) | Register the plugin's REST routes |
+| `woocommerce_tracker_data`, `woocommerce_tracks_event_properties` | filter | `SettingsTelemetry` | Add settings state, outcome counts and rule counts to WooCommerce usage tracking, and a view source to Tracks events |
 | `wc_fraud_protection_prune_sessions` | Action Scheduler | `SessionEventPruner` | Delete old attempts log rows daily |
 | `woocommerce_fraud_protection_managed_translation_update` | cron | `ManagedTranslationUpdater` | Update managed translations |
 

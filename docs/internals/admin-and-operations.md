@@ -2,7 +2,7 @@
 
 This reference covers the parts of the plugin that merchants and operators see: the settings app, its REST routes, Inbox notes, WP-CLI commands, logging, telemetry, and how the plugin is deployed and switched off.
 
-WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+WordPress hooks link to the WordPress developer reference. WooCommerce hooks link to WooCommerce's documentation where it describes them; the others have no stable page, so look them up by name in the [WooCommerce codebase](https://github.com/woocommerce/woocommerce/tree/trunk/plugins/woocommerce).
 
 ## Contents
 
@@ -131,7 +131,7 @@ The [AGENTS.md logging section](../../AGENTS.md#hooks-logging-and-errors) has th
 
 `SettingsTelemetry`:
 
-- adds the plugin's settings state, 30-day attempt outcome counts and rule counts to WooCommerce's usage tracking ([`woocommerce_tracker_data`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-tracker.html#source-view.385));
+- adds the plugin's settings state, 30-day attempt outcome counts and rule counts to WooCommerce's usage tracking (`woocommerce_tracker_data`);
 - records its own Tracks events, `fraud_protection_automatic_protection_changed` and `fraud_protection_rule_changed`;
 - adds a view-source property to the settings page's Tracks events.
 

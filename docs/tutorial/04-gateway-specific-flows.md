@@ -2,7 +2,7 @@
 
 The protectors from [chapter 3](03-fraud-protection.md) cover WooCommerce's own forms. Many real payments don't go only through those forms. This chapter explains where they leave them, how the plugin's compatibility layers protect them, and how gateways and other extensions can take over that work through native integrations.
 
-WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+WordPress hooks link to the WordPress developer reference. WooCommerce hooks link to WooCommerce's documentation where it describes them; the others have no stable page, so look them up by name in the [WooCommerce codebase](https://github.com/woocommerce/woocommerce/tree/trunk/plugins/woocommerce).
 
 ## Contents
 
@@ -32,7 +32,7 @@ There's also a fifth, quieter gap: the protectors know the gateway ID but not mu
 
 ## The compatibility layers
 
-Each gap has a class under `src/Internal/FraudProtectionPlugin/Compat/`. They register from `FraudProtectionController::register_compat_layers()` at [`woocommerce_loaded`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-woocommerce.html#source-view.301).
+Each gap has a class under `src/Internal/FraudProtectionPlugin/Compat/`. They register from `FraudProtectionController::register_compat_layers()` at `woocommerce_loaded`.
 
 | Layer | Extension | What it does |
 |-------|-----------|--------------|
@@ -118,7 +118,7 @@ The last condition matters. The browser holds the setup intent's client secret, 
 
 ## WooCommerce Subscriptions: change payment method
 
-A subscriber can change the payment method of a subscription from My Account. Subscriptions renders WooCommerce's Pay for order form for this, but handles the submission itself, so [`woocommerce_before_pay_action`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.567) never fires.
+A subscriber can change the payment method of a subscription from My Account. Subscriptions renders WooCommerce's Pay for order form for this, but handles the submission itself, so `woocommerce_before_pay_action` never fires.
 
 `SubscriptionsChangePaymentCompat`:
 
