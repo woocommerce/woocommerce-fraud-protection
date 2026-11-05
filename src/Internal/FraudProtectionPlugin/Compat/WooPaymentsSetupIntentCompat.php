@@ -180,18 +180,20 @@ class WooPaymentsSetupIntentCompat {
 	 *
 	 * The record is single-use: it is retired on every add-payment-method
 	 * verification for the WooPayments gateway, whether or not it matches.
-	 * An ALLOW is not applied when the posted setup intent holds another
-	 * payment method than the verified one; the request then verifies normally.
+	 * A value that an earlier consumer returned is kept unchanged, so that an
+	 * earlier BLOCK cannot become an ALLOW. An ALLOW is not applied when the
+	 * posted setup intent holds another payment method than the verified one;
+	 * the request then verifies normally.
 	 *
 	 * @internal
 	 *
-	 * @param SuppliedDecision|false $supplied_decision The filter's default (false), or what an earlier consumer returned.
-	 * @param string                 $source            Source identifier.
-	 * @param array                  $request_data      Request data with payment_method, payment_data, etc.
-	 * @param string                 $session_id        The Blackbox session ID being verified.
-	 * @return SuppliedDecision|false The supplied result, or the value passed in to defer.
+	 * @param mixed  $supplied_decision The filter's default (false), or what an earlier consumer returned.
+	 * @param string $source            Source identifier.
+	 * @param array  $request_data      Request data with payment_method, payment_data, etc.
+	 * @param string $session_id        The Blackbox session ID being verified.
+	 * @return mixed The supplied result, or the value passed in to defer.
 	 */
-	public function supply_decision_for_add_payment_method( SuppliedDecision|false $supplied_decision, string $source, array $request_data, string $session_id ): SuppliedDecision|false {
+	public function supply_decision_for_add_payment_method( mixed $supplied_decision, string $source, array $request_data, string $session_id ): mixed {
 		if ( self::ADD_PAYMENT_METHOD_SOURCE !== $source ) {
 			return $supplied_decision;
 		}
@@ -201,6 +203,11 @@ class WooPaymentsSetupIntentCompat {
 		}
 
 		try {
+			if ( false !== $supplied_decision ) {
+				$this->retire_verification_record();
+				return $supplied_decision;
+			}
+
 			$record = $this->get_verification_record();
 			$this->retire_verification_record();
 

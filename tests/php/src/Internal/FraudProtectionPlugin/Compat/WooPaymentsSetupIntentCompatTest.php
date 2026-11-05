@@ -593,6 +593,49 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A BLOCK that an earlier consumer supplied is kept over a recorded ALLOW, and the record is retired.
+	 */
+	public function test_keeps_earlier_block_and_retires_record(): void {
+		$this->verify_setup_intent( FraudDecision::Allow );
+		$earlier_block    = new SuppliedDecision( FraudDecision::Block );
+		$earlier_consumer = static function () use ( $earlier_block ) {
+			return $earlier_block;
+		};
+		add_filter( self::SKIP_VERIFY_FILTER, $earlier_consumer, 5 );
+
+		try {
+			$supplied = $this->supply_for_add_payment_method( 'sess-wcpay' );
+		} finally {
+			remove_filter( self::SKIP_VERIFY_FILTER, $earlier_consumer, 5 );
+		}
+
+		$this->assertSame( $earlier_block, $supplied );
+		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ), 'The decision must be retired' );
+	}
+
+	/**
+	 * @testdox A non-decision value that an earlier consumer returned is passed on unchanged, and the record is retired.
+	 *
+	 * The callback is called directly: other consumers on the filter only accept a SuppliedDecision or false.
+	 */
+	public function test_passes_on_earlier_non_decision_and_retires_record(): void {
+		$this->verify_setup_intent( FraudDecision::Allow );
+
+		$supplied = $this->sut->supply_decision_for_add_payment_method(
+			'skip',
+			'add_payment_method',
+			array(
+				'payment_method' => 'woocommerce_payments',
+				'payment_data'   => array( 'wcpay-setup-intent' => self::SETUP_INTENT_ID ),
+			),
+			'sess-wcpay'
+		);
+
+		$this->assertSame( 'skip', $supplied );
+		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ), 'The decision must be retired' );
+	}
+
+	/**
 	 * @testdox A failure to record the decision still enforces the block and is logged.
 	 */
 	public function test_record_failure_still_blocks(): void {
