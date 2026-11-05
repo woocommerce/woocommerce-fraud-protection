@@ -1023,7 +1023,6 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	private function set_checkout_enqueue_state( Checkout $checkout, bool $state ): bool {
 		$property = new \ReflectionProperty( AbstractBlock::class, 'enqueued_assets' );
-		$property->setAccessible( true );
 		$previous = (bool) $property->getValue( $checkout );
 		$property->setValue( $checkout, $state );
 
@@ -1076,7 +1075,6 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	private function get_request_data(): array {
 		$property = new \ReflectionProperty( BlocksCheckoutProtector::class, 'request_data' );
-		$property->setAccessible( true );
 		return $property->getValue( $this->sut );
 	}
 
@@ -1087,7 +1085,6 @@ class BlocksCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	 */
 	private function set_request_data( array $request_data ): void {
 		$property = new \ReflectionProperty( BlocksCheckoutProtector::class, 'request_data' );
-		$property->setAccessible( true );
 		$property->setValue( $this->sut, $request_data );
 	}
 }
