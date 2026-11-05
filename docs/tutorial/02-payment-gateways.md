@@ -4,7 +4,7 @@
 
 The gateway details match WooCommerce Stripe Gateway 10.1 and WooPayments 10.2. Gateways change often, so check their current source before relying on a detail.
 
-WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+WordPress hooks link to the WordPress developer reference. WooCommerce hooks link to WooCommerce's documentation where it describes them; the others have no stable page, so look them up by name in the [WooCommerce codebase](https://github.com/woocommerce/woocommerce/tree/trunk/plugins/woocommerce).
 
 ## Contents
 
@@ -24,7 +24,7 @@ WooCommerce hook names link to the line where each hook runs in WooCommerce's co
 
 ### The class
 
-A gateway is a subclass of [`WC_Payment_Gateway`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html) (`includes/abstracts/abstract-wc-payment-gateway.php`), registered through the [`woocommerce_payment_gateways`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-payment-gateways.html#source-view.92) filter. The members that matter:
+A gateway is a subclass of [`WC_Payment_Gateway`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html) (`includes/abstracts/abstract-wc-payment-gateway.php`), registered through the `woocommerce_payment_gateways` filter. The members that matter:
 
 | Member | Purpose |
 |--------|---------|
@@ -60,10 +60,10 @@ For the block checkout, a gateway also provides:
 
 | Flow | Gateway code called | Hook just before it |
 |------|---------------------|---------------------|
-| Classic checkout | [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) | [`woocommerce_checkout_order_processed`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1441) |
-| Block checkout and express buttons | `process_payment()` through the Store API | [`woocommerce_store_api_checkout_order_processed`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-routes-v1-checkout.html#source-view.695) |
-| Pay for order | `process_payment()` | [`woocommerce_before_pay_action`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.567) |
-| Add payment method | [`add_payment_method()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_add_payment_method) | [`woocommerce_add_payment_method_form_is_valid`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.648) |
+| Classic checkout | [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) | `woocommerce_checkout_order_processed` |
+| Block checkout and express buttons | `process_payment()` through the Store API | `woocommerce_store_api_checkout_order_processed` |
+| Pay for order | `process_payment()` | `woocommerce_before_pay_action` |
+| Add payment method | [`add_payment_method()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_add_payment_method) | `woocommerce_add_payment_method_form_is_valid` |
 | Gateway AJAX or REST endpoints | Gateway-specific | Gateway-specific |
 | Webhooks | Gateway-specific | None: no shopper session |
 | Subscription renewals | `woocommerce_scheduled_subscription_payment_{id}` | None: no browser |
@@ -277,7 +277,7 @@ sequenceDiagram
 - **`ppc-create-order` is the last store-side point** before the buyer's account or card reaches PayPal. After it, the buyer works in PayPal's window or the card fields send the card to PayPal, and 3DS can run in the browser. The charge itself waits for the capture or authorization in [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment).
 - **The request says where it comes from** in its `context` field: `checkout`, `checkout-block`, `cart`, `cart-block`, `mini-cart`, `product` or `pay-now`. On the product page, the script first puts the product in the cart through `ppc-change-cart`.
 - **On Pay for order** (`pay-now`), the WooCommerce order already exists. The request carries its ID and key, and the PayPal order is built from it.
-- **On the checkout page**, `ppc-create-order` can also run WooCommerce's checkout validation on the posted form ("early validation"). That calls [`WC_Checkout::validate_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_validate_checkout) directly, so [`woocommerce_after_checkout_validation`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1070) fires inside a PayPal request, without [`woocommerce_checkout_process`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1392).
+- **On the checkout page**, `ppc-create-order` can also run WooCommerce's checkout validation on the posted form ("early validation"). That calls [`WC_Checkout::validate_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_validate_checkout) directly, so `woocommerce_after_checkout_validation` fires inside a PayPal request, without `woocommerce_checkout_process`.
 - **The final submission** finds the PayPal order in the WooCommerce session. A Store API submission also posts `paypal_order_id` in its payment data; PayPal Payments accepts it only for a PayPal order that the same session created.
 - **The "Pay Now" path skips the checkout.** `ppc-approve-order` creates the WooCommerce order from the cart and calls `process_payment()` in the same request. No checkout hook or Store API checkout hook runs.
 - **The card fields submit before the checkout.** On the Checkout block, they create the PayPal order and approve it inside the payment method's [`onPaymentSetup`](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/checkout-flow-and-events/#onpaymentsetup) callback, before the Store API checkout request.
@@ -313,7 +313,7 @@ WooCommerce Subscriptions adds recurring payments. A subscription is a special o
 
 - **Renewals.** Action Scheduler fires `woocommerce_scheduled_subscription_payment_{gateway_id}`, and the gateway charges the saved method off-session. **There's no browser and no shopper session.** If the issuer asks for authentication, the renewal fails and the customer pays it through Pay for order.
 - **Early renewal** from My Account's modal uses the same renewal hook, triggered by the customer.
-- **Change payment method.** The URL looks like Pay for order (`/checkout/order-pay/{subscription_id}/?change_payment_method={id}`), and the form is the same `#order_review`. But Subscriptions handles the submission itself on [`wp_loaded`](https://developer.wordpress.org/reference/hooks/wp_loaded/), so [`woocommerce_before_pay_action`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.567) never fires. It fires `woocommerce_subscription_change_payment_method_via_pay_shortcode` after its nonce check, then updates the payment method and calls [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) on a $0 total, which saves the card with a SetupIntent.
+- **Change payment method.** The URL looks like Pay for order (`/checkout/order-pay/{subscription_id}/?change_payment_method={id}`), and the form is the same `#order_review`. But Subscriptions handles the submission itself on [`wp_loaded`](https://developer.wordpress.org/reference/hooks/wp_loaded/), so `woocommerce_before_pay_action` never fires. It fires `woocommerce_subscription_change_payment_method_via_pay_shortcode` after its nonce check, then updates the payment method and calls [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) on a $0 total, which saves the card with a SetupIntent.
 - **Free trials and $0 sign-ups.** A cart with a free trial still "needs payment", so the gateway saves the card with a SetupIntent inside `process_payment()`. The issuer sees the card even though nothing is charged, which makes free trials a classic card-testing target.
 
 [Subscriptions payment gateway integration](https://woocommerce.com/document/subscriptions/develop/payment-gateway-integration/) covers the gateway side.
@@ -323,10 +323,10 @@ WooCommerce Subscriptions adds recurring payments. A subscription is a special o
 | Flow | Last store-side point before the issuer | Does the browser reach the issuer first? |
 |------|------------------------------------------|------------------------------------------|
 | Classic checkout | Any checkout hook up to [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) | No |
-| Block checkout and express buttons | Store API hooks up to [`woocommerce_store_api_checkout_order_processed`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-routes-v1-checkout.html#source-view.695) | No |
+| Block checkout and express buttons | Store API hooks up to `woocommerce_store_api_checkout_order_processed` | No |
 | Saved card | Same as the checkout | No |
 | 3DS continuation | None: the server confirmed the intent earlier | Only for an intent the server created after its check |
-| Pay for order | [`woocommerce_before_pay_action`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.567) | No |
+| Pay for order | `woocommerce_before_pay_action` | No |
 | Add payment method (Stripe, WooPayments) | Inside the gateway's setup-intent AJAX request | No, but the issuer is reached **before** WooCommerce's form hook |
 | $0 checkout, free trial | Same as the checkout | No |
 | Subscriptions change payment method | `woocommerce_subscription_change_payment_method_via_pay_shortcode` | No |

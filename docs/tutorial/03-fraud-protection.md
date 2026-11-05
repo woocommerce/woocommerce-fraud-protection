@@ -2,7 +2,7 @@
 
 The first two chapters described WooCommerce's checkout and its payment gateways. This chapter puts the Fraud Protection plugin on top of them: what it does, where it hooks in, and how one payment attempt travels through it.
 
-WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+WordPress hooks link to the WordPress developer reference. WooCommerce hooks link to WooCommerce's documentation where it describes them; the others have no stable page, so look them up by name in the [WooCommerce codebase](https://github.com/woocommerce/woocommerce/tree/trunk/plugins/woocommerce).
 
 ## Contents
 
@@ -110,7 +110,7 @@ sequenceDiagram
 
 Things to notice:
 
-- **Nothing happens before WooCommerce loads.** The plugin needs WooCommerce's dependency-injection container, so it waits for [`woocommerce_loaded`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-woocommerce.html#source-view.301).
+- **Nothing happens before WooCommerce loads.** The plugin needs WooCommerce's dependency-injection container, so it waits for `woocommerce_loaded`.
 - **Two registration moments.** Compatibility layers register at `woocommerce_loaded`, because some of the gateway hooks they need fire early. Everything else registers on WordPress [`init`](https://developer.wordpress.org/reference/hooks/init/).
 - **Components get their dependencies from the container.** Each class has a `final public init()` method that the WooCommerce container calls with the dependencies, and a `register()` method that adds its hooks. [Architecture](../internals/architecture.md) has the details.
 
@@ -172,14 +172,14 @@ Four protectors cover WooCommerce's own flows. Each one hooks the **last point b
 
 | Protector | Flow | Hook | Order exists? | How a block stops the flow |
 |-----------|------|------|---------------|-----------------------------|
-| `BlocksCheckoutProtector` | Checkout block, express buttons (Store API [`POST /wc/store/v1/checkout`](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout/#process-order-and-payment), and [`POST /wc/store/v1/checkout/{id}`](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout-order/) for existing orders) | [`woocommerce_store_api_checkout_order_processed`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-routes-v1-checkout.html#source-view.695) | Yes, just set to `pending` | Throws a `RouteException` with HTTP 403 |
-| `ShortcodeCheckoutProtector` | Classic checkout (`?wc-ajax=checkout`) | [`woocommerce_after_checkout_validation`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.1070), at `PHP_INT_MAX` | No | Adds an error to the [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) |
-| `PayForOrderProtector` | "Pay for order" form | [`woocommerce_before_pay_action`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.567) | Yes | [`wc_add_notice()`](https://woocommerce.github.io/code-reference/namespaces/default.html#function_wc_add_notice) with an error, which stops [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) |
-| `AddPaymentMethodProtector` | My Account > Add payment method | [`woocommerce_add_payment_method_form_is_valid`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.648) filter | No order involved | Returns `false` and adds an error notice |
+| `BlocksCheckoutProtector` | Checkout block, express buttons (Store API [`POST /wc/store/v1/checkout`](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout/#process-order-and-payment), and [`POST /wc/store/v1/checkout/{id}`](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout-order/) for existing orders) | `woocommerce_store_api_checkout_order_processed` | Yes, just set to `pending` | Throws a `RouteException` with HTTP 403 |
+| `ShortcodeCheckoutProtector` | Classic checkout (`?wc-ajax=checkout`) | `woocommerce_after_checkout_validation`, at `PHP_INT_MAX` | No | Adds an error to the [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) |
+| `PayForOrderProtector` | "Pay for order" form | `woocommerce_before_pay_action` | Yes | [`wc_add_notice()`](https://woocommerce.github.io/code-reference/namespaces/default.html#function_wc_add_notice) with an error, which stops [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) |
+| `AddPaymentMethodProtector` | My Account > Add payment method | `woocommerce_add_payment_method_form_is_valid` filter | No order involved | Returns `false` and adds an error notice |
 
 Why these hooks:
 
-- **Blocks checkout.** The Store API creates or reuses the order, sets it to `pending`, fires `woocommerce_store_api_checkout_order_processed`, and *then* processes the payment. Throwing there stops the request before the gateway runs. The order stays `pending`, and WooCommerce reuses it if the shopper tries again with the same cart. The protector reads the request data one hook earlier, in [`woocommerce_store_api_checkout_update_order_from_request`](https://woocommerce.github.io/code-reference/files/woocommerce-src-storeapi-utilities-checkouttrait.html#source-view.254), because only that hook receives the [`WP_REST_Request`](https://developer.wordpress.org/reference/classes/wp_rest_request/).
+- **Blocks checkout.** The Store API creates or reuses the order, sets it to `pending`, fires `woocommerce_store_api_checkout_order_processed`, and *then* processes the payment. Throwing there stops the request before the gateway runs. The order stays `pending`, and WooCommerce reuses it if the shopper tries again with the same cart. The protector reads the request data one hook earlier, in `woocommerce_store_api_checkout_update_order_from_request`, because only that hook receives the [`WP_REST_Request`](https://developer.wordpress.org/reference/classes/wp_rest_request/).
 - **Classic checkout.** [`WC_Checkout::process_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_process_checkout) validates the posted data, fires `woocommerce_after_checkout_validation` with a `WP_Error`, and creates the order only if there are no errors. Adding an error there means a blocked attempt never creates an order. The protector runs last (`PHP_INT_MAX`) and skips verification when another validator has already failed the checkout, because that attempt won't reach the gateway anyway.
 - **Pay for order and add payment method.** [`WC_Form_Handler`](https://woocommerce.github.io/code-reference/classes/WC-Form-Handler.html) runs these hooks after its nonce check and before it calls the gateway, and it calls the gateway only when no error notice exists.
 
@@ -258,7 +258,7 @@ The order matters:
 
 - **The protector enforces it.** A `Block` stops the request; an `Allow` lets WooCommerce continue to the gateway.
 - **The attempt is recorded.** `SessionEventRecorder` writes a row to the `wc_fraud_protection_sessions` table: the decision received, the final status, the trigger (`blackbox`, `verify_error`, `request_rejected`, `allow_rule` or `block_rule`), and a few customer fields for the merchant's attempts list. A supplied decision skips the call and records nothing, and nothing is recorded while the database schema isn't installed.
-- **The session ID follows the order.** For the classic checkout, the order doesn't exist yet at verification time, so the session ID waits in the WooCommerce session and `SessionVerifier::persist_session_id_to_order()` copies it to the order on [`woocommerce_checkout_order_created`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-checkout.html#source-view.521).
+- **The session ID follows the order.** For the classic checkout, the order doesn't exist yet at verification time, so the session ID waits in the WooCommerce session and `SessionVerifier::persist_session_id_to_order()` copies it to the order on `woocommerce_checkout_order_created`.
 - **Nothing else persists.** A block doesn't follow the shopper. The next attempt is verified from scratch. The plugin doesn't empty the cart, hold the order, or keep a list of blocked shoppers.
 
 ## Attempts that span several requests

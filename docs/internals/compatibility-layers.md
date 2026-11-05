@@ -2,7 +2,7 @@
 
 This reference lists each class under `src/Internal/FraudProtectionPlugin/Compat/`: the extension it supports, the hooks it uses, the gateways it matches, and when it stands aside for a native integration. [Chapter 4 of the tutorial](../tutorial/04-gateway-specific-flows.md) explains why each one exists.
 
-WooCommerce hook names link to the line where each hook runs in WooCommerce's code reference. The code reference is rebuilt for every WooCommerce release, so those lines move: if a link lands on unrelated code, look the hook up in the [WooCommerce hooks list](https://woocommerce.github.io/code-reference/hooks/hooks.html).
+WordPress hooks link to the WordPress developer reference. WooCommerce hooks link to WooCommerce's documentation where it describes them; the others have no stable page, so look them up by name in the [WooCommerce codebase](https://github.com/woocommerce/woocommerce/tree/trunk/plugins/woocommerce).
 
 ## Contents
 
@@ -62,7 +62,7 @@ Each verification passes a source string (32 characters at most). Sources appear
 | Hooks | `woocommerce_fraud_protection_resolved_payment_data` |
 | Stands aside | Gateway (or `stripe`) declares `fraud_protection_payment_data` |
 
-Reads the posted Stripe payment method ID and fetches its details from the Stripe API through the gateway's own client. On the Add payment method form post, it resolves the payment method held by the posted setup intent, because that's the one Stripe saves. It reads the setup intent only in that request (while [`woocommerce_add_payment_method_form_is_valid`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-class-wc-form-handler.html#source-view.648) is running): in the setup-intent AJAX request, a setup intent field can belong to an earlier intent.
+Reads the posted Stripe payment method ID and fetches its details from the Stripe API through the gateway's own client. On the Add payment method form post, it resolves the payment method held by the posted setup intent, because that's the one Stripe saves. It reads the setup intent only in that request (while `woocommerce_add_payment_method_form_is_valid` is running): in the setup-intent AJAX request, a setup intent field can belong to an earlier intent.
 
 ### WooPaymentsPaymentDataCompat
 
@@ -112,7 +112,7 @@ Loads `express-checkout.js` when `WCPAY_EXPRESS_CHECKOUT_ECE` or `wc_stripe_expr
 | | |
 |--|--|
 | Extension | WooCommerce PayPal Payments |
-| Hooks | PayPal Payments' button render hooks (product, cart, mini-cart, checkout, Pay for order), [`woocommerce_before_mini_cart`](https://woocommerce.github.io/code-reference/files/woocommerce-templates-cart-mini-cart.html#source-view.22), [`woocommerce_widget_cart_is_hidden`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-widgets-class-wc-widget-cart.html#source-view.55), the checkout and cart block enqueue hooks, [`woocommerce_checkout_before_order_review`](https://woocommerce.github.io/code-reference/files/woocommerce-templates-checkout-form-checkout.html#source-view.56), [`before_woocommerce_pay_form`](https://woocommerce.github.io/code-reference/files/woocommerce-includes-shortcodes-class-wc-shortcode-checkout.html#source-view.219), [`woocommerce_add_payment_method_form_bottom`](https://woocommerce.github.io/code-reference/files/woocommerce-templates-myaccount-form-add-payment-method.html#source-view.50), `woocommerce_subscriptions_change_payment_after_submit`, [`wp_enqueue_scripts`](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/) (for SDK v6 surfaces) |
+| Hooks | PayPal Payments' button render hooks (product, cart, mini-cart, checkout, Pay for order), `woocommerce_before_mini_cart`, `woocommerce_widget_cart_is_hidden`, the checkout and cart block enqueue hooks, `woocommerce_checkout_before_order_review`, `before_woocommerce_pay_form`, `woocommerce_add_payment_method_form_bottom`, `woocommerce_subscriptions_change_payment_after_submit`, [`wp_enqueue_scripts`](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/) (for SDK v6 surfaces) |
 | Stands aside | Purchase surfaces when `ppcp-gateway` declares `fraud_protection_checkout`; Add payment method and change-payment-method forms when it declares `fraud_protection_add_payment_method`; SDK v6 surfaces that can save a PayPal account only when it declares both |
 
 Loads `paypal-express.js` on every surface where PayPal renders buttons. On the Cart block it also loads `blocks-checkout.js`. PayPal Payments has changed its script handles across versions, so the layer checks the legacy handles too.
@@ -150,7 +150,7 @@ Keeps the latest PayPal request decision in the WooCommerce session (`_fraud_pro
 | | |
 |--|--|
 | Extension | WooCommerce Stripe Gateway |
-| Hooks | `wc_stripe_is_valid_create_and_confirm_setup_intent_captcha`, `woocommerce_fraud_protection_skip_session_verify`, [`woocommerce_add_payment_method_form_bottom`](https://woocommerce.github.io/code-reference/files/woocommerce-templates-myaccount-form-add-payment-method.html#source-view.50) (20) |
+| Hooks | `wc_stripe_is_valid_create_and_confirm_setup_intent_captcha`, `woocommerce_fraud_protection_skip_session_verify`, `woocommerce_add_payment_method_form_bottom` (20) |
 | Stands aside | Gateway (or `stripe`) declares `fraud_protection_add_payment_method` |
 
 - Verifies Stripe's `wc_stripe_create_and_confirm_setup_intent` AJAX request after Stripe's nonce and rate-limit checks, before the setup intent is created. Builds the gateway ID from `wc-stripe-payment-type` (`stripe` for cards, `stripe_{type}` otherwise).
