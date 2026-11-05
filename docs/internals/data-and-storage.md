@@ -166,4 +166,4 @@ Rules for migrations:
 - **Index text columns at 191 characters or fewer** (`KEY email (email(191))`). Older MySQL versions limit utf8mb4 index keys to 767 bytes.
 - **Truncate with `mb_substr()`.** Splitting a multibyte character makes the insert fail in strict SQL mode.
 
-`wp wc fraud-protection database install` installs or repairs the schema by hand. Components that read the tables check `SchemaManager::is_schema_installed()` first and skip their work while it isn't.
+`wp wc fraud-protection database install` runs a pending install or upgrade by hand, including one that was abandoned after too many failures. It can't repair a schema whose stored version is already current: if a table is missing while the version option says the schema is installed, the command fails with "installation did not complete", because the installer only compares versions. Components that read the tables check `SchemaManager::is_schema_installed()` first and skip their work while it isn't.

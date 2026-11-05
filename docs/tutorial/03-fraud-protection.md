@@ -146,7 +146,7 @@ Each surface has its own script, because each surface submits payments different
 
 All of them go through `window.wcFraudProtection`:
 
-- `acquireSessionIdResult()` asks the SDK to send its latest data (`flush()`) and resolves to `{ sessionId, error }` within a few seconds. It **never rejects**: on a timeout or error, `sessionId` is empty and `error` says why.
+- `acquireSessionIdResult()` asks the SDK to send its latest data (`flush()`) and resolves to `{ sessionId, error }` within a few seconds. It **never rejects**. A timeout or error doesn't by itself mean there's no ID: when the SDK still has a valid session ID, `sessionId` holds it and `error` is empty. Only when there's no usable ID is `sessionId` empty, with `error` saying why.
 - `prepareSessionId()` and `takePreparedSessionId()` keep a session ID ready for code that must add it synchronously, such as an express button's request builder.
 - `reset()` starts a fresh session after an attempt has used the current one.
 
@@ -155,7 +155,7 @@ All of them go through `window.wcFraudProtection`:
 The plugin's contract with the service is that each session ID belongs to one payment attempt. So the scripts work hard to:
 
 - take the ID **when the shopper submits**, not when the page loads;
-- send each ID with **exactly one** request;
+- use each ID for **exactly one** attempt: when an attempt takes several requests, such as a gateway's own request followed by the final form post, they all carry the same ID, and no later attempt reuses it;
 - start a fresh session after every attempt that used an ID, especially a failed one, where the shopper stays on the page and tries again.
 
 Getting this wrong is a common source of bugs. A script that resets too early sends an ID that no longer matches the shopper's data; one that forgets to reset sends the same ID with two attempts. [Browser scripts](../internals/browser-scripts.md) walks through each script's lifecycle.
@@ -221,7 +221,7 @@ Step by step:
 3. **Resolve the payment data.** `PaymentDataResolver` turns the gateway's posted fields into a `PaymentMethodData`: gateway, payment type, card brand, last four digits, and so on. It starts from the saved WooCommerce payment token when there is one, then runs the `woocommerce_fraud_protection_resolved_payment_data` filter, where gateways and compatibility layers fill in the rest. A failure here leaves the payment data empty but doesn't stop the verification.
 4. **Collect the context.** `SessionDataCollector` gathers the store and plugin versions, the shopper's session, the customer and their addresses, the order or cart, and the events the trackers recorded. When there's no session ID, the verifier adds the reason.
 5. **Match merchant rules.** Before calling the service, the plugin finds the first active merchant rule that matches the attempt. The service is still called, so the attempt is recorded with the service's verdict too.
-6. **Call the service.** `ApiClient::verify()` sends the context to the service through a signed Jetpack Connection request, with a 3-second timeout. Transport errors, timeouts, unreadable responses and unknown decisions all become a synthetic `Allow`, which still goes through step 8. So a matching merchant block rule is enforced even when the service can't be reached, and the attempt is recorded with the `verify_error` trigger.
+6. **Call the service.** `ApiClient::verify()` sends the context to the service through a signed Jetpack Connection request, with a 3-second timeout. Transport errors, timeouts, unreadable responses and unknown decisions all become a synthetic `Allow`, which still goes through step 8. So a matching merchant block rule is enforced even when the service can't be reached. The attempt is then recorded with the rule's trigger (`allow_rule` or `block_rule`); the `verify_error` trigger is used only when no rule matched.
 7. **Store the session ID.** The session ID the service returns is saved in the WooCommerce session and, when the order exists, in the order meta `_wc_fraud_protection_session_id`. Later reports use it to tie the order to the attempt.
 8. **Apply the decision.** See the next section.
 

@@ -103,7 +103,7 @@ Registered from `PluginInitializer` when WP-CLI runs (added on WP-CLI's `after_w
 | `wp wc fraud-protection native-integrations list` | Native integrations declared by gateways and extensions (see the [API reference](../api-reference.md#wp-cli)) |
 | `wp wc fraud-protection automatic-protection set` | Turn automatic blocking on or off for the site |
 | `wp wc fraud-protection merchant-facing-features set` | Turn the merchant-facing features on or off for the site |
-| `wp wc fraud-protection database install` | Install or repair the schema |
+| `wp wc fraud-protection database install` | Install or upgrade the schema now, bypassing the retry limits (see [Schema installation](data-and-storage.md#schema-management)) |
 | `wp wc fraud-protection sessions prune` | Prune expired attempts log rows now |
 
 Run `wp help wc fraud-protection <command>` for arguments. When you add a feature, consider whether operators need a command to inspect or repair it.
@@ -149,6 +149,6 @@ define( 'WC_FRAUD_PROTECTION_DISABLED', true );
 
 When WooCommerce is older than 9.8 or `vendor/autoload.php` is missing, the plugin logs the reason once a day and registers no components or WP-CLI commands. It has still defined its constants and turned off WooCommerce Core's own fraud protection feature by then.
 
-Without a Jetpack connection, the plugin loads but doesn't load its browser scripts or reach the service. Automated decisions fail open; merchant rules still apply, and attempts are still recorded with the `verify_error` trigger.
+Without a Jetpack connection, the plugin loads but doesn't load its browser scripts or reach the service. Automated decisions fail open; merchant rules still apply, and attempts are still recorded, with the `verify_error` trigger when no rule matched.
 
 The [README](../../README.md#releases) describes the release process.
