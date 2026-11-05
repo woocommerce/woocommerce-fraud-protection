@@ -20,7 +20,7 @@ This reference describes each script under `assets/js/`: when it loads, what it 
 
 - **Fail open.** A script never stops a payment. It never rejects, never throws out of a handler, and sends the request without a session ID when it has none.
 - **Take the session ID at submission.** `acquireSessionIdResult()` asks the SDK to send its latest data before it hands out the ID, so take the ID when the shopper submits, not ahead of time.
-- **One session ID, one request.** An ID is never sent twice. After a request has used it, the script starts a fresh session with `reset()`, or uses a method that does it.
+- **One session ID, one attempt.** An ID is never reused by a later attempt. When an attempt takes more than one request, such as Stripe's setup-intent request followed by the final form post on Add payment method, they all carry the same ID. After the attempt has used it, the script starts a fresh session with `reset()`, or uses a method that does it.
 - **Reset only after use.** Resetting before the request is sent changes the session that the request is about to report.
 - **Report why there's no ID.** Without an ID, the script sends the reason instead (see [Missing session ID reasons](#missing-session-id-reasons)).
 - **Don't run gateway handlers twice.** Holding a submission and re-submitting it must not start a gateway's tokenization twice.

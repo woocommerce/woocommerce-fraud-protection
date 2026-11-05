@@ -101,7 +101,7 @@ The PHP version scenario and the stubs it loads must stay parseable on PHP 7.4, 
 For each change, ask what would break for a shopper, a merchant, or an extension, and test that:
 
 - **Enforcement paths first.** A block must stop the flow with the right mechanism and message, and an allow must let it continue.
-- **Fail open.** Make each dependency fail (service error, thrown filter, missing session, missing Jetpack) and check that the attempt is allowed and logged.
+- **Fail open.** Make each dependency fail (service error, thrown filter, missing session, missing Jetpack) and check that the failure itself doesn't block the attempt and is logged. That isn't always an allow: without a session ID, verification still runs and its decision applies, and a matching merchant rule applies whatever failed.
 - **Hook wiring.** Calling a callback directly doesn't prove it's attached to the right hook with the right priority. Go through the real flow, or at least assert the registration.
 - **Invariants where they're enforced.** A "blocks don't follow the shopper" test belongs at the protector level, across two attempts, not on a stateless helper.
 - **Every contract value.** All enum cases, both decisions, each missing-session reason.
