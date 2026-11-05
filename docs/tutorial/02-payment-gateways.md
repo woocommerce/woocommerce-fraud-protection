@@ -43,7 +43,7 @@ A gateway is a subclass of [`WC_Payment_Gateway`](https://woocommerce.github.io/
 
 On success: `[ 'result' => 'success', 'redirect' => $url ]`. On failure, the gateway adds an error notice and returns anything else, or throws. In practice:
 
-- the `redirect` isn't always a page: Stripe returns fragments such as `#wc-stripe-confirm-pi:{order}:{client_secret}:{nonce}`, which its script picks up to finish 3-D Secure in the browser;
+- the `redirect` isn't always a page: Stripe returns fragments such as `#wc-stripe-confirm-pi:{order}:{client_secret}:{nonce}` (`#wc-stripe-confirm-si:` for a SetupIntent), which its script picks up to finish 3-D Secure in the browser;
 - the order may stay `pending` when the result is "success", until a later request or webhook confirms the payment;
 - in the block checkout, WooCommerce's legacy bridge turns the array into a `PaymentResult`.
 
@@ -162,9 +162,9 @@ sequenceDiagram
     alt 3DS required
         St-->>S: requires_action + client secret
         S-->>B: redirect #...confirm-pi:...:client_secret
-        B->>St: handleNextAction / confirmPayment
+        B->>St: confirmPayment(client secret)
         St->>I: 3DS challenge, authorize
-        B->>S: update order status
+        B->>S: update order status (Stripe: wc_stripe_update_order_status)
     else approved
         St-->>S: succeeded
         S-->>B: redirect to thank-you page
@@ -213,6 +213,12 @@ sequenceDiagram
 ```
 
 By the time WooCommerce's own Add payment method hook runs, the issuer has already seen the card. And between the AJAX request and the form post, the browser holds the SetupIntent's client secret. [Chapter 4](04-gateway-specific-flows.md#stripe-on-add-payment-method) shows how the plugin handles this for Stripe.
+
+### Stripe webhooks
+
+Stripe also reports payment events to the store with webhooks: server-to-server requests to `?wc-api=wc_stripe`, with no shopper session. The handler verifies the `Stripe-Signature` header. For `payment_intent` events, it acts only on orders that are still `pending` or `failed`.
+
+For card payments, `payment_intent.succeeded` isn't processed right away. The handler defers it two minutes with Action Scheduler (`wc_stripe_deferred_webhook`), so that the shopper's own request normally completes the order first. When that request never comes, for example because the shopper closed the tab after 3-D Secure, the deferred webhook completes the order. Either way the issuer decided long before: webhooks report outcomes, they can't stop a payment.
 
 ## Express checkouts
 
@@ -279,7 +285,7 @@ sequenceDiagram
 - **On Pay for order** (`pay-now`), the WooCommerce order already exists. The request carries its ID and key, and the PayPal order is built from it.
 - **On the checkout page**, `ppc-create-order` can also run WooCommerce's checkout validation on the posted form ("early validation"). That calls [`WC_Checkout::validate_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_validate_checkout) directly, so `woocommerce_after_checkout_validation` fires inside a PayPal request, without `woocommerce_checkout_process`.
 - **The final submission** finds the PayPal order in the WooCommerce session. A Store API submission also posts `paypal_order_id` in its payment data; PayPal Payments accepts it only for a PayPal order that the same session created.
-- **The "Pay Now" path skips the checkout.** `ppc-approve-order` creates the WooCommerce order from the cart and calls `process_payment()` in the same request. No checkout hook or Store API checkout hook runs.
+- **The "Pay Now" path skips the checkout.** `ppc-approve-order` creates the WooCommerce order from the cart and calls `process_payment()` in the same request. The checkout's validation and processing hooks (`woocommerce_checkout_process`, `woocommerce_after_checkout_validation`, `woocommerce_checkout_create_order`, `woocommerce_checkout_order_processed`) and the Store API checkout hooks don't run. Only the item hooks that fire while the order is built, such as `woocommerce_checkout_create_order_line_item`, do.
 - **The card fields submit before the checkout.** On the Checkout block, they create the PayPal order and approve it inside the payment method's [`onPaymentSetup`](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/checkout-flow-and-events/#onpaymentsetup) callback, before the Store API checkout request.
 - **The redirect mode.** When the merchant turns on WooCommerce's standard **Place order** button for PayPal, `process_payment()` creates the PayPal order and redirects the buyer to PayPal. The buyer comes back to `ppc-return-url`, which calls `process_payment()` again to capture.
 
@@ -331,7 +337,7 @@ WooCommerce Subscriptions adds recurring payments. A subscription is a special o
 | $0 checkout, free trial | Same as the checkout | No |
 | Subscriptions change payment method | `woocommerce_subscription_change_payment_method_via_pay_shortcode` | No |
 | PayPal buttons and card fields | `ppc-create-order`, before the PayPal order is created | After it: the buyer works in PayPal's window or card fields, and 3DS can run. The charge waits for `process_payment()` |
-| PayPal "Pay Now" from product or cart | `ppc-create-order` | Same; then `ppc-approve-order` creates the order and charges it, with no checkout hook |
+| PayPal "Pay Now" from product or cart | `ppc-create-order` | Same; then `ppc-approve-order` creates the order and charges it, with no checkout validation or processing hook |
 | Saving a PayPal account or card | `ppc-create-setup-token` | After it |
 | Subscription renewal | Not applicable: no browser | No browser |
 
