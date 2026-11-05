@@ -88,7 +88,7 @@ PayPal's buttons create a PayPal order **before** the WooCommerce order exists:
 3. The shopper approves the payment in PayPal's popup.
 4. The store creates the WooCommerce order and captures the payment, either from the checkout form or directly from the express flow.
 
-The plugin covers it with three layers:
+The plugin covers it with three layers and a script:
 
 - `PayPalScriptCompat` loads `paypal-express.js` on every surface where PayPal renders buttons: product, cart, mini-cart, classic and block checkout, Pay for order, Add payment method, and the Subscriptions change-payment-method form.
 - `paypal-express.js` wraps `fetch` and adds the session ID to PayPal Payments' supported requests.

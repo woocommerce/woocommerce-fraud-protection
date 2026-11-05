@@ -162,7 +162,7 @@ Getting this wrong is a common source of bugs. A script that resets too early se
 
 ### When there's no session ID
 
-Sometimes there's no session ID: a content blocker stopped the SDK, the SDK timed out, or a gateway script sent the request without waiting. The request still goes out. The plugin's scripts add the *reason* instead (`timeout`, `sdk_error`, `sdk_unavailable` or `not_ready`), in the `wc_fraud_protection_session_id_error` field or the `blackbox_session_id_error` extension key. A request that carries neither field didn't go through the plugin's scripts at all, and the server records `not_submitted`.
+Sometimes there's no session ID: a content blocker stopped the SDK, the SDK timed out, or a gateway script sent the request without waiting. The request still goes out. The plugin's scripts add the *reason* instead (`timeout`, `sdk_error`, `sdk_unavailable` or `not_ready`), in the `wc_fraud_protection_session_id_error` field or the `blackbox_session_id_error` extension key. A request that carries neither field didn't go through the plugin's scripts at all, and the server records `not_submitted`. Any other value becomes `unknown`.
 
 > **The server still verifies requests without a session ID.** A missing session ID is not proof of anything, and skipping verification would let anyone bypass the check by blocking one script.
 
@@ -221,7 +221,7 @@ Step by step:
 3. **Resolve the payment data.** `PaymentDataResolver` turns the gateway's posted fields into a `PaymentMethodData`: gateway, payment type, card brand, last four digits, and so on. It starts from the saved WooCommerce payment token when there is one, then runs the `woocommerce_fraud_protection_resolved_payment_data` filter, where gateways and compatibility layers fill in the rest. A failure here leaves the payment data empty but doesn't stop the verification.
 4. **Collect the context.** `SessionDataCollector` gathers the store and plugin versions, the shopper's session, the customer and their addresses, the order or cart, and the events the trackers recorded. When there's no session ID, the verifier adds the reason.
 5. **Match merchant rules.** Before calling the service, the plugin finds the first active merchant rule that matches the attempt. The service is still called, so the attempt is recorded with the service's verdict too.
-6. **Call the service.** `ApiClient::verify()` sends the context to the service through a signed Jetpack Connection request, with a 3-second timeout. Transport errors, timeouts, unreadable responses and unknown decisions all become a synthetic `Allow`, which still goes through step 8. So a matching merchant block rule is enforced even when the service can't be reached. The attempt is then recorded with the rule's trigger (`allow_rule` or `block_rule`); the `verify_error` trigger is used only when no rule matched.
+6. **Call the service.** `ApiClient::verify()` sends the context to the service through a signed Jetpack Connection request, with a 3-second timeout. Transport errors, timeouts, error statuses, unreadable responses and missing or unknown decisions all become a synthetic `Allow`, which still goes through step 8. The one exception is HTTP 413, which means the service rejected the request itself: it becomes a synthetic `Block`, recorded with the `request_rejected` trigger, and it too goes through step 8. So a matching merchant block rule is enforced even when the service can't be reached. The attempt is then recorded with the rule's trigger (`allow_rule` or `block_rule`); the `verify_error` trigger is used only when no rule matched.
 7. **Store the session ID.** The session ID the service returns is saved in the WooCommerce session and, when the order exists, in the order meta `_wc_fraud_protection_session_id`. Later reports use it to tie the order to the attempt.
 8. **Apply the decision.** See the next section.
 
@@ -232,8 +232,8 @@ Step by step:
 ```mermaid
 flowchart TD
     A["Verdict from the service"] --> B{"Merchant rule<br/>matched?"}
-    B -- yes --> C["Use the rule's action<br/>fire woocommerce_fraud_protection_rule_applied"]
-    C --> Z["Record and return"]
+    B -- yes --> C["Use the rule's action<br/>record it, then fire<br/>woocommerce_fraud_protection_rule_applied"]
+    C --> Y["Return"]
     B -- no --> D{"Actionable?<br/>(Allow or Block)"}
     D -- no --> E["Use Allow"]
     D -- yes --> F["woocommerce_fraud_protection_<br/>automated_decision filter"]
@@ -244,7 +244,7 @@ flowchart TD
     H --> J{"Block and automatic<br/>protection disabled?"}
     I --> J
     J -- yes --> K["Use Allow"]
-    J -- no --> Z
+    J -- no --> Z["Record and return"]
     K --> Z
 ```
 

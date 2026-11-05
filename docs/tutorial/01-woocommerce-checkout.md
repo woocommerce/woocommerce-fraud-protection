@@ -84,14 +84,15 @@ The two checkouts share almost no hooks. Code that hooks only one of them leaves
 
 - a `<form class="checkout">` with the billing and shipping fields from [`WC_Checkout::get_checkout_fields()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_get_checkout_fields);
 - the payment box (`templates/checkout/payment.php`): one radio button per available gateway, named `payment_method`, followed by the gateway's [`payment_fields()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_payment_fields) output;
-- the **Place order** button, `#place_order`;
-- the nonce field `woocommerce-process-checkout-nonce`.
+- the **Place order** button, `#place_order`, and the nonce field `woocommerce-process-checkout-nonce`, both printed by the payment box template.
 
 The template fires actions such as `woocommerce_checkout_before_order_review` and `woocommerce_checkout_order_review`. Custom checkout templates don't always fire all of them, so an extension that needs to load something should pick a hook that every checkout render passes through.
 
 ### Live updates
 
-While the shopper fills in the form, `checkout.js` posts the form to `?wc-ajax=update_order_review`. The server fires `woocommerce_checkout_update_order_review`, recalculates shipping and totals, and returns HTML fragments. The browser **replaces the whole payment box** with the new HTML and triggers `updated_checkout`. Anything an extension added inside the payment box is gone after each update.
+Right after the page loads, and then whenever the shopper changes the address or a shipping method, `checkout.js` posts the form to `?wc-ajax=update_order_review`. The server fires `woocommerce_checkout_update_order_review`, recalculates shipping and totals, and returns HTML fragments for the order review table and the payment box.
+
+The browser **replaces each element whose fragment changed** since the previous update, and all of them on the first update, then triggers `updated_checkout`. It copies back the values of payment box inputs that have an `id`. Anything else an extension added inside the payment box is gone: always after the first update, and after any later update that changes the box, for example when the available gateways change with the address.
 
 ### Placing the order
 
@@ -365,7 +366,7 @@ To send your own data with the block checkout, register an `extensions` schema w
 3. **Failed payments leave payable orders.** They can be paid later through Pay for order or the Store API. A check that only covers the checkout leaves that path open.
 4. **The two checkouts' hooks don't overlap.** Implement both.
 5. **jQuery event results can be overridden.** A later `checkout_place_order` handler can turn your `false` into `true`, and a gateway can submit the form again.
-6. **The classic payment box is re-rendered on every update.** Put fields elsewhere in the form, or re-add them on `updated_checkout`.
+6. **The classic payment box can be replaced at any update.** It's always replaced right after the page loads, and again whenever its HTML changes. Put fields elsewhere in the form, or re-add them on `updated_checkout`.
 7. **Notices and exceptions behave differently per flow.** Classic converts both to notices. The Store API needs `RouteException`. Pay for order needs a notice.
 8. **Throwing in [`onCheckoutValidation`](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/checkout-flow-and-events/#oncheckoutvalidation) doesn't stop the block checkout.** Return an error object.
 9. **The Store API legacy bridge swaps `$_POST`.** During [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment), `$_POST` holds only the payment data, as strings.
