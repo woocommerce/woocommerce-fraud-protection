@@ -8,6 +8,8 @@ Fraud Protection verifies the standard WooCommerce flows by itself: the block an
 
 An extension needs an integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. A native integration protects those flows inside the extension, and a declaration tells Fraud Protection that the extension does.
 
+A request that only checks the checkout form before the submission needs no integration, even when it fires `woocommerce_checkout_process` or `woocommerce_after_checkout_validation`. Fraud Protection verifies the shortcode checkout inside `WC_Checkout::process_checkout()`, so firing those hooks yourself verifies nothing, and the submission that follows is verified as usual. Don't call `verify_request()` in such a request: a [session ID](api-reference.md#where-the-server-reads-the-session-id) can be verified only once, and the form your request posts can already hold the one for the submission.
+
 Three rules apply to every integration:
 
 - **Fraud Protection is optional.** Register your integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.3.1 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
@@ -203,6 +205,8 @@ add_action(
 
 The checkout that follows then posts `my_gateway_order_id`, where the reader you passed to `register_reference_reader()` finds it.
 
+These requests include one that creates the order without `WC_Checkout::process_checkout()`, even when it fires WooCommerce's validation hooks: Fraud Protection doesn't verify it for you. They don't include an authorization that your provider's browser SDK performs before the normal checkout submission, because that submission is verified.
+
 ### Add payment method requests
 
 **Declare:** `fraud_protection_add_payment_method` in the gateway's `$supports`.
@@ -296,7 +300,7 @@ if ( FraudDecision::Block === $decision ) {
 
 - Load the [example integrations](../examples/README.md) in the local store to compare their behavior with yours.
 - Run `wp wc fraud-protection native-integrations list` and check that it lists your declarations.
-- Watch the `woo-fraud-protection` log under WooCommerce > Status > Logs while you go through your flows. Each decision is logged with the source you passed to `verify_session()`.
+- Watch the `woo-fraud-protection` log under WooCommerce > Status > Logs while you go through your flows. Each decision is logged with the source you passed to `verify_session()`. Check that each payment attempt verifies its session ID only once. A request of yours that fires `woocommerce_checkout_process` is logged as `Checkout validation ran outside the checkout process`; if that request creates an order, it needs a [checkout integration](#checkout-requests).
 - Go through each flow once without a Jetpack connection, or with the Fraud Protection scripts blocked in the browser, and check that payments still complete.
 
 ## Next steps

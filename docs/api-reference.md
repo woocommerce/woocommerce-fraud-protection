@@ -97,7 +97,7 @@ The plugin's own verifications pass these sources, which `woocommerce_fraud_prot
 | Source | Flow |
 |--------|------|
 | `blocks_checkout` | Block checkout (Store API) |
-| `shortcode_checkout` | Shortcode checkout |
+| `shortcode_checkout` | Shortcode checkout, inside `WC_Checkout::process_checkout()`. Firing the checkout validation hooks elsewhere doesn't verify. |
 | `pay_for_order` | Pay for order page |
 | `add_payment_method` | My Account "Add payment method" form |
 
@@ -595,14 +595,14 @@ On pages where `BlackboxScriptHandler::request_scripts()` loaded the shared scri
 | Member | Description |
 |--------|-------------|
 | `takeSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID for one payment attempt, or to an empty string when no session ID is available, including without the SDK; it never rejects. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. After handing out an ID, it starts a fresh session for the next attempt, so no `reset()` call is needed. Use it for code that can wait for a promise. Since 0.3.1. |
-| `acquireSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID, or to an empty string when no session ID is available. A slow or failed send still resolves to the session ID when one exists. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. Call `reset()` after the attempt that used it. |
+| `acquireSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID, or to an empty string when no session ID is available. A slow or failed send still resolves to the session ID when one exists. Each session ID is returned at most once: when the only one available was already returned, a fresh session is started, and the result is an empty string if it does not arrive in time. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. Call `reset()` after the attempt that used it. |
 | `reset(): void` | Starts a fresh session for the next payment attempt. Call it after each attempt that used `acquireSessionId()`. |
 | `prepareSessionId(): void` | For code that must add the session ID synchronously: call it once when the payment surface is set up, and a session ID is kept ready for `takePreparedSessionId()`. A prepared ID that gets too old is replaced on the shopper's next activity. Calling it again does nothing. |
 | `takePreparedSessionId(): string` | Hands out the prepared session ID for one payment attempt, or an empty string when none is ready. The same ID is never returned twice, and a fresh session starts for the next attempt, so no `reset()` call is needed. |
 | `addSessionIdToExtensions( extensions: object ): object` | For a Store API request whose extension data is built synchronously, such as an express button's. Returns a copy of `extensions` with the ID from `takePreparedSessionId()` under the `woocommerce/fraud-protection` namespace, as `blackbox_session_id`. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again; when no session ID is ready, the copy reports why instead. A value that is not an object is returned unchanged. Since 0.3.1. |
 | `config.sessionIdField` | The name of the request field for the session ID: `SessionVerifier::SESSION_ID_FIELD`. The other `config` entries are internal. |
 
-A session ID belongs to one payment attempt: send each ID with exactly one request. The [integration guide](integration-guide.md#2-send-the-session-id) shows `takeSessionId()`, and its [express checkout section](integration-guide.md#express-checkout) shows `prepareSessionId()` and `addSessionIdToExtensions()`.
+A session ID belongs to one payment attempt: verify each ID only once. The [integration guide](integration-guide.md#2-send-the-session-id) shows `takeSessionId()`, and its [express checkout section](integration-guide.md#express-checkout) shows `prepareSessionId()` and `addSessionIdToExtensions()`.
 
 ### Script handles
 
@@ -619,6 +619,8 @@ Your own integration script is yours to register, from your plugin's URL and wit
 |---------|---------------------------|
 | A classic form or AJAX request | The field named by `config.sessionIdField` (`wc_fraud_protection_session_id`). Your server code reads it and passes it to `verify_session()`. |
 | A Store API checkout (`/wc/store/v1/checkout` and `/wc/store/v1/checkout/{order_id}`) | The request's extension data, under the `woocommerce/fraud-protection` namespace, as `blackbox_session_id`. The plugin reads and verifies it. |
+
+On the shortcode checkout, the plugin adds the `config.sessionIdField` field to the form when the shopper places the order, and removes it when the checkout request completes. A request of yours that serializes the form in that time sends the field too. Sending it doesn't use the session ID up; verifying it does.
 
 A Store API checkout sent without the plugin's checkout scripts, such as an order placed by your own block-based payment button, carries the session ID like this. Code that builds the extension data synchronously can use `addSessionIdToExtensions()` instead:
 
