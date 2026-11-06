@@ -1,7 +1,7 @@
 <?php
 /**
  * PHPStan stub for WC_Payments, WC_Payments_API_Client, WC_Payments_Features,
- * and WCPay\Core\Mode.
+ * WCPay\Core\Mode, and WCPay\Core\Server\Request\Get_Setup_Intention.
  *
  * The test suite conditionally defines stubs via class_alias() which PHPStan
  * cannot follow. This stub declares the methods used in production and test code.
@@ -63,5 +63,18 @@ namespace WCPay\Core {
 	class Mode {
 		/** @return bool */
 		public function is_live(): bool {}
+	}
+}
+
+namespace WCPay\Core\Server\Request {
+	class Get_Setup_Intention {
+		/**
+		 * @param mixed $id
+		 * @return static
+		 */
+		public static function create( $id = null ) {}
+
+		/** @return mixed */
+		public function send() {}
 	}
 }
