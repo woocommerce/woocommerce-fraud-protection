@@ -82,9 +82,9 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'The shared scripts should be requested' );
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ), 'The express checkout script should be enqueued' );
 		$this->assertSame(
-			array( 'wc-fraud-protection-blackbox-init', 'wp-hooks' ),
+			array( 'wc-fraud-protection-blackbox-init', 'wp-hooks', 'jquery' ),
 			wp_scripts()->query( 'wc-fraud-protection-express-checkout', 'registered' )->deps,
-			'The express checkout script should run after the shared API and the hooks library'
+			'The express checkout script should run after the shared API, the hooks library, and jQuery'
 		);
 	}
 
@@ -97,6 +97,7 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 		return array(
 			'WooPayments' => array( 'WCPAY_EXPRESS_CHECKOUT_ECE' ),
 			'Stripe'      => array( 'wc_stripe_express_checkout' ),
+			'Square'      => array( 'wc-square-digital-wallet' ),
 		);
 	}
 
