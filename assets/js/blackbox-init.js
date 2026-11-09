@@ -129,6 +129,34 @@
 	let retryTimer = 0;
 	let preparationRetries = 0;
 	let isWaitingForActivity = false;
+	const preparedSessionIdListeners = [];
+
+	/**
+	 * Tell a listener the prepared session ID. A failing listener is ignored.
+	 *
+	 * @param {Function} listener Listener.
+	 */
+	function notifyPreparedSessionId( listener ) {
+		try {
+			listener( preparedSessionId );
+		} catch {
+			// Fail open.
+		}
+	}
+
+	/**
+	 * Change the prepared session ID.
+	 *
+	 * @param {string} sessionId Session ID, or an empty string for none.
+	 */
+	function setPreparedSessionId( sessionId ) {
+		if ( preparedSessionId === sessionId ) {
+			return;
+		}
+
+		preparedSessionId = sessionId;
+		preparedSessionIdListeners.forEach( notifyPreparedSessionId );
+	}
 
 	/**
 	 * Record a session ID as handed out for a payment attempt.
@@ -142,7 +170,7 @@
 
 		handedOutSessionIds.add( sessionId );
 		if ( preparedSessionId === sessionId ) {
-			preparedSessionId = '';
+			setPreparedSessionId( '' );
 		}
 	}
 
@@ -195,8 +223,8 @@
 				}
 
 				preparationRetries = 0;
-				preparedSessionId = result;
 				preparedAt = Date.now();
+				setPreparedSessionId( result );
 				clearTimeout( refreshTimer );
 				refreshTimer = setTimeout(
 					expirePreparedSessionId,
@@ -370,7 +398,7 @@
 	 * Reset Blackbox state. Silently no-ops if reset is unavailable.
 	 */
 	fraudProtection.reset = function () {
-		preparedSessionId = '';
+		setPreparedSessionId( '' );
 		const current = ++preparation;
 		isFetching = false;
 		preparationRetries = 0;
@@ -424,6 +452,20 @@
 
 		isPreparing = true;
 		prepareSessionId();
+	};
+
+	/**
+	 * Follow the prepared session ID without taking it.
+	 *
+	 * For flows that place the order without the browser, so the ID has to be
+	 * stored ahead of time. The session stays current and keeps collecting.
+	 * Internal to the plugin's own scripts.
+	 *
+	 * @param {Function} listener Called now and on each change, with the session ID or an empty string.
+	 */
+	fraudProtection.onPreparedSessionIdChange = function ( listener ) {
+		preparedSessionIdListeners.push( listener );
+		notifyPreparedSessionId( listener );
 	};
 
 	/**

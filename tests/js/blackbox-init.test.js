@@ -444,6 +444,71 @@ describe( 'blackbox-init', () => {
 			);
 		} );
 
+		describe( 'onPreparedSessionIdChange', () => {
+			it( 'reports the session ID now and when it is ready', async () => {
+				setupAndLoad();
+				const listener = jest.fn();
+
+				window.wcFraudProtection.prepareSessionId();
+				window.wcFraudProtection.onPreparedSessionIdChange( listener );
+				expect( listener ).toHaveBeenLastCalledWith( '' );
+
+				await flushPromises();
+
+				expect( listener ).toHaveBeenLastCalledWith(
+					'test-session-id'
+				);
+				expect( mockReset ).not.toHaveBeenCalled();
+			} );
+
+			it( 'leaves the session ID available to take', async () => {
+				setupAndLoad();
+				window.wcFraudProtection.prepareSessionId();
+				window.wcFraudProtection.onPreparedSessionIdChange( jest.fn() );
+				await flushPromises();
+
+				expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+					'test-session-id'
+				);
+			} );
+
+			it( 'reports when the session ID gets too old', async () => {
+				setupAndLoad();
+				const listener = jest.fn();
+				window.wcFraudProtection.prepareSessionId();
+				window.wcFraudProtection.onPreparedSessionIdChange( listener );
+				await flushPromises();
+
+				jest.advanceTimersByTime( 10 * 60 * 1000 );
+
+				expect( listener ).toHaveBeenLastCalledWith( '' );
+			} );
+
+			it( 'calls the listener only on a change', async () => {
+				setupAndLoad();
+				const listener = jest.fn();
+				window.wcFraudProtection.onPreparedSessionIdChange( listener );
+
+				window.wcFraudProtection.reset();
+				await flushPromises();
+
+				expect( listener ).toHaveBeenCalledTimes( 1 );
+			} );
+
+			it( 'ignores a listener that throws', async () => {
+				setupAndLoad();
+				window.wcFraudProtection.prepareSessionId();
+				window.wcFraudProtection.onPreparedSessionIdChange( () => {
+					throw new Error( 'listener' );
+				} );
+				await flushPromises();
+
+				expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+					'test-session-id'
+				);
+			} );
+		} );
+
 		it( 'is fetched with getSessionId(), not flush()', async () => {
 			setupAndLoad();
 			window.wcFraudProtection.prepareSessionId();
