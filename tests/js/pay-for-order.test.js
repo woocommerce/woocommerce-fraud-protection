@@ -376,4 +376,197 @@ describe( 'pay-for-order', () => {
 			form.querySelector( 'input[name="' + SESSION_ID_ERROR_FIELD + '"]' )
 		).toBeNull();
 	} );
+
+	describe( 'submit started with jQuery trigger()', () => {
+		let mockTakePreparedSessionId;
+		let postedFields;
+
+		beforeEach( () => {
+			mockTakePreparedSessionId = jest.fn( () => 'sess-prepared' );
+			postedFields = [];
+			form.submit = jest.fn( () => {
+				postedFields.push(
+					Object.fromEntries( new window.FormData( form ).entries() )
+				);
+			} );
+		} );
+
+		function setupWithPreparedSessionId() {
+			setupFraudProtection();
+			window.wcFraudProtection.prepareSessionId = jest.fn();
+			window.wcFraudProtection.takePreparedSessionId =
+				mockTakePreparedSessionId;
+		}
+
+		it( 'starts preparing a session ID on load', () => {
+			setupWithPreparedSessionId();
+			loadScript();
+
+			expect(
+				window.wcFraudProtection.prepareSessionId
+			).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'posts the form with the prepared session ID', () => {
+			setupWithPreparedSessionId();
+			loadScript();
+
+			$( form ).trigger( 'submit' );
+
+			expect( form.submit ).toHaveBeenCalledTimes( 1 );
+			expect( postedFields[ 0 ] ).toEqual( {
+				[ SESSION_ID_FIELD ]: 'sess-prepared',
+			} );
+			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'runs gateway jQuery handlers once, without holding the submit', () => {
+			setupWithPreparedSessionId();
+			const handlerBefore = jest.fn();
+			const handlerAfter = jest.fn();
+			$( form ).on( 'submit', handlerBefore );
+			loadScript();
+			$( form ).on( 'submit', handlerAfter );
+
+			$( form ).trigger( 'submit' );
+			jest.runAllTimers();
+
+			expect( handlerBefore ).toHaveBeenCalledTimes( 1 );
+			expect( handlerAfter ).toHaveBeenCalledTimes( 1 );
+			expect( form.submit ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'posts the form with not_ready when no session ID is ready', () => {
+			mockTakePreparedSessionId.mockReturnValue( '' );
+			setupWithPreparedSessionId();
+			loadScript();
+
+			$( form ).trigger( 'submit' );
+
+			expect( postedFields[ 0 ] ).toEqual( {
+				[ SESSION_ID_ERROR_FIELD ]: 'not_ready',
+			} );
+		} );
+
+		it( 'lets a native submit acquire a session ID after a cancelled submit without one', async () => {
+			mockTakePreparedSessionId.mockReturnValue( '' );
+			setupWithPreparedSessionId();
+			loadScript();
+			const cancel = ( e ) => e.preventDefault();
+			$( form ).on( 'submit', cancel );
+
+			$( form ).trigger( 'submit' );
+			$( form ).off( 'submit', cancel );
+			expect( form.submit ).not.toHaveBeenCalled();
+
+			dispatchSubmit();
+			await flushPromises();
+			jest.runOnlyPendingTimers();
+
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+			expect( postedFields[ 0 ] ).toEqual( {
+				[ SESSION_ID_FIELD ]: 'sess-pay-order',
+			} );
+		} );
+
+		it( 'does not replace a session ID already in the form', () => {
+			setupWithPreparedSessionId();
+			loadScript();
+			$( '<input>', {
+				type: 'hidden',
+				id: SESSION_ID_FIELD,
+				name: SESSION_ID_FIELD,
+				value: 'sess-acquired',
+			} ).appendTo( form );
+
+			$( form ).trigger( 'submit' );
+
+			expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
+			expect( postedFields[ 0 ] ).toEqual( {
+				[ SESSION_ID_FIELD ]: 'sess-acquired',
+			} );
+		} );
+
+		it.each( [
+			[
+				'replaces an earlier reason with the prepared session ID',
+				'sess-prepared',
+				{ [ SESSION_ID_FIELD ]: 'sess-prepared' },
+			],
+			[
+				'keeps an earlier reason when no session ID is ready',
+				'',
+				{ [ SESSION_ID_ERROR_FIELD ]: 'timeout' },
+			],
+		] )( '%s', ( _, prepared, expected ) => {
+			mockTakePreparedSessionId.mockReturnValue( prepared );
+			setupWithPreparedSessionId();
+			loadScript();
+			$( '<input>', {
+				type: 'hidden',
+				name: SESSION_ID_ERROR_FIELD,
+				value: 'timeout',
+			} ).appendTo( form );
+
+			$( form ).trigger( 'submit' );
+
+			expect( postedFields[ 0 ] ).toEqual( expected );
+		} );
+
+		it( 'cancels the submit while a held submit waits for its re-submit', async () => {
+			setupWithPreparedSessionId();
+			const gatewayHandler = jest.fn();
+			loadScript();
+			$( form ).on( 'submit', gatewayHandler );
+
+			dispatchSubmit();
+			$( form ).trigger( 'submit' );
+
+			expect( form.submit ).not.toHaveBeenCalled();
+			expect( gatewayHandler ).not.toHaveBeenCalled();
+			expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
+
+			await flushPromises();
+			jest.runOnlyPendingTimers();
+
+			expect( gatewayHandler ).toHaveBeenCalledTimes( 1 );
+			expect( form.submit ).toHaveBeenCalledTimes( 1 );
+			expect( postedFields[ 0 ] ).toEqual( {
+				[ SESSION_ID_FIELD ]: 'sess-pay-order',
+			} );
+		} );
+
+		it( 'posts the form unchanged when taking the session ID throws', () => {
+			mockTakePreparedSessionId.mockImplementation( () => {
+				throw new Error( 'broken' );
+			} );
+			setupWithPreparedSessionId();
+			loadScript();
+
+			$( form ).trigger( 'submit' );
+
+			expect( form.submit ).toHaveBeenCalledTimes( 1 );
+			expect( postedFields[ 0 ] ).toEqual( {} );
+		} );
+
+		it( 'reports not_ready when the API cannot hand out a prepared session ID', () => {
+			setupFraudProtection();
+			loadScript();
+
+			$( form ).trigger( 'submit' );
+
+			expect( postedFields[ 0 ] ).toEqual( {
+				[ SESSION_ID_ERROR_FIELD ]: 'not_ready',
+			} );
+		} );
+
+		it( 'posts the form unchanged when wcFraudProtection is missing (fail-open)', () => {
+			loadScript();
+
+			$( form ).trigger( 'submit' );
+
+			expect( form.submit ).toHaveBeenCalledTimes( 1 );
+			expect( postedFields[ 0 ] ).toEqual( {} );
+		} );
+	} );
 } );
