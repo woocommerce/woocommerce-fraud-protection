@@ -212,6 +212,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 		'wc-fraud-protection-pay-for-order',
 		'wc-fraud-protection-add-payment-method',
 		'wc-fraud-protection-stripe-add-payment-method',
+		'wc-fraud-protection-woopayments-add-payment-method',
 		'wc-fraud-protection-paypal-express',
 		'wc-fraud-protection-express-checkout',
 		'wc-fraud-protection-extension-flow',
@@ -320,7 +321,6 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 			}
 
 			$property = $reflection->getProperty( $property_name );
-			$property->setAccessible( true );
 			$property->setValue( null, null );
 		}
 	}
@@ -351,8 +351,7 @@ abstract class FraudProtectionUnitTestCase extends WC_Unit_Test_Case {
 		$dependencies_class = new \ReflectionClass( \WP_Dependencies::class );
 
 		if ( $dependencies_class->hasProperty( 'dependencies_with_missing_dependencies' ) ) {
-			$missing = $dependencies_class->getProperty( 'dependencies_with_missing_dependencies' );
-			$missing->setAccessible( true );
+			$missing              = $dependencies_class->getProperty( 'dependencies_with_missing_dependencies' );
 			$missing_dependencies = (array) $missing->getValue( $scripts );
 
 			foreach ( self::FRAUD_PROTECTION_SCRIPT_HANDLES as $handle ) {

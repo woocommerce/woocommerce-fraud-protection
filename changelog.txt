@@ -1,6 +1,9 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.3.2
+* Fixed - Cards saved with WooPayments on the My Account "Add payment method" page are now analyzed before WooPayments sends them to the card issuer, instead of after.
+* Fixed - When a card saved with WooPayments on the My Account "Add payment method" page is changed after it is first submitted, the card that WooPayments saves is now the one analyzed.
+* Fixed - When a classic checkout update contains a NUL byte, only the malformed field is ignored. Previously, the fields after it were ignored, and on PHP 8.6 the update was not tracked and an error was logged.
 * Dev - Payment gateways can declare a native Fraud Protection integration by adding `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, or `fraud_protection_express_checkout` to their supported features, and the new `wp wc fraud-protection native-integrations list` command lists the declaring gateways.
 * Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug through the new `woocommerce_fraud_protection_native_integrations` filter, and `wp wc fraud-protection native-integrations list` lists the declarations.
 * Dev - Payment gateways can load the shared browser scripts for one of their own scripts with the new `BlackboxScriptHandler::request_scripts_for()`, which makes that script depend on them only when they load.

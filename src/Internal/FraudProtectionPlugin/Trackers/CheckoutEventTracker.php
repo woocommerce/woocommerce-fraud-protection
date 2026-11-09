@@ -127,6 +127,14 @@ class CheckoutEventTracker {
 				return;
 			}
 
+			// parse_str() throws on NUL bytes since PHP 8.6. Drop only the pairs that contain one.
+			if ( str_contains( $posted_data, "\0" ) ) {
+				$posted_data = implode(
+					'&',
+					array_filter( explode( '&', $posted_data ), static fn( string $pair ): bool => ! str_contains( $pair, "\0" ) )
+				);
+			}
+
 			// Parse the posted data to extract relevant fields.
 			$data = array();
 			if ( $posted_data ) {

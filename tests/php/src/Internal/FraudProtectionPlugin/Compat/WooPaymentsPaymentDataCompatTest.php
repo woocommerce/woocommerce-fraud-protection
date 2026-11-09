@@ -16,6 +16,9 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
+use WCPay\Core\Server\Request\Get_Setup_Intention;
+
+require_once __DIR__ . '/../../../../stubs/wc-payments-get-setup-intention.php';
 
 // Stub WooPayments classes if not loaded. Tests inject API mocks via \WC_Payments::set_api_client().
 // The following classes keep the names of the external API that they model.
@@ -359,6 +362,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		remove_filter( 'wp_doing_ajax', '__return_true' );
 		WC_Payments_Account_Service_Stub::reset();
 		WC_Payments_API_Client_Stub::reset();
+		Get_Setup_Intention::reset();
 		parent::tearDown();
 	}
 
@@ -1377,6 +1381,170 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertSame( 'INGBNL2A', $result->to_array()['instrument']['bank_code'] );
+	}
+
+	/**
+	 * @testdox Resolves the payment method that a posted setup intent holds on an add-payment-method form post.
+	 */
+	public function test_resolves_setup_intent_payment_method(): void {
+		Get_Setup_Intention::set_mock_setup_intent( 'seti_123', 'pm_saved' );
+		$this->mock_api_response_for( 'pm_saved', $this->create_card_response() );
+
+		$array = $this->resolve_during_hook(
+			'woocommerce_add_payment_method_form_is_valid',
+			array(
+				'wcpay-payment-method' => 'pm_posted',
+				'wcpay-setup-intent'   => 'seti_123',
+			)
+		)->to_array();
+
+		$this->assertSame( array( 'seti_123' ), Get_Setup_Intention::get_sent() );
+		$this->assertSame( 'card', $array['payment_type'] );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+	}
+
+	/**
+	 * @testdox Ignores a posted setup intent outside an add-payment-method form post.
+	 * @dataProvider requests_other_than_add_payment_method_form_provider
+	 *
+	 * @param ?string $hook The hook that the request resolves the payment data in, or null for none.
+	 */
+	public function test_ignores_setup_intent_outside_add_payment_method_form( ?string $hook ): void {
+		Get_Setup_Intention::set_mock_setup_intent( 'seti_123', 'pm_saved' );
+		$this->mock_api_response_for( 'pm_posted', $this->create_card_response() );
+
+		$array = $this->resolve_during_hook(
+			$hook,
+			array(
+				'wcpay-payment-method' => 'pm_posted',
+				'wcpay-setup-intent'   => 'seti_123',
+			)
+		)->to_array();
+
+		$this->assertSame( array(), Get_Setup_Intention::get_sent() );
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+	}
+
+	/**
+	 * Requests in which WooPayments does not save the payment method of a posted setup intent.
+	 *
+	 * @return array<string, array{?string}>
+	 */
+	public function requests_other_than_add_payment_method_form_provider(): array {
+		return array(
+			'WooPayments setup intent creation' => array( 'wcpay_create_and_confirm_setup_intention_request' ),
+			'shortcode checkout'                => array( 'woocommerce_after_checkout_validation' ),
+			'pay for order'                     => array( 'woocommerce_before_pay_action' ),
+			'no hook'                           => array( null ),
+		);
+	}
+
+	/**
+	 * @testdox Resolves the posted payment method when the setup intent cannot be read or holds none.
+	 * @dataProvider unreadable_setup_intent_provider
+	 *
+	 * @param mixed $setup_intent_id Posted setup intent ID.
+	 * @param mixed $setup_intent    WooPayments response for the setup intent; a string or null is the payment method ID it holds.
+	 */
+	public function test_resolves_posted_payment_method_without_setup_intent_payment_method( $setup_intent_id, $setup_intent ): void {
+		if ( null === $setup_intent || is_string( $setup_intent ) ) {
+			Get_Setup_Intention::set_mock_setup_intent( 'seti_123', $setup_intent );
+		} else {
+			Get_Setup_Intention::set_mock_response( 'seti_123', $setup_intent );
+		}
+		$this->mock_api_response_for( 'pm_posted', $this->create_card_response() );
+
+		$array = $this->resolve_during_hook(
+			'woocommerce_add_payment_method_form_is_valid',
+			array(
+				'wcpay-payment-method' => 'pm_posted',
+				'wcpay-setup-intent'   => $setup_intent_id,
+			)
+		)->to_array();
+
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+	}
+
+	/**
+	 * Setup intents, or responses without one, that give no payment method.
+	 *
+	 * @return array<string, array{mixed, mixed}>
+	 */
+	public function unreadable_setup_intent_provider(): array {
+		return array(
+			'no payment method'    => array( 'seti_123', null ),
+			'empty payment method' => array( 'seti_123', '' ),
+			'unexpected response'  => array( 'seti_123', array( 'payment_method' => 'pm_saved' ) ),
+			'empty setup intent'   => array( '', 'pm_saved' ),
+			'invalid setup intent' => array( array( 'seti_123' ), 'pm_saved' ),
+		);
+	}
+
+	/**
+	 * @testdox Resolves the posted payment method, and logs the failure, when reading the setup intent throws.
+	 */
+	public function test_resolves_posted_payment_method_when_reading_setup_intent_throws(): void {
+		Get_Setup_Intention::set_mock_response( 'seti_123', new \RuntimeException( 'WooPayments unavailable' ) );
+		$this->mock_api_response_for( 'pm_posted', $this->create_card_response() );
+
+		$array = $this->resolve_during_hook(
+			'woocommerce_add_payment_method_form_is_valid',
+			array(
+				'wcpay-payment-method' => 'pm_posted',
+				'wcpay-setup-intent'   => 'seti_123',
+			)
+		)->to_array();
+
+		$this->assertSame( '4242', $array['instrument']['last4'] );
+		$this->assertLogged(
+			'warning',
+			'Reading the WooPayments setup intent failed; resolving the posted payment method',
+			array( 'exception_class' => \RuntimeException::class )
+		);
+	}
+
+	/**
+	 * Resolve WooPayments payment data while a hook runs, as the request that applies it does.
+	 *
+	 * @param ?string $hook                    The hook to resolve in, or null to resolve outside any hook.
+	 * @param array   $checkout_payment_fields Flat key-value map of checkout payment fields.
+	 * @return PaymentMethodData
+	 */
+	private function resolve_during_hook( ?string $hook, array $checkout_payment_fields ): PaymentMethodData {
+		$resolve = fn() => $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $checkout_payment_fields );
+		if ( null === $hook ) {
+			return $resolve();
+		}
+
+		$resolved = null;
+		remove_all_filters( $hook );
+		add_filter(
+			$hook,
+			function ( $value ) use ( $resolve, &$resolved ) {
+				$resolved = $resolve();
+				return $value;
+			}
+		);
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Runs an existing hook under test.
+		apply_filters( $hook, true );
+
+		$this->assertInstanceOf( PaymentMethodData::class, $resolved );
+		return $resolved;
+	}
+
+	/**
+	 * Set the mocked API response for one payment method ID; other IDs fail the test.
+	 *
+	 * @param string $payment_method_id The payment method ID that must be looked up.
+	 * @param array  $response          API response.
+	 */
+	private function mock_api_response_for( string $payment_method_id, array $response ): void {
+		$mock = $this->createMock( \WC_Payments_API_Client::class );
+		$mock->expects( $this->once() )
+			->method( 'get_payment_method' )
+			->with( $payment_method_id )
+			->willReturn( $response );
+		\WC_Payments::set_api_client( $mock );
 	}
 
 	/**

@@ -24,9 +24,13 @@ defined( 'ABSPATH' ) || exit;
  * payment details (card data, bank data, payment type) via the
  * WooPayments API. When WooPay is enabled, only transaction mode and the
  * merchant identifier are resolved because pm_ IDs are platform-scoped and unresolvable.
+ * On an add-payment-method form post, the details are those of the payment
+ * method that the posted setup intent holds.
  * Stands aside once the gateway declares `fraud_protection_payment_data`.
  */
 class WooPaymentsPaymentDataCompat {
+
+	use WooPaymentsSetupIntentReaderTrait;
 
 	/**
 	 * Main WooPayments gateway ID.
@@ -34,6 +38,20 @@ class WooPaymentsPaymentDataCompat {
 	 * @var string
 	 */
 	private const GATEWAY_ID = 'woocommerce_payments';
+
+	/**
+	 * Add-payment-method form field with the setup intent ID.
+	 *
+	 * @var string
+	 */
+	private const SETUP_INTENT_FIELD = 'wcpay-setup-intent';
+
+	/**
+	 * Filter applied by WooCommerce before the gateway saves an add-payment-method form post.
+	 *
+	 * @var string
+	 */
+	private const ADD_PAYMENT_METHOD_FORM_FILTER = 'woocommerce_add_payment_method_form_is_valid';
 
 	/**
 	 * Native gateway support lookup.
@@ -135,7 +153,8 @@ class WooPaymentsPaymentDataCompat {
 		$token_value = $checkout_payment_fields[ $token_key ] ?? '';
 		$is_saved    = ! empty( $token_value ) && 'new' !== $token_value;
 
-		$pm_id = $this->extract_payment_method_id( $checkout_payment_fields );
+		$pm_id = $this->resolve_setup_intent_payment_method_id( $checkout_payment_fields )
+			?? $this->extract_payment_method_id( $checkout_payment_fields );
 
 		// For saved payment methods the checkout sends a WC token ID but no
 		// wcpay-payment-method key. Resolve the Stripe pm_ ID from the token
@@ -197,6 +216,46 @@ class WooPaymentsPaymentDataCompat {
 		$provider_type_wallet = $this->normalize_wallet( $type );
 
 		return $result->with_instrument_wallet_if_empty( $provider_type_wallet ?? $request_wallet );
+	}
+
+	/**
+	 * Resolve the payment method ID of the posted WooPayments setup intent.
+	 *
+	 * On My Account > Add payment method, WooPayments saves the payment method
+	 * of the posted setup intent instead of the posted payment method ID, and
+	 * the browser can change it after the setup intent request.
+	 *
+	 * WooPayments reads the setup intent only on that form post, right after
+	 * WooCommerce applies `woocommerce_add_payment_method_form_is_valid`. In any
+	 * other request, a posted setup intent is ignored.
+	 *
+	 * @param array $checkout_payment_fields Flat key-value map of checkout payment fields.
+	 * @return ?string The payment method ID, or null when no setup intent applies or it cannot be read.
+	 */
+	private function resolve_setup_intent_payment_method_id( array $checkout_payment_fields ): ?string {
+		if ( ! doing_filter( self::ADD_PAYMENT_METHOD_FORM_FILTER ) ) {
+			return null;
+		}
+
+		$setup_intent_id = $checkout_payment_fields[ self::SETUP_INTENT_FIELD ] ?? null;
+		if ( ! is_string( $setup_intent_id ) ) {
+			return null;
+		}
+
+		try {
+			return $this->get_setup_intent_payment_method_id( $setup_intent_id );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Reading the WooPayments setup intent failed; resolving the posted payment method',
+				array(
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+				)
+			);
+
+			return null;
+		}
 	}
 
 	/**
