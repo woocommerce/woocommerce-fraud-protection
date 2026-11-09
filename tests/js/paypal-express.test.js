@@ -22,6 +22,8 @@ const PROTECTED_ENDPOINTS = [
 
 beforeEach( () => {
 	delete window.wcFraudProtection;
+	delete window.jQuery;
+	delete window.wp;
 
 	fetchCalls = [];
 	originalFetch = jest.fn( ( resource, init ) => {
@@ -292,6 +294,214 @@ describe( 'paypal-express fetch interceptor', () => {
 			} );
 
 			expect( window.fetch ).toBe( savedFetch );
+		} );
+	} );
+
+	describe( 'another gateway after a successful request', () => {
+		let $;
+
+		function renderClassicCheckout( selectedGateway ) {
+			document.body.innerHTML = `
+				<form class="checkout">
+					<input type="radio" name="payment_method" value="ppcp-gateway" />
+					<input type="radio" name="payment_method" value="ppcp-credit-card-gateway" />
+					<input type="radio" name="payment_method" value="cod" />
+				</form>`;
+			selectGateway( selectedGateway );
+		}
+
+		function selectGateway( gateway ) {
+			$( 'input[name="payment_method"]' )
+				.filter( `[value="${ gateway }"]` )
+				.prop( 'checked', true );
+		}
+
+		function setupBlocksStore( initialGateway ) {
+			let gateway = initialGateway;
+			const listeners = [];
+			window.wp = {
+				data: {
+					select: () => ( {
+						getActivePaymentMethod: () => gateway,
+					} ),
+					subscribe: ( listener ) => listeners.push( listener ),
+				},
+			};
+
+			return ( nextGateway ) => {
+				gateway = nextGateway;
+				listeners.forEach( ( listener ) => listener() );
+			};
+		}
+
+		beforeEach( () => {
+			jest.isolateModules( () => {
+				$ = require( 'jquery' );
+			} );
+			window.jQuery = $;
+		} );
+
+		afterEach( () => {
+			$( document.body ).off();
+			document.body.innerHTML = '';
+		} );
+
+		it( 'resets when the shopper selects another classic gateway', async () => {
+			renderClassicCheckout( 'ppcp-gateway' );
+			setupAndLoad();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			selectGateway( 'cod' );
+			$( 'input[value="cod"]' ).trigger( 'change' );
+
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'resets on a place order for another classic gateway', async () => {
+			renderClassicCheckout( 'cod' );
+			setupAndLoad();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			const result = $( 'form.checkout' ).triggerHandler(
+				'checkout_place_order'
+			);
+
+			expect( result ).toBeUndefined();
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'keeps the session for the classic PayPal gateways', async () => {
+			renderClassicCheckout( 'cod' );
+			selectGateway( 'ppcp-gateway' );
+			setupAndLoad();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			$( 'form.checkout' ).triggerHandler( 'checkout_place_order' );
+			selectGateway( 'ppcp-credit-card-gateway' );
+			$( 'input[value="ppcp-credit-card-gateway"]' ).trigger( 'change' );
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'resets once, and again only after another PayPal request', async () => {
+			renderClassicCheckout( 'cod' );
+			setupAndLoad();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			$( 'form.checkout' ).triggerHandler( 'checkout_place_order' );
+			$( 'form.checkout' ).triggerHandler( 'checkout_place_order' );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+
+			$( 'form.checkout' ).triggerHandler( 'checkout_place_order' );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 2 );
+		} );
+
+		it( 'does not reset for another gateway before a PayPal request succeeds', async () => {
+			const setGateway = setupBlocksStore( 'ppcp-gateway' );
+			renderClassicCheckout( 'cod' );
+			setupAndLoad();
+
+			$( 'form.checkout' ).triggerHandler( 'checkout_place_order' );
+			setGateway( 'stripe' );
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'resets when the Checkout block changes to another gateway', async () => {
+			const setGateway = setupBlocksStore( 'ppcp-gateway' );
+			setupAndLoad();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			setGateway( 'ppcp-gateway' );
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+
+			setGateway( 'stripe' );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'does not reset while the Checkout block keeps another gateway active', async () => {
+			const setGateway = setupBlocksStore( 'stripe' );
+			setupAndLoad();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			setGateway( 'stripe' );
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'keeps the session when the Checkout block moves between PayPal gateways', async () => {
+			const setGateway = setupBlocksStore( 'ppcp-gateway' );
+			setupAndLoad();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			setGateway( 'ppcp-credit-card-gateway' );
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'does not fail the request when the checkout scripts are unavailable', async () => {
+			delete window.jQuery;
+			window.wp = {
+				data: {
+					select: () => {
+						throw new Error( 'No store' );
+					},
+					subscribe: jest.fn(),
+				},
+			};
+			setupAndLoad();
+
+			const response = await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			expect( response.ok ).toBe( true );
+		} );
+
+		it( 'gets a new session for the other gateway with the real session API', async () => {
+			const flushMock = jest
+				.fn()
+				.mockResolvedValueOnce( {
+					sessionId: 'paypal-id',
+					outcome: 'ok',
+				} )
+				.mockResolvedValueOnce( {
+					sessionId: 'paypal-id',
+					outcome: 'ok',
+				} )
+				.mockResolvedValueOnce( {
+					sessionId: 'new-id',
+					outcome: 'ok',
+				} );
+			window.Blackbox = {
+				configure: jest.fn(),
+				init: jest.fn(),
+				flush: flushMock,
+				reset: jest.fn( () => Promise.resolve() ),
+			};
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/blackbox-init' );
+				require( '../../assets/js/paypal-express' );
+			} );
+
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+			const result =
+				await window.wcFraudProtection.acquireSessionIdResult();
+
+			expect(
+				JSON.parse( fetchCalls[ 0 ].init.body )
+					.wc_fraud_protection_session_id
+			).toBe( 'paypal-id' );
+			expect( result ).toEqual( { sessionId: 'new-id', error: '' } );
+			delete window.Blackbox;
 		} );
 	} );
 

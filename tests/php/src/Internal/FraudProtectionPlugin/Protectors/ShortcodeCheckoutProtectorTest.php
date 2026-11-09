@@ -11,8 +11,14 @@ use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\VerifyResult;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 
 /**
@@ -99,6 +105,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		wc_clear_notices();
 
 		remove_all_actions( 'woocommerce_after_checkout_validation' );
+		remove_all_actions( 'woocommerce_before_checkout_process' );
 		remove_all_actions( 'woocommerce_checkout_process' );
 		remove_action( 'woocommerce_checkout_before_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ), 10 );
 		remove_action( 'woocommerce_checkout_order_review', array( $this->sut, 'enqueue_shortcode_checkout_script' ), 10 );
@@ -292,6 +299,16 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Fire the hooks that WC_Checkout::process_checkout() fires before it validates the checkout.
+	 */
+	private function run_checkout_process_hooks(): void {
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_before_checkout_process' );
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_checkout_process' );
+	}
+
+	/**
 	 * Run WC core's checkout validation, which fires woocommerce_after_checkout_validation
 	 * (where the SUT is hooked) with whatever errors core produced.
 	 *
@@ -341,9 +358,13 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$this->sut->register();
 
 		$this->assertSame(
-			PHP_INT_MAX,
+			10,
+			has_action( 'woocommerce_before_checkout_process', array( $this->sut, 'register_checkout_validation_verifier' ) ),
+			'woocommerce_before_checkout_process should start the verification'
+		);
+		$this->assertFalse(
 			has_action( 'woocommerce_checkout_process', array( $this->sut, 'register_checkout_validation_verifier' ) ),
-			'woocommerce_checkout_process hook should be registered at PHP_INT_MAX'
+			'woocommerce_checkout_process can fire outside the checkout process, so it should not start the verification'
 		);
 		$this->assertFalse(
 			has_action( 'woocommerce_after_checkout_validation', array( $this->sut, 'verify_and_block' ) ),
@@ -431,6 +452,156 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
 
 		$this->assertEmpty( $errors->get_error_codes(), 'Direct validation should remain valid without verification.' );
+	}
+
+	/**
+	 * @testdox Checkout validation hooks fired outside the checkout process do not verify, and are logged.
+	 */
+	public function test_validation_hooks_outside_checkout_process_do_not_verify(): void {
+		$this->spy_on_controller_logging();
+		$_POST['wc_fraud_protection_session_id'] = 'checkout-session';
+
+		$this->session_verifier
+			->expects( $this->never() )
+			->method( 'verify_session' );
+
+		$this->sut->register();
+
+		$pre_check = function (): void {
+			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+			do_action( 'woocommerce_checkout_process' );
+		};
+		add_action( 'wc_ajax_gateway_form_check', $pre_check );
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'wc_ajax_gateway_form_check' );
+		remove_action( 'wc_ajax_gateway_form_check', $pre_check );
+
+		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
+
+		$this->assertEmpty( $errors->get_error_codes(), 'The form check should not report a decision.' );
+		$this->assertLogged(
+			'info',
+			'Checkout validation ran outside the checkout process',
+			array(
+				'event_source' => 'shortcode_checkout',
+				'hooks'        => array( 'wc_ajax_gateway_form_check', 'woocommerce_checkout_process' ),
+			)
+		);
+	}
+
+	/**
+	 * @testdox The checkout process is not logged as validation outside of it.
+	 */
+	public function test_checkout_process_is_not_logged_as_outside_validation(): void {
+		$logger = $this->spy_on_controller_logging();
+
+		$this->sut->register();
+		$this->run_checkout_process_hooks();
+
+		$this->assertEmpty( $logger->entries );
+	}
+
+	/**
+	 * @testdox The real checkout process verifies the session once after a form check, and enforces the decision.
+	 *
+	 * WC_Checkout::process_checkout() defines WOOCOMMERCE_CHECKOUT, which would change is_checkout() for later tests.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_real_checkout_process_verifies_once_after_form_check(): void {
+		update_option( 'woocommerce_enable_guest_checkout', 'yes' );
+		update_option( 'woocommerce_cheque_settings', array( 'enabled' => 'yes' ) );
+		WC()->payment_gateways()->init();
+		$this->product = \WC_Helper_Product::create_simple_product( true, array( 'virtual' => true ) );
+		WC()->cart->add_to_cart( $this->product->get_id() );
+		$orders_before = wc_orders_count( 'pending' );
+
+		$_POST = array(
+			SessionVerifier::SESSION_ID_FIELD    => 'checkout-session',
+			'billing_first_name'                 => 'Test',
+			'billing_last_name'                  => 'Shopper',
+			'billing_country'                    => 'US',
+			'billing_address_1'                  => '1 Main St',
+			'billing_city'                       => 'New York',
+			'billing_state'                      => 'NY',
+			'billing_postcode'                   => '10012',
+			'billing_phone'                      => '5555550100',
+			'billing_email'                      => 'shopper@example.com',
+			'payment_method'                     => 'cheque',
+			'woocommerce-process-checkout-nonce' => wp_create_nonce( 'woocommerce-process_checkout' ),
+		);
+		// phpcs:ignore WordPress.Security.NonceVerification, Generic.Formatting.MultipleStatementAlignment.NotSameWarning -- Test supplies the checkout request.
+		$_REQUEST = $_POST;
+
+		$verifications = 0;
+		$api_client    = $this->createMock( ApiClient::class );
+		$api_client->method( 'verify' )->willReturnCallback(
+			function () use ( &$verifications ) {
+				++$verifications;
+				return VerifyResult::create( FraudDecision::Block, 'checkout-session' );
+			}
+		);
+
+		$decision_handler = $this->createMock( DecisionHandler::class );
+		$decision_handler->method( 'prepare_verification' )->willReturn(
+			array(
+				'context'      => array(),
+				'matched_rule' => null,
+			)
+		);
+		$decision_handler->method( 'apply_decision' )->willReturn( FraudDecision::Block );
+
+		$session_verifier = new SessionVerifier();
+		$session_verifier->init(
+			$this->createMock( SessionDataCollector::class ),
+			$api_client,
+			$decision_handler,
+			$this->createMock( PaymentDataResolver::class ),
+			new SessionIdNormalizer()
+		);
+		$this->sut->init( $session_verifier, $this->blocked_session_message, $this->blackbox_script_handler );
+		$this->sut->register();
+
+		// The request that checks the form fires these hooks and creates no order.
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_checkout_process' );
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_after_checkout_validation', array( 'billing_country' => 'US' ), new \WP_Error() );
+
+		$this->assertSame( 0, $verifications, 'The form check should not verify the session.' );
+
+		WC()->checkout()->process_checkout();
+
+		$this->assertSame( 1, $verifications, 'The checkout process should verify the session once.' );
+		$this->assertStringContainsString( 'We are unable to process this request online', wp_json_encode( wc_get_notices( 'error' ) ) );
+		$this->assertSame( $orders_before, wc_orders_count( 'pending' ), 'A blocked checkout should not create an order.' );
+	}
+
+	/**
+	 * @testdox verify_and_block() skips verification when core only updates the checkout totals.
+	 */
+	public function test_skips_verify_when_checkout_only_updates_totals(): void {
+		$this->session_verifier
+			->expects( $this->never() )
+			->method( 'verify_session' );
+
+		$errors = new \WP_Error();
+		$this->sut->verify_and_block( array( 'woocommerce_checkout_update_totals' => true ), $errors );
+
+		$this->assertEmpty( $errors->get_error_codes() );
+	}
+
+	/**
+	 * @testdox verify_and_block() verifies when the checkout does not only update the totals.
+	 */
+	public function test_verifies_when_checkout_does_not_only_update_totals(): void {
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block( array( 'woocommerce_checkout_update_totals' => false ), new \WP_Error() );
 	}
 
 	/**
@@ -522,8 +693,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 				wc_add_notice( 'Mobile number is required.', 'error' );
 			}
 		);
-		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-		do_action( 'woocommerce_checkout_process' );
+		$this->run_checkout_process_hooks();
 
 		// Valid data, so the only blocking signal is the notice above.
 		$this->run_checkout_validation( array( 'billing_country' => 'US' ) );
@@ -556,8 +726,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->sut->register();
-		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-		do_action( 'woocommerce_checkout_process' );
+		$this->run_checkout_process_hooks();
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
 
@@ -582,8 +751,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 		add_filter( 'woocommerce_add_error', '__return_empty_string' );
 
 		$this->sut->register();
-		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-		do_action( 'woocommerce_checkout_process' );
+		$this->run_checkout_process_hooks();
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'XX' ) );
 
@@ -611,8 +779,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 
 		$this->sut->register();
-		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-		do_action( 'woocommerce_checkout_process' );
+		$this->run_checkout_process_hooks();
 
 		$this->assertSame(
 			PHP_INT_MAX,
@@ -651,8 +818,7 @@ class ShortcodeCheckoutProtectorTest extends FraudProtectionUnitTestCase {
 			->willReturn( FraudDecision::Allow );
 
 		$this->sut->register();
-		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-		do_action( 'woocommerce_checkout_process' );
+		$this->run_checkout_process_hooks();
 
 		$errors = $this->run_checkout_validation( array( 'billing_country' => 'US' ) );
 

@@ -389,6 +389,216 @@ describe( 'blackbox-init', () => {
 		} );
 	} );
 
+	describe( 'a session ID that was already handed out', () => {
+		function flushReturns( ...sessionIds ) {
+			sessionIds.forEach( ( sessionId ) => {
+				mockFlush.mockImplementationOnce( () =>
+					flushed( { sessionId } )
+				);
+			} );
+		}
+
+		it( 'is replaced with the ID of a new session', async () => {
+			flushReturns( 'used-id', 'used-id', 'new-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( mockReset.mock.invocationCallOrder[ 0 ] ).toBeLessThan(
+				mockFlush.mock.invocationCallOrder[ 2 ]
+			);
+		} );
+
+		it( 'is replaced for callers of the public acquireSessionId()', async () => {
+			flushReturns( 'used-id', 'used-id', 'new-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionId();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionId()
+			).resolves.toBe( 'new-id' );
+		} );
+
+		it( 'is not repeated after a reset that the attempt asked for', async () => {
+			flushReturns( 'first-id', 'second-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+			window.wcFraudProtection.reset();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'second-id', error: '' } );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'is not shared by concurrent acquisitions', async () => {
+			flushReturns( 'same-id', 'same-id', 'new-id' );
+			setupAndLoad();
+
+			const results = await Promise.all( [
+				window.wcFraudProtection.acquireSessionIdResult(),
+				window.wcFraudProtection.acquireSessionIdResult(),
+			] );
+
+			expect( results.map( ( result ) => result.sessionId ) ).toEqual( [
+				'same-id',
+				'new-id',
+			] );
+		} );
+
+		it( 'is replaced when a prepared session ID was already taken', async () => {
+			mockGetSessionId.mockResolvedValueOnce( 'taken-id' );
+			flushReturns( 'taken-id', 'new-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			window.wcFraudProtection.takePreparedSessionId();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+		} );
+
+		it( 'is replaced when a prepared session ID got too old', async () => {
+			mockGetSessionId.mockResolvedValueOnce( 'old-id' );
+			flushReturns( 'old-id', 'new-id' );
+			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+			jest.advanceTimersByTime( 10 * 60 * 1000 );
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+		} );
+
+		it( 'gives the new session only what is left of the deadline', async () => {
+			mockFlush.mockImplementationOnce( () =>
+				flushed( { sessionId: 'used-id' } )
+			);
+			mockFlush.mockImplementationOnce( () => {
+				jest.advanceTimersByTime( 1000 );
+				return flushed( { sessionId: 'used-id' } );
+			} );
+			mockFlush.mockImplementationOnce( () =>
+				flushed( { sessionId: 'new-id' } )
+			);
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			expect( mockFlush ).toHaveBeenNthCalledWith( 2, {
+				deadlineMs: 3000,
+			} );
+			expect( mockFlush ).toHaveBeenNthCalledWith( 3, {
+				deadlineMs: 2000,
+			} );
+		} );
+
+		it.each( [
+			[
+				'the new session has the same ID',
+				() => flushed( { sessionId: 'used-id' } ),
+			],
+			[
+				'flush() returns no session ID',
+				() => flushed( { sessionId: '', outcome: 'timeout' } ),
+			],
+			[
+				'flush() rejects',
+				() => Promise.reject( new Error( 'SDK error' ) ),
+			],
+		] )( 'reports `reused` when %s', async ( _, secondFlush ) => {
+			flushReturns( 'used-id', 'used-id' );
+			mockFlush.mockImplementationOnce( secondFlush );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'reused' } );
+		} );
+
+		it( 'reports `reused` when Blackbox.reset is missing', async () => {
+			setupAndLoad();
+			delete window.Blackbox.reset;
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'reused' } );
+			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+		} );
+
+		it.each( [
+			[ 'rejects', () => Promise.reject( new Error( 'reset error' ) ) ],
+			[
+				'throws',
+				() => {
+					throw new Error( 'reset error' );
+				},
+			],
+		] )(
+			'reports `reused` when Blackbox.reset() %s',
+			async ( _, implementation ) => {
+				mockReset.mockImplementationOnce( implementation );
+				setupAndLoad();
+				await window.wcFraudProtection.acquireSessionIdResult();
+
+				await expect(
+					window.wcFraudProtection.acquireSessionIdResult()
+				).resolves.toEqual( { sessionId: '', error: 'reused' } );
+				expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+			}
+		);
+
+		it( 'reports `reused` by the deadline when Blackbox.reset() never settles', async () => {
+			mockReset.mockReturnValueOnce( new Promise( () => {} ) );
+			mockFlush.mockImplementationOnce( () =>
+				flushed( { sessionId: 'used-id' } )
+			);
+			mockFlush.mockImplementationOnce( () => {
+				jest.advanceTimersByTime( 1000 );
+				return flushed( { sessionId: 'used-id' } );
+			} );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			const result = window.wcFraudProtection.acquireSessionIdResult();
+			await flushPromises();
+			jest.advanceTimersByTime( 2000 );
+
+			await expect( result ).resolves.toEqual( {
+				sessionId: '',
+				error: 'reused',
+			} );
+			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+		} );
+
+		it( 'reports `reused` without another flush when the deadline has passed', async () => {
+			mockFlush.mockImplementationOnce( () =>
+				flushed( { sessionId: 'used-id' } )
+			);
+			mockFlush.mockImplementationOnce( () => {
+				jest.advanceTimersByTime( 3000 );
+				return flushed( { sessionId: 'used-id', outcome: 'timeout' } );
+			} );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'reused' } );
+			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
+		} );
+	} );
+
 	describe( 'reset', () => {
 		it( 'calls Blackbox.reset() when available', () => {
 			setupAndLoad();

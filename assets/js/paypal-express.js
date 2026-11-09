@@ -3,6 +3,10 @@
  *
  * Injects the browser session into supported PayPal requests. Errors
  * remain fail open and never prevent the original Fetch call.
+ *
+ * After a successful request, the session stays for the PayPal payment that
+ * continues it. When the shopper goes on with another gateway instead, for
+ * example after closing PayPal, a new session is started for that payment.
  */
 ( function () {
 	if ( ! window.wcFraudProtection ) {
@@ -15,7 +19,10 @@
 		'ppc-create-setup-token',
 		'ppc-vault-create-order',
 	];
+	const PAYPAL_GATEWAY_PREFIX = 'ppcp-';
+	const PAYMENT_STORE_KEY = 'wc/store/payment';
 	let resetBeforeNextPayPalRequest = false;
+	let isWatchingGateway = false;
 
 	function getEndpoint( resource ) {
 		const url =
@@ -32,6 +39,101 @@
 			if ( typeof fp.reset === 'function' ) {
 				fp.reset();
 			}
+		} catch {
+			// Fail open.
+		}
+	}
+
+	/**
+	 * Start a new session when another gateway takes over from PayPal.
+	 *
+	 * @param {*} gateway The gateway the shopper is using now.
+	 */
+	function resetForGateway( gateway ) {
+		if (
+			! resetBeforeNextPayPalRequest ||
+			typeof gateway !== 'string' ||
+			! gateway ||
+			gateway.startsWith( PAYPAL_GATEWAY_PREFIX )
+		) {
+			return;
+		}
+
+		resetBeforeNextPayPalRequest = false;
+		resetSession( window.wcFraudProtection );
+	}
+
+	/**
+	 * Watch the classic checkout and pay-for-order gateway selection.
+	 */
+	function watchClassicGateway() {
+		const $ = window.jQuery;
+		if ( typeof $ !== 'function' ) {
+			return;
+		}
+
+		const resetForSelectedGateway = function () {
+			resetForGateway(
+				$( 'input[name="payment_method"]:checked' ).val()
+			);
+		};
+
+		$( document.body ).on(
+			'change',
+			'input[name="payment_method"]',
+			resetForSelectedGateway
+		);
+		$( 'form.checkout' ).on(
+			'checkout_place_order',
+			resetForSelectedGateway
+		);
+	}
+
+	/**
+	 * Watch the Checkout block's active payment method.
+	 */
+	function watchBlocksGateway() {
+		const data = window.wp && window.wp.data;
+		if ( ! data || ! data.subscribe || ! data.select ) {
+			return;
+		}
+
+		const getActiveGateway = function () {
+			const store = data.select( PAYMENT_STORE_KEY );
+			return store && store.getActivePaymentMethod
+				? store.getActivePaymentMethod()
+				: '';
+		};
+
+		let activeGateway = getActiveGateway();
+		data.subscribe( function () {
+			try {
+				const gateway = getActiveGateway();
+				if ( gateway !== activeGateway ) {
+					activeGateway = gateway;
+					resetForGateway( gateway );
+				}
+			} catch {
+				// Fail open.
+			}
+		}, PAYMENT_STORE_KEY );
+	}
+
+	/**
+	 * Start watching for another gateway, once a request kept its session.
+	 *
+	 * Waits for that request because the checkout may not be set up when this
+	 * script loads, and pages without a PayPal payment have nothing to watch.
+	 */
+	function watchGateway() {
+		if ( isWatchingGateway ) {
+			return;
+		}
+
+		isWatchingGateway = true;
+		try {
+			watchClassicGateway();
+			watchBlocksGateway();
 		} catch {
 			// Fail open.
 		}
@@ -93,6 +195,7 @@
 			resetSession( fp );
 		} else {
 			resetBeforeNextPayPalRequest = true;
+			watchGateway();
 		}
 
 		return response;
