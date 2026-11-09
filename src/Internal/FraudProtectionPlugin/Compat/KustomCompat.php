@@ -26,6 +26,11 @@ defined( 'ABSPATH' ) || exit;
  * version 2.24.1 Kustom stores the block's extension data in the WooCommerce
  * session and sends it with that request. kustom-blocks-checkout.js keeps the
  * session ID in that data, and BlocksCheckoutProtector reads it as usual.
+ *
+ * Limitation: the browser is not told when Kustom's servers use the session ID,
+ * so it does not replace the ID after an attempt. Later attempts that carry the
+ * same ID are verified without a session until the ID expires and the page
+ * prepares a new one.
  */
 class KustomCompat {
 
