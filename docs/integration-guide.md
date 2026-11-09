@@ -160,6 +160,11 @@ use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 wc_get_container()->get( GatewayPaymentData::class )->register_resolver(
 	'my_gateway',
 	function ( array $payment_fields, PaymentMethodData $resolved ): PaymentMethodData {
+		if ( $resolved->to_array()['is_saved_payment_method'] ) {
+			return $resolved->with_transaction_mode( PaymentMode::Live )
+				->with_merchant_identifier( 'acct_123', 'account' );
+		}
+
 		$instrument = PaymentInstrumentData::from_array(
 			array(
 				'brand' => $payment_fields['my_gateway_card_brand'] ?? null,
@@ -172,7 +177,7 @@ wc_get_container()->get( GatewayPaymentData::class )->register_resolver(
 );
 ```
 
-The plugin calls the resolver only for attempts paid with your gateway. `$payment_fields` holds the gateway fields submitted with the attempt, or the payment data you passed to `verify_request()`. `$resolved` is pre-filled from the WooCommerce payment token when the shopper pays with a saved method. Return `null` to keep it. If the resolver throws, or returns anything other than a `PaymentMethodData` for your gateway, the plugin keeps `$resolved`.
+The plugin calls the resolver only for attempts paid with your gateway. `$payment_fields` holds the gateway fields submitted with the attempt, or the payment data you passed to `verify_request()`. `$resolved` is pre-filled from the WooCommerce payment token when the shopper pays with a saved method, so the example keeps it and adds only what the token doesn't hold. Return `null` to keep it unchanged. If the resolver throws, or returns anything other than a `PaymentMethodData` for your gateway, the plugin keeps `$resolved`.
 
 ### Checkout requests
 
