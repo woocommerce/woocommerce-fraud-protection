@@ -97,7 +97,7 @@ class ExtensionNativeSupport {
 			 * gateways declare their integration through `WC_Payment_Gateway::supports()` instead.
 			 * A non-array result keeps every layer on; invalid entries are skipped.
 			 *
-			 * @since 0.3.1
+			 * @since 0.3.2
 			 *
 			 * @param array<string, string[]> $integrations Declared integrations keyed by plugin slug. Default empty.
 			 */

@@ -30,7 +30,7 @@ defined( 'ABSPATH' ) || exit;
  * `wc_get_container()->get( GatewayPaymentData::class )` rather than constructing it:
  * the container supplies its dependencies through `init()`.
  *
- * @since 0.3.1
+ * @since 0.3.2
  */
 class GatewayPaymentData {
 
@@ -97,7 +97,7 @@ class GatewayPaymentData {
 	 * @param string   $gateway_id ID of the gateway, as in the attempt's payment method, or a prefix followed by `*`.
 	 * @param callable $resolver   Receives `array $payment_fields, PaymentMethodData $resolved` and returns `?PaymentMethodData`.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function register_resolver( string $gateway_id, callable $resolver ): void {
 		$this->resolvers[ $gateway_id ] = $resolver;

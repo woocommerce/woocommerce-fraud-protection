@@ -64,7 +64,7 @@ class FP_Example_Fraud_Protection {
 	 * Fraud Protection is optional: without it the gateway works, unprotected.
 	 */
 	public function register(): void {
-		// GatewayRequestVerifier needs Fraud Protection 0.3.1 or later.
+		// GatewayRequestVerifier needs Fraud Protection 0.3.2 or later.
 		if ( ! class_exists( GatewayRequestVerifier::class ) ) {
 			return;
 		}

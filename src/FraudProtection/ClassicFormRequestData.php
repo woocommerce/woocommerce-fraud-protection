@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
  *
  * The class is stateless; create it with `new` or resolve it from the WooCommerce container.
  *
- * @since 0.3.1
+ * @since 0.3.2
  */
 class ClassicFormRequestData {
 
@@ -35,7 +35,7 @@ class ClassicFormRequestData {
 	 *
 	 * @return mixed The submitted session ID, or an empty string when the field is absent.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function get_submitted_session_id(): mixed {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is the caller's responsibility.
@@ -61,7 +61,7 @@ class ClassicFormRequestData {
 	 * @param array $form_data Submitted form data: WooCommerce's posted checkout data, or `$_POST` for a form the caller handles itself.
 	 * @return array Request data with `payment_method`, `payment_data`, and when present `billing_address` and `shipping_address`.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function build_request_data( array $form_data ): array {
 		$request_data = array(

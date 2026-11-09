@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  * Holds the decision for the request and keeps it, through {@see reuse_decision_for()}, for the
  * WooCommerce submission that completes the same attempt.
  *
- * @since 0.3.1
+ * @since 0.3.2
  */
 final class VerifiedRequest {
 
@@ -39,7 +39,7 @@ final class VerifiedRequest {
 	 *
 	 * @return FraudDecision `FraudDecision::Allow` or `FraudDecision::Block`.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function get_decision(): FraudDecision {
 		return $this->decision;
@@ -50,7 +50,7 @@ final class VerifiedRequest {
 	 *
 	 * @return bool True for a Block decision.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function is_blocked(): bool {
 		return FraudDecision::Block === $this->decision;
@@ -73,7 +73,7 @@ final class VerifiedRequest {
 	 * @param string $reference The reference your server created for this attempt.
 	 * @return bool Whether the decision was kept.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function reuse_decision_for( string $reference ): bool {
 		return ( $this->store_for_reuse )( $reference );

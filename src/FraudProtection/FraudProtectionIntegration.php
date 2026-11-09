@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) || exit;
  * Payment gateways declare their integration through `WC_Payment_Gateway::supports()`
  * instead; see {@see FraudProtectionFeature}.
  *
- * @since 0.3.1
+ * @since 0.3.2
  */
 final class FraudProtectionIntegration {
 
@@ -38,14 +38,14 @@ final class FraudProtectionIntegration {
 	 * `SessionVerifier` before the payment method changes, and stops the change on a Block
 	 * decision.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public const CHANGE_PAYMENT_METHOD = 'change_payment_method';
 
 	/**
 	 * Every integration an extension can declare.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public const ALL = array( self::CHANGE_PAYMENT_METHOD );
 }

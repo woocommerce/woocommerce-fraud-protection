@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) || exit;
  * Compatibility code that runs before a gateway is selected, such as script loading and
  * PayPal's create-order requests, asks only the main gateway.
  *
- * @since 0.3.1
+ * @since 0.3.2
  */
 final class FraudProtectionFeature {
 
@@ -37,7 +37,7 @@ final class FraudProtectionFeature {
 	 * the payment type, instrument, transaction mode and merchant identifier for its own
 	 * attempts. The built-in payment-data resolver for the gateway stands aside.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public const PAYMENT_DATA = 'fraud_protection_payment_data';
 
@@ -60,7 +60,7 @@ final class FraudProtectionFeature {
 	 * together: with only one, setup-token requests on that feature's surfaces are still
 	 * verified by the plugin, without the browser session.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public const CHECKOUT = 'fraud_protection_checkout';
 
@@ -77,7 +77,7 @@ final class FraudProtectionFeature {
 	 * through `woocommerce_fraud_protection_skip_session_verify`. The built-in Stripe
 	 * setup-intent layer and the PayPal Payments script layer stand aside on those forms.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public const ADD_PAYMENT_METHOD = 'fraud_protection_add_payment_method';
 
@@ -88,14 +88,14 @@ final class FraudProtectionFeature {
 	 * session ID to the Store API checkout request under the `woocommerce/fraud-protection`
 	 * extension namespace. The built-in express checkout script for the gateway stands aside.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public const EXPRESS_CHECKOUT = 'fraud_protection_express_checkout';
 
 	/**
 	 * Every feature a gateway can declare.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public const ALL = array( self::PAYMENT_DATA, self::CHECKOUT, self::ADD_PAYMENT_METHOD, self::EXPRESS_CHECKOUT );
 }

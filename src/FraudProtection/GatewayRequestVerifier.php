@@ -37,7 +37,7 @@ defined( 'ABSPATH' ) || exit;
  * `wc_get_container()->get( GatewayRequestVerifier::class )` rather than constructing it:
  * the container supplies its dependencies through `init()`.
  *
- * @since 0.3.1
+ * @since 0.3.2
  */
 class GatewayRequestVerifier {
 
@@ -130,7 +130,7 @@ class GatewayRequestVerifier {
 	 * @param mixed  $session_id   The session ID the browser sent. Null reads it, or the reason the browser reports for a missing one, from the request body under {@see SessionVerifier::SESSION_ID_FIELD}: a form field, or a top-level property of a JSON body.
 	 * @return VerifiedRequest The decision, which the submission that completes the attempt can reuse.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function verify_request( string $source, string $gateway_id, array $payment_data = array(), int $order_id = 0, mixed $session_id = null ): VerifiedRequest {
 		$request_data = array(
@@ -211,7 +211,7 @@ class GatewayRequestVerifier {
 	 * @param string   $gateway_id       ID of the gateway, as in the submission's payment method, or a prefix followed by `*`.
 	 * @param callable $reference_reader Receives `array $payment_data, array $request_data, string $source` and returns the reference as a string.
 	 *
-	 * @since 0.3.1
+	 * @since 0.3.2
 	 */
 	public function register_reference_reader( string $gateway_id, callable $reference_reader ): void {
 		$this->reference_readers[ $gateway_id ] = $reference_reader;
