@@ -18,8 +18,6 @@ jobs:
     name: Build the plugin zip
     timeout-minutes: 10
     runs-on: ubuntu-24.04
-    outputs:
-      beta-builder: ${{ steps.beta-builder.outputs.status }}
 
     steps:
       - name: Checkout repository
@@ -58,7 +56,6 @@ jobs:
       # The Plugins screen then shows which pull request and commit a test site runs.
       # Only the header changes: the version the plugin reports at runtime stays the released one.
       - name: Mark the build with the pull request and commit
-        id: dev-version
         env:
           PR_NUMBER: ${{ github.event.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -70,7 +67,6 @@ jobs:
           fi
           dev_version="${version}-dev_PR-${PR_NUMBER}_commit-${PR_HEAD_SHA:0:7}"
           sed -i "s/^ \* Version: .*$/ * Version: ${dev_version}/" "$PLUGIN_SLUG.php"
-          echo "version=$dev_version" >> "$GITHUB_OUTPUT"
           echo "Build version: $dev_version" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build plugin zip
@@ -94,75 +90,6 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 14
-
-      # Jetpack Beta and Jurassic Ninja install the builds that the Jetpack Beta Builder serves.
-      # That needs the plugin to be registered there and a webhook secret in this repository.
-      # Until both exist, and on pull requests that get no secrets (forks, Dependabot), the
-      # steps below are skipped and the comment says the two options are not available.
-      - name: Check whether the Jetpack Beta Builder can take this build
-        id: beta-builder-check
-        env:
-          SECRET: ${{ secrets.FRAUD_PROTECTION_LIVE_BRANCH_SECRET }}
-        run: |
-          if [ -z "$SECRET" ]; then
-            status=no-secret
-          elif ! curl -sS --fail --max-time 30 https://betadownload.jetpack.me/plugins.json | jq -e --arg slug "$PLUGIN_SLUG" 'has($slug)' > /dev/null; then
-            status=not-registered
-          else
-            status=ready
-          fi
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo "Jetpack Beta Builder: $status" >> "$GITHUB_STEP_SUMMARY"
-
-      # The Beta Builder expects an artifact named "plugins" that holds <slug>-dev.zip
-      # with the plugin in a <slug>-dev folder, so the build installs next to a released copy.
-      - name: Repackage the zip for the Jetpack Beta Builder
-        if: steps.beta-builder-check.outputs.status == 'ready'
-        run: |
-          mkdir plugins
-          unzip -q "$PLUGIN_SLUG.zip" -d plugins
-          cd plugins
-          mv "$PLUGIN_SLUG" "$PLUGIN_SLUG-dev"
-          zip -q -r "$PLUGIN_SLUG-dev.zip" "$PLUGIN_SLUG-dev"
-          rm -r "$PLUGIN_SLUG-dev"
-
-      - name: Upload the zip for the Jetpack Beta Builder
-        if: steps.beta-builder-check.outputs.status == 'ready'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: plugins # The name the Jetpack Beta Builder looks for.
-          path: plugins
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 1
-
-      - name: Tell the Jetpack Beta Builder about the build
-        id: beta-builder
-        env:
-          CHECK_STATUS: ${{ steps.beta-builder-check.outputs.status }}
-          SECRET: ${{ secrets.FRAUD_PROTECTION_LIVE_BRANCH_SECRET }}
-          DEV_VERSION: ${{ steps.dev-version.outputs.version }}
-          PR_NUMBER: ${{ github.event.number }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          status=$CHECK_STATUS
-          if [ "$status" = ready ]; then
-            plugin_data=$(jq -cn --arg slug "$PLUGIN_SLUG" --arg version "$DEV_VERSION" '{ ($slug): { version: $version } }')
-            # GITHUB_REF is refs/pull/<number>/merge here, so the branch name is sent explicitly:
-            # it is what Jetpack Beta and Jurassic Ninja look the build up by.
-            if curl -sS --fail -L --max-time 120 -o /dev/null \
-              --url "https://betadownload.jetpack.me/gh-action.php?run_id=$GITHUB_RUN_ID&pr=$PR_NUMBER&commit=$GITHUB_SHA" \
-              --form-string "repo=$GITHUB_REPOSITORY" \
-              --form-string "branch=$PR_HEAD_REF" \
-              --form-string "plugins=$plugin_data" \
-              --form-string "secret=$SECRET"; then
-              status=sent
-            else
-              status=refused
-              echo "::warning::The Jetpack Beta Builder did not accept the build."
-            fi
-          fi
-          echo "status=$status" >> "$GITHUB_OUTPUT"
 
   comment:
     name: Comment on the pull request
@@ -215,53 +142,14 @@ jobs:
 
       - name: Write the comment
         env:
-          BETA_BUILDER: ${{ needs.build.outputs.beta-builder }}
           PLAYGROUND_SAMPLE_URL: ${{ steps.playground.outputs.sample_url }}
           PLAYGROUND_EMPTY_URL: ${{ steps.playground.outputs.empty_url }}
-          PR_NUMBER: ${{ github.event.number }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          # Keep the slashes of a branch name readable in the link, and encode everything else.
-          branch_in_url=$(jq -rn --arg ref "$PR_HEAD_REF" '$ref | @uri | gsub("%2F"; "/")')
-
-          case "$BETA_BUILDER" in
-            sent) ;;
-            no-secret) why="the secret was missing: it is not set up, or the pull request comes from a fork or from Dependabot, which never receive secrets." ;;
-            not-registered) why="the plugin was not registered." ;;
-            *) why="the Jetpack Beta Builder did not accept the build. See the [workflow run]($run_url)." ;;
-          esac
-
           {
             echo "### Test the build"
             echo
-            echo "#### Option 1. Jetpack Beta"
-            echo
-            if [ "$BETA_BUILDER" = sent ]; then
-              echo "- Install and activate [Jetpack Beta](https://jetpack.com/beta/#download-and-install)."
-              echo "- Use this build by searching for PR number \`$PR_NUMBER\` or branch name \`$PR_HEAD_REF\` in your-test.site/wp-admin/admin.php?page=jetpack-beta&plugin=$PLUGIN_SLUG"
-              echo
-              echo ":information_source: The build installs as a regular plugin. Where a host already runs Fraud Protection as a must-use plugin, the build takes over once it is active. A site that is connected to WordPress.com sends its payment attempts to the live fraud service, so use test data only."
-            else
-              echo ":construction: Not available yet. Jetpack Beta only installs builds that the Jetpack Beta Builder serves. For that, WooCommerce Fraud Protection has to be registered with the Jetpack Beta Builder, and this repository needs the \`FRAUD_PROTECTION_LIVE_BRANCH_SECRET\` secret. In this run, $why"
-              echo
-              echo "Until then, download \`playground-preview-$GITHUB_RUN_ID\` from the [workflow run]($run_url#artifacts), unzip it, and upload \`$PLUGIN_SLUG.zip\` on your test site under Plugins > Add Plugin > Upload Plugin. A site that is connected to WordPress.com sends its payment attempts to the live fraud service, so use test data only."
-            fi
-            echo
-            echo "#### Option 2. Jurassic Ninja - available for logged-in A12s"
-            echo
-            if [ "$BETA_BUILDER" = sent ]; then
-              echo ":warning: Log in at [jurassic.ninja](https://jurassic.ninja/) first. Without a login, the link below takes you to the Jurassic Ninja homepage and no site is created."
-              echo
-              echo ":rocket: [Launch a JN site with this branch and sample products](https://jurassic.ninja/create/?jetpack-beta&nojetpack&woocommerce&woocommerce-import-sample-data&branches.$PLUGIN_SLUG=$branch_in_url) :rocket:"
-              echo
-              echo ":information_source: The site may already run a released copy of Fraud Protection as a must-use plugin. The branch build is a regular plugin and takes over while it is active. If you connect the site to WordPress.com, it sends its payment attempts to the live fraud service, so use test data only."
-            else
-              echo ":construction: Not available yet. Jurassic Ninja installs a branch through Jetpack Beta, so it needs what Option 1 needs."
-            fi
-            echo
-            echo "#### Option 3. WordPress Playground - runs in your browser"
+            echo "#### WordPress Playground - runs in your browser"
             echo
             echo "- :test_tube: [Open with sample data]($PLAYGROUND_SAMPLE_URL): the Fraud prevention settings with made-up payment activity and custom rules."
             echo "- :seedling: [Open empty]($PLAYGROUND_EMPTY_URL): the same store with no payment activity and no rules."
