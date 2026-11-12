@@ -250,6 +250,12 @@
 		}
 	}
 
+	/**
+	 * Classify a PayPal response as a confirmed success, a failure, or unknown.
+	 *
+	 * @param {*} response The response.
+	 * @return {Promise<string>} `success`, `failure`, or `unknown`.
+	 */
 	async function classifyResponse( response ) {
 		if ( ! response || false === response.ok ) {
 			return 'failure';
@@ -257,7 +263,10 @@
 
 		try {
 			const data = await response.clone().json();
-			return data && false === data.success ? 'failure' : 'success';
+			if ( data && false === data.success ) {
+				return 'failure';
+			}
+			return data && true === data.success ? 'success' : 'unknown';
 		} catch {
 			return 'unknown';
 		}

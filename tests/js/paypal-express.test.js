@@ -743,6 +743,21 @@ describe( 'paypal-express fetch interceptor', () => {
 			expect( events ).toEqual( [ 'acquire:S1', 'reset', 'acquire:S2' ] );
 		} );
 
+		it.each( [
+			[ 'without success', {} ],
+			[ 'with a non-boolean success', { success: 'true' } ],
+			[ 'that is null', null ],
+		] )( 'keeps the session after a body %s', async ( _, data ) => {
+			originalFetch.mockResolvedValueOnce( paypalResponse( true, data ) );
+			setupAndLoad();
+
+			await fetchPayPalEndpoint( 'ppc-create-setup-token' );
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+
+			await fetchPayPalEndpoint( 'ppc-create-setup-token' );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
 		it( 'does not reset twice when retrying after a confirmed failure', async () => {
 			originalFetch.mockResolvedValueOnce(
 				paypalResponse( false, { success: false } )
@@ -804,6 +819,12 @@ describe( 'paypal-express fetch interceptor', () => {
 
 		it.each( [
 			[ 'a failed', paypalResponse( true, { success: false } ) ],
+			[ 'a body without success', paypalResponse( true, {} ) ],
+			[
+				'a non-boolean success',
+				paypalResponse( true, { success: 'true' } ),
+			],
+			[ 'a null body', paypalResponse( true, null ) ],
 			[
 				'an unreadable',
 				{
