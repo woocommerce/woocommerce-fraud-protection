@@ -792,4 +792,112 @@ describe( 'paypal-express fetch interceptor', () => {
 			delete window.Blackbox;
 		} );
 	} );
+
+	describe( 'request while the Checkout block processes an order', () => {
+		function setupCheckoutStore( {
+			isProcessing = true,
+			sessionId = 'checkout-id',
+		} = {} ) {
+			window.wp = {
+				data: {
+					select: ( store ) =>
+						'wc/store/checkout' === store
+							? {
+									isProcessing: () => isProcessing,
+									getExtensionData: () => ( {
+										'woocommerce/fraud-protection': {
+											blackbox_session_id: sessionId,
+										},
+									} ),
+							  }
+							: { getActivePaymentMethod: () => '' },
+					subscribe: jest.fn(),
+				},
+			};
+		}
+
+		function sentSessionId( call = 0 ) {
+			return JSON.parse( fetchCalls[ call ].init.body )
+				.wc_fraud_protection_session_id;
+		}
+
+		it.each( PROTECTED_ENDPOINTS )(
+			'sends the checkout session ID with %s',
+			async ( endpoint ) => {
+				setupCheckoutStore();
+				setupAndLoad();
+
+				await fetchPayPalEndpoint( endpoint );
+
+				expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+				expect( sentSessionId() ).toBe( 'checkout-id' );
+			}
+		);
+
+		it.each( [
+			[ 'is not processing', { isProcessing: false } ],
+			[ 'has no session ID', { sessionId: '' } ],
+		] )(
+			'acquires a session ID when the checkout %s',
+			async ( _, state ) => {
+				setupCheckoutStore( state );
+				setupAndLoad();
+
+				await fetchPayPalEndpoint( 'ppc-create-setup-token' );
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( sentSessionId() ).toBe( 'test-session-abc' );
+			}
+		);
+
+		it( 'does not reset or hand over the checkout session ID', async () => {
+			setupCheckoutStore( { isProcessing: false } );
+			setupAndLoad();
+			window.wcFraudProtection.handOverSessionId = jest.fn();
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			setupCheckoutStore();
+			await fetchPayPalEndpoint( 'ppc-create-setup-token' );
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+			expect(
+				window.wcFraudProtection.handOverSessionId
+			).not.toHaveBeenCalled();
+			expect( sentSessionId( 1 ) ).toBe( 'checkout-id' );
+		} );
+
+		it( 'shares the checkout session ID with the real session API', async () => {
+			const flushMock = jest.fn().mockResolvedValue( {
+				sessionId: 'checkout-id',
+				outcome: 'ok',
+			} );
+			window.Blackbox = {
+				configure: jest.fn(),
+				init: jest.fn(),
+				flush: flushMock,
+				reset: jest.fn( () => Promise.resolve() ),
+			};
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/blackbox-init' );
+				require( '../../assets/js/paypal-express' );
+			} );
+
+			const checkout =
+				await window.wcFraudProtection.acquireSessionIdResult();
+			setupCheckoutStore( { sessionId: checkout.sessionId } );
+			await fetchPayPalEndpoint( 'ppc-create-setup-token' );
+
+			expect( sentSessionId() ).toBe( 'checkout-id' );
+			expect( flushMock ).toHaveBeenCalledTimes( 1 );
+			expect( window.Blackbox.reset ).not.toHaveBeenCalled();
+			delete window.Blackbox;
+		} );
+	} );
 } );

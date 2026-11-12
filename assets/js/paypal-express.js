@@ -10,7 +10,9 @@
  *
  * The checkout that completes a setup-token or vault-order request reuses
  * that request's decision only with the same session ID, so after a
- * successful one, the ID is handed over to the next acquisition.
+ * successful one, the ID is handed over to the next acquisition. A request
+ * sent while the Checkout block processes an order, for example by PayPal's
+ * card fields, already has the checkout's ID, so it sends that one.
  */
 ( function () {
 	if ( ! window.wcFraudProtection ) {
@@ -29,6 +31,9 @@
 	];
 	const PAYPAL_GATEWAY_PREFIX = 'ppcp-';
 	const PAYMENT_STORE_KEY = 'wc/store/payment';
+	const CHECKOUT_STORE_KEY = 'wc/store/checkout';
+	// Where blocks-checkout.js keeps the checkout's session ID.
+	const EXTENSION_NAMESPACE = 'woocommerce/fraud-protection';
 	let resetBeforeNextPayPalRequest = false;
 	let isWatchingGateway = false;
 
@@ -49,6 +54,35 @@
 			}
 		} catch {
 			// Fail open.
+		}
+	}
+
+	/**
+	 * Read the session ID of the order that the Checkout block is processing.
+	 *
+	 * @return {string} Session ID, or an empty string when there is none.
+	 */
+	function getProcessingCheckoutSessionId() {
+		try {
+			const data = window.wp && window.wp.data;
+			const checkout =
+				data && data.select ? data.select( CHECKOUT_STORE_KEY ) : null;
+			if (
+				! checkout ||
+				typeof checkout.isProcessing !== 'function' ||
+				typeof checkout.getExtensionData !== 'function' ||
+				! checkout.isProcessing()
+			) {
+				return '';
+			}
+
+			const extensionData =
+				checkout.getExtensionData()[ EXTENSION_NAMESPACE ];
+			const sessionId =
+				extensionData && extensionData.blackbox_session_id;
+			return typeof sessionId === 'string' ? sessionId : '';
+		} catch {
+			return '';
 		}
 	}
 
@@ -187,17 +221,25 @@
 		resource,
 		init
 	) {
+		// The checkout has its own session ID for this attempt.
+		const checkoutSessionId = getProcessingCheckoutSessionId();
 		if ( resetBeforeNextPayPalRequest ) {
-			resetSession( fp );
+			if ( ! checkoutSessionId ) {
+				resetSession( fp );
+			}
 			resetBeforeNextPayPalRequest = false;
 		}
 
 		let sentSessionId = '';
 		try {
-			const result =
-				typeof fp.acquireSessionIdResult === 'function'
-					? await fp.acquireSessionIdResult()
-					: { sessionId: await fp.acquireSessionId(), error: '' };
+			let result;
+			if ( checkoutSessionId ) {
+				result = { sessionId: checkoutSessionId, error: '' };
+			} else if ( typeof fp.acquireSessionIdResult === 'function' ) {
+				result = await fp.acquireSessionIdResult();
+			} else {
+				result = { sessionId: await fp.acquireSessionId(), error: '' };
+			}
 			const body = JSON.parse( init.body );
 			body[ fp.config.sessionIdField ] = result.sessionId;
 			if (
@@ -228,7 +270,9 @@
 		} else {
 			resetBeforeNextPayPalRequest = true;
 			// Only a confirmed success has a decision for the checkout to reuse.
-			if ( 'success' === result ) {
+			// A checkout that is already processing sends the ID it has, so a
+			// hand-over would only wait for a later attempt.
+			if ( 'success' === result && ! checkoutSessionId ) {
 				handOverSessionId( fp, resource, sentSessionId );
 			}
 			watchGateway();
