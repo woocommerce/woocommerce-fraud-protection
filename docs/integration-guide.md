@@ -4,7 +4,7 @@ This guide is for payment gateways and other WooCommerce extensions that want to
 
 ## Do you need to integrate?
 
-Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. This built-in protection applies to every gateway on those flows, and no declaration turns it off. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no native integration. Providing the details of the payment method that each payment uses, such as the card brand and last four digits, still gives each verification better data (see [Payment data](#payment-data)).
+Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. This built-in protection applies to every gateway on those flows, and no declaration turns it off. When WooCommerce Subscriptions is active, its change-payment-method form is verified too. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no native integration. Providing the details of the payment method that each payment uses, such as the card brand and last four digits, still gives each verification better data (see [Payment data](#payment-data)).
 
 An extension needs a native integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. A native integration is code in your extension that protects those requests, and a declaration tells Fraud Protection that your extension has it.
 
@@ -24,7 +24,7 @@ Most gateways should provide [payment data](#payment-data). It needs only a reso
 |----------------|---------|---------|
 | Is a gateway and can provide the details of the payment method that each payment uses, such as the card brand and last four digits | `fraud_protection_payment_data` | [Payment data](#payment-data) |
 | Is a gateway that places or authorizes a purchase through its own requests, before or instead of the checkout submission | `fraud_protection_checkout` | [Checkout requests](#checkout-requests) |
-| Is a gateway that checks or saves a payment method through its own requests, outside a purchase | `fraud_protection_add_payment_method` | [Add payment method requests](#add-payment-method-requests) |
+| Is a gateway that checks or saves a payment method through its own requests, before the "Add payment method" or change-payment-method form is submitted | `fraud_protection_add_payment_method` | [Add payment method requests](#add-payment-method-requests) |
 | Is a gateway with express payment buttons that place the order through the Store API | `fraud_protection_express_checkout` | [Express checkout](#express-checkout) |
 | Is not a gateway and handles its own change-payment-method form | `change_payment_method` | [Change payment method forms](#change-payment-method-forms) |
 
@@ -219,6 +219,8 @@ The checkout that follows then posts `my_gateway_order_id`, where the reader you
 These requests include one that creates the order without `WC_Checkout::process_checkout()`, even when it fires WooCommerce's validation hooks: Fraud Protection doesn't verify it for you. They don't include an authorization that your provider's browser SDK performs before the normal checkout submission, because that submission is verified.
 
 ### Add payment method requests
+
+The submissions of the My Account "Add payment method" form and the WooCommerce Subscriptions change-payment-method form are already verified, before your gateway saves the payment method. A gateway that saves it only while handling that submission, such as in `add_payment_method()`, needs no integration for these forms. Declare this feature when your gateway checks or saves the payment method through its own request before the form is submitted, such as creating a setup intent, because the payment method can be saved before the submission is verified.
 
 **Declare:** `fraud_protection_add_payment_method` in the gateway's `$supports`.
 
