@@ -384,10 +384,14 @@ describe( 'pay-for-order', () => {
 		beforeEach( () => {
 			mockTakePreparedSessionId = jest.fn( () => 'sess-prepared' );
 			postedFields = [];
+			// Record every value of each field, so a repeated field shows up.
 			form.submit = jest.fn( () => {
-				postedFields.push(
-					Object.fromEntries( new window.FormData( form ).entries() )
-				);
+				const formData = new window.FormData( form );
+				const fields = {};
+				for ( const name of new Set( formData.keys() ) ) {
+					fields[ name ] = formData.getAll( name );
+				}
+				postedFields.push( fields );
 			} );
 		} );
 
@@ -415,7 +419,7 @@ describe( 'pay-for-order', () => {
 
 			expect( form.submit ).toHaveBeenCalledTimes( 1 );
 			expect( postedFields[ 0 ] ).toEqual( {
-				[ SESSION_ID_FIELD ]: 'sess-prepared',
+				[ SESSION_ID_FIELD ]: [ 'sess-prepared' ],
 			} );
 			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
 		} );
@@ -444,7 +448,7 @@ describe( 'pay-for-order', () => {
 			$( form ).trigger( 'submit' );
 
 			expect( postedFields[ 0 ] ).toEqual( {
-				[ SESSION_ID_ERROR_FIELD ]: 'not_ready',
+				[ SESSION_ID_ERROR_FIELD ]: [ 'not_ready' ],
 			} );
 		} );
 
@@ -465,7 +469,7 @@ describe( 'pay-for-order', () => {
 
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 			expect( postedFields[ 0 ] ).toEqual( {
-				[ SESSION_ID_FIELD ]: 'sess-pay-order',
+				[ SESSION_ID_FIELD ]: [ 'sess-pay-order' ],
 			} );
 		} );
 
@@ -483,7 +487,7 @@ describe( 'pay-for-order', () => {
 
 			expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
 			expect( postedFields[ 0 ] ).toEqual( {
-				[ SESSION_ID_FIELD ]: 'sess-acquired',
+				[ SESSION_ID_FIELD ]: [ 'sess-acquired' ],
 			} );
 		} );
 
@@ -491,12 +495,12 @@ describe( 'pay-for-order', () => {
 			[
 				'replaces an earlier reason with the prepared session ID',
 				'sess-prepared',
-				{ [ SESSION_ID_FIELD ]: 'sess-prepared' },
+				{ [ SESSION_ID_FIELD ]: [ 'sess-prepared' ] },
 			],
 			[
 				'keeps an earlier reason when no session ID is ready',
 				'',
-				{ [ SESSION_ID_ERROR_FIELD ]: 'timeout' },
+				{ [ SESSION_ID_ERROR_FIELD ]: [ 'timeout' ] },
 			],
 		] )( '%s', ( _, prepared, expected ) => {
 			mockTakePreparedSessionId.mockReturnValue( prepared );
@@ -532,7 +536,7 @@ describe( 'pay-for-order', () => {
 			expect( gatewayHandler ).toHaveBeenCalledTimes( 1 );
 			expect( form.submit ).toHaveBeenCalledTimes( 1 );
 			expect( postedFields[ 0 ] ).toEqual( {
-				[ SESSION_ID_FIELD ]: 'sess-pay-order',
+				[ SESSION_ID_FIELD ]: [ 'sess-pay-order' ],
 			} );
 		} );
 
@@ -556,11 +560,22 @@ describe( 'pay-for-order', () => {
 			$( form ).trigger( 'submit' );
 
 			expect( postedFields[ 0 ] ).toEqual( {
-				[ SESSION_ID_ERROR_FIELD ]: 'not_ready',
+				[ SESSION_ID_ERROR_FIELD ]: [ 'not_ready' ],
 			} );
 		} );
 
 		it( 'posts the form unchanged when wcFraudProtection is missing (fail-open)', () => {
+			loadScript();
+
+			$( form ).trigger( 'submit' );
+
+			expect( form.submit ).toHaveBeenCalledTimes( 1 );
+			expect( postedFields[ 0 ] ).toEqual( {} );
+		} );
+
+		it( 'posts the form unchanged when wcFraudProtection has no config (fail-open)', () => {
+			setupWithPreparedSessionId();
+			delete window.wcFraudProtection.config;
 			loadScript();
 
 			$( form ).trigger( 'submit' );

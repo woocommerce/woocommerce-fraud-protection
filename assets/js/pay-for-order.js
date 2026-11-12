@@ -208,8 +208,10 @@
 	$( form ).on( 'submit', function ( e ) {
 		const fraudProtection = window.wcFraudProtection;
 
+		// An error here would stop trigger() before it posts the form.
 		if (
 			! fraudProtection ||
+			! fraudProtection.config ||
 			( ! fraudProtection.acquireSessionIdResult &&
 				! fraudProtection.acquireSessionId )
 		) {
