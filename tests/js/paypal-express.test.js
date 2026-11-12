@@ -668,4 +668,128 @@ describe( 'paypal-express fetch interceptor', () => {
 			expect( response.clone ).toHaveBeenCalledTimes( 1 );
 		} );
 	} );
+
+	describe( 'session ID for the checkout that completes the request', () => {
+		function setupWithHandOver() {
+			setupAndLoad();
+			window.wcFraudProtection.handOverSessionId = jest.fn();
+			return window.wcFraudProtection.handOverSessionId;
+		}
+
+		it.each( [ 'ppc-create-setup-token', 'ppc-vault-create-order' ] )(
+			'is handed over after a successful %s request',
+			async ( endpoint ) => {
+				const handOverSessionId = setupWithHandOver();
+
+				await fetchPayPalEndpoint( endpoint );
+
+				expect( handOverSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( handOverSessionId ).toHaveBeenCalledWith(
+					'test-session-abc'
+				);
+			}
+		);
+
+		it( 'is not handed over after a create-order request', async () => {
+			const handOverSessionId = setupWithHandOver();
+
+			await fetchPayPalEndpoint( 'ppc-create-order' );
+
+			expect( handOverSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it.each( [
+			[ 'a failed', paypalResponse( true, { success: false } ) ],
+			[
+				'an unreadable',
+				{
+					ok: true,
+					clone: () => ( {
+						json: () => Promise.reject( new Error( 'Unreadable' ) ),
+					} ),
+				},
+			],
+		] )( 'is not handed over after %s response', async ( _, response ) => {
+			originalFetch.mockResolvedValueOnce( response );
+			const handOverSessionId = setupWithHandOver();
+
+			await fetchPayPalEndpoint( 'ppc-vault-create-order' );
+
+			expect( handOverSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'is not handed over when the request sent no session ID', async () => {
+			mockAcquireSessionId.mockResolvedValueOnce( '' );
+			const handOverSessionId = setupWithHandOver();
+
+			await fetchPayPalEndpoint( 'ppc-vault-create-order' );
+
+			expect( handOverSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'does not fail the request when the hand-over throws', async () => {
+			const handOverSessionId = setupWithHandOver();
+			handOverSessionId.mockImplementation( () => {
+				throw new Error( 'Hand-over failed' );
+			} );
+
+			const response = await fetchPayPalEndpoint(
+				'ppc-vault-create-order'
+			);
+
+			expect( response.ok ).toBe( true );
+		} );
+
+		it( 'is sent once by the checkout with the real session API', async () => {
+			const flushMock = jest
+				.fn()
+				.mockResolvedValueOnce( {
+					sessionId: 'vault-id',
+					outcome: 'ok',
+				} )
+				.mockResolvedValueOnce( {
+					sessionId: 'vault-id',
+					outcome: 'ok',
+				} )
+				.mockResolvedValueOnce( {
+					sessionId: 'vault-id',
+					outcome: 'ok',
+				} )
+				.mockResolvedValueOnce( {
+					sessionId: 'new-id',
+					outcome: 'ok',
+				} );
+			window.Blackbox = {
+				configure: jest.fn(),
+				init: jest.fn(),
+				flush: flushMock,
+				reset: jest.fn( () => Promise.resolve() ),
+			};
+			window.wcFraudProtection = {
+				config: {
+					apiKey: 'test-key',
+					timeout: 3000,
+					sessionIdField: 'wc_fraud_protection_session_id',
+				},
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/blackbox-init' );
+				require( '../../assets/js/paypal-express' );
+			} );
+
+			await fetchPayPalEndpoint( 'ppc-vault-create-order' );
+			const checkout =
+				await window.wcFraudProtection.acquireSessionIdResult();
+			const retry =
+				await window.wcFraudProtection.acquireSessionIdResult();
+
+			expect(
+				JSON.parse( fetchCalls[ 0 ].init.body )
+					.wc_fraud_protection_session_id
+			).toBe( 'vault-id' );
+			expect( checkout ).toEqual( { sessionId: 'vault-id', error: '' } );
+			expect( retry ).toEqual( { sessionId: 'new-id', error: '' } );
+			delete window.Blackbox;
+		} );
+	} );
 } );

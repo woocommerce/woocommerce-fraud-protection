@@ -7,6 +7,10 @@
  * After a successful request, the session stays for the PayPal payment that
  * continues it. When the shopper goes on with another gateway instead, for
  * example after closing PayPal, a new session is started for that payment.
+ *
+ * The checkout that completes a setup-token or vault-order request reuses
+ * that request's decision only with the same session ID, so after a
+ * successful one, the ID is handed over to the next acquisition.
  */
 ( function () {
 	if ( ! window.wcFraudProtection ) {
@@ -16,6 +20,10 @@
 	const originalFetch = window.fetch;
 	const protectedPayPalEndpoints = [
 		'ppc-create-order',
+		'ppc-create-setup-token',
+		'ppc-vault-create-order',
+	];
+	const handOverEndpoints = [
 		'ppc-create-setup-token',
 		'ppc-vault-create-order',
 	];
@@ -41,6 +49,27 @@
 			}
 		} catch {
 			// Fail open.
+		}
+	}
+
+	/**
+	 * Hand the session ID of a successful request to the checkout that completes it.
+	 *
+	 * @param {Object} fp        The wcFraudProtection API.
+	 * @param {*}      resource  The request resource.
+	 * @param {string} sessionId The session ID that the request sent.
+	 */
+	function handOverSessionId( fp, resource, sessionId ) {
+		try {
+			if (
+				sessionId &&
+				typeof fp.handOverSessionId === 'function' &&
+				handOverEndpoints.includes( getEndpoint( resource ) )
+			) {
+				fp.handOverSessionId( sessionId );
+			}
+		} catch {
+			// Fail open: the checkout verifies with a new session ID.
 		}
 	}
 
@@ -163,6 +192,7 @@
 			resetBeforeNextPayPalRequest = false;
 		}
 
+		let sentSessionId = '';
 		try {
 			const result =
 				typeof fp.acquireSessionIdResult === 'function'
@@ -178,6 +208,8 @@
 				body[ fp.config.sessionIdErrorField ] = result.error;
 			}
 			init.body = JSON.stringify( body );
+			sentSessionId =
+				typeof result.sessionId === 'string' ? result.sessionId : '';
 		} catch {
 			// Fail open with the original request data.
 		}
@@ -195,6 +227,10 @@
 			resetSession( fp );
 		} else {
 			resetBeforeNextPayPalRequest = true;
+			// Only a confirmed success has a decision for the checkout to reuse.
+			if ( 'success' === result ) {
+				handOverSessionId( fp, resource, sentSessionId );
+			}
 			watchGateway();
 		}
 

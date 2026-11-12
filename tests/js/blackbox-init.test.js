@@ -599,6 +599,85 @@ describe( 'blackbox-init', () => {
 		} );
 	} );
 
+	describe( 'a handed-over session ID', () => {
+		function flushReturns( ...sessionIds ) {
+			sessionIds.forEach( ( sessionId ) => {
+				mockFlush.mockImplementationOnce( () =>
+					flushed( { sessionId } )
+				);
+			} );
+		}
+
+		it( 'is returned once more by the next acquisition', async () => {
+			flushReturns( 'request-id', 'request-id', 'request-id', 'new-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+			window.wcFraudProtection.handOverSessionId( 'request-id' );
+
+			await expect(
+				window.wcFraudProtection.acquireSessionId()
+			).resolves.toBe( 'request-id' );
+			expect( mockReset ).not.toHaveBeenCalled();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionId()
+			).resolves.toBe( 'new-id' );
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'is returned to only one of concurrent acquisitions', async () => {
+			flushReturns( 'request-id', 'request-id', 'request-id', 'new-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+			window.wcFraudProtection.handOverSessionId( 'request-id' );
+
+			const results = await Promise.all( [
+				window.wcFraudProtection.acquireSessionIdResult(),
+				window.wcFraudProtection.acquireSessionIdResult(),
+			] );
+
+			expect( results.map( ( result ) => result.sessionId ) ).toEqual( [
+				'request-id',
+				'new-id',
+			] );
+		} );
+
+		it( 'is not returned after a reset', async () => {
+			flushReturns( 'request-id', 'request-id', 'new-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+			window.wcFraudProtection.handOverSessionId( 'request-id' );
+			window.wcFraudProtection.reset();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+		} );
+
+		it( 'is not returned after an acquisition that got another ID', async () => {
+			flushReturns( 'request-id', 'other-id', 'request-id', 'new-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+			window.wcFraudProtection.handOverSessionId( 'request-id' );
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+		} );
+
+		it( 'is ignored when it was never handed out', async () => {
+			flushReturns( 'unknown-id', 'unknown-id', 'new-id' );
+			setupAndLoad();
+			window.wcFraudProtection.handOverSessionId( 'unknown-id' );
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+		} );
+	} );
+
 	describe( 'reset', () => {
 		it( 'calls Blackbox.reset() when available', () => {
 			setupAndLoad();

@@ -119,6 +119,9 @@
 		[ window, 'focus' ],
 	];
 	const handedOutSessionIds = new Set();
+	// A handed-out ID that the next acquisition may return once more, for the
+	// payment that completes the request it was handed out for.
+	let handedOverSessionId = '';
 	let preparedSessionId = '';
 	let preparedAt = 0;
 	let isPreparing = false;
@@ -295,6 +298,7 @@
 	 * @return {Promise<boolean>} Whether the reset completed. Never rejects.
 	 */
 	function startNewSession() {
+		handedOverSessionId = '';
 		preparedSessionId = '';
 		const current = ++preparation;
 		isFetching = false;
@@ -434,6 +438,8 @@
 	 *
 	 * A session ID is handed out at most once. When flush() returns one that was
 	 * already handed out, a new session is started within the same deadline.
+	 * The exception is an ID passed to handOverSessionId(), which this
+	 * acquisition returns once more.
 	 *
 	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
 	 * answer in time, `sdk_error` when it fails or returns no session ID,
@@ -452,9 +458,16 @@
 		}
 
 		const startedAt = Date.now();
+		// Only the first acquisition after the hand-over can use it.
+		const handedOver = handedOverSessionId;
+		handedOverSessionId = '';
 
 		return flushSessionId( fraudProtection.config.timeout ).then(
 			function ( result ) {
+				if ( handedOver && result.sessionId === handedOver ) {
+					return result;
+				}
+
 				if ( handedOutSessionIds.has( result.sessionId ) ) {
 					return acquireNewSessionId( startedAt );
 				}
@@ -485,6 +498,24 @@
 	 */
 	fraudProtection.reset = function () {
 		startNewSession();
+	};
+
+	/**
+	 * Let the next acquisition return a handed-out session ID once more.
+	 *
+	 * For a request whose payment is completed by a later request of the same
+	 * attempt, which must send the same session ID. A reset cancels this.
+	 * Internal to the plugin's own scripts.
+	 *
+	 * @param {string} sessionId Session ID that the request was handed.
+	 */
+	fraudProtection.handOverSessionId = function ( sessionId ) {
+		if (
+			typeof sessionId === 'string' &&
+			handedOutSessionIds.has( sessionId )
+		) {
+			handedOverSessionId = sessionId;
+		}
 	};
 
 	/**
