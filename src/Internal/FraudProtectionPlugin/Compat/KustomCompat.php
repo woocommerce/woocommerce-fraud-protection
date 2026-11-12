@@ -45,6 +45,13 @@ class KustomCompat {
 	private const SENT_SESSION_ID_KEY = '_wc_fraud_protection_kustom_sent_session_id';
 
 	/**
+	 * Session ID of the current Kustom request, recorded once the order reaches verification.
+	 *
+	 * @var string|null
+	 */
+	private ?string $pending_session_id = null;
+
+	/**
 	 * Classic checkout protector, which owns the classic checkout script.
 	 *
 	 * @var ShortcodeCheckoutProtector
@@ -87,6 +94,8 @@ class KustomCompat {
 		add_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this, 'enqueue_blocks_checkout_script' ), 10, 0 );
 		// Before BlocksCheckoutProtector reads the request.
 		add_action( 'woocommerce_store_api_checkout_update_order_from_request', array( $this, 'send_session_id_only_once' ), 5, 2 );
+		// Before BlocksCheckoutProtector verifies the order.
+		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'record_sent_session_id' ), 5, 0 );
 	}
 
 	/**
@@ -124,7 +133,11 @@ class KustomCompat {
 	 *
 	 * When Kustom refuses an order, the shopper can pay again in the iframe and the
 	 * browser is not told. Kustom then sends the stored extension data again, so
-	 * the second request reports that it has no session ID for this attempt.
+	 * a request with the session ID of an earlier verified attempt reports that it
+	 * has no session ID for this attempt.
+	 *
+	 * The session ID is only recorded by record_sent_session_id(), so a request
+	 * that WooCommerce rejects before verification leaves it for the retry.
 	 *
 	 * @internal
 	 *
@@ -133,6 +146,8 @@ class KustomCompat {
 	 * @return void
 	 */
 	public function send_session_id_only_once( mixed $order, mixed $request ): void {
+		$this->pending_session_id = null;
+
 		if ( ! $request instanceof \WP_REST_Request || self::GATEWAY_ID !== $request->get_param( 'payment_method' ) ) {
 			return;
 		}
@@ -152,7 +167,7 @@ class KustomCompat {
 		}
 
 		if ( WC()->session->get( self::SENT_SESSION_ID_KEY ) !== $session_id ) {
-			WC()->session->set( self::SENT_SESSION_ID_KEY, $session_id );
+			$this->pending_session_id = $session_id;
 			return;
 		}
 
@@ -161,5 +176,27 @@ class KustomCompat {
 			'blackbox_session_id_error' => 'not_ready',
 		);
 		$request->set_param( 'extensions', $extensions );
+	}
+
+	/**
+	 * Record the session ID of the current Kustom request as sent.
+	 *
+	 * Runs when WooCommerce has validated the order, right before
+	 * BlocksCheckoutProtector verifies it. Recording it after verification would
+	 * miss blocked attempts, because a Block stops the request.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function record_sent_session_id(): void {
+		$session_id               = $this->pending_session_id;
+		$this->pending_session_id = null;
+
+		if ( null === $session_id || ! WC()->session instanceof \WC_Session ) {
+			return;
+		}
+
+		WC()->session->set( self::SENT_SESSION_ID_KEY, $session_id );
 	}
 }
