@@ -96,7 +96,7 @@ If you register your script in one place and enqueue it in another, call `reques
 
 ### 2. Send the session ID
 
-In your script, take a session ID with `takeSessionId()` right before sending the request, and add it under the field name in `config.sessionIdField`:
+In your script, take a session ID with `takeSessionId()` right before sending the request, not when your script loads or the payment surface renders, and add it under the field name in `config.sessionIdField`:
 
 ```js
 async function addSessionId( body ) {
@@ -270,7 +270,7 @@ const extensions = canAdd ? fp.addSessionIdToExtensions( buttonExtensions ) : bu
 
 `addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out with the reason instead of a session ID. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
 
-Load the browser scripts on every page where the buttons render, as in [step 1](#1-load-the-browser-scripts). If your button code can wait for a promise, use `takeSessionId()` as in [step 2](#2-send-the-session-id) instead.
+Load the browser scripts on every page where the buttons render, as in [step 1](#1-load-the-browser-scripts). If your button code can wait for a promise, use `takeSessionId()` as in [step 2](#2-send-the-session-id) instead. Call it when you build the order request, after the shopper clicks the button and confirms the payment, not when the buttons load or render.
 
 ### Change payment method forms
 
