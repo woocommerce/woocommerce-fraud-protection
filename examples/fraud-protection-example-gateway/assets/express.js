@@ -8,8 +8,12 @@
  *   data of their express buttons.
  * - The Fraud Protection integration prepares a session ID once, when the
  *   button is set up, and adds it to the request data synchronously with
- *   window.wcFraudProtection.takePreparedSessionId(). Each ID is handed out
- *   for one attempt and a fresh session starts for the next one.
+ *   window.wcFraudProtection.takePreparedSessionId(). The filter cannot wait
+ *   for a promise, so prepareSessionId() fetches the ID in the background
+ *   and takePreparedSessionId() returns it immediately, without waiting for
+ *   anything. Each ID is handed out for one attempt and a fresh session
+ *   starts for the next one, so the integration takes an ID for every
+ *   request and never keeps one for a later click.
  *
  * Depends on wp-hooks, and on wc-fraud-protection-blackbox-init when Fraud
  * Protection loaded its scripts for this page.

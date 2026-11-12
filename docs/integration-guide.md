@@ -253,7 +253,7 @@ The reader you pass to `register_reference_reader()` serves both flows: return t
 
 **Implement:** add the session ID to the Store API checkout request your express buttons send. Put it in the request's extension data, under the `woocommerce/fraud-protection` namespace as `blackbox_session_id`. The plugin verifies that request like any other Store API checkout, so there is nothing to do on the server.
 
-Express buttons usually build their request in a synchronous callback. Prepare a session ID when the buttons are set up, and add it with `addSessionIdToExtensions()` when the request's extension data is built:
+Express buttons usually build their request in a synchronous callback, which can't wait for a promise. Prepare a session ID when the buttons are set up, and add it with `addSessionIdToExtensions()` when the request's extension data is built:
 
 ```js
 const fp = window.wcFraudProtection;
@@ -267,6 +267,8 @@ if ( canAdd ) {
 // When the Store API checkout request is built:
 const extensions = canAdd ? fp.addSessionIdToExtensions( buttonExtensions ) : buttonExtensions;
 ```
+
+`prepareSessionId()` fetches the session ID in the background, so `addSessionIdToExtensions()` adds it without waiting. Call `addSessionIdToExtensions()` for every request, so each click gets its own session ID, and never keep an ID for a later request.
 
 `addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out with the reason instead of a session ID. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
 
