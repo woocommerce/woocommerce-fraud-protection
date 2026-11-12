@@ -10,7 +10,8 @@
  *
  * The checkout that completes a setup-token or vault-order request reuses
  * that request's decision only with the same session ID, so after a
- * successful one, the ID is handed over to the next acquisition. A request
+ * successful one, the ID is handed over to the next acquisition, if PayPal is
+ * still the selected gateway then. A request
  * sent while the Checkout block processes an order, for example by PayPal's
  * card fields, already has the checkout's ID, so it sends that one.
  */
@@ -87,7 +88,63 @@
 	}
 
 	/**
+	 * Read the gateway selected on the classic checkout or pay-for-order page.
+	 *
+	 * @return {*} Gateway ID, or undefined when there is no selection.
+	 */
+	function getClassicGateway() {
+		const $ = window.jQuery;
+		return typeof $ === 'function'
+			? $( 'input[name="payment_method"]:checked' ).val()
+			: undefined;
+	}
+
+	/**
+	 * Read the Checkout block's active payment method.
+	 *
+	 * @return {*} Gateway ID, or an empty string when there is no store.
+	 */
+	function getBlocksGateway() {
+		const data = window.wp && window.wp.data;
+		const store =
+			data && data.select ? data.select( PAYMENT_STORE_KEY ) : null;
+		return store && store.getActivePaymentMethod
+			? store.getActivePaymentMethod()
+			: '';
+	}
+
+	/**
+	 * Whether the shopper still pays with PayPal.
+	 *
+	 * When the selected gateway can't be read, the PayPal payment is assumed
+	 * to continue.
+	 *
+	 * @return {boolean} False only when another gateway is selected.
+	 */
+	function isPayPalGatewaySelected() {
+		let gateway;
+		try {
+			gateway = getClassicGateway();
+			if ( typeof gateway !== 'string' || ! gateway ) {
+				gateway = getBlocksGateway();
+			}
+		} catch {
+			gateway = '';
+		}
+
+		return (
+			typeof gateway !== 'string' ||
+			! gateway ||
+			gateway.startsWith( PAYPAL_GATEWAY_PREFIX )
+		);
+	}
+
+	/**
 	 * Hand the session ID of a successful request to the checkout that completes it.
+	 *
+	 * The checkout only gets it while PayPal is still the selected gateway.
+	 * This is checked when the checkout acquires its session ID, because the
+	 * classic checkout does that before the place-order reset below runs.
 	 *
 	 * @param {Object} fp        The wcFraudProtection API.
 	 * @param {*}      resource  The request resource.
@@ -100,7 +157,7 @@
 				typeof fp.handOverSessionId === 'function' &&
 				handOverEndpoints.includes( getEndpoint( resource ) )
 			) {
-				fp.handOverSessionId( sessionId );
+				fp.handOverSessionId( sessionId, isPayPalGatewaySelected );
 			}
 		} catch {
 			// Fail open: the checkout verifies with a new session ID.
@@ -136,9 +193,7 @@
 		}
 
 		const resetForSelectedGateway = function () {
-			resetForGateway(
-				$( 'input[name="payment_method"]:checked' ).val()
-			);
+			resetForGateway( getClassicGateway() );
 		};
 
 		$( document.body ).on(
@@ -161,17 +216,10 @@
 			return;
 		}
 
-		const getActiveGateway = function () {
-			const store = data.select( PAYMENT_STORE_KEY );
-			return store && store.getActivePaymentMethod
-				? store.getActivePaymentMethod()
-				: '';
-		};
-
-		let activeGateway = getActiveGateway();
+		let activeGateway = getBlocksGateway();
 		data.subscribe( function () {
 			try {
-				const gateway = getActiveGateway();
+				const gateway = getBlocksGateway();
 				if ( gateway !== activeGateway ) {
 					activeGateway = gateway;
 					resetForGateway( gateway );

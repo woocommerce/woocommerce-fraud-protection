@@ -459,6 +459,109 @@ describe( 'paypal-express fetch interceptor', () => {
 			expect( response.ok ).toBe( true );
 		} );
 
+		describe( 'hand-over condition', () => {
+			async function getHandOverCondition() {
+				setupAndLoad();
+				window.wcFraudProtection.handOverSessionId = jest.fn();
+				await fetchPayPalEndpoint( 'ppc-create-setup-token' );
+				return window.wcFraudProtection.handOverSessionId.mock
+					.calls[ 0 ][ 1 ];
+			}
+
+			it( 'holds only while a classic PayPal gateway is selected', async () => {
+				renderClassicCheckout( 'ppcp-gateway' );
+				const condition = await getHandOverCondition();
+				expect( condition() ).toBe( true );
+
+				selectGateway( 'ppcp-credit-card-gateway' );
+				expect( condition() ).toBe( true );
+
+				selectGateway( 'cod' );
+				expect( condition() ).toBe( false );
+			} );
+
+			it( 'holds only while the Checkout block keeps a PayPal gateway', async () => {
+				const setGateway = setupBlocksStore( 'ppcp-gateway' );
+				const condition = await getHandOverCondition();
+				expect( condition() ).toBe( true );
+
+				setGateway( 'stripe' );
+				expect( condition() ).toBe( false );
+			} );
+
+			it( 'holds when the selected gateway cannot be read', async () => {
+				delete window.jQuery;
+				const condition = await getHandOverCondition();
+				expect( condition() ).toBe( true );
+
+				window.wp = {
+					data: {
+						select: () => {
+							throw new Error( 'No store' );
+						},
+					},
+				};
+				expect( condition() ).toBe( true );
+			} );
+		} );
+
+		it.each( [
+			[ 'cod', 'new-id' ],
+			[ 'ppcp-gateway', 'vault-id' ],
+		] )(
+			'gives a classic checkout with %s the session ID %s',
+			async ( gateway, expectedSessionId ) => {
+				const flushMock = jest.fn().mockResolvedValue( {
+					sessionId: 'new-id',
+					outcome: 'ok',
+				} );
+				flushMock
+					.mockResolvedValueOnce( {
+						sessionId: 'vault-id',
+						outcome: 'ok',
+					} )
+					.mockResolvedValueOnce( {
+						sessionId: 'vault-id',
+						outcome: 'ok',
+					} );
+				window.Blackbox = {
+					configure: jest.fn(),
+					init: jest.fn(),
+					flush: flushMock,
+					reset: jest.fn( () => Promise.resolve() ),
+				};
+				window.wcFraudProtection = {
+					config: {
+						apiKey: 'test-key',
+						timeout: 3000,
+						sessionIdField: 'wc_fraud_protection_session_id',
+					},
+				};
+				renderClassicCheckout( gateway );
+				// Keep jsdom from submitting the form.
+				$( 'form.checkout' ).on( 'submit', () => false );
+				jest.isolateModules( () => {
+					require( '../../assets/js/blackbox-init' );
+					// Binds its place-order handler before paypal-express.js does.
+					require( '../../assets/js/shortcode-checkout' );
+					require( '../../assets/js/paypal-express' );
+				} );
+
+				await fetchPayPalEndpoint( 'ppc-vault-create-order' );
+				$( 'form.checkout' ).triggerHandler( 'checkout_place_order' );
+				await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+				expect(
+					JSON.parse( fetchCalls[ 0 ].init.body )
+						.wc_fraud_protection_session_id
+				).toBe( 'vault-id' );
+				expect(
+					$( 'input[name="wc_fraud_protection_session_id"]' ).val()
+				).toBe( expectedSessionId );
+				delete window.Blackbox;
+			}
+		);
+
 		it( 'gets a new session for the other gateway with the real session API', async () => {
 			const flushMock = jest
 				.fn()
@@ -685,7 +788,8 @@ describe( 'paypal-express fetch interceptor', () => {
 
 				expect( handOverSessionId ).toHaveBeenCalledTimes( 1 );
 				expect( handOverSessionId ).toHaveBeenCalledWith(
-					'test-session-abc'
+					'test-session-abc',
+					expect.any( Function )
 				);
 			}
 		);

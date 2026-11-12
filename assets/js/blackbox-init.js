@@ -122,6 +122,8 @@
 	// A handed-out ID that the next acquisition may return once more, for the
 	// payment that completes the request it was handed out for.
 	let handedOverSessionId = '';
+	// Whether that payment still continues when the acquisition runs.
+	let handOverCondition = null;
 	let preparedSessionId = '';
 	let preparedAt = 0;
 	let isPreparing = false;
@@ -299,6 +301,7 @@
 	 */
 	function startNewSession() {
 		handedOverSessionId = '';
+		handOverCondition = null;
 		preparedSessionId = '';
 		const current = ++preparation;
 		isFetching = false;
@@ -344,6 +347,31 @@
 			// Fail open.
 			isFetching = false;
 			return Promise.resolve( false );
+		}
+	}
+
+	/**
+	 * Take the handed-over session ID, if its payment still continues.
+	 *
+	 * Only the first acquisition after the hand-over can use it.
+	 *
+	 * @return {string} Session ID, or an empty string.
+	 */
+	function takeHandedOverSessionId() {
+		const sessionId = handedOverSessionId;
+		const condition = handOverCondition;
+		handedOverSessionId = '';
+		handOverCondition = null;
+
+		if ( ! sessionId || typeof condition !== 'function' ) {
+			return sessionId;
+		}
+
+		try {
+			return true === condition() ? sessionId : '';
+		} catch {
+			// Fail open: a new session ID is acquired.
+			return '';
 		}
 	}
 
@@ -439,7 +467,7 @@
 	 * A session ID is handed out at most once. When flush() returns one that was
 	 * already handed out, a new session is started within the same deadline.
 	 * The exception is an ID passed to handOverSessionId(), which this
-	 * acquisition returns once more.
+	 * acquisition returns once more if its condition still holds.
 	 *
 	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
 	 * answer in time, `sdk_error` when it fails or returns no session ID,
@@ -458,9 +486,7 @@
 		}
 
 		const startedAt = Date.now();
-		// Only the first acquisition after the hand-over can use it.
-		const handedOver = handedOverSessionId;
-		handedOverSessionId = '';
+		const handedOver = takeHandedOverSessionId();
 
 		return flushSessionId( fraudProtection.config.timeout ).then(
 			function ( result ) {
@@ -507,14 +533,17 @@
 	 * attempt, which must send the same session ID. A reset cancels this.
 	 * Internal to the plugin's own scripts.
 	 *
-	 * @param {string} sessionId Session ID that the request was handed.
+	 * @param {string}   sessionId   Session ID that the request was handed.
+	 * @param {Function} [condition] Called by that acquisition. Unless it returns true, a new session ID is acquired.
 	 */
-	fraudProtection.handOverSessionId = function ( sessionId ) {
+	fraudProtection.handOverSessionId = function ( sessionId, condition ) {
 		if (
 			typeof sessionId === 'string' &&
 			handedOutSessionIds.has( sessionId )
 		) {
 			handedOverSessionId = sessionId;
+			handOverCondition =
+				typeof condition === 'function' ? condition : null;
 		}
 	};
 

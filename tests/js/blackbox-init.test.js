@@ -676,6 +676,50 @@ describe( 'blackbox-init', () => {
 				window.wcFraudProtection.acquireSessionIdResult()
 			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
 		} );
+
+		it( 'is returned when its condition holds at the acquisition', async () => {
+			flushReturns( 'request-id', 'request-id' );
+			setupAndLoad();
+			await window.wcFraudProtection.acquireSessionIdResult();
+			const condition = jest.fn( () => true );
+			window.wcFraudProtection.handOverSessionId(
+				'request-id',
+				condition
+			);
+			expect( condition ).not.toHaveBeenCalled();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'request-id', error: '' } );
+			expect( condition ).toHaveBeenCalledTimes( 1 );
+			expect( mockReset ).not.toHaveBeenCalled();
+		} );
+
+		it.each( [
+			[ 'returns false', () => false ],
+			[ 'returns a non-boolean', () => 'yes' ],
+			[
+				'throws',
+				() => {
+					throw new Error( 'Condition failed' );
+				},
+			],
+		] )(
+			'is not returned when its condition %s',
+			async ( _, condition ) => {
+				flushReturns( 'request-id', 'request-id', 'new-id' );
+				setupAndLoad();
+				await window.wcFraudProtection.acquireSessionIdResult();
+				window.wcFraudProtection.handOverSessionId(
+					'request-id',
+					condition
+				);
+
+				await expect(
+					window.wcFraudProtection.acquireSessionIdResult()
+				).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+			}
+		);
 	} );
 
 	describe( 'reset', () => {
