@@ -106,6 +106,16 @@ npm run env -- run cli wp --user=1 eval-file \
 
 If disconnect fails, keep the environment and follow the recovery instructions from the script. Do not clean or destroy the development environment until the disconnect succeeds.
 
+## Pull request previews
+
+The `Test the build` workflow builds the plugin ZIP for every pull request and posts a comment with three ways to try it: Jetpack Beta, Jurassic Ninja, and WordPress Playground.
+
+The WordPress Playground links open the build in the browser. The workflow uploads the ZIP, `bin/playground-setup.php`, `bin/seed-fake-sessions.php`, and `bin/seed-fake-rules.php` as one artifact. The Blueprint in the workflow installs WooCommerce and the ZIP, then runs the setup script. The script prepares a test store and, unless it is called with `empty`, adds made-up payment activity and custom rules. A change to either seeder also changes the previews.
+
+A Playground site cannot connect to WordPress.com. The settings pages, custom rules, and fail-open behavior work there. Live verification does not.
+
+Jetpack Beta and Jurassic Ninja install the builds that the Jetpack Beta Builder serves. Both stay unavailable until the plugin is registered there and this repository has the `FRAUD_PROTECTION_LIVE_BRANCH_SECRET` secret. Without the secret the workflow skips those steps, and the comment says that the two options are not available.
+
 ## Tests
 
 Run the whole suite (smoke, PHP, and JavaScript):
