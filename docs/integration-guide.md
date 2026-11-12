@@ -18,6 +18,8 @@ Three rules apply to every native integration:
 
 ## Choose your integrations
 
+Most gateways should provide [payment data](#payment-data). It needs only a resolver on the server, and it improves the verification of every payment made with your gateway, including the ones that the built-in protection covers. The other integrations apply only when your extension sends its own requests outside the standard flows, as described in [Do you need to integrate?](#do-you-need-to-integrate).
+
 | Your extension | Declare | Section |
 |----------------|---------|---------|
 | Is a gateway and can provide the details of the payment method that each payment uses, such as the card brand and last four digits | `fraud_protection_payment_data` | [Payment data](#payment-data) |
