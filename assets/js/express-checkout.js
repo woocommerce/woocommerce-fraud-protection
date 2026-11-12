@@ -7,8 +7,14 @@
  * request's extension data through a synchronous filter, so a session ID is
  * prepared ahead of time and added there. Errors leave the data unchanged.
  *
- * Depends on blackbox-init.js (wcFraudProtection) and wp-hooks.
+ * Square's wallet buttons also skip the checkout form, but they post the order
+ * to Square's own AJAX endpoint, which runs the classic checkout process.
+ * Square has no filter for that request, so the session ID is added to its body
+ * with a jQuery AJAX prefilter. Errors leave the request unchanged.
+ *
+ * Depends on blackbox-init.js (wcFraudProtection), wp-hooks, and jQuery.
  */
+/* global jQuery */
 ( function () {
 	'use strict';
 
@@ -17,16 +23,21 @@
 		'wcpay.express-checkout.cart-place-order-extension-data',
 		'wcstripe.express-checkout.cart-place-order-extension-data',
 	];
+	const SQUARE_WALLET_CHECKOUT_ENDPOINT =
+		'square_digital_wallet_process_checkout';
 
 	const fraudProtection = window.wcFraudProtection;
 	const hooks = window.wp && window.wp.hooks;
+	const $ = typeof jQuery === 'undefined' ? null : jQuery;
+	const canFilterExtensionData =
+		!! hooks && typeof hooks.addFilter === 'function';
+	const canFilterAjaxRequests = !! $ && typeof $.ajaxPrefilter === 'function';
 
 	if (
 		! fraudProtection ||
 		typeof fraudProtection.prepareSessionId !== 'function' ||
 		typeof fraudProtection.takePreparedSessionId !== 'function' ||
-		! hooks ||
-		typeof hooks.addFilter !== 'function'
+		( ! canFilterExtensionData && ! canFilterAjaxRequests )
 	) {
 		return;
 	}
@@ -63,9 +74,60 @@
 		}
 	}
 
-	EXTENSION_DATA_FILTERS.forEach( function ( filterName ) {
-		hooks.addFilter( filterName, NAMESPACE, addSessionId );
-	} );
+	/**
+	 * Check whether an AJAX request is Square's wallet checkout request.
+	 *
+	 * @param {Object} settings jQuery AJAX settings.
+	 * @return {boolean} Whether it is the wallet checkout request.
+	 */
+	function isSquareWalletCheckout( settings ) {
+		return (
+			new URL( settings.url, window.location.href ).searchParams.get(
+				'wc-ajax'
+			) === SQUARE_WALLET_CHECKOUT_ENDPOINT
+		);
+	}
+
+	/**
+	 * Add a fresh session ID to Square's wallet checkout request.
+	 *
+	 * The request is built from the wallet's data, not from the checkout form,
+	 * so it never holds the session ID field of an earlier attempt. Without a
+	 * fresh ID, the request reports `not_ready` instead.
+	 *
+	 * @param {Object} settings jQuery AJAX settings, before the request is sent.
+	 */
+	function addSessionIdToSquareWalletCheckout( settings ) {
+		try {
+			if (
+				typeof settings.data !== 'string' ||
+				! isSquareWalletCheckout( settings )
+			) {
+				return;
+			}
+
+			const config = fraudProtection.config;
+			const sessionId = fraudProtection.takePreparedSessionId();
+			const fields = { [ config.sessionIdField ]: sessionId };
+			if ( ! sessionId && config.sessionIdErrorField ) {
+				fields[ config.sessionIdErrorField ] = 'not_ready';
+			}
+
+			settings.data += ( settings.data ? '&' : '' ) + $.param( fields );
+		} catch {
+			// Fail open: the request continues unchanged.
+		}
+	}
+
+	if ( canFilterExtensionData ) {
+		EXTENSION_DATA_FILTERS.forEach( function ( filterName ) {
+			hooks.addFilter( filterName, NAMESPACE, addSessionId );
+		} );
+	}
+
+	if ( canFilterAjaxRequests ) {
+		$.ajaxPrefilter( addSessionIdToSquareWalletCheckout );
+	}
 
 	fraudProtection.prepareSessionId();
 } )();

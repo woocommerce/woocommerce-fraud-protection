@@ -12,10 +12,12 @@ use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Loads Fraud Protection browser scripts where WooPayments or Stripe render express payment buttons.
+ * Loads Fraud Protection browser scripts where WooPayments, Stripe, or Square render express payment buttons.
  *
- * The express buttons place the order through the Store API checkout route, where
- * BlocksCheckoutProtector reads the session ID that express-checkout.js adds.
+ * The WooPayments and Stripe buttons place the order through the Store API checkout route,
+ * where BlocksCheckoutProtector reads the session ID that express-checkout.js adds. The
+ * Square buttons post the order to an AJAX endpoint that runs the classic checkout process,
+ * where ShortcodeCheckoutProtector reads the field that express-checkout.js adds.
  */
 class ExpressCheckoutScriptCompat {
 
@@ -30,6 +32,7 @@ class ExpressCheckoutScriptCompat {
 	private const EXPRESS_BUTTON_HANDLES = array(
 		'WCPAY_EXPRESS_CHECKOUT_ECE',
 		'wc_stripe_express_checkout',
+		'wc-square-digital-wallet',
 	);
 
 	/**
@@ -88,7 +91,7 @@ class ExpressCheckoutScriptCompat {
 		wp_enqueue_script(
 			'wc-fraud-protection-express-checkout',
 			plugins_url( 'assets/js/express-checkout.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
-			array( 'wc-fraud-protection-blackbox-init', 'wp-hooks' ),
+			array( 'wc-fraud-protection-blackbox-init', 'wp-hooks', 'jquery' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )
 		);
