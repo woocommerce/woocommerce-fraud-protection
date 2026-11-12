@@ -21,6 +21,8 @@ A stand-in for the WooCommerce Subscriptions change-payment-method flow: an exte
 
 The form renders through the `[fp_example_change_payment]` shortcode for the current user's latest order.
 
+A gateway on this form needs no code specific to it. The verification uses the gateway the shopper selects and the fields it posts, so the gateway's [payment data](../docs/integration-guide.md#payment-data) resolver runs as it does at checkout. A gateway that saves the payment method through its own request before the form is submitted follows [Add payment method requests](../docs/integration-guide.md#add-payment-method-requests).
+
 ## Trying them in the local store
 
 Add the examples to a gitignored `.wp-env.override.json` next to the repository's `.wp-env.json`. Its `plugins` list replaces the one in `.wp-env.json`, so repeat those entries:

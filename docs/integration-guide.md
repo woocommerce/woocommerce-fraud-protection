@@ -185,6 +185,8 @@ wc_get_container()->get( GatewayPaymentData::class )->register_resolver(
 
 The plugin calls the resolver only for attempts paid with your gateway. `$payment_fields` holds the gateway fields submitted with the attempt, or the payment data you passed to `verify_request()`. `$resolved` is pre-filled from the WooCommerce payment token when the shopper pays with a saved method, so the example keeps it and adds only what the token doesn't hold. Return `null` to keep it unchanged. If the resolver throws, or returns anything other than a `PaymentMethodData` for your gateway, the plugin keeps `$resolved`.
 
+The resolver also runs when the My Account "Add payment method" form or the WooCommerce Subscriptions change-payment-method form is submitted with your gateway selected, with the fields your gateway posts on that form. You need no code specific to those forms.
+
 ### Checkout requests
 
 **Declare:** `fraud_protection_checkout` in the gateway's `$supports`.
