@@ -16,8 +16,7 @@
  * the checkout attempts list and the rules with made-up rows from
  * seed-fake-sessions.php and seed-fake-rules.php.
  *
- * To run the same preview from a checkout, see the "Playground preview"
- * section of README.md.
+ * The "Pull request previews" section of README.md describes the preview.
  *
  * @package WooCommerce\FraudProtection
  */
