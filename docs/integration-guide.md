@@ -71,7 +71,7 @@ Run `wp wc fraud-protection native-integrations list`. It lists the declarations
 
 ## The building blocks
 
-Most integrations combine the same three steps. The sections for each integration show the part specific to it.
+Checkout requests and Add payment method requests combine the three steps below, and Express checkout uses the first two, because the plugin verifies its Store API request. The section for each integration shows the part specific to it. Payment data needs none of these steps: a resolver on the server is all it takes. Change payment method forms use a ready-made script, described in their own section.
 
 ### 1. Load the browser scripts
 
