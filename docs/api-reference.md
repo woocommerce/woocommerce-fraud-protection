@@ -125,7 +125,7 @@ public function verify_request( string $source, string $gateway_id, array $payme
 |-----------|-------------|
 | `$source` | A stable ASCII identifier of the request, 32 characters or fewer, as for `verify_session()`. |
 | `$gateway_id` | The ID of the gateway the request pays with. |
-| `$payment_data` | A flat map of the gateway fields that describe the payment instrument, passed to `woocommerce_fraud_protection_resolved_payment_data` callbacks. |
+| `$payment_data` | A flat map of the gateway fields that hold the details of the payment method, such as the card brand and last four digits, passed to `woocommerce_fraud_protection_resolved_payment_data` callbacks. |
 | `$order_id` | The order the request pays for, or `0` before the order exists. |
 | `$session_id` | The session ID the browser sent. `null` reads it, together with the reason the browser reports for a missing ID, from the request body under `SessionVerifier::SESSION_ID_FIELD`: a form field, or a top-level property of a body sent as `application/json`. Form fields, even a reason sent without a session ID, win over a JSON body. Pass it explicitly when the request carries it anywhere else, such as in a nested JSON object or a REST route parameter; otherwise the request is verified without it. |
 
@@ -160,7 +160,7 @@ The [integration guide](integration-guide.md#3-verify-the-request-and-reuse-its-
 
 ### GatewayPaymentData
 
-Describes the payment instrument of a gateway's attempts. It wraps the `woocommerce_fraud_protection_resolved_payment_data` filter, so the gateway's code runs only for its own attempts and cannot break other gateways' data. Since 0.3.2.
+Provides the details of the payment method that a gateway's attempts use, which WooCommerce doesn't hold: the payment method type, such as card or bank debit; the card brand, last four digits and expiry date; the wallet; the results of the CVC and address checks; the transaction mode; and the merchant account. It wraps the `woocommerce_fraud_protection_resolved_payment_data` filter, so the gateway's code runs only for its own attempts and cannot break other gateways' data. Since 0.3.2.
 
 #### register_resolver()
 
@@ -318,7 +318,7 @@ The feature strings a payment gateway adds to its `$supports` array to declare a
 
 | Constant | String | The gateway commits to |
 |----------|--------|------------------------|
-| `PAYMENT_DATA` | `fraud_protection_payment_data` | Returning the payment type, instrument, transaction mode and merchant identifier for its own attempts through `woocommerce_fraud_protection_resolved_payment_data`. |
+| `PAYMENT_DATA` | `fraud_protection_payment_data` | Returning the details of the payment method that its own attempts use, such as the payment method type, the card brand and last four digits, the transaction mode and the merchant account, through `woocommerce_fraud_protection_resolved_payment_data`. |
 | `CHECKOUT` | `fraud_protection_checkout` | Loading the browser scripts on its product, cart, checkout and Pay for order surfaces; sending the session ID with the requests that place or authorize a purchase outside the WooCommerce checkout submission; verifying them; blocking on a Block decision; and supplying the decision to the final checkout through `woocommerce_fraud_protection_skip_session_verify`. |
 | `ADD_PAYMENT_METHOD` | `fraud_protection_add_payment_method` | The same, for the requests that check or save a payment method on the My Account "Add payment method" form and the WooCommerce Subscriptions change-payment-method form, with the `MessageContext::Generic` message, and supplying the decision to the "Add payment method" form submission. |
 | `EXPRESS_CHECKOUT` | `fraud_protection_express_checkout` | Adding the session ID to the Store API checkout request of its express payment buttons. |
@@ -409,7 +409,7 @@ wc_get_container()->get( GatewayPaymentData::class )->register_resolver(
 
 ### PaymentInstrumentData
 
-The payment instrument part of `PaymentMethodData`. Immutable. Build it with a factory; the constructor is private:
+The `$instrument` part of `PaymentMethodData`: the details of the card, wallet or bank account that the shopper pays with. Immutable. Build it with a factory; the constructor is private:
 
 - `PaymentInstrumentData::from_array( array $data = array() ): self` reads these optional keys and ignores any other:
     - strings: `brand`, `funding`, `last4`, `fingerprint`, `country`, `billing_postcode`, `wallet`, `payer_email`, `bank_code`, `bin`;
@@ -480,7 +480,7 @@ A callback that throws in one of the plugin's hooks does not break the flow: the
 
 ### woocommerce_fraud_protection_resolved_payment_data
 
-Filter. Describes the payment of an attempt.
+Filter. Provides the details of the payment method that an attempt uses.
 
 ```php
 apply_filters( 'woocommerce_fraud_protection_resolved_payment_data', PaymentMethodData $resolved, array $payment_fields );

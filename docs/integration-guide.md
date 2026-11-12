@@ -4,7 +4,7 @@ This guide is for payment gateways and other WooCommerce extensions that want to
 
 ## Do you need to integrate?
 
-Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. This built-in protection applies to every gateway on those flows, and no declaration turns it off. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no native integration. Describing its payment instrument, though, gives each verification better data (see [Payment data](#payment-data)).
+Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. This built-in protection applies to every gateway on those flows, and no declaration turns it off. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no native integration. Providing the details of the payment method that each payment uses, such as the card brand and last four digits, still gives each verification better data (see [Payment data](#payment-data)).
 
 An extension needs a native integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. A native integration is code in your extension that protects those requests, and a declaration tells Fraud Protection that your extension has it.
 
@@ -20,7 +20,7 @@ Three rules apply to every native integration:
 
 | Your extension | Declare | Section |
 |----------------|---------|---------|
-| Is a gateway and can describe the payment instrument of its attempts | `fraud_protection_payment_data` | [Payment data](#payment-data) |
+| Is a gateway and can provide the details of the payment method that each payment uses, such as the card brand and last four digits | `fraud_protection_payment_data` | [Payment data](#payment-data) |
 | Is a gateway that places or authorizes a purchase through its own requests, before or instead of the checkout submission | `fraud_protection_checkout` | [Checkout requests](#checkout-requests) |
 | Is a gateway that checks or saves a payment method through its own requests, outside a purchase | `fraud_protection_add_payment_method` | [Add payment method requests](#add-payment-method-requests) |
 | Is a gateway with express payment buttons that place the order through the Store API | `fraud_protection_express_checkout` | [Express checkout](#express-checkout) |
@@ -149,9 +149,11 @@ The next submission paid with your gateway that carries the reference, with the 
 
 ### Payment data
 
+Fraud Protection knows which gateway takes each payment, but not the details of the payment method the shopper uses. Those details are in your gateway's fields or at your payment provider: the payment method type, such as card or bank debit, the card brand, last four digits and expiry date, the wallet, and the results of the CVC and address checks. Only a saved payment method's WooCommerce token holds some of them. A resolver provides these details for each payment made with your gateway, together with whether the payment runs in live or test mode and which merchant account receives it. The [`PaymentInstrumentData`](api-reference.md#paymentinstrumentdata) reference lists every detail you can provide.
+
 **Declare:** `fraud_protection_payment_data` in the gateway's `$supports`.
 
-**Implement:** while your plugin loads, register a resolver with `GatewayPaymentData::register_resolver()`. It returns a `PaymentMethodData` that describes your gateway's attempts:
+**Implement:** while your plugin loads, register a resolver with `GatewayPaymentData::register_resolver()`. It returns a `PaymentMethodData` with the details of a payment made with your gateway:
 
 ```php
 use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
