@@ -4,17 +4,17 @@ This guide is for payment gateways and other WooCommerce extensions that want to
 
 ## Do you need to integrate?
 
-Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no integration. Describing its payment instrument, though, gives each verification better data (see [Payment data](#payment-data)).
+Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. This built-in protection applies to every gateway on those flows, and no declaration turns it off. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no native integration. Describing its payment instrument, though, gives each verification better data (see [Payment data](#payment-data)).
 
-An extension needs an integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. A native integration protects those flows inside the extension, and a declaration tells Fraud Protection that the extension does.
+An extension needs a native integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. A native integration is code in your extension that protects those requests, and a declaration tells Fraud Protection that your extension has it.
 
-A request that only checks the checkout form before the submission needs no integration, even when it fires `woocommerce_checkout_process` or `woocommerce_after_checkout_validation`. Fraud Protection verifies the shortcode checkout inside `WC_Checkout::process_checkout()`, so firing those hooks yourself verifies nothing, and the submission that follows is verified as usual. Don't call `verify_request()` in such a request: a [session ID](api-reference.md#where-the-server-reads-the-session-id) can be verified only once, and the form your request posts can already hold the one for the submission.
+A request that only checks the checkout form before the submission needs no native integration, even when it fires `woocommerce_checkout_process` or `woocommerce_after_checkout_validation`. Fraud Protection verifies the shortcode checkout inside `WC_Checkout::process_checkout()`, so firing those hooks yourself verifies nothing, and the submission that follows is verified as usual. Don't call `verify_request()` in such a request: a [session ID](api-reference.md#where-the-server-reads-the-session-id) can be verified only once, and the form your request posts can already hold the one for the submission.
 
-Three rules apply to every integration:
+Three rules apply to every native integration:
 
-- **Fraud Protection is optional.** Register your integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.3.2 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
+- **Fraud Protection is optional.** Register your native integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.3.2 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
 - **Fail open.** Never stop a payment because Fraud Protection is unavailable. Send a request without a session ID when you have none; the server still verifies it.
-- **Declare only what you implement.** A declaration tells Fraud Protection that your extension protects that flow itself, so a declared but unimplemented integration can leave the flow unprotected.
+- **Declare only what you implement.** A declaration never turns off the built-in protection of the standard flows. It tells Fraud Protection that your extension handles that part itself, so Fraud Protection can stop any handling specific to your extension. Declaring something you don't implement can leave your extension's own requests unprotected, or your payments verified without payment data.
 
 ## Choose your integrations
 
