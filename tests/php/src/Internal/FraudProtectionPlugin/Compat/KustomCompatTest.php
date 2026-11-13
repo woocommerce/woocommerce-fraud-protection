@@ -230,6 +230,56 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Register the cart data and get the Fraud Protection data of the Store API cart.
+	 *
+	 * @param bool $is_kustom_active Whether Kustom is active.
+	 * @return mixed The Fraud Protection data of the cart response.
+	 */
+	private function get_cart_data( bool $is_kustom_active = true ): mixed {
+		if ( $is_kustom_active && ! defined( 'KCO_WC_VERSION' ) ) {
+			define( 'KCO_WC_VERSION', '2.24.1' );
+		}
+		$this->sut->register_store_api_cart_extension();
+
+		$response = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc/store/v1/cart' ) );
+
+		$this->assertSame( 200, $response->get_status() );
+
+		return $response->get_data()['extensions']->{self::NAMESPACE} ?? null;
+	}
+
+	/**
+	 * @testdox The cart has no Fraud Protection data without Kustom.
+	 */
+	public function test_cart_has_no_data_without_kustom(): void {
+		// Constants cannot be removed, and the cart data stays registered for the process.
+		if ( defined( 'KCO_WC_VERSION' ) ) {
+			$this->markTestSkipped( 'Kustom was already active in this process.' );
+		}
+
+		$this->submit_checkout( 'session-1' );
+
+		$this->assertNull( $this->get_cart_data( false ) );
+	}
+
+	/**
+	 * @testdox The cart has no sent session ID before a Kustom attempt.
+	 */
+	public function test_cart_has_no_sent_session_id_before_kustom_attempt(): void {
+		$this->assertSame( array( 'kustom_sent_session_id' => '' ), $this->get_cart_data() );
+	}
+
+	/**
+	 * @testdox The cart has the session ID of the last Kustom attempt that reached verification.
+	 */
+	public function test_cart_has_session_id_of_last_kustom_attempt(): void {
+		$this->submit_checkout( 'session-1' );
+		$this->submit_checkout( 'session-2', 'kco', false );
+
+		$this->assertSame( array( 'kustom_sent_session_id' => 'session-1' ), $this->get_cart_data() );
+	}
+
+	/**
 	 * @testdox Invalid hook arguments are ignored.
 	 */
 	public function test_invalid_request_is_ignored(): void {
