@@ -202,15 +202,31 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Requests for other payment methods are left unchanged.
+	 * @testdox Another payment method with the session ID of a Kustom attempt reports that it has none.
+	 */
+	public function test_other_payment_method_does_not_send_kustom_session_id_again(): void {
+		$this->submit_checkout( 'session-1' );
+
+		$this->assertSame(
+			array(
+				'blackbox_session_id'       => '',
+				'blackbox_session_id_error' => 'not_ready',
+			),
+			$this->submit_checkout( 'session-1', 'cod' )
+		);
+	}
+
+	/**
+	 * @testdox Requests for other payment methods keep their session ID and are not recorded.
 	 */
 	public function test_other_payment_methods_are_unchanged(): void {
-		$this->submit_checkout( 'session-1', 'stripe' );
+		$this->submit_checkout( 'session-1', 'cod' );
 
 		$this->assertSame(
 			array( 'blackbox_session_id' => 'session-1' ),
-			$this->submit_checkout( 'session-1', 'stripe' )
+			$this->submit_checkout( 'session-1', 'cod' )
 		);
+		$this->assertSame( array( 'blackbox_session_id' => 'session-1' ), $this->submit_checkout( 'session-1' ) );
 	}
 
 	/**

@@ -29,8 +29,8 @@ defined( 'ABSPATH' ) || exit;
  *
  * Limitation: the browser is not told when Kustom's servers use the session ID,
  * so it does not replace the ID after an attempt. Later attempts that carry the
- * same ID are verified without a session until the ID expires and the page
- * prepares a new one.
+ * same ID, with Kustom or another payment method, are verified without a
+ * session until the ID expires and the page prepares a new one.
  */
 class KustomCompat {
 
@@ -131,13 +131,15 @@ class KustomCompat {
 	/**
 	 * Keep a retry from sending the session ID of an earlier attempt.
 	 *
-	 * When Kustom refuses an order, the shopper can pay again in the iframe and the
-	 * browser is not told. Kustom then sends the stored extension data again, so
-	 * a request with the session ID of an earlier verified attempt reports that it
-	 * has no session ID for this attempt.
+	 * When Kustom refuses an order, the browser is not told and keeps the session.
+	 * The shopper can pay again in the iframe, and Kustom sends the stored
+	 * extension data again. The shopper can also switch to another payment method,
+	 * whose script then sends the same session ID. So a request with any payment
+	 * method that carries the session ID of an earlier verified Kustom attempt
+	 * reports that it has no session ID for this attempt.
 	 *
-	 * The session ID is only recorded by record_sent_session_id(), so a request
-	 * that WooCommerce rejects before verification leaves it for the retry.
+	 * Only Kustom requests are recorded, by record_sent_session_id(). A request
+	 * that WooCommerce rejects before verification leaves the ID for the retry.
 	 *
 	 * @internal
 	 *
@@ -148,7 +150,7 @@ class KustomCompat {
 	public function send_session_id_only_once( mixed $order, mixed $request ): void {
 		$this->pending_session_id = null;
 
-		if ( ! $request instanceof \WP_REST_Request || self::GATEWAY_ID !== $request->get_param( 'payment_method' ) ) {
+		if ( ! $request instanceof \WP_REST_Request ) {
 			return;
 		}
 
@@ -167,7 +169,9 @@ class KustomCompat {
 		}
 
 		if ( WC()->session->get( self::SENT_SESSION_ID_KEY ) !== $session_id ) {
-			$this->pending_session_id = $session_id;
+			if ( self::GATEWAY_ID === $request->get_param( 'payment_method' ) ) {
+				$this->pending_session_id = $session_id;
+			}
 			return;
 		}
 
