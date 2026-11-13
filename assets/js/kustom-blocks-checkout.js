@@ -13,10 +13,11 @@
  *
  * Kustom's servers do not tell the page when they use the session ID. The
  * cart data carries the last session ID that a Kustom attempt sent, and this
- * script starts a new session when it is the prepared one. The cart is
- * refreshed when the shopper comes back to the page from Kustom's iframe.
+ * script starts a new session when it is the prepared one. The script gets the
+ * cart again when the shopper comes back to the page from Kustom's iframe. It
+ * only reads the response: a GET leaves Kustom's order and the cart store alone.
  *
- * Depends on blackbox-init.js (wcFraudProtection) and wp-data.
+ * Depends on blackbox-init.js (wcFraudProtection), wp-data and wp-api-fetch.
  */
 ( function () {
 	'use strict';
@@ -27,6 +28,7 @@
 	const CART_STORE = 'wc/store/cart';
 	const KUSTOM_GATEWAY_ID = 'kco';
 	const SENT_SESSION_ID_FIELD = 'kustom_sent_session_id';
+	const CART_PATH = '/wc/store/v1/cart';
 
 	const fraudProtection = window.wcFraudProtection;
 	const data = window.wp && window.wp.data;
@@ -45,7 +47,7 @@
 	// Whether the shopper moved into an iframe while Kustom was selected, since
 	// the page last had the focus.
 	let isInKustomIframe = false;
-	let isRefreshingCart = false;
+	let isFetchingCart = false;
 
 	/**
 	 * Whether Kustom is the selected payment method.
@@ -87,8 +89,10 @@
 
 	/**
 	 * Start a new session when a Kustom attempt already sent the prepared session ID.
+	 *
+	 * @param {Object} cart Store API cart data.
 	 */
-	function replaceSentSessionId() {
+	function replaceSentSessionId( cart ) {
 		try {
 			if (
 				! preparedSessionId ||
@@ -98,7 +102,6 @@
 				return;
 			}
 
-			const cart = data.select( CART_STORE ).getCartData();
 			const cartData =
 				cart && cart.extensions && cart.extensions[ NAMESPACE ];
 			if (
@@ -116,32 +119,44 @@
 	}
 
 	/**
-	 * Get the current cart data from the server.
+	 * Check the cart in the cart store for the session ID that Kustom sent.
 	 */
-	function refreshCart() {
-		const blocksCheckout = window.wc && window.wc.blocksCheckout;
+	function checkCartStore() {
+		try {
+			replaceSentSessionId( data.select( CART_STORE ).getCartData() );
+		} catch {
+			// Fail open.
+		}
+	}
+
+	/**
+	 * Get the cart from the server, and check it for the session ID that Kustom sent.
+	 */
+	function fetchCart() {
+		const apiFetch = window.wp.apiFetch;
 		if (
-			isRefreshingCart ||
+			isFetchingCart ||
 			! preparedSessionId ||
-			! blocksCheckout ||
-			typeof blocksCheckout.extensionCartUpdate !== 'function'
+			typeof apiFetch !== 'function'
 		) {
 			return;
 		}
 
-		isRefreshingCart = true;
+		isFetchingCart = true;
 		Promise.resolve()
 			.then( function () {
-				return blocksCheckout.extensionCartUpdate( {
-					namespace: NAMESPACE,
-					data: {},
+				return apiFetch( {
+					path: CART_PATH,
+					method: 'GET',
+					cache: 'no-store',
 				} );
 			} )
+			.then( replaceSentSessionId )
 			.catch( function () {
 				// Fail open.
 			} )
 			.then( function () {
-				isRefreshingCart = false;
+				isFetchingCart = false;
 			} );
 	}
 
@@ -156,7 +171,7 @@
 		return;
 	}
 
-	data.subscribe( replaceSentSessionId, CART_STORE );
+	data.subscribe( checkCartStore, CART_STORE );
 
 	// The page loses focus when the shopper clicks into Kustom's iframe, and
 	// gets it back when they come back to the page, for example to pay again
@@ -182,7 +197,7 @@
 		}
 
 		isInKustomIframe = false;
-		refreshCart();
+		fetchCart();
 	} );
 
 	fraudProtection.prepareSessionId();
@@ -195,6 +210,6 @@
 					blackbox_session_id_error: 'not_ready',
 			  };
 		publish();
-		replaceSentSessionId();
+		checkCartStore();
 	} );
 } )();

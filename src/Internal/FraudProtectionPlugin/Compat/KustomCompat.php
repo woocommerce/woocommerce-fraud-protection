@@ -31,8 +31,8 @@ defined( 'ABSPATH' ) || exit;
  * Kustom's servers do not tell the browser when they use the session ID. The
  * Store API cart data carries the last session ID that a Kustom attempt sent to
  * verification, and the script starts a new session when it matches its own.
- * The script refreshes the cart when the shopper comes back to the page from an
- * iframe. Requests that still carry a used ID, such as a retry made without
+ * The script gets the cart again when the shopper comes back to the page from
+ * an iframe. Requests that still carry a used ID, such as a retry made without
  * leaving Kustom's iframe, are sent without it, with any payment method.
  */
 class KustomCompat {
@@ -110,8 +110,7 @@ class KustomCompat {
 	/**
 	 * Add the session ID that a Kustom attempt sent to the Store API cart data.
 	 *
-	 * The empty update callback lets the script refresh the cart through the
-	 * cart/extensions endpoint.
+	 * Stores without Kustom keep their cart data unchanged.
 	 *
 	 * @internal
 	 *
@@ -119,8 +118,8 @@ class KustomCompat {
 	 */
 	public function register_store_api_cart_extension(): void {
 		if (
+			! defined( 'KCO_WC_VERSION' ) ||
 			! function_exists( 'woocommerce_store_api_register_endpoint_data' ) ||
-			! function_exists( 'woocommerce_store_api_register_update_callback' ) ||
 			! class_exists( CartSchema::class )
 		) {
 			return;
@@ -141,13 +140,6 @@ class KustomCompat {
 						),
 					);
 				},
-			)
-		);
-
-		woocommerce_store_api_register_update_callback(
-			array(
-				'namespace' => BlocksCheckoutProtector::EXTENSION_NAMESPACE,
-				'callback'  => static function (): void {},
 			)
 		);
 	}
@@ -189,7 +181,7 @@ class KustomCompat {
 		wp_enqueue_script(
 			'wc-fraud-protection-kustom-blocks-checkout',
 			plugins_url( 'assets/js/kustom-blocks-checkout.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
-			array( 'wc-fraud-protection-blackbox-init', 'wp-data' ),
+			array( 'wc-fraud-protection-blackbox-init', 'wp-data', 'wp-api-fetch' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )
 		);

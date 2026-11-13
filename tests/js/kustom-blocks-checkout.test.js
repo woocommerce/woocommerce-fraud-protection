@@ -14,6 +14,7 @@ const NAMESPACE = 'woocommerce/fraud-protection';
 let activeMethod;
 let extensionData;
 let cartData;
+let serverCart;
 let storeListeners;
 let setExtensionData;
 let sessionIdListener;
@@ -58,6 +59,12 @@ function payInIframeAndComeBack() {
 	window.dispatchEvent( new Event( 'focus' ) );
 }
 
+async function flushPromises() {
+	for ( let i = 0; i < 5; i++ ) {
+		await Promise.resolve();
+	}
+}
+
 beforeEach( () => {
 	jest.useFakeTimers();
 	// Leaving the tab or the window takes the focus from the document.
@@ -65,6 +72,7 @@ beforeEach( () => {
 	activeMethod = 'kco';
 	extensionData = {};
 	cartData = { extensions: {} };
+	serverCart = { extensions: {} };
 	storeListeners = {};
 	sessionIdListener = null;
 	windowListeners = [];
@@ -91,7 +99,7 @@ beforeEach( () => {
 				}
 				return { getExtensionData: () => extensionData };
 			},
-			dispatch: () => ( { setExtensionData } ),
+			dispatch: jest.fn( () => ( { setExtensionData } ) ),
 			subscribe: ( listener, store ) => {
 				storeListeners[ store ] = [
 					...( storeListeners[ store ] || [] ),
@@ -99,11 +107,7 @@ beforeEach( () => {
 				];
 			},
 		},
-	};
-	window.wc = {
-		blocksCheckout: {
-			extensionCartUpdate: jest.fn( () => Promise.resolve() ),
-		},
+		apiFetch: jest.fn( () => Promise.resolve( serverCart ) ),
 	};
 } );
 
@@ -114,7 +118,6 @@ afterEach( () => {
 	jest.restoreAllMocks();
 	jest.useRealTimers();
 	delete window.wp;
-	delete window.wc;
 	delete window.wcFraudProtection;
 } );
 
@@ -252,19 +255,54 @@ describe( 'kustom-blocks-checkout', () => {
 			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'refreshes the cart when the shopper comes back from the iframe', async () => {
+		it( 'gets the cart when the shopper comes back from the iframe', async () => {
 			setupWithPreparedSessionIds();
 			sessionIdListener( 'sess-1' );
 
 			payInIframeAndComeBack();
-			await Promise.resolve();
+			await flushPromises();
 
-			expect(
-				window.wc.blocksCheckout.extensionCartUpdate
-			).toHaveBeenCalledWith( { namespace: NAMESPACE, data: {} } );
+			expect( window.wp.apiFetch ).toHaveBeenCalledWith( {
+				path: '/wc/store/v1/cart',
+				method: 'GET',
+				cache: 'no-store',
+			} );
 		} );
 
-		it( 'refreshes the cart when the shopper leaves the window from the iframe and comes back', async () => {
+		it( 'starts a new session when the fetched cart shows the prepared session ID', async () => {
+			serverCart = {
+				extensions: {
+					[ NAMESPACE ]: { kustom_sent_session_id: 'sess-1' },
+				},
+			};
+			setupWithPreparedSessionIds();
+			sessionIdListener( 'sess-1' );
+
+			payInIframeAndComeBack();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+			expect( window.wp.data.dispatch ).not.toHaveBeenCalledWith(
+				'wc/store/cart'
+			);
+		} );
+
+		it( 'keeps the session when the fetched cart shows another session ID', async () => {
+			serverCart = {
+				extensions: {
+					[ NAMESPACE ]: { kustom_sent_session_id: 'sess-0' },
+				},
+			};
+			setupWithPreparedSessionIds();
+			sessionIdListener( 'sess-1' );
+
+			payInIframeAndComeBack();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'gets the cart when the shopper leaves the window from the iframe and comes back', async () => {
 			setupWithPreparedSessionIds();
 			sessionIdListener( 'sess-1' );
 
@@ -275,77 +313,81 @@ describe( 'kustom-blocks-checkout', () => {
 			window.dispatchEvent( new Event( 'blur' ) );
 			jest.runAllTimers();
 			window.dispatchEvent( new Event( 'focus' ) );
-			await Promise.resolve();
+			await flushPromises();
 
-			expect(
-				window.wc.blocksCheckout.extensionCartUpdate
-			).toHaveBeenCalledWith( { namespace: NAMESPACE, data: {} } );
+			expect( window.wp.apiFetch ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'refreshes the cart only once for each time the shopper comes back', async () => {
+		it( 'gets the cart only once for each time the shopper comes back', async () => {
 			setupWithPreparedSessionIds();
 			sessionIdListener( 'sess-1' );
 
 			payInIframeAndComeBack();
-			await Promise.resolve();
-			await Promise.resolve();
+			await flushPromises();
+			// The shopper then goes to another tab and comes back.
+			document.hasFocus.mockReturnValue( false );
 			window.dispatchEvent( new Event( 'blur' ) );
 			jest.runAllTimers();
 			window.dispatchEvent( new Event( 'focus' ) );
-			await Promise.resolve();
+			await flushPromises();
 
-			expect(
-				window.wc.blocksCheckout.extensionCartUpdate
-			).toHaveBeenCalledTimes( 1 );
+			expect( window.wp.apiFetch ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'does not refresh the cart when the shopper comes back from another tab or window', async () => {
+		it( 'does not get the cart when the shopper comes back from another tab or window', async () => {
 			setupWithPreparedSessionIds();
 			sessionIdListener( 'sess-1' );
 
 			window.dispatchEvent( new Event( 'blur' ) );
 			jest.runAllTimers();
 			window.dispatchEvent( new Event( 'focus' ) );
-			await Promise.resolve();
+			await flushPromises();
 
-			expect(
-				window.wc.blocksCheckout.extensionCartUpdate
-			).not.toHaveBeenCalled();
+			expect( window.wp.apiFetch ).not.toHaveBeenCalled();
 		} );
 
-		it( 'does not refresh the cart while another payment method is selected', async () => {
+		it( 'does not get the cart while another payment method is selected', async () => {
 			activeMethod = 'cod';
 			setupWithPreparedSessionIds();
 			sessionIdListener( 'sess-1' );
 
 			payInIframeAndComeBack();
-			await Promise.resolve();
+			await flushPromises();
 
-			expect(
-				window.wc.blocksCheckout.extensionCartUpdate
-			).not.toHaveBeenCalled();
+			expect( window.wp.apiFetch ).not.toHaveBeenCalled();
 		} );
 
-		it( 'does not refresh the cart without a prepared session ID', async () => {
+		it( 'does not get the cart without a prepared session ID', async () => {
 			setupWithPreparedSessionIds();
 
 			payInIframeAndComeBack();
-			await Promise.resolve();
+			await flushPromises();
 
-			expect(
-				window.wc.blocksCheckout.extensionCartUpdate
-			).not.toHaveBeenCalled();
+			expect( window.wp.apiFetch ).not.toHaveBeenCalled();
 		} );
 
-		it( 'fails open when the cart refresh fails', async () => {
-			window.wc.blocksCheckout.extensionCartUpdate.mockReturnValue(
+		it( 'fails open when getting the cart fails', async () => {
+			window.wp.apiFetch.mockReturnValue(
 				Promise.reject( new Error( 'offline' ) )
 			);
 			setupWithPreparedSessionIds();
 			sessionIdListener( 'sess-1' );
 
 			expect( () => payInIframeAndComeBack() ).not.toThrow();
-			await Promise.resolve();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
+		} );
+
+		it( 'fails open without apiFetch', async () => {
+			delete window.wp.apiFetch;
+			setupWithPreparedSessionIds();
+			sessionIdListener( 'sess-1' );
+
+			expect( () => payInIframeAndComeBack() ).not.toThrow();
+			await flushPromises();
+
+			expect( window.wcFraudProtection.reset ).not.toHaveBeenCalled();
 		} );
 
 		it( 'fails open without the cart store', () => {

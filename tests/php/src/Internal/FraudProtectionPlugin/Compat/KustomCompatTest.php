@@ -230,29 +230,36 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Get the Fraud Protection data of the Store API cart.
+	 * Register the cart data and get the Fraud Protection data of the Store API cart.
 	 *
-	 * @param string $method HTTP method: GET for the cart, POST for a cart update through cart/extensions.
+	 * @param bool $is_kustom_active Whether Kustom is active.
 	 * @return mixed The Fraud Protection data of the cart response.
 	 */
-	private function get_cart_data( string $method = 'GET' ): mixed {
+	private function get_cart_data( bool $is_kustom_active = true ): mixed {
+		if ( $is_kustom_active && ! defined( 'KCO_WC_VERSION' ) ) {
+			define( 'KCO_WC_VERSION', '2.24.1' );
+		}
 		$this->sut->register_store_api_cart_extension();
 
-		$request = new \WP_REST_Request( $method, 'GET' === $method ? '/wc/store/v1/cart' : '/wc/store/v1/cart/extensions' );
-		if ( 'POST' === $method ) {
-			add_filter( 'woocommerce_store_api_disable_nonce_check', '__return_true' );
-			$request->set_param( 'namespace', self::NAMESPACE );
-		}
-
-		try {
-			$response = rest_get_server()->dispatch( $request );
-		} finally {
-			remove_filter( 'woocommerce_store_api_disable_nonce_check', '__return_true' );
-		}
+		$response = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc/store/v1/cart' ) );
 
 		$this->assertSame( 200, $response->get_status() );
 
 		return $response->get_data()['extensions']->{self::NAMESPACE} ?? null;
+	}
+
+	/**
+	 * @testdox The cart has no Fraud Protection data without Kustom.
+	 */
+	public function test_cart_has_no_data_without_kustom(): void {
+		// Constants cannot be removed, and the cart data stays registered for the process.
+		if ( defined( 'KCO_WC_VERSION' ) ) {
+			$this->markTestSkipped( 'Kustom was already active in this process.' );
+		}
+
+		$this->submit_checkout( 'session-1' );
+
+		$this->assertNull( $this->get_cart_data( false ) );
 	}
 
 	/**
@@ -270,15 +277,6 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 		$this->submit_checkout( 'session-2', 'kco', false );
 
 		$this->assertSame( array( 'kustom_sent_session_id' => 'session-1' ), $this->get_cart_data() );
-	}
-
-	/**
-	 * @testdox A cart update through cart/extensions returns the sent session ID.
-	 */
-	public function test_cart_update_returns_sent_session_id(): void {
-		$this->submit_checkout( 'session-1' );
-
-		$this->assertSame( array( 'kustom_sent_session_id' => 'session-1' ), $this->get_cart_data( 'POST' ) );
 	}
 
 	/**
