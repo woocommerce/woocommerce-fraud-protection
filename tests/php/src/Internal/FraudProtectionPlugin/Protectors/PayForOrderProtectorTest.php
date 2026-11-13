@@ -113,7 +113,12 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	 * @testdox enqueue_pay_for_order_script() enqueues its script when the shared scripts are available.
 	 */
 	public function test_enqueue_pay_for_order_script_when_shared_scripts_are_available(): void {
-		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( true );
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->sut->init(
+			$this->session_verifier,
+			$this->blocked_session_message,
+			$this->make_blackbox_script_handler()
+		);
 
 		$this->sut->enqueue_pay_for_order_script();
 
@@ -131,7 +136,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	 * @testdox enqueue_pay_for_order_script() does not enqueue when the shared scripts are unavailable.
 	 */
 	public function test_enqueue_pay_for_order_script_skips_when_shared_scripts_are_unavailable(): void {
-		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_scripts' )->willReturn( false );
+		$this->blackbox_script_handler->expects( $this->once() )->method( 'request_pay_for_order_script' )->willReturn( false );
 
 		$this->sut->enqueue_pay_for_order_script();
 
@@ -199,7 +204,7 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	 * @param string $test_case Early-return case.
 	 */
 	public function test_pay_page_early_returns_do_not_enqueue_scripts( string $test_case ): void {
-		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_scripts' );
+		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_pay_for_order_script' );
 		$this->sut->register();
 
 		if ( 'invalid_order' === $test_case ) {

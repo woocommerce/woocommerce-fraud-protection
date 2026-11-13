@@ -8,8 +8,11 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\KustomCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 
@@ -47,7 +50,7 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->sut = new KustomCompat();
-		$this->sut->init( $protector, $handler );
+		$this->sut->init( $protector, $handler, new GatewayNativeSupport() );
 
 		// The instance that the plugin registered at bootstrap must not handle the test's hooks.
 		remove_all_actions( self::CHECKOUT_HOOK );
@@ -236,5 +239,35 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut->send_session_id_only_once( null, 'not-a-request' );
 
 		$this->assertNull( WC()->session->get( '_wc_fraud_protection_kustom_sent_session_id' ) );
+	}
+
+	/**
+	 * @testdox Stands aside on every hook when Kustom declares native express checkout support.
+	 */
+	public function test_stands_aside_when_kustom_declares_native_express_checkout(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'kco', array( FraudProtectionFeature::EXPRESS_CHECKOUT ) ) );
+		add_filter( 'woocommerce_available_payment_gateways', array( $this, 'add_kustom_gateway' ) );
+
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'kco_wc_before_snippet' );
+		$this->sut->enqueue_blocks_checkout_script();
+		$this->submit_checkout( 'session-1' );
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ), 'Kustom loads its own scripts on the classic checkout' );
+		$this->assertFalse( wp_script_is( self::SCRIPT_HANDLE, 'enqueued' ), 'Kustom keeps the session ID in the Checkout block itself' );
+		$this->assertSame( array( 'blackbox_session_id' => 'session-1' ), $this->submit_checkout( 'session-1' ), 'Kustom decides which session ID it sends' );
+		$this->assertNull( WC()->session->get( '_wc_fraud_protection_kustom_sent_session_id' ) );
+	}
+
+	/**
+	 * @testdox Stays on when Kustom declares only the checkout feature, which is for requests that run outside WooCommerce's checkout.
+	 */
+	public function test_stays_on_when_kustom_declares_only_checkout(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'kco', array( FraudProtectionFeature::CHECKOUT ) ) );
+
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'kco_wc_before_snippet' );
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-shortcode-checkout', 'enqueued' ) );
 	}
 }

@@ -8,12 +8,15 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsSetupIntentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use WCPay\Core\Server\Request\Get_Setup_Intention;
@@ -81,7 +84,8 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut->init(
 			$this->session_verifier,
 			$this->blocked_session_message,
-			new SessionIdNormalizer()
+			new SessionIdNormalizer(),
+			new GatewayNativeSupport()
 		);
 		$this->sut->register();
 
@@ -226,6 +230,46 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 10, has_filter( self::SETUP_INTENT_REQUEST_FILTER, array( $this->sut, 'verify_and_block_setup_intent' ) ) );
 		$this->assertSame( 10, has_filter( self::SKIP_VERIFY_FILTER, array( $this->sut, 'supply_decision_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_add_payment_method_script' ) ) );
+	}
+
+	/**
+	 * @testdox The setup intent request is not verified and the script is not enqueued when WooPayments declares native add-payment-method support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_add_payment_method(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'woocommerce_payments', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
+		$this->set_setup_intent_post( array( SessionVerifier::SESSION_ID_FIELD => 'sess-wcpay' ) );
+		$this->session_verifier->expects( $this->never() )->method( 'verify_session' );
+		wp_enqueue_script( 'wc-fraud-protection-add-payment-method', 'https://example.com/add-payment-method.js', array(), '1', true );
+		$this->set_available_gateway_ids( array( 'woocommerce_payments' ) );
+
+		$outcome = $this->run_setup_intent_filter();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_add_payment_method_form_bottom' );
+
+		$this->assertFalse( $outcome['blocked'] );
+		$this->assertTrue( $outcome['request_unchanged'] );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-woopayments-add-payment-method', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox A form post verifies normally once WooPayments declares native add-payment-method support.
+	 */
+	public function test_form_post_verifies_normally_once_gateway_declares_native_add_payment_method(): void {
+		$this->verify_setup_intent( FraudDecision::Allow );
+		$this->register_payment_gateways( new FakeNativeGateway( 'woocommerce_payments', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
+
+		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ) );
+	}
+
+	/**
+	 * @testdox Declaring only native checkout support keeps setup intent verification on.
+	 */
+	public function test_checkout_declaration_keeps_setup_intent_verification(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'woocommerce_payments', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$this->set_setup_intent_post();
+		$this->session_verifier->expects( $this->once() )->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+
+		$this->run_setup_intent_filter();
 	}
 
 	/**

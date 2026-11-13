@@ -5,7 +5,7 @@ description: Guidelines for creating and modifying markdown files in WooCommerce
 
 # WooCommerce Fraud Protection Markdown Guidelines
 
-This skill provides guidance for creating and editing markdown files in this repository: `README.md`, `AGENTS.md`, the skill files under `.ai/skills/`, and the pull request template.
+This skill provides guidance for creating and editing markdown files in this repository: `README.md`, the documents under `docs/`, `AGENTS.md`, the skill files under `.ai/skills/`, and the pull request template.
 
 ## Critical Rules
 
@@ -177,7 +177,11 @@ Skills live under `.ai/skills/<name>/SKILL.md` with optional companion files. `.
 
 ### README.md
 
-`README.md` is the developer setup guide and the public API reference. The "Public API" section is part of the public contract; update it whenever the public API changes.
+`README.md` is the developer setup guide. Its "Public API" section only links to the documents under `docs/`.
+
+### docs/
+
+`docs/api-reference.md` documents the public contract; update it whenever the public API changes. `docs/integration-guide.md` is the starting point for extension developers; update it when a change affects how an extension integrates, and keep one short example per declarable integration. Put each example in one of the two documents, not both: the reference links to the guide for the examples the guide already has.
 
 ### changelog.txt
 

@@ -1,0 +1,330 @@
+# Integrating with WooCommerce Fraud Protection
+
+This guide is for payment gateways and other WooCommerce extensions that want to integrate with Fraud Protection natively. It explains what the plugin already does, which integration your extension needs, how to declare it, and what to implement for each one. The [public API reference](api-reference.md) documents every class, hook and script that this guide uses, and the [example integrations](../examples/README.md) show complete working code.
+
+## Do you need to integrate?
+
+Fraud Protection verifies the standard WooCommerce flows by itself: the block and shortcode checkouts, the "Pay for order" page, and the My Account "Add payment method" page. This built-in protection applies to every gateway on those flows, and no declaration turns it off. When WooCommerce Subscriptions is active, its change-payment-method form is verified too. A gateway that takes payment only through `process_payment()` on those flows is already covered and needs no native integration. Providing the details of the payment method that each payment uses, such as the card brand and last four digits, still gives each verification better data (see [Payment data](#payment-data)).
+
+An extension needs a native integration when it moves part of a payment outside those flows. For example, its buttons may place an order through their own request, or it may save a card before the form is submitted. A native integration is code in your extension that protects those requests, and a declaration tells Fraud Protection that your extension has it.
+
+A request that only checks the checkout form before the submission needs no native integration, even when it fires `woocommerce_checkout_process` or `woocommerce_after_checkout_validation`. Fraud Protection verifies the shortcode checkout inside `WC_Checkout::process_checkout()`, so firing those hooks yourself verifies nothing, and the submission that follows is verified as usual. Don't call `verify_request()` in such a request: a [session ID](api-reference.md#where-the-server-reads-the-session-id) can be verified only once, and the form your request posts can already hold the one for the submission.
+
+Three rules apply to every native integration:
+
+- **Fraud Protection is optional.** Register your native integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.3.2 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
+- **Fail open.** Never stop a payment because Fraud Protection is unavailable. Send a request without a session ID when you have none; the server still verifies it.
+- **Declare only what you implement.** A declaration never turns off the built-in protection of the standard flows. It tells Fraud Protection that your extension handles that part itself, so Fraud Protection can stop any handling specific to your extension. Declaring something you don't implement can leave your extension's own requests unprotected, or your payments verified without payment data.
+
+## Choose your integrations
+
+Most gateways should provide [payment data](#payment-data). It needs only a resolver on the server, and it improves the verification of every payment made with your gateway, including the ones that the built-in protection covers. The other integrations apply only when your extension sends its own requests outside the standard flows, as described in [Do you need to integrate?](#do-you-need-to-integrate).
+
+| Your extension | Declare | Section |
+|----------------|---------|---------|
+| Is a gateway and can provide the details of the payment method that each payment uses, such as the card brand and last four digits | `fraud_protection_payment_data` | [Payment data](#payment-data) |
+| Is a gateway that places or authorizes a purchase through its own requests, before or instead of the checkout submission | `fraud_protection_checkout` | [Checkout requests](#checkout-requests) |
+| Is a gateway that checks or saves a payment method through its own requests, before the "Add payment method" or change-payment-method form is submitted | `fraud_protection_add_payment_method` | [Add payment method requests](#add-payment-method-requests) |
+| Is a gateway whose express payment buttons or embedded checkout skip the checkout form, but place the order through WooCommerce's checkout: the Store API, or the classic checkout process | `fraud_protection_express_checkout` | [Express checkout](#express-checkout) |
+| Is not a gateway and handles its own change-payment-method form | `change_payment_method` | [Change payment method forms](#change-payment-method-forms) |
+
+## Declare your integrations
+
+### Payment gateways
+
+A gateway declares its integrations as gateway features, in the `$supports` array of its `WC_Payment_Gateway` subclass:
+
+```php
+$this->supports = array(
+	'products',
+	'refunds',
+	'fraud_protection_payment_data',
+	'fraud_protection_checkout',
+	'fraud_protection_add_payment_method',
+	'fraud_protection_express_checkout',
+);
+```
+
+If your plugin registers one gateway instance per payment method, declare the features on every instance that implements them. The resolvers and reference readers you register below can cover all those instances at once with a [gateway ID pattern](api-reference.md#gateway-id-patterns), such as `my_gateway_*`.
+
+### Other extensions
+
+Any other extension declares its integrations under its own plugin slug (its WordPress.org or WooCommerce.com slug). Hook the `woocommerce_fraud_protection_register_native_integrations` action while your plugin loads, and call `register()` on the registry it passes, once per integration:
+
+```php
+use Automattic\WooCommerce\FraudProtection\NativeIntegrationRegistry;
+
+add_action(
+	'woocommerce_fraud_protection_register_native_integrations',
+	function ( NativeIntegrationRegistry $registry ): void {
+		$registry->register( 'my-extension', 'change_payment_method' );
+	}
+);
+```
+
+The action fires only while Fraud Protection is active, so your callback needs no class check. It fires at most once per request, the first time Fraud Protection needs the declarations, and a registration made outside it is ignored. Declare only under your own slug: Fraud Protection reads each extension's declarations under that extension's slug.
+
+### Check the declaration
+
+Run `wp wc fraud-protection native-integrations list`. It lists the declarations of every gateway and extension, one row per feature or integration. Add `--id` with your gateway ID or plugin slug, as in `wp wc fraud-protection native-integrations list --id=my_gateway`, to print only your own declarations. See [WP-CLI](api-reference.md#wp-cli) in the API reference for its output and options.
+
+## The building blocks
+
+Checkout requests and Add payment method requests combine the three steps below, and Express checkout uses the first two, because the plugin verifies its Store API request. The section for each integration shows the part specific to it. Payment data needs none of these steps: a resolver on the server is all it takes. Change payment method forms use a ready-made script, described in their own section.
+
+### 1. Load the browser scripts
+
+Register your script as you already do, and call `register_scripts_for()` with its handle right after:
+
+```php
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+
+add_action(
+	'wp_enqueue_scripts',
+	function (): void {
+		wp_register_script( 'my-gateway-checkout', plugins_url( 'js/checkout.js', __FILE__ ), array(), '1.0.0', true );
+
+		wc_get_container()->get( BlackboxScriptHandler::class )->register_scripts_for( 'my-gateway-checkout' );
+	}
+);
+```
+
+Then enqueue your script where your payment surface renders, as you already do.
+
+`register_scripts_for()` registers the shared scripts and makes your script depend on `wc-fraud-protection-blackbox-init`. It loads nothing by itself: WordPress prints the shared scripts only on the pages where your script is enqueued, before your script, so `window.wcFraudProtection` is set up before your script runs. So you can call it wherever you register your scripts, even on every page, or from `get_payment_method_script_handles()` for a payment method in the Checkout block. Pass it only the scripts that run on your payment surfaces: a script you enqueue on every page, such as a site-wide helper, would load the shared scripts on every page too. It also works for a script that is already enqueued, as long as it hasn't been printed.
+
+It changes nothing and returns `false` when the store is not connected to Jetpack, or in the WordPress admin. On pages that must not load the shared scripts, such as the order confirmation page or a post preview, they are left out when the scripts are printed. Either way, your script loads without them, and your requests go out without a session ID and are still verified. A script that exists only for Fraud Protection can instead be enqueued from your payment surface only when `request_scripts()` returns `true`, with `wc-fraud-protection-blackbox-init` as a dependency.
+
+### 2. Send the session ID
+
+In your script, take a session ID with `takeSessionId()` right before sending the request, not when your script loads or the payment surface renders, and add it under the field name in `config.sessionIdField`:
+
+```js
+async function addSessionId( body ) {
+	const fp = window.wcFraudProtection;
+	if ( fp && typeof fp.takeSessionId === 'function' ) {
+		body[ fp.config.sessionIdField ] = await fp.takeSessionId();
+	}
+	return body;
+}
+
+const body = await addSessionId( { action: 'my_gateway_create_order' } );
+// Send the request with body.
+```
+
+`takeSessionId()` never rejects. It resolves to an empty string when there is no session ID, for example when a content blocker stopped the SDK; send the request anyway. It also starts a fresh session for the next attempt, so there is no `reset()` call. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
+
+`takeSessionId()` sends the shopper's latest session data in a network request first, and resolves when that completes or after at most 3 seconds. Where that delay matters, for example in code that must open a payment sheet or popup in response to a click, or in a code path that must add the ID synchronously, use the prepared session ID instead (see [Express checkout](#express-checkout)).
+
+### 3. Verify the request and reuse its decision
+
+Verify each request your gateway handles itself with `GatewayRequestVerifier::verify_request()` before you act on it, and stop it on a Block decision with the standard message. When the request comes before a WooCommerce submission that the plugin also verifies, such as the checkout that completes a purchase your request started, reuse the decision for that submission, so the attempt is scored only once:
+
+```php
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
+
+$request = wc_get_container()->get( GatewayRequestVerifier::class )->verify_request( 'my_gateway_create_order', 'my_gateway' );
+
+if ( $request->is_blocked() ) {
+	wp_send_json_error( array( 'message' => ( new BlockedSessionMessage() )->get_plaintext( MessageContext::Purchase ) ), 403 );
+}
+
+$provider_order_id = my_gateway_create_provider_order(); // Your own call.
+$request->reuse_decision_for( $provider_order_id );
+```
+
+The first argument identifies your flow: a stable ASCII string of 32 characters or fewer. `verify_request()` reads the session ID from the request body, under the field name in `config.sessionIdField`: a form field, or a top-level property of a JSON body. When your request carries it anywhere else, such as in a nested JSON object, a header or a REST route parameter, pass the session ID you received as the fifth argument; otherwise the request is verified without it. Use `MessageContext::Purchase` in purchase flows and `MessageContext::Generic` elsewhere, and `get_html()` instead of `get_plaintext()` for a notice rendered in a page.
+
+The reference you pass to `reuse_decision_for()` must be a value that only your server created while handling this request, such as the ID of the order or setup intent at your payment provider. The browser gets it from your response, and the final submission posts it back. Tell the plugin where to find it in that submission, once, while your plugin loads:
+
+```php
+wc_get_container()->get( GatewayRequestVerifier::class )->register_reference_reader(
+	'my_gateway',
+	fn( array $payment_data ) => $payment_data['my_gateway_order_id'] ?? ''
+);
+```
+
+The next submission paid with your gateway that carries the reference, with the same cart items, reuses the decision instead of being verified, once. Any other submission is verified normally. The [API reference](api-reference.md#gatewayrequestverifier) has the exact rules, and the lower-level [`SessionVerifier`](api-reference.md#sessionverifier) and [`woocommerce_fraud_protection_skip_session_verify`](api-reference.md#woocommerce_fraud_protection_skip_session_verify) for flows it does not cover.
+
+## Integrations
+
+### Payment data
+
+Fraud Protection knows which gateway takes each payment, but not the details of the payment method the shopper uses. Those details are in your gateway's fields or at your payment provider: the payment method type, such as card or bank debit, the card brand, last four digits and expiry date, the wallet, and the results of the CVC and address checks. Only a saved payment method's WooCommerce token holds some of them. A resolver provides these details for each payment made with your gateway, together with whether the payment runs in live or test mode and which merchant account receives it. The [`PaymentInstrumentData`](api-reference.md#paymentinstrumentdata) reference lists every detail you can provide.
+
+**Declare:** `fraud_protection_payment_data` in the gateway's `$supports`.
+
+**Implement:** while your plugin loads, register a resolver with `GatewayPaymentData::register_resolver()`. It returns a `PaymentMethodData` with the details of a payment made with your gateway:
+
+```php
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
+
+wc_get_container()->get( GatewayPaymentData::class )->register_resolver(
+	'my_gateway',
+	function ( array $payment_fields, PaymentMethodData $resolved ): PaymentMethodData {
+		if ( $resolved->to_array()['is_saved_payment_method'] ) {
+			return $resolved->with_transaction_mode( PaymentMode::Live )
+				->with_merchant_identifier( 'acct_123', 'account' );
+		}
+
+		$instrument = PaymentInstrumentData::from_array(
+			array(
+				'brand' => $payment_fields['my_gateway_card_brand'] ?? null,
+				'last4' => $payment_fields['my_gateway_card_last4'] ?? null,
+			)
+		);
+
+		return new PaymentMethodData( 'my_gateway', 'card', false, $instrument, PaymentMode::Live, 'acct_123', 'account' );
+	}
+);
+```
+
+The plugin calls the resolver only for attempts paid with your gateway. `$payment_fields` holds the gateway fields submitted with the attempt, or the payment data you passed to `verify_request()`. `$resolved` is pre-filled from the WooCommerce payment token when the shopper pays with a saved method, so the example keeps it and adds only what the token doesn't hold. Return `null` to keep it unchanged. If the resolver throws, or returns anything other than a `PaymentMethodData` for your gateway, the plugin keeps `$resolved`.
+
+The resolver also runs when the My Account "Add payment method" form or the WooCommerce Subscriptions change-payment-method form is submitted with your gateway selected, with the fields your gateway posts on that form. You need no code specific to those forms.
+
+### Checkout requests
+
+**Declare:** `fraud_protection_checkout` in the gateway's `$supports`.
+
+**Implement:** for each request that places or authorizes a purchase before or instead of the WooCommerce checkout or Pay for order submission, such as a create-order call:
+
+1. [Load the browser scripts](#1-load-the-browser-scripts) on the product, cart, checkout and Pay for order pages where your buttons render.
+2. [Send the session ID](#2-send-the-session-id) with the request.
+3. [Verify it](#3-verify-the-request-and-reuse-its-decision), stop on a Block decision with `MessageContext::Purchase`, and reuse the decision for the checkout or Pay for order submission that completes the purchase.
+
+```php
+add_action(
+	'wc_ajax_my_gateway_create_order',
+	function (): void {
+		check_ajax_referer( 'my-gateway-create-order', 'security' );
+
+		$request = wc_get_container()->get( GatewayRequestVerifier::class )->verify_request( 'my_gateway_create_order', 'my_gateway' );
+		if ( $request->is_blocked() ) {
+			wp_send_json_error( array( 'message' => ( new BlockedSessionMessage() )->get_plaintext( MessageContext::Purchase ) ), 403 );
+		}
+
+		$provider_order_id = my_gateway_create_provider_order(); // Your own call.
+		$request->reuse_decision_for( $provider_order_id );
+
+		wp_send_json_success( array( 'order_id' => $provider_order_id ) );
+	}
+);
+```
+
+The checkout that follows then posts `my_gateway_order_id`, where the reader you passed to `register_reference_reader()` finds it.
+
+These requests include one that creates the order without `WC_Checkout::process_checkout()`, even when it fires WooCommerce's validation hooks: Fraud Protection doesn't verify it for you. They don't include an authorization that your provider's browser SDK performs before the normal checkout submission, because that submission is verified.
+
+### Add payment method requests
+
+The submissions of the My Account "Add payment method" form and the WooCommerce Subscriptions change-payment-method form are already verified, before your gateway saves the payment method. A gateway that saves it only while handling that submission, such as in `add_payment_method()`, needs no integration for these forms. Declare this feature when your gateway checks or saves the payment method through its own request before the form is submitted, such as creating a setup intent, because the payment method can be saved before the submission is verified.
+
+**Declare:** `fraud_protection_add_payment_method` in the gateway's `$supports`.
+
+**Implement:** the same steps as [Checkout requests](#checkout-requests), for each request that checks or saves a payment method outside a purchase, such as creating a setup intent. These requests come from the My Account "Add payment method" form and from the WooCommerce Subscriptions change-payment-method form. Block with `MessageContext::Generic`, and reuse the decision for the form submission:
+
+```php
+add_action(
+	'wc_ajax_my_gateway_create_setup_intent',
+	function (): void {
+		check_ajax_referer( 'my-gateway-setup-intent', 'security' );
+
+		$request = wc_get_container()->get( GatewayRequestVerifier::class )->verify_request( 'my_gateway_setup_intent', 'my_gateway' );
+		if ( $request->is_blocked() ) {
+			wp_send_json_error( array( 'message' => ( new BlockedSessionMessage() )->get_plaintext( MessageContext::Generic ) ), 403 );
+		}
+
+		$setup_intent_id = my_gateway_create_setup_intent(); // Your own call.
+		$request->reuse_decision_for( $setup_intent_id );
+
+		wp_send_json_success( array( 'setup_intent' => $setup_intent_id ) );
+	}
+);
+```
+
+The reader you pass to `register_reference_reader()` serves both flows: return the setup intent ID when the submission carries one.
+
+### Express checkout
+
+This integration covers any payment surface that skips WooCommerce's checkout form but still places the order through WooCommerce's checkout, so the form's scripts never add the session ID: express payment buttons, or an embedded checkout that your gateway renders in place of the form. The examples below use express buttons.
+
+**Declare:** `fraud_protection_express_checkout` in the gateway's `$supports`.
+
+**Implement:** add the session ID to the Store API checkout request your express buttons send. Put it in the request's extension data, under the `woocommerce/fraud-protection` namespace as `blackbox_session_id`. The plugin verifies that request like any other Store API checkout, so there is nothing to do on the server.
+
+If your buttons post the order to a request that runs WooCommerce's classic checkout process instead, such as your own AJAX endpoint that calls `WC_Checkout::process_checkout()`, add the session ID to the request body under the field name in `config.sessionIdField`. Prepare a session ID when the buttons are set up, as below, and take one with `takePreparedSessionId()` for each request. The plugin verifies the request in the classic checkout, so again there is nothing to do on the server.
+
+Express buttons usually build their request in a synchronous callback, which can't wait for a promise. Prepare a session ID when the buttons are set up, and add it with `addSessionIdToExtensions()` when the request's extension data is built:
+
+```js
+const fp = window.wcFraudProtection;
+const canAdd = fp && typeof fp.addSessionIdToExtensions === 'function';
+
+// When the express buttons are set up:
+if ( canAdd ) {
+	fp.prepareSessionId();
+}
+
+// When the Store API checkout request is built:
+const extensions = canAdd ? fp.addSessionIdToExtensions( buttonExtensions ) : buttonExtensions;
+```
+
+`prepareSessionId()` fetches the session ID in the background, so `addSessionIdToExtensions()` adds it without waiting. Call `addSessionIdToExtensions()` for every request, so each click gets its own session ID, and never keep an ID for a later request.
+
+`addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out with the reason instead of a session ID. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
+
+Make your button script depend on the browser scripts as in [step 1](#1-load-the-browser-scripts), and enqueue it on every page where the buttons render. Use the prepared session ID even when your button code could wait for a promise: `takeSessionId()` sends a network request and can take up to 3 seconds, which an express flow can't afford between the click and the payment sheet or the order request.
+
+### Change payment method forms
+
+**Declare:** `change_payment_method` under your plugin slug, from the `woocommerce_fraud_protection_register_native_integrations` action (see [Other extensions](#other-extensions)).
+
+**Implement:** for an extension that handles its own change-payment-method form, rendered as WooCommerce's `#order_review` pay form:
+
+1. Call `request_pay_for_order_script()` from the code that renders the form. The script it loads holds the form submission until it has added the session ID as a hidden field.
+2. On submission, after your own nonce and permission checks, read the form with `ClassicFormRequestData` and verify it before changing anything.
+3. On a Block decision, stop the change and show the standard message with `MessageContext::Generic`.
+
+```php
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
+use Automattic\WooCommerce\FraudProtection\MessageContext;
+use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\SessionVerifier;
+
+// While rendering the form:
+wc_get_container()->get( BlackboxScriptHandler::class )->request_pay_for_order_script();
+
+// On submission, after the nonce and permission checks:
+$form     = new ClassicFormRequestData();
+$decision = wc_get_container()->get( SessionVerifier::class )->verify_session(
+	$form->get_submitted_session_id(),
+	'my_extension_change_payment',
+	$order->get_id(),
+	$form->build_request_data( $_POST )
+);
+
+if ( FraudDecision::Block === $decision ) {
+	wc_add_notice( ( new BlockedSessionMessage() )->get_html( MessageContext::Generic ), 'error' );
+	wp_safe_redirect( $order->get_view_order_url() );
+	exit;
+}
+```
+
+## Test your integration
+
+- Load the [example integrations](../examples/README.md) in the local store to compare their behavior with yours.
+- Run `wp wc fraud-protection native-integrations list` and check that it lists your declarations.
+- Watch the `woo-fraud-protection` log under WooCommerce > Status > Logs while you go through your flows. Each decision is logged with the source you passed to `verify_session()`. Check that each payment attempt verifies its session ID only once. A request of yours that fires `woocommerce_checkout_process` is logged as `Checkout validation ran outside the checkout process`; if that request creates an order, it needs a [checkout integration](#checkout-requests).
+- Go through each flow once without a Jetpack connection, or with the Fraud Protection scripts blocked in the browser, and check that payments still complete.
+
+## Next steps
+
+A gateway can also report payment outcomes, such as captures, disputes and refunds, for orders that went through a verification. See `FraudProtectionReporter` in the [public API reference](api-reference.md#fraudprotectionreporter).

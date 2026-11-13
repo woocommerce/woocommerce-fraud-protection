@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
@@ -16,6 +17,8 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Preserves one PayPal request decision for its matching final request.
+ *
+ * Stands aside once the PayPal gateway declares `fraud_protection_checkout`.
  */
 class PayPalDecisionReuse {
 
@@ -42,14 +45,23 @@ class PayPalDecisionReuse {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionIdNormalizer $session_id_normalizer Session ID normalizer.
+	 * @param SessionIdNormalizer  $session_id_normalizer Session ID normalizer.
+	 * @param GatewayNativeSupport $native_support        Native gateway support lookup.
 	 */
-	final public function init( SessionIdNormalizer $session_id_normalizer ): void {
+	final public function init( SessionIdNormalizer $session_id_normalizer, GatewayNativeSupport $native_support ): void {
 		$this->session_id_normalizer = $session_id_normalizer;
+		$this->native_support        = $native_support;
 	}
 
 	/**
@@ -180,6 +192,10 @@ class PayPalDecisionReuse {
 
 		// Not a PayPal gateway — nothing for this filter to do.
 		if ( ! $this->is_paypal_gateway( $payment_method ) ) {
+			return $supplied_decision;
+		}
+
+		if ( $this->native_support->declared( FraudProtectionFeature::CHECKOUT, $payment_method, PayPalCompat::MAIN_GATEWAY_ID ) ) {
 			return $supplied_decision;
 		}
 

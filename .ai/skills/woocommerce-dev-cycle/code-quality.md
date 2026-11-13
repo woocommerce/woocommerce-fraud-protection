@@ -38,7 +38,7 @@ vendor/bin/phpcbf path/to/file.php
 npm run lint:php:autofix      # whole repository
 ```
 
-`phpcs.xml` applies the `WooCommerce-Core` standard plus `PHPCompatibility` for PHP 8.1+, the `woocommerce-fraud-protection` text domain, `manage_woocommerce` as the custom capability, the `init` injection-method sniff under `src/`, and `@throws` requirements outside tests. The `MissingSinceComment` hook sniff is excluded.
+`phpcs.xml` applies the `WooCommerce-Core` standard plus `PHPCompatibility` for PHP 8.1+, the `woocommerce-fraud-protection` text domain (plus the example plugins' own domains, since a `phpcs:set` annotation would leak into the files checked after it), `manage_woocommerce` as the custom capability, the `init` injection-method sniff under `src/`, and `@throws` requirements outside tests. The `MissingSinceComment` hook sniff is excluded.
 
 ## PHP Static Analysis (PHPStan)
 
