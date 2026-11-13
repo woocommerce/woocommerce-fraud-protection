@@ -43,16 +43,13 @@ defined( 'ABSPATH' ) || exit;
  * Native integration: Subscriptions is not a payment gateway, so it cannot declare native
  * support through `WC_Payment_Gateway::supports()`. Once it verifies its change-payment-method
  * form itself, it declares the `change_payment_method` integration under its own plugin slug
- * through the `woocommerce_fraud_protection_native_integrations` filter, and this layer then
- * stands aside on both the form render and the submission:
+ * from the `woocommerce_fraud_protection_register_native_integrations` action, and this layer
+ * then stands aside on both the form render and the submission:
  *
- *     add_filter(
- *         'woocommerce_fraud_protection_native_integrations',
- *         function ( $integrations ) {
- *             if ( is_array( $integrations ) ) {
- *                 $integrations['woocommerce-subscriptions'][] = 'change_payment_method';
- *             }
- *             return $integrations;
+ *     add_action(
+ *         'woocommerce_fraud_protection_register_native_integrations',
+ *         function ( NativeIntegrationRegistry $registry ): void {
+ *             $registry->register( 'woocommerce-subscriptions', 'change_payment_method' );
  *         }
  *     );
  *

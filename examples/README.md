@@ -17,7 +17,7 @@ A stand-in for the WooCommerce Subscriptions change-payment-method flow: an exte
 
 - **Protecting a classic form**: `BlackboxScriptHandler::request_pay_for_order_script()` loads the script that adds the session ID to the `#order_review` form on submit.
 - **Verifying the submission**: `ClassicFormRequestData` reads the session ID and builds the request data from the POST body; `SessionVerifier::verify_session()` decides, and a Block stops the change with the standard notice.
-- **Declaring native support**: declaring `change_payment_method` under the extension's plugin slug through the `woocommerce_fraud_protection_native_integrations` filter tells the plugin that the extension protects the flow itself. The stand-in declares under `woocommerce-subscriptions`, the slug of the plugin it plays.
+- **Declaring native support**: registering `change_payment_method` under the extension's plugin slug from the `woocommerce_fraud_protection_register_native_integrations` action tells the plugin that the extension protects the flow itself. The stand-in declares under `woocommerce-subscriptions`, the slug of the plugin it plays.
 
 The form renders through the `[fp_example_change_payment]` shortcode for the current user's latest order.
 

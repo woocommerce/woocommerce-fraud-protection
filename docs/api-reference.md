@@ -20,6 +20,7 @@ This is the reference for every public part of WooCommerce Fraud Protection: the
 - [Declarations](#declarations)
     - [FraudProtectionFeature](#fraudprotectionfeature)
     - [FraudProtectionIntegration](#fraudprotectionintegration)
+    - [NativeIntegrationRegistry](#nativeintegrationregistry)
 - [Value objects](#value-objects)
     - [SuppliedDecision](#supplieddecision)
     - [VerifiedRequest](#verifiedrequest)
@@ -30,7 +31,7 @@ This is the reference for every public part of WooCommerce Fraud Protection: the
 - [Hooks](#hooks)
     - [woocommerce_fraud_protection_resolved_payment_data](#woocommerce_fraud_protection_resolved_payment_data)
     - [woocommerce_fraud_protection_skip_session_verify](#woocommerce_fraud_protection_skip_session_verify)
-    - [woocommerce_fraud_protection_native_integrations](#woocommerce_fraud_protection_native_integrations)
+    - [woocommerce_fraud_protection_register_native_integrations](#woocommerce_fraud_protection_register_native_integrations)
     - [woocommerce_fraud_protection_automated_decision](#woocommerce_fraud_protection_automated_decision)
     - [woocommerce_fraud_protection_rule_applied](#woocommerce_fraud_protection_rule_applied)
     - [woocommerce_payment_gateway_supports](#woocommerce_payment_gateway_supports)
@@ -330,12 +331,22 @@ A plugin that registers one gateway instance per payment method declares the fea
 
 ### FraudProtectionIntegration
 
-The integration strings an extension that is not a payment gateway declares under its own plugin slug, through [`woocommerce_fraud_protection_native_integrations`](#woocommerce_fraud_protection_native_integrations). Since 0.3.2.
+The integration strings an extension that is not a payment gateway declares under its own plugin slug, with [`NativeIntegrationRegistry::register()`](#nativeintegrationregistry). Since 0.3.2.
 
 | Constant | String | The extension commits to |
 |----------|--------|--------------------------|
 | `CHANGE_PAYMENT_METHOD` | `change_payment_method` | Loading the browser scripts on its change-payment-method form, verifying each submission before the payment method changes, and stopping the change on a Block decision. |
 | `ALL` | — | Every integration above. |
+
+### NativeIntegrationRegistry
+
+Collects the integrations that extensions other than payment gateways declare. The plugin passes an instance to the [`woocommerce_fraud_protection_register_native_integrations`](#woocommerce_fraud_protection_register_native_integrations) action; don't create one yourself. Since 0.3.2.
+
+```php
+public function register( string $extension, string $integration ): void
+```
+
+Declares that the extension with the plugin slug `$extension` implements `$integration`, one of the [`FraudProtectionIntegration`](#fraudprotectionintegration) strings. Call it once per integration, under your own slug. Registering the same pair again has no effect. A registration with an empty slug or integration, or made after the action finished, is ignored and logged. Unknown integration strings are kept, so that a misspelling shows up in the [WP-CLI](#wp-cli) list. The [integration guide](integration-guide.md#other-extensions) shows the call.
 
 ## Value objects
 
@@ -511,15 +522,15 @@ Return a [`SuppliedDecision`](#supplieddecision) to skip verification; the decis
 
 Supply a decision only to the attempt that received it: key your record by evidence your server produced in the earlier request, and use it once. [`GatewayRequestVerifier`](#gatewayrequestverifier) does this for a gateway's own requests; use the filter directly only for flows it does not cover. Since 0.1.0; returns a `SuppliedDecision` since 0.1.9.
 
-### woocommerce_fraud_protection_native_integrations
+### woocommerce_fraud_protection_register_native_integrations
 
-Filter. Lets extensions that are not payment gateways declare native integrations. Since 0.3.2.
+Action. Lets extensions that are not payment gateways declare native integrations. Since 0.3.2.
 
 ```php
-apply_filters( 'woocommerce_fraud_protection_native_integrations', array<string, string[]> $integrations );
+do_action( 'woocommerce_fraud_protection_register_native_integrations', NativeIntegrationRegistry $registry );
 ```
 
-The array maps a plugin slug to the [`FraudProtectionIntegration`](#fraudprotectionintegration) strings that the extension implements. Add your entry under your own slug and return the array. The plugin applies the filter inside its hook callbacks, not while plugins load. A non-array result, or a callback that throws, counts as no declarations; entries with an invalid key or value are skipped. See the [integration guide](integration-guide.md#other-extensions) for the declaration.
+Call [`$registry->register()`](#nativeintegrationregistry) from your callback, under your own plugin slug. Hook the action while your plugin loads. It fires only while Fraud Protection is active, at most once per request, the first time the plugin needs the declarations, inside a hook callback after WordPress `init`. A callback that throws stops the action: the registrations made before it count, and the later ones are skipped. See the [integration guide](integration-guide.md#other-extensions) for the declaration.
 
 ### woocommerce_fraud_protection_automated_decision
 
@@ -644,7 +655,7 @@ fetch( '/wp-json/wc/store/v1/checkout', {
 
 `wp wc fraud-protection status` shows the plugin's local status.
 
-`wp wc fraud-protection native-integrations list` lists the feature declarations of the registered gateways, then the integration declarations from `woocommerce_fraud_protection_native_integrations`, with one row per declared feature or integration:
+`wp wc fraud-protection native-integrations list` lists the feature declarations of the registered gateways, then the integration declarations registered through `woocommerce_fraud_protection_register_native_integrations`, with one row per declared feature or integration:
 
 | Field | Value |
 |-------|-------|

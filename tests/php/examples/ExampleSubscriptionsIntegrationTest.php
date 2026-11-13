@@ -87,7 +87,7 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 		$GLOBALS['wc_container']->reset_replacement( SessionVerifier::class );
 		remove_shortcode( 'fp_example_change_payment' );
 		remove_action( 'wp', array( $this->flow, 'handle_submission' ), 20 );
-		remove_all_filters( 'woocommerce_fraud_protection_native_integrations' );
+		remove_action( 'woocommerce_fraud_protection_register_native_integrations', array( $this->flow, 'declare_native_integration' ) );
 		remove_all_actions( 'woocommerce_subscription_change_payment_method_via_pay_shortcode' );
 		remove_all_actions( 'woocommerce_subscriptions_change_payment_after_submit' );
 		remove_all_filters( 'wp_redirect' );

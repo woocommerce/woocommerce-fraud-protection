@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
+use Automattic\WooCommerce\FraudProtection\NativeIntegrationRegistry;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExtensionNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\SubscriptionsChangePaymentCompat;
@@ -80,7 +81,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 		remove_all_actions( 'woocommerce_subscription_change_payment_method_via_pay_shortcode' );
 		remove_all_actions( 'woocommerce_subscriptions_change_payment_after_submit' );
 		remove_all_filters( 'wp_redirect' );
-		remove_all_filters( 'woocommerce_fraud_protection_native_integrations' );
+		remove_all_actions( 'woocommerce_fraud_protection_register_native_integrations' );
 		$this->reset_fraud_protection_scripts();
 
 		parent::tearDown();
@@ -90,7 +91,7 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	 * @testdox Neither the form render nor the submission does anything once Subscriptions declares native support.
 	 */
 	public function test_stands_aside_when_subscriptions_declares_native_support(): void {
-		add_filter( 'woocommerce_fraud_protection_native_integrations', fn( $integrations ) => $integrations + array( 'woocommerce-subscriptions' => array( 'change_payment_method' ) ) );
+		add_action( 'woocommerce_fraud_protection_register_native_integrations', fn( NativeIntegrationRegistry $registry ) => $registry->register( 'woocommerce-subscriptions', 'change_payment_method' ) );
 		$this->blackbox_script_handler->expects( $this->never() )->method( 'request_pay_for_order_script' );
 		$this->session_verifier->expects( $this->never() )->method( 'verify_session' );
 		$_POST['wc_fraud_protection_session_id'] = 'test-session-123';
@@ -108,31 +109,29 @@ class SubscriptionsChangePaymentCompatTest extends FraudProtectionUnitTestCase {
 	/**
 	 * @testdox The compatibility layer stays on unless WooCommerce Subscriptions declares the change-payment-method integration under its own slug.
 	 *
-	 * @dataProvider invalid_native_filter_provider
+	 * @dataProvider other_registration_provider
 	 *
-	 * @param callable $callback The filter callback.
+	 * @param callable $callback The registration action callback.
 	 */
-	public function test_invalid_native_filter_keeps_compat_on( callable $callback ): void {
-		add_filter( 'woocommerce_fraud_protection_native_integrations', $callback );
+	public function test_other_registrations_keep_compat_on( callable $callback ): void {
+		add_action( 'woocommerce_fraud_protection_register_native_integrations', $callback );
 		$this->session_verifier->expects( $this->once() )->method( 'verify_session' )->willReturn( FraudDecision::Allow );
 
 		$this->sut->verify_and_block( $this->create_mock_subscription( 7 ) );
 	}
 
 	/**
-	 * Native integrations filter answers that do not declare this layer.
+	 * Registration callbacks that do not declare this layer's integration.
 	 *
 	 * @return array<string, array{callable}>
 	 */
-	public function invalid_native_filter_provider(): array {
+	public function other_registration_provider(): array {
 		return array(
-			'another extension'   => array( static fn() => array( 'other-subscriptions-plugin' => array( 'change_payment_method' ) ) ),
-			'another integration' => array( static fn() => array( 'woocommerce-subscriptions' => array( 'another_integration' ) ) ),
-			'flat list'           => array( static fn() => array( 'change_payment_method' ) ),
-			'boolean'             => array( '__return_true' ),
+			'another extension'   => array( static fn( NativeIntegrationRegistry $registry ) => $registry->register( 'other-subscriptions-plugin', 'change_payment_method' ) ),
+			'another integration' => array( static fn( NativeIntegrationRegistry $registry ) => $registry->register( 'woocommerce-subscriptions', 'another_integration' ) ),
 			'throwing'            => array(
 				static function () {
-					throw new \RuntimeException( 'broken filter' );
+					throw new \RuntimeException( 'broken callback' );
 				},
 			),
 		);

@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
+use Automattic\WooCommerce\FraudProtection\NativeIntegrationRegistry;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 
@@ -29,7 +30,7 @@ defined( 'ABSPATH' ) || exit;
  * 2. Verify the submitted form with {@see ClassicFormRequestData} and
  *    {@see SessionVerifier} before changing anything, and stop on a Block decision.
  * 3. Declare the `change_payment_method` integration under the extension's plugin slug
- *    through the `woocommerce_fraud_protection_native_integrations` filter, so the plugin's
+ *    from the `woocommerce_fraud_protection_register_native_integrations` action, so the plugin's
  *    built-in compatibility layer stands aside instead of verifying the same request a
  *    second time.
  *
@@ -65,9 +66,8 @@ class FP_Example_Change_Payment {
 		add_shortcode( 'fp_example_change_payment', array( $this, 'render_form' ) );
 		add_action( 'wp', array( $this, 'handle_submission' ), 20 );
 
-		if ( class_exists( SessionVerifier::class ) ) {
-			add_filter( 'woocommerce_fraud_protection_native_integrations', array( $this, 'declare_native_integration' ) );
-		}
+		// The action fires only while Fraud Protection is active, so no class check is needed.
+		add_action( 'woocommerce_fraud_protection_register_native_integrations', array( $this, 'declare_native_integration' ) );
 	}
 
 	/**
@@ -77,24 +77,10 @@ class FP_Example_Change_Payment {
 	 * WooCommerce Subscriptions, so it uses that plugin's slug, which is the one the built-in
 	 * compatibility layer for the change-payment-method form checks.
 	 *
-	 * @param mixed $integrations The integrations declared so far, keyed by plugin slug.
-	 * @return mixed The integrations, with this flow's integration added.
+	 * @param NativeIntegrationRegistry $registry The registry that Fraud Protection passes to the action.
 	 */
-	public function declare_native_integration( $integrations ) {
-		// Values from a filter are untrusted: another callback may have changed them.
-		if ( ! is_array( $integrations ) ) {
-			return $integrations;
-		}
-
-		$own = $integrations[ self::EXTENSION_SLUG ] ?? array();
-		if ( ! is_array( $own ) ) {
-			$own = array();
-		}
-
-		$own[]                                = 'change_payment_method';
-		$integrations[ self::EXTENSION_SLUG ] = $own;
-
-		return $integrations;
+	public function declare_native_integration( NativeIntegrationRegistry $registry ): void {
+		$registry->register( self::EXTENSION_SLUG, 'change_payment_method' );
 	}
 
 	/**

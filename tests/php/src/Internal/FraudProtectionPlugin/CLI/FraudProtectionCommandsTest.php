@@ -7,6 +7,7 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 
+use Automattic\WooCommerce\FraudProtection\NativeIntegrationRegistry;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExtensionNativeSupport;
@@ -387,18 +388,27 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The native integrations list reads extension declarations from the filter, and has no rows without any.
+	 * @testdox The native integrations list has no extension rows when no extension registers.
 	 */
-	public function test_native_integrations_list_reads_extension_declarations_from_filter(): void {
+	public function test_native_integrations_list_has_no_extension_rows_without_registrations(): void {
 		$this->sut->native_integrations_list( array(), array() );
-		$this->assertSame( array(), $this->formatted_items[0]['items'] );
 
-		$declare = static fn() => array( 'my-extension' => array( 'change_payment_method', 'misspelled_integration' ) );
-		add_filter( 'woocommerce_fraud_protection_native_integrations', $declare );
+		$this->assertSame( array(), $this->formatted_items[0]['items'] );
+	}
+
+	/**
+	 * @testdox The native integrations list reads the extension declarations registered through the action.
+	 */
+	public function test_native_integrations_list_reads_extension_declarations_from_action(): void {
+		$declare = static function ( NativeIntegrationRegistry $registry ): void {
+			$registry->register( 'my-extension', 'change_payment_method' );
+			$registry->register( 'my-extension', 'misspelled_integration' );
+		};
+		add_action( 'woocommerce_fraud_protection_register_native_integrations', $declare );
 		try {
 			$this->sut->native_integrations_list( array(), array() );
 		} finally {
-			remove_filter( 'woocommerce_fraud_protection_native_integrations', $declare );
+			remove_action( 'woocommerce_fraud_protection_register_native_integrations', $declare );
 		}
 
 		$this->assertSame(
@@ -406,7 +416,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 				self::integration_row( 'extension', 'my-extension', 'change_payment_method' ),
 				self::integration_row( 'extension', 'my-extension', 'misspelled_integration' ),
 			),
-			$this->formatted_items[1]['items']
+			$this->formatted_items[0]['items']
 		);
 	}
 

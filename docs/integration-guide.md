@@ -49,21 +49,20 @@ If your plugin registers one gateway instance per payment method, declare the fe
 
 ### Other extensions
 
-Any other extension declares its integrations through the `woocommerce_fraud_protection_native_integrations` filter, under its own plugin slug (its WordPress.org or WooCommerce.com slug). Add to the array you receive and return it:
+Any other extension declares its integrations under its own plugin slug (its WordPress.org or WooCommerce.com slug). Hook the `woocommerce_fraud_protection_register_native_integrations` action while your plugin loads, and call `register()` on the registry it passes, once per integration:
 
 ```php
-add_filter(
-	'woocommerce_fraud_protection_native_integrations',
-	function ( $integrations ) {
-		if ( is_array( $integrations ) ) {
-			$integrations['my-extension'][] = 'change_payment_method';
-		}
-		return $integrations;
+use Automattic\WooCommerce\FraudProtection\NativeIntegrationRegistry;
+
+add_action(
+	'woocommerce_fraud_protection_register_native_integrations',
+	function ( NativeIntegrationRegistry $registry ): void {
+		$registry->register( 'my-extension', 'change_payment_method' );
 	}
 );
 ```
 
-Declare only under your own slug: Fraud Protection reads each extension's declarations under that extension's slug.
+The action fires only while Fraud Protection is active, so your callback needs no class check. It fires at most once per request, the first time Fraud Protection needs the declarations, and a registration made outside it is ignored. Declare only under your own slug: Fraud Protection reads each extension's declarations under that extension's slug.
 
 ### Check the declaration
 
@@ -280,7 +279,7 @@ Make your button script depend on the browser scripts as in [step 1](#1-load-the
 
 ### Change payment method forms
 
-**Declare:** `change_payment_method` under your plugin slug, through `woocommerce_fraud_protection_native_integrations` (see [Other extensions](#other-extensions)).
+**Declare:** `change_payment_method` under your plugin slug, from the `woocommerce_fraud_protection_register_native_integrations` action (see [Other extensions](#other-extensions)).
 
 **Implement:** for an extension that handles its own change-payment-method form, rendered as WooCommerce's `#order_review` pay form:
 
