@@ -25,7 +25,7 @@ Most gateways should provide [payment data](#payment-data). It needs only a reso
 | Is a gateway and can provide the details of the payment method that each payment uses, such as the card brand and last four digits | `fraud_protection_payment_data` | [Payment data](#payment-data) |
 | Is a gateway that places or authorizes a purchase through its own requests, before or instead of the checkout submission | `fraud_protection_checkout` | [Checkout requests](#checkout-requests) |
 | Is a gateway that checks or saves a payment method through its own requests, before the "Add payment method" or change-payment-method form is submitted | `fraud_protection_add_payment_method` | [Add payment method requests](#add-payment-method-requests) |
-| Is a gateway with express payment buttons that place the order through WooCommerce's checkout: the Store API, or the classic checkout process | `fraud_protection_express_checkout` | [Express checkout](#express-checkout) |
+| Is a gateway whose express payment buttons or embedded checkout skip the checkout form, but place the order through WooCommerce's checkout: the Store API, or the classic checkout process | `fraud_protection_express_checkout` | [Express checkout](#express-checkout) |
 | Is not a gateway and handles its own change-payment-method form | `change_payment_method` | [Change payment method forms](#change-payment-method-forms) |
 
 ## Declare your integrations
@@ -251,6 +251,8 @@ add_action(
 The reader you pass to `register_reference_reader()` serves both flows: return the setup intent ID when the submission carries one.
 
 ### Express checkout
+
+This integration covers any payment surface that skips WooCommerce's checkout form but still places the order through WooCommerce's checkout, so the form's scripts never add the session ID: express payment buttons, or an embedded checkout that your gateway renders in place of the form. The examples below use express buttons.
 
 **Declare:** `fraud_protection_express_checkout` in the gateway's `$supports`.
 

@@ -6,11 +6,11 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExpressCheckoutScriptCompat;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\KustomCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WcposCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEnabledNote;
@@ -198,7 +198,7 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 			10,
 			has_action(
 				'kco_wc_before_snippet',
-				array( $container->get( ShortcodeCheckoutProtector::class ), 'enqueue_shortcode_checkout_script' )
+				array( $container->get( KustomCompat::class ), 'enqueue_classic_checkout_script' )
 			),
 			'Kustom script action should be registered via the controller'
 		);

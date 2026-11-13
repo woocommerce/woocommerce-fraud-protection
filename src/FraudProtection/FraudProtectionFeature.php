@@ -82,11 +82,14 @@ final class FraudProtectionFeature {
 	public const ADD_PAYMENT_METHOD = 'fraud_protection_add_payment_method';
 
 	/**
-	 * The gateway sends the session ID with its express checkout orders.
+	 * The gateway sends the session ID with the orders of its express buttons or embedded checkout.
 	 *
-	 * The gateway's express payment buttons (Apple Pay, Google Pay and similar) add the
-	 * session ID to the Store API checkout request under the `woocommerce/fraud-protection`
-	 * extension namespace. The built-in express checkout script for the gateway stands aside.
+	 * The gateway's express payment buttons (Apple Pay, Google Pay and similar), or an
+	 * embedded checkout it renders in place of the checkout form, add the session ID to an
+	 * order request that runs WooCommerce's checkout: under the `woocommerce/fraud-protection`
+	 * extension namespace of a Store API checkout request, or as a field of a request that runs
+	 * the classic checkout process. The built-in handling of those requests for the gateway
+	 * stands aside.
 	 *
 	 * @since 0.3.2
 	 */
