@@ -51,7 +51,7 @@
 		typeof $.ajaxPrefilter === 'function' &&
 		!! fraudProtection &&
 		typeof fraudProtection.takePreparedSessionId === 'function' &&
-		gateways.indexOf( SQUARE_GATEWAY ) !== -1;
+		gateways.includes( SQUARE_GATEWAY );
 
 	if (
 		! fraudProtection ||
