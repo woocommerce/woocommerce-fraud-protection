@@ -15,6 +15,13 @@
  * prevents gateway handlers (e.g. Stripe tokenization) from starting
  * concurrent async work that would cause a double-POST.
  *
+ * A gateway can also start the submit with jQuery's trigger(), as Square's
+ * wallet and Cash App Pay buttons do. That runs the jQuery handlers and then
+ * posts the form without a submit event, so the capture listener never sees it.
+ * The jQuery handlers cannot be held and run again, so a jQuery handler adds
+ * the session ID prepared in advance, or the `not_ready` reason when none is
+ * ready, and lets the submit continue.
+ *
  * No reset needed — every outcome is a full page navigation.
  *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
@@ -42,6 +49,49 @@
 		return fraudProtection.acquireSessionId().then( function ( sessionId ) {
 			return { sessionId, error: '' };
 		} );
+	}
+
+	/**
+	 * Add the session ID prepared in advance to the form.
+	 *
+	 * Without one, adds only the `not_ready` reason, unless the form has the
+	 * reason from an earlier acquisition, so a later submit can still acquire
+	 * a session ID. Errors leave the form unchanged.
+	 *
+	 * @param {Object} fraudProtection The wcFraudProtection API.
+	 */
+	function addPreparedSessionId( fraudProtection ) {
+		try {
+			const { sessionIdField, sessionIdErrorField } =
+				fraudProtection.config;
+			const sessionId =
+				typeof fraudProtection.takePreparedSessionId === 'function'
+					? fraudProtection.takePreparedSessionId()
+					: '';
+			const $errorField = sessionIdErrorField
+				? $( form )
+						.find( 'input[name="' + sessionIdErrorField + '"]' )
+						.first()
+				: $();
+
+			if ( sessionId ) {
+				$errorField.remove();
+				$( '<input>', {
+					type: 'hidden',
+					name: sessionIdField,
+					id: sessionIdField,
+					value: sessionId,
+				} ).appendTo( form );
+			} else if ( sessionIdErrorField && ! $errorField.length ) {
+				$( '<input>', {
+					type: 'hidden',
+					name: sessionIdErrorField,
+					value: 'not_ready',
+				} ).appendTo( form );
+			}
+		} catch {
+			// Fail open: the form is posted without a session ID.
+		}
 	}
 
 	// True from the first held submit until its re-submit is dispatched.
@@ -152,4 +202,41 @@
 		},
 		true
 	);
+
+	// Native submits stop at the capture listener until the session ID field
+	// is present, so without the field this is a submit from jQuery's trigger().
+	$( form ).on( 'submit', function ( e ) {
+		const fraudProtection = window.wcFraudProtection;
+
+		// An error here would stop trigger() before it posts the form.
+		if (
+			! fraudProtection ||
+			! fraudProtection.config ||
+			( ! fraudProtection.acquireSessionIdResult &&
+				! fraudProtection.acquireSessionId )
+		) {
+			return;
+		}
+
+		// The held submit's re-submit will post the form.
+		if ( resubmitPending ) {
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			return;
+		}
+
+		if (
+			! document.getElementById( fraudProtection.config.sessionIdField )
+		) {
+			addPreparedSessionId( fraudProtection );
+		}
+	} );
+
+	// Keep a session ID ready for a submit that cannot wait for one.
+	if (
+		window.wcFraudProtection &&
+		typeof window.wcFraudProtection.prepareSessionId === 'function'
+	) {
+		window.wcFraudProtection.prepareSessionId();
+	}
 } )( jQuery );

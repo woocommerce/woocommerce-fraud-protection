@@ -3,8 +3,12 @@
 YYYY-xx-xx - version 0.3.2
 * Fixed - Cards saved with WooPayments on the My Account "Add payment method" page are now analyzed before WooPayments sends them to the card issuer, instead of after.
 * Fixed - When a card saved with WooPayments on the My Account "Add payment method" page is changed after it is first submitted, the card that WooPayments saves is now the one analyzed.
+* Fixed - Payments with Mercado Pago saved cards on the classic checkout are no longer rejected after the shopper authorizes them.
+* Fixed - When a shopper retries a payment, or closes PayPal and pays with another gateway, the new attempt now always gets a new browser session.
+* Fixed - Apple Pay, Google Pay, and Cash App Pay payments made with Square on the pay-for-order page are now analyzed with the shopper's browser session.
 * Fixed - When a classic checkout update contains a NUL byte, only the malformed field is ignored. Previously, the fields after it were ignored, and on PHP 8.6 the update was not tracked and an error was logged.
 * Fixed - Payment attempts with Kustom's embedded checkout are now analyzed with the shopper's browser session. On the Checkout block, this requires Kustom Checkout 2.24.1 or later.
+* Dev - `window.wcFraudProtection.acquireSessionId()` no longer returns a session ID that it already returned. It starts a fresh session instead, and resolves to an empty string if that session does not arrive in time.
 
 2026-11-02 - version 0.3.1
 * Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when sending that activity is slow.
