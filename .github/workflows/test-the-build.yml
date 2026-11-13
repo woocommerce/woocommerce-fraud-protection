@@ -1,0 +1,185 @@
+name: Test the build
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PLUGIN_SLUG: woocommerce-fraud-protection
+
+jobs:
+  build:
+    name: Build the plugin zip
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.1'
+          tools: composer:2.9.1, wp:2.12.0
+          coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock', '**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install production Composer dependencies
+        run: composer install --prefer-dist --no-dev --no-interaction --no-progress
+
+      # The Plugins screen then shows which pull request and commit a test site runs.
+      # Only the header changes: the version the plugin reports at runtime stays the released one.
+      - name: Mark the build with the pull request and commit
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          version=$(sed -n 's/^ \* Version: \(.*\)$/\1/p' "$PLUGIN_SLUG.php")
+          if [ -z "$version" ]; then
+            echo "::error::No Version header found in $PLUGIN_SLUG.php."
+            exit 1
+          fi
+          dev_version="${version}-dev_PR-${PR_NUMBER}_commit-${PR_HEAD_SHA:0:7}"
+          sed -i "s/^ \* Version: .*$/ * Version: ${dev_version}/" "$PLUGIN_SLUG.php"
+          echo "Build version: $dev_version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build plugin zip
+        run: |
+          npm ci
+          npm run build:release
+
+      # One artifact holds everything a WordPress Playground preview needs, so a link can never
+      # pair the zip of one run with the setup files of another. The Playground links download it
+      # on every click, hence the retention.
+      - name: Collect the files for the Playground preview
+        run: |
+          mkdir playground-preview
+          cp "$PLUGIN_SLUG.zip" bin/playground-setup.php bin/seed-fake-sessions.php bin/seed-fake-rules.php playground-preview/
+
+      - name: Upload the Playground preview files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playground-preview-${{ github.run_id }}
+          path: playground-preview
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+  comment:
+    name: Comment on the pull request
+    needs: build
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+
+    steps:
+      # WordPress Playground runs in the visitor's browser and only fetches public URLs. Its
+      # artifact proxy serves the artifacts of this workflow for the pull request, and finds the
+      # workflow by name, hence GITHUB_WORKFLOW instead of a literal that a rename would break.
+      # The artifact is a zip around the uploaded files, so the Blueprints unzip it first.
+      - name: Build the WordPress Playground links
+        id: playground
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          artifact_url=$(jq -rn \
+            --arg org "$GITHUB_REPOSITORY_OWNER" \
+            --arg repo "${GITHUB_REPOSITORY#*/}" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg pr "$PR_NUMBER" \
+            --arg artifact "playground-preview-$GITHUB_RUN_ID" \
+            '"https://playground.wordpress.net/plugin-proxy.php?org=\($org|@uri)&repo=\($repo|@uri)&workflow=\($workflow|@uri)&pr=\($pr|@uri)&artifact=\($artifact|@uri)"')
+
+          blueprints=$(jq -cn --arg artifact "$artifact_url" --arg slug "$PLUGIN_SLUG" '
+            {
+              "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+              landingPage: "/wp-admin/admin.php?page=wc-settings&tab=woocommerce_fraud_protection",
+              preferredVersions: { php: "8.3", wp: "latest" },
+              features: { networking: true }
+            } as $base
+            | [
+                { step: "login", username: "admin" },
+                { step: "installPlugin", pluginData: { resource: "wordpress.org/plugins", slug: "woocommerce" }, options: { activate: true } },
+                { step: "unzip", zipFile: { resource: "url", url: $artifact, caption: "Downloading the Fraud Protection build for this PR" }, extractToPath: "/tmp/pr" },
+                { step: "installPlugin", pluginData: { resource: "vfs", path: ( "/tmp/pr/" + $slug + ".zip" ) }, options: { activate: true } }
+              ] as $install
+            | {
+                sample: ( $base + { steps: ( $install + [ { step: "wp-cli", command: "wp eval-file /tmp/pr/playground-setup.php" } ] ) } ),
+                empty: ( $base + { steps: ( $install + [ { step: "wp-cli", command: "wp eval-file /tmp/pr/playground-setup.php empty" } ] ) } )
+              }')
+
+          {
+            echo "sample_url=https://playground.wordpress.net/#$(jq -rn --argjson blueprints "$blueprints" '$blueprints.sample|tojson|@uri')"
+            echo "empty_url=https://playground.wordpress.net/#$(jq -rn --argjson blueprints "$blueprints" '$blueprints.empty|tojson|@uri')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write the comment
+        env:
+          PLAYGROUND_SAMPLE_URL: ${{ steps.playground.outputs.sample_url }}
+          PLAYGROUND_EMPTY_URL: ${{ steps.playground.outputs.empty_url }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          {
+            echo "### Test the build"
+            echo
+            echo "#### WordPress Playground - runs in your browser"
+            echo
+            echo "- :test_tube: [Open with sample data]($PLAYGROUND_SAMPLE_URL): the Fraud prevention settings with made-up payment activity and custom rules."
+            echo "- :seedling: [Open empty]($PLAYGROUND_EMPTY_URL): the same store with no payment activity and no rules."
+            echo
+            echo ":information_source: A Playground site cannot connect to WordPress.com, so the fraud service checks nothing: a payment attempt goes through unless a custom rule blocks it, and \"Blocked automatically\" only appears in the sample data. To try a rule, block an email address, then buy the test product with that address on the Checkout page (Checkout block) or the \"Shortcode checkout\" page, paying with cash on delivery. The sample rows are random, and providers named \`wfp_demo_*\` are placeholders. The links stop working 14 days after the last build."
+            echo
+            echo "---"
+            echo
+            echo "Build info:"
+            echo
+            echo "- Latest commit: $PR_HEAD_SHA"
+            echo "- Build time: $(date -u "+%Y-%m-%d %H:%M:%S UTC")"
+            echo
+            echo "_Note: the build is updated when a new commit is pushed to this PR._"
+          } > comment.md
+
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+
+      # A pull request from a fork gets a read-only token, so its comment stays in the run summary.
+      - name: Add or update the comment on the pull request
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          comment_id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("### Test the build"))) | .id' | head -n 1)
+
+          if [ -n "$comment_id" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" -X PATCH -F body=@comment.md > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -F body=@comment.md > /dev/null
+          fi
