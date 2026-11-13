@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
+use Automattic\WooCommerce\StoreApi\Schemas\V1\CartSchema;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -27,10 +28,12 @@ defined( 'ABSPATH' ) || exit;
  * session and sends it with that request. kustom-blocks-checkout.js keeps the
  * session ID in that data, and BlocksCheckoutProtector reads it as usual.
  *
- * Limitation: the browser is not told when Kustom's servers use the session ID,
- * so it does not replace the ID after an attempt. Later attempts that carry the
- * same ID, with Kustom or another payment method, are verified without a
- * session until the ID expires and the page prepares a new one.
+ * Kustom's servers do not tell the browser when they use the session ID. The
+ * Store API cart data carries the last session ID that a Kustom attempt sent to
+ * verification, and the script starts a new session when it matches its own.
+ * The script refreshes the cart when the shopper comes back to the page from an
+ * iframe. Requests that still carry a used ID, such as a retry made without
+ * leaving Kustom's iframe, are sent without it, with any payment method.
  */
 class KustomCompat {
 
@@ -43,6 +46,11 @@ class KustomCompat {
 	 * WooCommerce session key of the last session ID sent for a Kustom order.
 	 */
 	private const SENT_SESSION_ID_KEY = '_wc_fraud_protection_kustom_sent_session_id';
+
+	/**
+	 * Store API cart data field that carries that session ID to the browser.
+	 */
+	private const CART_DATA_FIELD = 'kustom_sent_session_id';
 
 	/**
 	 * Session ID of the current Kustom request, recorded once the order reaches verification.
@@ -96,6 +104,65 @@ class KustomCompat {
 		add_action( 'woocommerce_store_api_checkout_update_order_from_request', array( $this, 'send_session_id_only_once' ), 5, 2 );
 		// Before BlocksCheckoutProtector verifies the order.
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'record_sent_session_id' ), 5, 0 );
+		add_action( 'init', array( $this, 'register_store_api_cart_extension' ), 10, 0 );
+	}
+
+	/**
+	 * Add the session ID that a Kustom attempt sent to the Store API cart data.
+	 *
+	 * The empty update callback lets the script refresh the cart through the
+	 * cart/extensions endpoint.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function register_store_api_cart_extension(): void {
+		if (
+			! function_exists( 'woocommerce_store_api_register_endpoint_data' ) ||
+			! function_exists( 'woocommerce_store_api_register_update_callback' ) ||
+			! class_exists( CartSchema::class )
+		) {
+			return;
+		}
+
+		woocommerce_store_api_register_endpoint_data(
+			array(
+				'endpoint'        => CartSchema::IDENTIFIER,
+				'namespace'       => BlocksCheckoutProtector::EXTENSION_NAMESPACE,
+				'data_callback'   => array( $this, 'get_store_api_cart_data' ),
+				'schema_callback' => static function (): array {
+					return array(
+						self::CART_DATA_FIELD => array(
+							'description' => 'Session ID that a Kustom attempt sent, which the browser must not send again.',
+							'type'        => 'string',
+							'context'     => array( 'view', 'edit' ),
+							'readonly'    => true,
+						),
+					);
+				},
+			)
+		);
+
+		woocommerce_store_api_register_update_callback(
+			array(
+				'namespace' => BlocksCheckoutProtector::EXTENSION_NAMESPACE,
+				'callback'  => static function (): void {},
+			)
+		);
+	}
+
+	/**
+	 * Get the Fraud Protection data of the Store API cart.
+	 *
+	 * @internal
+	 *
+	 * @return array<string, string>
+	 */
+	public function get_store_api_cart_data(): array {
+		$session_id = WC()->session instanceof \WC_Session ? WC()->session->get( self::SENT_SESSION_ID_KEY ) : null;
+
+		return array( self::CART_DATA_FIELD => is_string( $session_id ) ? $session_id : '' );
 	}
 
 	/**
