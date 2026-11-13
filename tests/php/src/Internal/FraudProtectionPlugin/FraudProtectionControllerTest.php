@@ -10,6 +10,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WcposCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdentityManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEarlyAccessNote;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Notes\AutomaticProtectionEnabledNote;
@@ -192,6 +193,14 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 				array( $container->get( ExpressCheckoutScriptCompat::class ), 'enqueue_express_checkout_script_if_buttons_enqueued' )
 			),
 			'Express checkout script action should be registered via the controller'
+		);
+		$this->assertSame(
+			10,
+			has_action(
+				'kco_wc_before_snippet',
+				array( $container->get( ShortcodeCheckoutProtector::class ), 'enqueue_shortcode_checkout_script' )
+			),
+			'Kustom script action should be registered via the controller'
 		);
 
 		// Subscriptions change-payment-method compat action.

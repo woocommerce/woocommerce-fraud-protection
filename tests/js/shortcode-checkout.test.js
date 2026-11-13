@@ -499,6 +499,27 @@ describe( 'shortcode-checkout', () => {
 			);
 		} );
 
+		it( 'adds a prepared session ID to each checkout request sent without a submit', () => {
+			mockTakePreparedSessionId
+				.mockReturnValueOnce( 'sess-first' )
+				.mockReturnValueOnce( 'sess-second' );
+			setup();
+
+			// Kustom's embedded checkout posts the form from its iframe callback.
+			sendCheckoutRequest();
+			transport.completeNext();
+			sendCheckoutRequest();
+			transport.completeNext();
+
+			expect( sentField( transport.sent[ 0 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-first'
+			);
+			expect( sentField( transport.sent[ 1 ], SESSION_ID_FIELD ) ).toBe(
+				'sess-second'
+			);
+			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+		} );
+
 		it( 'reports not_ready when no session ID is prepared', () => {
 			setup();
 
