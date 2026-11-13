@@ -75,24 +75,26 @@ Checkout requests and Add payment method requests combine the three steps below,
 
 ### 1. Load the browser scripts
 
-Enqueue your script as you already do, then call `request_scripts_for()` with its handle from the code that renders your payment surface:
+Register your script as you already do, and call `register_scripts_for()` with its handle right after:
 
 ```php
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 
 add_action(
-	'my_gateway_payment_surface_render',
+	'wp_enqueue_scripts',
 	function (): void {
-		wp_enqueue_script( 'my-gateway-checkout', plugins_url( 'js/checkout.js', __FILE__ ), array(), '1.0.0', true );
+		wp_register_script( 'my-gateway-checkout', plugins_url( 'js/checkout.js', __FILE__ ), array(), '1.0.0', true );
 
-		wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts_for( 'my-gateway-checkout' );
+		wc_get_container()->get( BlackboxScriptHandler::class )->register_scripts_for( 'my-gateway-checkout' );
 	}
 );
 ```
 
-`request_scripts_for()` loads the shared scripts and makes your script depend on `wc-fraud-protection-blackbox-init`, so `window.wcFraudProtection` is set up before your script runs. It changes nothing and returns `false` when the store is not connected to Jetpack, or when the request cannot render a payment surface: your script loads without the shared scripts, and your requests go out without a session ID and are still verified. Call it before the scripts are printed. A script that exists only for Fraud Protection can be enqueued only when the call returns `true`, using `request_scripts()` first and adding the dependency yourself.
+Then enqueue your script where your payment surface renders, as you already do.
 
-If you register your script in one place and enqueue it in another, call `request_scripts_for()` where you enqueue it, not where you register it. The handle only needs to be registered, but the call loads the shared scripts right away, so calling it where you register your scripts would load them on pages without a payment surface. For a payment method in the Checkout block, call it from the `woocommerce_blocks_enqueue_checkout_block_scripts_before` action, or `woocommerce_blocks_enqueue_cart_block_scripts_before` for buttons in the Cart block. Don't call it from `get_payment_method_script_handles()`, because WooCommerce also calls that method on pages without a checkout.
+`register_scripts_for()` registers the shared scripts and makes your script depend on `wc-fraud-protection-blackbox-init`. It loads nothing by itself: WordPress prints the shared scripts only on the pages where your script is enqueued, before your script, so `window.wcFraudProtection` is set up before your script runs. So you can call it wherever you register your scripts, even on every page, or from `get_payment_method_script_handles()` for a payment method in the Checkout block. Pass it only the scripts that run on your payment surfaces: a script you enqueue on every page, such as a site-wide helper, would load the shared scripts on every page too. It also works for a script that is already enqueued, as long as it hasn't been printed.
+
+It changes nothing and returns `false` when the store is not connected to Jetpack, or in the WordPress admin. On pages that must not load the shared scripts, such as the order confirmation page or a post preview, they are left out when the scripts are printed. Either way, your script loads without them, and your requests go out without a session ID and are still verified. A script that exists only for Fraud Protection can instead be enqueued from your payment surface only when `request_scripts()` returns `true`, with `wc-fraud-protection-blackbox-init` as a dependency.
 
 ### 2. Send the session ID
 

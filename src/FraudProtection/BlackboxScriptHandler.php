@@ -98,20 +98,23 @@ class BlackboxScriptHandler {
 	}
 
 	/**
-	 * Request the shared scripts for one of your scripts, and make it depend on them.
+	 * Make one of your scripts depend on the shared scripts.
 	 *
-	 * Register or enqueue your script first, as you already do, then call this from the code
-	 * that renders the payment surface, before the scripts are printed. When the shared
-	 * scripts load, `$handle` gets `wc-fraud-protection-blackbox-init` as a dependency, so
-	 * `window.wcFraudProtection` is set up before your script runs. Otherwise nothing changes
-	 * and your script loads without it.
+	 * Call it right after you register your script, wherever you register it. It registers
+	 * the shared scripts without enqueueing them and adds `wc-fraud-protection-blackbox-init`
+	 * to the dependencies of `$handle`. WordPress then prints the shared scripts only on the
+	 * pages where your script is enqueued, before it, so `window.wcFraudProtection` is set up
+	 * before your script runs. Pass only a script that you enqueue on your payment surfaces,
+	 * since the shared scripts load on every page where it is enqueued. On pages that must
+	 * not load them, such as the order confirmation page or a post preview, the shared
+	 * scripts are left out when the scripts are printed, and your script loads without them.
 	 *
 	 * @param string $handle Handle of a script registered with WordPress.
-	 * @return bool True when the shared scripts are enqueued and `$handle` depends on them; false when the shared scripts are unavailable, or `$handle` is not registered or was already printed.
+	 * @return bool True when `$handle` depends on the shared scripts; false when they are unavailable, or `$handle` is not registered or was already printed.
 	 *
 	 * @since 0.3.2
 	 */
-	public function request_scripts_for( string $handle ): bool {
+	public function register_scripts_for( string $handle ): bool {
 		$scripts = wp_scripts();
 		$script  = $scripts->query( $handle, 'registered' );
 		if ( ! $script instanceof \_WP_Dependency || in_array( $handle, $scripts->done, true ) ) {
@@ -123,15 +126,54 @@ class BlackboxScriptHandler {
 			return false;
 		}
 
-		if ( ! $this->request_scripts() ) {
+		// Registration can run before the main query, so only the admin check is reliable
+		// here; the other excluded pages are handled when the scripts are printed.
+		if ( is_admin() ) {
 			return false;
 		}
+
+		// No missing-blog-ID log here: this can run on every page, and request_scripts()
+		// already logs it on the payment surfaces.
+		$blog_id = $this->get_blog_id();
+		if ( ! $blog_id ) {
+			return false;
+		}
+
+		$this->register_shared_scripts( $blog_id );
 
 		if ( ! in_array( 'wc-fraud-protection-blackbox-init', $script->deps, true ) ) {
 			$script->deps[] = 'wc-fraud-protection-blackbox-init';
 		}
 
+		if ( false === has_filter( 'print_scripts_array', array( $this, 'leave_out_shared_scripts_on_excluded_pages' ) ) ) {
+			add_filter( 'print_scripts_array', array( $this, 'leave_out_shared_scripts_on_excluded_pages' ) );
+		}
+
 		return true;
+	}
+
+	/**
+	 * Leave the shared scripts out of the printed scripts on pages that must not load them.
+	 *
+	 * Added by register_scripts_for(). A script that depends on the shared scripts still
+	 * prints, without `window.wcFraudProtection`, and sends its requests without a session ID.
+	 *
+	 * @internal
+	 *
+	 * @param mixed $to_do Handles of the scripts about to be printed.
+	 * @return mixed The handles, without the shared scripts on excluded pages.
+	 */
+	public function leave_out_shared_scripts_on_excluded_pages( mixed $to_do ): mixed {
+		if ( ! is_array( $to_do ) ) {
+			return $to_do;
+		}
+
+		$shared_scripts = array( 'wc-fraud-protection-blackbox', 'wc-fraud-protection-blackbox-init' );
+		if ( ! array_intersect( $shared_scripts, $to_do ) || ! $this->is_excluded_render_context() ) {
+			return $to_do;
+		}
+
+		return array_values( array_diff( $to_do, $shared_scripts ) );
 	}
 
 	/**
@@ -169,7 +211,24 @@ class BlackboxScriptHandler {
 	 * @return void
 	 */
 	private function enqueue_scripts( int $blog_id ): void {
-		wp_enqueue_script(
+		$this->register_shared_scripts( $blog_id );
+
+		wp_enqueue_script( 'wc-fraud-protection-blackbox' );
+		wp_enqueue_script( 'wc-fraud-protection-blackbox-init' );
+	}
+
+	/**
+	 * Register and configure the Blackbox SDK and initialization scripts, once per request.
+	 *
+	 * @param int $blog_id The Jetpack blog ID.
+	 * @return void
+	 */
+	private function register_shared_scripts( int $blog_id ): void {
+		if ( wp_script_is( 'wc-fraud-protection-blackbox-init', 'registered' ) ) {
+			return;
+		}
+
+		wp_register_script(
 			'wc-fraud-protection-blackbox',
 			self::BLACKBOX_JS_URL,
 			array(),
@@ -177,7 +236,7 @@ class BlackboxScriptHandler {
 			array( 'in_footer' => true )
 		);
 
-		wp_enqueue_script(
+		wp_register_script(
 			'wc-fraud-protection-blackbox-init',
 			plugins_url( 'assets/js/blackbox-init.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
 			array( 'wc-fraud-protection-blackbox' ),

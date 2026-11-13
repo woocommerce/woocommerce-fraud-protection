@@ -75,6 +75,7 @@ class FP_Example_Fraud_Protection {
 			WC_Gateway_FP_Example::ID,
 			static fn( array $payment_data ) => $payment_data[ self::EXPRESS_REFERENCE_FIELD ] ?? ''
 		);
+		add_action( 'wp_enqueue_scripts', array( $this, 'register_scripts' ) );
 		add_action( 'woocommerce_proceed_to_checkout', array( $this, 'render_express_button' ), 30 );
 		add_action( 'woocommerce_checkout_before_order_review', array( $this, 'render_express_reference' ) );
 		add_action( 'wc_ajax_' . self::AJAX_ACTION, array( $this, 'handle_express_pay' ) );
@@ -106,6 +107,19 @@ class FP_Example_Fraud_Protection {
 	}
 
 	/**
+	 * Register the express button script on every page; it is enqueued only where the button renders.
+	 */
+	public function register_scripts(): void {
+		wp_register_script( 'fp-example-express', plugins_url( 'assets/express.js', FP_EXAMPLE_GATEWAY_FILE ), array( 'wp-hooks' ), '0.1.0', true );
+
+		// Make the button script depend on the shared Fraud Protection scripts. Registering loads
+		// nothing: WordPress prints them only on pages where the button script is enqueued. When
+		// they are unavailable (no Jetpack connection, an excluded page) the button still works,
+		// and the server verifies the request without a session ID.
+		wc_get_container()->get( BlackboxScriptHandler::class )->register_scripts_for( 'fp-example-express' );
+	}
+
+	/**
 	 * Render the express button on the cart page and load its script.
 	 */
 	public function render_express_button(): void {
@@ -113,12 +127,7 @@ class FP_Example_Fraud_Protection {
 			return;
 		}
 
-		wp_enqueue_script( 'fp-example-express', plugins_url( 'assets/express.js', FP_EXAMPLE_GATEWAY_FILE ), array( 'wp-hooks' ), '0.1.0', true );
-
-		// Request the shared Fraud Protection scripts for this payment surface, which the button
-		// script then depends on. When they are unavailable (no Jetpack connection, an excluded
-		// context) the button still works and the server verifies the request without a session ID.
-		wc_get_container()->get( BlackboxScriptHandler::class )->request_scripts_for( 'fp-example-express' );
+		wp_enqueue_script( 'fp-example-express' );
 		wp_localize_script(
 			'fp-example-express',
 			'fpExampleExpress',

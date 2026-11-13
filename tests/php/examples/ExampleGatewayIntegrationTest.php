@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Examples;
 require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway/includes/class-wc-gateway-fp-example.php';
 require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway/includes/class-fp-example-fraud-protection.php';
 
+use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
@@ -89,6 +90,7 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$GLOBALS['wc_container']->reset_replacement( GatewayPaymentData::class );
 		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->payment_data, 'apply_resolver' ), 10 );
 		remove_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->request_verifier, 'supply_reused_decision' ), 10 );
+		remove_action( 'wp_enqueue_scripts', array( $this->integration, 'register_scripts' ) );
 		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_express_button' ), 30 );
 		remove_action( 'woocommerce_checkout_before_order_review', array( $this->integration, 'render_express_reference' ) );
 		remove_action( 'wc_ajax_' . \FP_Example_Fraud_Protection::AJAX_ACTION, array( $this->integration, 'handle_express_pay' ) );
@@ -173,7 +175,7 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The express button script loads with the shared scripts as a dependency when they are available, and without them otherwise.
+	 * @testdox The express button script is registered with the shared scripts as a dependency when they are available, and they load only once the button renders.
 	 *
 	 * @dataProvider shared_scripts_provider
 	 *
@@ -191,16 +193,23 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->add_product_to_cart();
 
 		try {
+			// Called directly: firing wp_enqueue_scripts would also enqueue every other registered frontend script.
+			$this->integration->register_scripts();
+
+			$expected = $available ? array( 'wp-hooks', 'wc-fraud-protection-blackbox-init' ) : array( 'wp-hooks' );
+			$this->assertSame( $expected, wp_scripts()->query( 'fp-example-express', 'registered' )->deps );
+			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'Registering loads nothing' );
+
 			ob_start();
 			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 			do_action( 'woocommerce_proceed_to_checkout' );
 			$output = (string) ob_get_clean();
 
 			$this->assertStringContainsString( 'fp-example-express-button', $output );
-			$expected = $available ? array( 'wp-hooks', 'wc-fraud-protection-blackbox-init' ) : array( 'wp-hooks' );
-			$this->assertSame( $expected, wp_scripts()->query( 'fp-example-express', 'registered' )->deps );
+			$this->assertSame( $available, wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'The shared scripts load with the button script' );
 		} finally {
 			remove_filter( 'pre_option_jetpack_options', '__return_empty_array' );
+			remove_filter( 'print_scripts_array', array( wc_get_container()->get( BlackboxScriptHandler::class ), 'leave_out_shared_scripts_on_excluded_pages' ) );
 			wp_dequeue_script( 'fp-example-express' );
 			wp_deregister_script( 'fp-example-express' );
 		}

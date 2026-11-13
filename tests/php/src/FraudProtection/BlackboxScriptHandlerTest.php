@@ -19,6 +19,11 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdenti
 class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 
 	/**
+	 * Handle of the gateway script that the register_scripts_for() tests use.
+	 */
+	private const GATEWAY_SCRIPT = 'my-gateway-checkout';
+
+	/**
 	 * The system under test.
 	 *
 	 * @var BlackboxScriptHandler
@@ -70,6 +75,10 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		}
 		$this->jetpack_option_filters = array();
 		delete_transient( 'wc_fraud_protection_missing_blog_id_log' );
+		remove_filter( 'print_scripts_array', array( $this->sut, 'leave_out_shared_scripts_on_excluded_pages' ) );
+		wp_dequeue_script( self::GATEWAY_SCRIPT );
+		wp_deregister_script( self::GATEWAY_SCRIPT );
+		wp_scripts()->done = array_values( array_diff( wp_scripts()->done, array( self::GATEWAY_SCRIPT ) ) );
 		$this->reset_fraud_protection_scripts();
 		$this->leave_excluded_render_context();
 
@@ -139,64 +148,150 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox request_scripts_for() enqueues the shared scripts and makes the given script depend on the init script, once.
+	 * @testdox register_scripts_for() registers the shared scripts without enqueueing them, and makes the given script depend on the init script, once.
 	 */
-	public function test_request_scripts_for_adds_the_init_dependency(): void {
+	public function test_register_scripts_for_adds_the_init_dependency(): void {
 		$this->mock_jetpack_blog_id( 42 );
-		wp_enqueue_script( 'my-gateway-checkout', 'https://example.test/checkout.js', array( 'jquery' ), '1.0.0', true );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array( 'jquery' ), '1.0.0', true );
 
-		try {
-			$this->assertTrue( $this->sut->request_scripts_for( 'my-gateway-checkout' ) );
-			$this->assertTrue( $this->sut->request_scripts_for( 'my-gateway-checkout' ) );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
 
-			$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
-			$this->assertSame( array( 'jquery', 'wc-fraud-protection-blackbox-init' ), wp_scripts()->query( 'my-gateway-checkout', 'registered' )->deps );
-		} finally {
-			wp_deregister_script( 'my-gateway-checkout' );
-		}
+		$this->assertSame( array( 'jquery', 'wc-fraud-protection-blackbox-init' ), wp_scripts()->query( self::GATEWAY_SCRIPT, 'registered' )->deps );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'registered' ) );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'Nothing loads until the script is enqueued' );
+		$data = (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' );
+		$this->assertStringContainsString( '"apiKey":"woo:42"', $data );
+		$this->assertSame( 1, substr_count( $data, 'var wcFraudProtection' ) );
 	}
 
 	/**
-	 * @testdox request_scripts_for() leaves the script unchanged when the shared scripts are unavailable.
+	 * @testdox A script registered with register_scripts_for() prints after the shared scripts once it is enqueued.
 	 */
-	public function test_request_scripts_for_leaves_the_script_without_shared_scripts(): void {
-		add_filter( 'pre_option_jetpack_options', '__return_empty_array' );
-		wp_register_script( 'my-gateway-checkout', 'https://example.test/checkout.js', array( 'jquery' ), '1.0.0', true );
+	public function test_register_scripts_for_prints_the_shared_scripts_with_the_enqueued_script(): void {
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+		wp_enqueue_script( self::GATEWAY_SCRIPT );
 
-		try {
-			$this->assertFalse( $this->sut->request_scripts_for( 'my-gateway-checkout' ) );
+		$output = $this->print_gateway_script();
 
-			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
-			$this->assertSame( array( 'jquery' ), wp_scripts()->query( 'my-gateway-checkout', 'registered' )->deps );
-		} finally {
-			wp_deregister_script( 'my-gateway-checkout' );
-		}
+		$init_position    = strpos( $output, 'assets/js/blackbox-init.js' );
+		$gateway_position = strpos( $output, 'https://example.test/checkout.js' );
+		$this->assertStringContainsString( 'https://blackbox-api.wp.com/v1/dist/v.js', $output );
+		$this->assertNotFalse( $init_position );
+		$this->assertNotFalse( $gateway_position );
+		$this->assertLessThan( $gateway_position, $init_position );
 	}
 
 	/**
-	 * @testdox request_scripts_for() loads nothing and logs a warning for a script that is not registered or was already printed.
+	 * @testdox register_scripts_for() also works for a script that is already enqueued.
+	 */
+	public function test_register_scripts_for_accepts_an_enqueued_script(): void {
+		$this->mock_jetpack_blog_id( 42 );
+		wp_enqueue_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'The init script is enqueued through the dependency' );
+	}
+
+	/**
+	 * @testdox The shared scripts are left out on excluded pages, and the dependent script still prints.
+	 *
+	 * @dataProvider excluded_page_provider
+	 *
+	 * @param callable $enter_context Puts the request into a page that must not load the shared scripts.
+	 */
+	public function test_register_scripts_for_leaves_out_the_shared_scripts_on_excluded_pages( callable $enter_context ): void {
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+		wp_enqueue_script( self::GATEWAY_SCRIPT );
+		$enter_context( $this );
+
+		$output = $this->print_gateway_script();
+
+		$this->assertStringContainsString( 'https://example.test/checkout.js', $output );
+		$this->assertStringNotContainsString( 'assets/js/blackbox-init.js', $output );
+		$this->assertStringNotContainsString( 'https://blackbox-api.wp.com/v1/dist/v.js', $output );
+	}
+
+	/**
+	 * Pages that must not load the shared scripts.
+	 *
+	 * @return array<string, array{0: callable}>
+	 */
+	public function excluded_page_provider(): array {
+		return array_merge(
+			$this->excluded_render_context_provider(),
+			array(
+				'order confirmation' => array(
+					function (): void {
+						add_filter( 'woocommerce_is_order_received_page', '__return_true' );
+					},
+				),
+			)
+		);
+	}
+
+	/**
+	 * @testdox register_scripts_for() leaves the script unchanged when the shared scripts are unavailable.
+	 *
+	 * @dataProvider unavailable_shared_scripts_provider
+	 *
+	 * @param callable $make_unavailable Makes the shared scripts unavailable.
+	 */
+	public function test_register_scripts_for_leaves_the_script_without_shared_scripts( callable $make_unavailable ): void {
+		$this->mock_jetpack_blog_id( 42 );
+		$make_unavailable();
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array( 'jquery' ), '1.0.0', true );
+
+		$this->assertFalse( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'registered' ) );
+		$this->assertSame( array( 'jquery' ), wp_scripts()->query( self::GATEWAY_SCRIPT, 'registered' )->deps );
+	}
+
+	/**
+	 * Ways the shared scripts can be unavailable when a script is registered.
+	 *
+	 * @return array<string, array{0: callable}>
+	 */
+	public function unavailable_shared_scripts_provider(): array {
+		return array(
+			'no Jetpack connection' => array(
+				function (): void {
+					add_filter( 'pre_option_jetpack_options', '__return_empty_array' );
+				},
+			),
+			'admin'                 => array(
+				function (): void {
+					set_current_screen( 'dashboard' );
+				},
+			),
+		);
+	}
+
+	/**
+	 * @testdox register_scripts_for() changes nothing and logs a warning for a script that is not registered or was already printed.
 	 *
 	 * @dataProvider unusable_script_provider
 	 *
 	 * @param bool $register Whether the script is registered.
 	 */
-	public function test_request_scripts_for_rejects_an_unusable_script( bool $register ): void {
+	public function test_register_scripts_for_rejects_an_unusable_script( bool $register ): void {
 		$this->spy_on_controller_logging();
 		$this->mock_jetpack_blog_id( 42 );
 		if ( $register ) {
-			wp_register_script( 'my-gateway-checkout', 'https://example.test/checkout.js', array(), '1.0.0', true );
-			wp_scripts()->done[] = 'my-gateway-checkout';
+			wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+			wp_scripts()->done[] = self::GATEWAY_SCRIPT;
 		}
 
-		try {
-			$this->assertFalse( $this->sut->request_scripts_for( 'my-gateway-checkout' ) );
+		$this->assertFalse( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
 
-			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
-			$this->assertLogged( 'warning', 'not registered or was already printed', array( 'script_handle' => 'my-gateway-checkout' ) );
-		} finally {
-			wp_scripts()->done = array_values( array_diff( wp_scripts()->done, array( 'my-gateway-checkout' ) ) );
-			wp_deregister_script( 'my-gateway-checkout' );
-		}
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'registered' ) );
+		$this->assertLogged( 'warning', 'not registered or was already printed', array( 'script_handle' => self::GATEWAY_SCRIPT ) );
 	}
 
 	/**
@@ -283,6 +378,21 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 1, substr_count( (string) $first_data, 'var wcFraudProtection' ) );
 		$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-blackbox'] );
 		$this->assertSame( 1, array_count_values( wp_scripts()->queue )['wc-fraud-protection-blackbox-init'] );
+	}
+
+	/**
+	 * @testdox request_scripts() after register_scripts_for() enqueues the shared scripts and keeps one init configuration.
+	 */
+	public function test_request_scripts_after_register_scripts_for_configures_once(): void {
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+
+		$this->assertTrue( $this->sut->request_scripts() );
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox', 'enqueued' ) );
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ) );
+		$this->assertSame( 1, substr_count( (string) wp_scripts()->get_data( 'wc-fraud-protection-blackbox-init', 'data' ), 'var wcFraudProtection' ) );
 	}
 
 	/**
@@ -541,6 +651,18 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		unset( $GLOBALS['wp_customize'] );
 		wp_set_current_user( 0 );
 		set_current_screen( 'front' );
+	}
+
+	/**
+	 * Print the gateway script and its dependencies the way WordPress prints the page's scripts.
+	 *
+	 * @return string The printed script tags.
+	 */
+	private function print_gateway_script(): string {
+		ob_start();
+		wp_scripts()->do_items( array( self::GATEWAY_SCRIPT ) );
+
+		return (string) ob_get_clean();
 	}
 
 	/**

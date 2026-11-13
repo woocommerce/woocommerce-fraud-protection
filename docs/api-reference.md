@@ -199,17 +199,19 @@ Loads the shared browser scripts on a payment surface.
 public function request_scripts(): bool
 ```
 
-Enqueues the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script, which sets up `window.wcFraudProtection`. Call it from the hook that renders your payment surface, and enqueue your own script with `wc-fraud-protection-blackbox-init` as a dependency only when it returns `true`; [`request_scripts_for()`](#request_scripts_for) does both for a script you already enqueue. Calling it again in the same request returns `true` without enqueuing anything twice.
+Enqueues the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script, which sets up `window.wcFraudProtection`. Call it from the hook that renders your payment surface, and enqueue your own script with `wc-fraud-protection-blackbox-init` as a dependency only when it returns `true`. For a script you register anyway, [`register_scripts_for()`](#register_scripts_for) is simpler. Calling it again in the same request returns `true` without enqueuing anything twice.
 
-It returns `false` when the store has no Jetpack blog ID, and in requests that do not render a payment surface: admin pages, REST requests, post previews by an editor, the Customizer preview and the order-received page. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call.
+It returns `false` when the store has no Jetpack blog ID, and in requests that do not render a payment surface: admin pages, REST requests, post previews by an editor, the Customizer preview and the order-received page.
 
-#### request_scripts_for()
+#### register_scripts_for()
 
 ```php
-public function request_scripts_for( string $handle ): bool
+public function register_scripts_for( string $handle ): bool
 ```
 
-Calls `request_scripts()` and, when it returns `true`, adds `wc-fraud-protection-blackbox-init` to the dependencies of your script `$handle`, so `window.wcFraudProtection` is set up before your script runs. Register or enqueue your script first, as you already do, and call this before the scripts are printed. When it returns `false`, nothing changes and your script loads without the shared scripts. It also returns `false`, loading nothing and logging a warning, when `$handle` is not registered or was already printed. Calling it again adds no second dependency. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call. Since 0.3.2.
+Registers the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script without enqueuing them, and adds `wc-fraud-protection-blackbox-init` to the dependencies of your script `$handle`. WordPress then prints the shared scripts only on the pages where `$handle` is enqueued, before it, so `window.wcFraudProtection` is set up before your script runs. Call it right after you register your script, wherever you register it; it also works for a script that is already enqueued and not yet printed. Pass only a script that you enqueue on your payment surfaces, since the shared scripts load on every page where it is enqueued.
+
+It returns `false` and changes nothing when the store has no Jetpack blog ID, and on admin pages. It also returns `false`, logging a warning, when `$handle` is not registered or was already printed. On the other pages that do not render a payment surface, listed under `request_scripts()`, the shared scripts are left out when the scripts are printed, and your script prints without them. Calling it again adds no second dependency. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call. Since 0.3.2.
 
 #### request_pay_for_order_script()
 
@@ -590,12 +592,12 @@ add_filter(
 
 ### window.wcFraudProtection
 
-On pages where `BlackboxScriptHandler::request_scripts()` loaded the shared scripts, `window.wcFraudProtection` holds `config`, `takeSessionId()`, `prepareSessionId()`, `takePreparedSessionId()` and `addSessionIdToExtensions()` by the time a script that depends on `wc-fraud-protection-blackbox-init` runs; without the Blackbox SDK they hand out no session ID. `acquireSessionId()` and `reset()` are added only when the SDK loaded, which it may not do, for example when a content blocker stops it. Check for each method when you call it, and send the request without a session ID when it is missing.
+On pages where the shared scripts loaded, through `BlackboxScriptHandler::request_scripts()` or `register_scripts_for()`, `window.wcFraudProtection` holds `config`, `takeSessionId()`, `prepareSessionId()`, `takePreparedSessionId()` and `addSessionIdToExtensions()` by the time a script that depends on `wc-fraud-protection-blackbox-init` runs; without the Blackbox SDK they hand out no session ID. `acquireSessionId()` and `reset()` are added only when the SDK loaded, which it may not do, for example when a content blocker stops it. Check for each method when you call it, and send the request without a session ID when it is missing.
 
 | Member | Description |
 |--------|-------------|
 | `takeSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID for one payment attempt, or to an empty string when no session ID is available, including without the SDK; it never rejects. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. After handing out an ID, it starts a fresh session for the next attempt, so no `reset()` call is needed. Use it for code that can wait for a promise. Since 0.3.2. |
-| `acquireSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID, or to an empty string when no session ID is available. A slow or failed send still resolves to the session ID when one exists. Each session ID is returned at most once: when the only one available was already returned, a fresh session is started, and the result is an empty string if it does not arrive in time. The one exception is the plugin's PayPal Payments integration: after a successful PayPal setup-token or vault-order request, the next call returns that request's ID once more, for the checkout that completes it. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. Call `reset()` after the attempt that used it. |
+| `acquireSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID, or to an empty string when no session ID is available. A slow or failed send still resolves to the session ID when one exists. Each session ID is returned at most once: when the only one available was already returned, a fresh session is started, and the result is an empty string if it does not arrive in time. The one exception is the plugin's PayPal Payments integration: after a successful PayPal setup-token or vault-order request, the next call returns that request's ID once more, for the checkout that completes it, unless the shopper has selected another payment method by then. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. Call `reset()` after the attempt that used it. |
 | `reset(): void` | Starts a fresh session for the next payment attempt. Call it after each attempt that used `acquireSessionId()`. |
 | `prepareSessionId(): void` | For code that must add the session ID synchronously: call it once when the payment surface is set up, and a session ID is kept ready for `takePreparedSessionId()`. A prepared ID that gets too old is replaced on the shopper's next activity. Calling it again does nothing. |
 | `takePreparedSessionId(): string` | Hands out the prepared session ID for one payment attempt, or an empty string when none is ready. It returns immediately: it hands out the ID that `prepareSessionId()` fetched in the background, and starts the next session without blocking. The same ID is never returned twice, and a fresh session starts for the next attempt, so no `reset()` call is needed. Call it for each payment attempt; never keep an ID for a later one. |
@@ -608,7 +610,7 @@ A session ID belongs to one payment attempt: verify each ID only once. The [inte
 
 | Handle | Description |
 |--------|-------------|
-| `wc-fraud-protection-blackbox-init` | Sets up `window.wcFraudProtection`. Use it as a dependency of your integration script; `BlackboxScriptHandler::request_scripts_for()` adds it for you. |
+| `wc-fraud-protection-blackbox-init` | Sets up `window.wcFraudProtection`. Use it as a dependency of your integration script; `BlackboxScriptHandler::register_scripts_for()` adds it for you. |
 | `wc-fraud-protection-pay-for-order` | Adds the session ID to the `#order_review` form on submission. Enqueue it with `BlackboxScriptHandler::request_pay_for_order_script()`. |
 
 Your own integration script is yours to register, from your plugin's URL and with your plugin's version.
