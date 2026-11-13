@@ -130,6 +130,8 @@ It returns `false`, and the surface script is not loaded, when:
 
 The SDK starts working as soon as it loads, so the scripts load with the page where the shopper pays, not when the shopper submits.
 
+A gateway's own script takes another route: `BlackboxScriptHandler::register_scripts_for()` registers the shared scripts, without enqueuing them, as dependencies of the gateway's script, so they load wherever that script loads. On pages that must not load them, they're left out when the scripts are printed.
+
 ### Adding the session ID to the request
 
 Each surface has its own script, because each surface submits payments differently:
@@ -138,11 +140,12 @@ Each surface has its own script, because each surface submits payments different
 |---------|--------|----------------------------|
 | Checkout block | `blocks-checkout.js` | Registers an [`onCheckoutValidation`](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/checkout-flow-and-events/#oncheckoutvalidation) callback that waits for the session ID and stores it as Store API *extension data* under `woocommerce/fraud-protection` → `blackbox_session_id`. |
 | Classic checkout | `shortcode-checkout.js` | Handles `checkout_place_order`: returns `false` to hold the submission, waits for the session ID, adds a hidden field, and submits the form again. |
-| Pay for order | `pay-for-order.js` | Catches the form's `submit` event in the capture phase, before gateway scripts, waits for the session ID, adds a hidden field, and submits again. |
-| Add payment method | `add-payment-method.js` | Same as pay for order. |
-| Express buttons (WooPayments, Stripe) | `express-checkout.js` | Adds a prepared session ID through each gateway's synchronous extension-data filter. |
+| Pay for order | `pay-for-order.js` | Catches the form's `submit` event in the capture phase, before gateway scripts, waits for the session ID, adds a hidden field, and submits again. A submit started with jQuery's `trigger()` gets a prepared session ID instead. |
+| Add payment method | `add-payment-method.js` | Same as pay for order, without the jQuery case. |
+| Express buttons (WooPayments, Stripe, Square) | `express-checkout.js` | Adds a prepared session ID through each gateway's synchronous extension-data filter, or, for Square, to its AJAX request. |
 | PayPal buttons | `paypal-express.js` | Adds the session ID to PayPal Payments' own `fetch` requests. |
-| Stripe on Add payment method | `stripe-add-payment-method.js` | Copies the form's session ID into Stripe's setup-intent AJAX request. |
+| Stripe and WooPayments on Add payment method | `stripe-add-payment-method.js`, `woopayments-add-payment-method.js` | Copy the form's session ID into the gateway's setup-intent AJAX request. |
+| Kustom on the Checkout block | `kustom-blocks-checkout.js` | Keeps the prepared session ID in the block's extension data, which Kustom sends with the order it places. |
 
 All of them go through `window.wcFraudProtection`:
 
@@ -158,11 +161,11 @@ The plugin's contract with the service is that each session ID belongs to one pa
 - use each ID for **exactly one** attempt: when an attempt takes several requests, such as a gateway's own request followed by the final form post, they all carry the same ID, and no later attempt reuses it;
 - start a fresh session after every attempt that used an ID, especially a failed one, where the shopper stays on the page and tries again.
 
-Getting this wrong is a common source of bugs. A script that resets too early sends an ID that no longer matches the shopper's data; one that forgets to reset sends the same ID with two attempts. [Browser scripts](../internals/browser-scripts.md) walks through each script's lifecycle.
+Getting this wrong is a common source of bugs. A script that resets too early sends an ID that no longer matches the shopper's data; one that forgets to reset would send the same ID with two attempts. As a safety net, `acquireSessionIdResult()` never hands out the same ID twice: when the SDK only has an ID that was already handed out, it starts a new session within the same deadline, or reports `reused`. A script whose next request must send the same ID again, to complete the same attempt, hands it over explicitly. [Browser scripts](../internals/browser-scripts.md#handing-out-each-id-once) walks through each script's lifecycle.
 
 ### When there's no session ID
 
-Sometimes there's no session ID: a content blocker stopped the SDK, the SDK timed out, or a gateway script sent the request without waiting. The request still goes out. The plugin's scripts add the *reason* instead (`timeout`, `sdk_error`, `sdk_unavailable` or `not_ready`), in the `wc_fraud_protection_session_id_error` field or the `blackbox_session_id_error` extension key. A request that carries neither field didn't go through the plugin's scripts at all, and the server records `not_submitted`. Any other value becomes `unknown`.
+Sometimes there's no session ID: a content blocker stopped the SDK, the SDK timed out, or a gateway script sent the request without waiting. The request still goes out. The plugin's scripts add the *reason* instead (`timeout`, `sdk_error`, `sdk_unavailable`, `not_ready` or `reused`), in the `wc_fraud_protection_session_id_error` field or the `blackbox_session_id_error` extension key. A request that carries neither field didn't go through the plugin's scripts at all, and the server records `not_submitted`. Any other value becomes `unknown`.
 
 > **The server still verifies requests without a session ID.** A missing session ID is not proof of anything, and skipping verification would let anyone bypass the check by blocking one script.
 
@@ -173,7 +176,7 @@ Four protectors cover WooCommerce's own flows. Each one hooks the **last point b
 | Protector | Flow | Hook | Order exists? | How a block stops the flow |
 |-----------|------|------|---------------|-----------------------------|
 | `BlocksCheckoutProtector` | Checkout block, express buttons (Store API [`POST /wc/store/v1/checkout`](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout/#process-order-and-payment), and [`POST /wc/store/v1/checkout/{id}`](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout-order/) for existing orders) | `woocommerce_store_api_checkout_order_processed` | Yes, just set to `pending` | Throws a `RouteException` with HTTP 403 |
-| `ShortcodeCheckoutProtector` | Classic checkout (`?wc-ajax=checkout`) | `woocommerce_after_checkout_validation`, at `PHP_INT_MAX` | No | Adds an error to the [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) |
+| `ShortcodeCheckoutProtector` | Classic checkout (`?wc-ajax=checkout`, and gateway endpoints that run the same checkout process) | `woocommerce_after_checkout_validation`, at `PHP_INT_MAX`, inside `WC_Checkout::process_checkout()` | No | Adds an error to the [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) |
 | `PayForOrderProtector` | "Pay for order" form | `woocommerce_before_pay_action` | Yes | [`wc_add_notice()`](https://woocommerce.github.io/code-reference/namespaces/default.html#function_wc_add_notice) with an error, which stops [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) |
 | `AddPaymentMethodProtector` | My Account > Add payment method | `woocommerce_add_payment_method_form_is_valid` filter | No order involved | Returns `false` and adds an error notice |
 
@@ -182,6 +185,8 @@ Why these hooks:
 - **Blocks checkout.** The Store API creates or reuses the order, sets it to `pending`, fires `woocommerce_store_api_checkout_order_processed`, and *then* processes the payment. Throwing there stops the request before the gateway runs. The order stays `pending`, and WooCommerce reuses it if the shopper tries again with the same cart. The protector reads the request data one hook earlier, in `woocommerce_store_api_checkout_update_order_from_request`, because only that hook receives the [`WP_REST_Request`](https://developer.wordpress.org/reference/classes/wp_rest_request/).
 - **Classic checkout.** [`WC_Checkout::process_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_process_checkout) validates the posted data, fires `woocommerce_after_checkout_validation` with a `WP_Error`, and creates the order only if there are no errors. Adding an error there means a blocked attempt never creates an order. The protector runs last (`PHP_INT_MAX`) and skips verification when another validator has already failed the checkout, because that attempt won't reach the gateway anyway.
 - **Pay for order and add payment method.** [`WC_Form_Handler`](https://woocommerce.github.io/code-reference/classes/WC-Form-Handler.html) runs these hooks after its nonce check and before it calls the gateway, and it calls the gateway only when no error notice exists.
+
+On the classic checkout, the protector attaches its validator from `woocommerce_before_checkout_process`, which only `process_checkout()` fires. Other code fires the validation hooks to check the form before the real submission, such as PayPal's early validation or Mercado Pago's `?wc-ajax=mp_validate_checkout`. Verifying there would use up the session ID, and the checkout request that follows, with the same ID, would be verified with a used ID. So those requests aren't verified. When one fires `woocommerce_checkout_process`, the protector logs it locally, to show which request ran the hooks. It also skips a submission with `woocommerce_checkout_update_totals`, for which WooCommerce creates no order.
 
 Each protector:
 
@@ -266,7 +271,7 @@ The order matters:
 Some payment flows don't fit in one request. The shopper's browser first talks to the gateway through the gateway's own endpoint, and only later submits the WooCommerce form:
 
 - **PayPal** creates a PayPal order through an AJAX request when the shopper clicks the PayPal button. The WooCommerce checkout that completes the purchase comes later.
-- **Stripe on Add payment method** creates and confirms a *setup intent* in its own AJAX request, before the form post. Confirming it already sends the card to the issuer, so verifying only the final form post would be too late.
+- **Stripe and WooPayments on Add payment method** create and confirm a *setup intent* in their own AJAX request, before the form post. Confirming it already sends the card to the issuer, so verifying only the final form post would be too late.
 
 The plugin verifies the first request, because that's the last point before the card reaches the network. The final submission still runs through its protector. Verifying it again would score the same attempt twice, and it would also need a second session ID that the browser no longer has. So the first request *keeps* its decision, and the final submission *reuses* it:
 
@@ -384,6 +389,7 @@ sequenceDiagram
     WCJS->>JS: checkout_place_order (field present)
     JS-->>WCJS: true
     WCJS->>Ajax: POST form
+    Ajax->>SCP: woocommerce_before_checkout_process (attach the validator)
     Ajax->>SCP: woocommerce_after_checkout_validation
     SCP->>SV: verify_session(id, 'shortcode_checkout', 0, data)
     SV-->>SCP: decision

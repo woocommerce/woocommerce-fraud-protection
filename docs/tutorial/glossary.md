@@ -64,6 +64,7 @@ Terms used across the documentation, grouped by area. Each entry links to where 
 | **Last4** | The last four digits of a card number, safe to display. |
 | **Fingerprint** | A provider-generated value that is the same for the same card number, across tokens. |
 | **Express checkout** | Wallet buttons (Apple Pay, Google Pay, PayPal, Link) that skip the checkout form. See [chapter 2](02-payment-gateways.md#express-checkouts). |
+| **Embedded checkout** | A checkout that a gateway renders in an iframe in place of the checkout form, such as Kustom's. The order is placed from the iframe, or by the gateway's servers. See [chapter 2](02-payment-gateways.md#kustom). |
 | **Wallet** | An app that stores payment methods and shares them with a store at checkout: Apple Pay, Google Pay, PayPal. |
 | **Redirect gateway** | A gateway that sends the shopper to the provider's site to pay, then back to the store. |
 | **Webhook** | A server-to-server notification from the provider, such as "payment succeeded". It runs without the shopper's session. |
@@ -79,6 +80,8 @@ Terms used across the documentation, grouped by area. Each entry links to where 
 | **SDK** | The service's browser script, `v.js`, loaded with the handle `wc-fraud-protection-blackbox`. |
 | **Session (fraud-detection)** | The service's description of one browser, identified by a session ID. Different from the WooCommerce session. |
 | **Session ID** | The identifier of a fraud-detection session. Used for one payment attempt. See [chapter 3](03-fraud-protection.md#one-session-id-per-attempt). |
+| **Prepared session ID** | A session ID that the browser keeps ready for code that must add it synchronously, such as an express button's request builder. See [Browser scripts](../internals/browser-scripts.md#the-prepared-slot). |
+| **Hand-over** | Letting the next request of the same attempt send a session ID that an earlier request already sent, so the checkout can reuse that request's decision. See [Browser scripts](../internals/browser-scripts.md#handing-out-each-id-once). |
 | **Identity (`wfp_id`)** | A first-party cookie with a random identity value, lasting for the browser session. The SDK receives it when it's configured. |
 | **Payment attempt** | One try at paying or saving a payment method. It can span several requests. |
 | **Payment surface** | A page where an attempt can start: checkout, cart, product page, Pay for order, Add payment method. |
@@ -90,7 +93,7 @@ Terms used across the documentation, grouped by area. Each entry links to where 
 | **Compatibility layer** | A plugin class that does the same for one gateway's or extension's own flow. |
 | **Native integration** | A gateway or extension that protects its own flows with the public API and declares it, so the matching compatibility layer stands aside. |
 | **Feature (`FraudProtectionFeature`)** | A string a gateway declares in [`$supports`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#property_supports), such as `fraud_protection_checkout`. |
-| **Integration (`FraudProtectionIntegration`)** | A string another extension declares through a filter, such as `change_payment_method`. |
+| **Integration (`FraudProtectionIntegration`)** | A string another extension registers under its plugin slug, from the `woocommerce_fraud_protection_register_native_integrations` action, such as `change_payment_method`. |
 | **Supplied decision** | A decision returned through `woocommerce_fraud_protection_skip_session_verify`, which skips the service call. |
 | **Decision reuse** | Applying the decision of a gateway's earlier request to the submission that completes the same attempt. |
 | **Reference** | A value the gateway's server created in a verified request, used to recognize the submission that completes it. |

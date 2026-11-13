@@ -47,7 +47,9 @@ The most serious findings in past reviews came from **running the flow against t
 - a stale setup intent carried in a later request ([#189](https://github.com/woocommerce/woocommerce-fraud-protection/pull/189));
 - a diagnostic reason lost when the SDK was blocked ([#180](https://github.com/woocommerce/woocommerce-fraud-protection/pull/180));
 - an extra submission when a checkout request used `global: false` or a `FormData` body ([#183](https://github.com/woocommerce/woocommerce-fraud-protection/pull/183));
-- a migration recorded as successful after a forced `ALTER` failure ([#77](https://github.com/woocommerce/woocommerce-fraud-protection/pull/77)).
+- a migration recorded as successful after a forced `ALTER` failure ([#77](https://github.com/woocommerce/woocommerce-fraud-protection/pull/77));
+- a PayPal free trial with card fields on the Checkout block that verified the same attempt twice ([#195](https://github.com/woocommerce/woocommerce-fraud-protection/pull/195)), found by testing a free trial rather than a one-off payment;
+- a Kustom retry that lost its session ID after WooCommerce rejected the first attempt, and a switch to Cash on delivery that reused Kustom's ID ([#198](https://github.com/woocommerce/woocommerce-fraud-protection/pull/198)), found on a test site with Kustom's playground environment.
 
 Techniques that pay off:
 
@@ -103,6 +105,54 @@ Each case shows a real finding, what would have gone wrong, and the knowledge th
 - **The problem:** If a shopper started PayPal (which took the prepared ID), cancelled, and then used Apple Pay, the slot was empty and later express attempts went out without a session.
 - **What catches it:** Several payment flows on one page share one single-use slot. Switching flows must prepare a new ID.
 
+### A form check used up the session ID ([#195](https://github.com/woocommerce/woocommerce-fraud-protection/pull/195))
+
+- **The change:** `ShortcodeCheckoutProtector` attached its verifier from `woocommerce_checkout_process`, to verify only during a checkout.
+- **The problem:** Mercado Pago's fast payment flow posts the checkout form to `?wc-ajax=mp_validate_checkout` first, which fires the checkout validation hooks without creating an order. The plugin verified the session there, so the real checkout request that followed, with the same ID, was verified with an ID that an earlier verification had already used.
+- **What catches it:** The validation hooks don't mean a checkout: gateways fire them to check the form. Only `WC_Checkout::process_checkout()` fires `woocommerce_before_checkout_process`, so the verifier now starts there. Test with a gateway that checks the form before its own flow.
+
+### A stricter single use broke decision reuse ([#195](https://github.com/woocommerce/woocommerce-fraud-protection/pull/195))
+
+- **The change:** `acquireSessionIdResult()` stopped returning an ID it had already handed out, so a flow that missed a `reset()` couldn't send a used ID again.
+- **The problem:** Some attempts *need* the same ID twice. The checkout that completes a PayPal setup-token or vault-order request reuses that request's decision only when it sends the same ID; with the change, it got a new ID and verified the same attempt again. The review found a second case: on the Checkout block, PayPal's card fields create the setup token for a free trial *after* the checkout has acquired its ID, so the setup-token request got a new one.
+- **What catches it:** List every request of the attempt, in the order the browser sends them, before tightening single use. The fix hands a successful request's ID over to the next acquisition only, and lets a PayPal request sent while the block is processing reuse the checkout's ID. Test free trials and saved PayPal accounts, not only one-off payments.
+
+### A hand-over taken by the wrong payment ([#195](https://github.com/woocommerce/woocommerce-fraud-protection/pull/195))
+
+- **The change:** After a successful setup-token or vault-order request, `paypal-express.js` handed its session ID over to the next acquisition, and reset the session when the shopper moved to another gateway.
+- **The problem:** On the classic checkout, `shortcode-checkout.js` binds its `checkout_place_order` handler when it loads, and `paypal-express.js` binds its gateway watcher only after a PayPal request. So a checkout placed with another gateway acquired its ID, and took the hand-over, before the reset ran. Separately, any readable response without `"success": false`, such as `{}`, counted as a success and handed its ID over.
+- **What catches it:** Handler order follows binding order, and binding order follows script and request timing. Check the condition when the ID is used, not when it was handed over. Treat only an explicit success as one.
+
+### Submits that fired no submit event ([#196](https://github.com/woocommerce/woocommerce-fraud-protection/pull/196))
+
+- **The change:** `pay-for-order.js` held the Pay for order form in a capture-phase `submit` listener.
+- **The problem:** Square's Apple Pay, Google Pay and Cash App Pay buttons submit the form with jQuery's `trigger( 'submit' )`, which runs the jQuery handlers and then calls the native `submit()`. That fires no `submit` event, so these payments went out without a session ID. The first version of the fix added a jQuery handler that threw when `config` was missing, which would have stopped `trigger()` before the native `submit()`, so the payment would never have been posted.
+- **What catches it:** Knowing how jQuery's `trigger()` submits a form, and that an exception in a jQuery handler stops it. A handler on that path must never throw, and can't hold the submit.
+
+### An order request built without the form ([#197](https://github.com/woocommerce/woocommerce-fraud-protection/pull/197))
+
+- **The change:** Express buttons were covered through the extension-data filters of the gateways that place their orders through the Store API.
+- **The problem:** Square's wallet buttons post the order to Square's own `?wc-ajax=square_digital_wallet_process_checkout`, which runs the classic checkout process with data from the wallet. `ShortcodeCheckoutProtector` verified those payments, but without a session ID, because no script touched the request.
+- **What catches it:** For each payment button, find the request that places the order and check what adds the session ID to it. A gateway's own endpoint can still run WooCommerce's checkout.
+
+### A template that skipped the enqueue hooks ([#198](https://github.com/woocommerce/woocommerce-fraud-protection/pull/198))
+
+- **The change:** `ShortcodeCheckoutProtector` loads its script from `woocommerce_checkout_before_order_review` and `woocommerce_checkout_order_review`.
+- **The problem:** Kustom's embedded checkout template replaces `form-checkout.php` and fires neither, so its classic checkout requests had no session ID. It also posts the form from its iframe callback without a submit event, so `checkout_place_order` never fires.
+- **What catches it:** Custom checkout templates don't fire every hook. Test the gateways that render their own checkout, and know which script path covers a request that skips the submit event (here, the AJAX prefilter).
+
+### Marked as used before it was used ([#198](https://github.com/woocommerce/woocommerce-fraud-protection/pull/198))
+
+- **The change:** On the Checkout block, Kustom's servers place the order, so the browser never learns that its ID was used. `KustomCompat` recorded each Kustom request's session ID as sent when it read the request, and sent a later request with the same ID on with `not_ready`.
+- **The problem:** WooCommerce can reject an order before verification, for example in order validation or stock reservation. The ID was already recorded, so the retry of the same attempt lost its session ID. Found by rejecting the first attempt on `woocommerce_checkout_validate_order_before_payment` on a test site.
+- **What catches it:** Record single-use state where the use happens. The ID is now recorded on `woocommerce_store_api_checkout_order_processed`, right before verification, and still before a block can stop the request.
+
+### Another payment method inherited the ID ([#198](https://github.com/woocommerce/woocommerce-fraud-protection/pull/198))
+
+- **The change:** `KustomCompat` kept each session ID to one Kustom attempt.
+- **The problem:** After a blocked Kustom payment, the shopper could switch to Cash on delivery without reloading the page. That submission sent the same session ID, because the browser had never been told to reset it.
+- **What catches it:** When the browser isn't told about an attempt, the server has to enforce single use for every payment method on the page, not only the one that used the ID. The fix sends any Checkout block request that carries a Kustom attempt's ID on with `not_ready`.
+
 ### A non-actionable decision leaked out ([#69](https://github.com/woocommerce/woocommerce-fraud-protection/pull/69))
 
 - **The change:** A refactor removed the step that turned non-actionable decisions into `Allow`.
@@ -148,6 +198,7 @@ Each case shows a real finding, what would have gone wrong, and the knowledge th
 - Does the gateway intercept the submission and submit again later? Are your fields still there when it does?
 - Does the gateway have other entry points (redirect flows, older endpoints, express buttons on product, cart and Pay for order pages) that skip your hook?
 - Which script handles really mean "express buttons rendered", as opposed to "block integration registered"?
+- Does the gateway submit the form with jQuery's `trigger()`, post it without a submit event, or place the order from its own servers? What adds the session ID then?
 - Does an exemption depend on the right evidence?
 
 ### Session ID lifecycle
@@ -155,6 +206,8 @@ Each case shows a real finding, what would have gone wrong, and the knowledge th
 - Is each session ID used for exactly one attempt?
 - After a failed or blocked step, are the fields cleared and the session reset? After a successful intermediate step, is the ID kept for the final post?
 - Is single-use bookkeeping on the lowest-level path every caller uses (`acquireSessionIdResult()`)?
+- When a later request of the same attempt must send the same ID, is the ID handed over to that request only, and only while the attempt still continues?
+- When the browser isn't told that an ID was used, what enforces single use, and is the ID recorded as used only once the use really happened?
 - What happens when the shopper switches between flows that share the prepared slot?
 - Does request tracking handle `global: false`, `FormData` and `URLSearchParams`, and handlers that let the submission through before yours?
 - Can a background `reset()` interrupt something in flight?
@@ -179,7 +232,7 @@ Each case shows a real finding, what would have gone wrong, and the knowledge th
 ### Checkout flow and hook timing
 
 - Which entry points perform this action? Add to cart has three ([`WC_Form_Handler`](https://woocommerce.github.io/code-reference/classes/WC-Form-Handler.html) on [`wp_loaded`](https://developer.wordpress.org/reference/hooks/wp_loaded/), [`WC_AJAX`](https://woocommerce.github.io/code-reference/classes/WC-AJAX.html), the Store API). Checkout has two. Payment has Pay for order and Add payment method too.
-- Does the hook also fire for programmatic calls by other plugins?
+- Does the hook also fire for programmatic calls by other plugins? The checkout validation hooks do: gateways fire them to check the form without placing an order.
 - Does the event mean what its name says? "Order placed" is not "order paid". Does it fire in the shopper's request, or in a webhook or return request?
 - Does verification run before or after the event you track?
 - Do custom checkout templates fire the hook you rely on?

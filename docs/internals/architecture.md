@@ -135,7 +135,7 @@ class MyComponent {
 Two consequences:
 
 - **Gateway instances don't exist at registration time.** [`WC()->payment_gateways()`](https://woocommerce.github.io/code-reference/classes/WooCommerce.html#method_payment_gateways) initializes them later. Anything that asks a gateway about itself, such as `GatewayNativeSupport::declared()`, must run inside a hook callback.
-- **Hook priorities are intentional.** For example, `ShortcodeCheckoutProtector` registers its verifier from `woocommerce_checkout_process` so it attaches only during a real checkout, and runs at `PHP_INT_MAX` so it sees every other validator's errors. Follow the nearest existing component when adding a hook.
+- **Hook priorities are intentional.** For example, `ShortcodeCheckoutProtector` registers its verifier from `woocommerce_before_checkout_process`, which only `WC_Checkout::process_checkout()` fires, so it attaches only during a real checkout and not when other code fires the validation hooks to check the form. The verifier runs at `PHP_INT_MAX` so it sees every other validator's errors. Follow the nearest existing component when adding a hook.
 
 ## Hook map
 
@@ -156,14 +156,17 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 
 | Hook | Type | Component | Purpose |
 |------|------|-----------|---------|
+| `woocommerce_store_api_checkout_update_order_from_request` (5) | action | `KustomCompat` | Replace a session ID that an earlier Kustom attempt sent with `not_ready` |
 | `woocommerce_store_api_checkout_update_order_from_request` | action | `BlocksCheckoutProtector` | Keep the Store API request data for this request |
+| `woocommerce_store_api_checkout_order_processed` (5) | action | `KustomCompat` | Record the session ID of a Kustom order as sent |
 | `woocommerce_store_api_checkout_order_processed` | action | `BlocksCheckoutProtector` | Verify; throw `RouteException` on a block |
-| `woocommerce_checkout_process` (`PHP_INT_MAX`) | action | `ShortcodeCheckoutProtector` | Attach the validator for this checkout |
+| `woocommerce_before_checkout_process` | action | `ShortcodeCheckoutProtector` | Attach the validator for this checkout |
+| `woocommerce_checkout_process` | action | `ShortcodeCheckoutProtector` | Log validation that runs outside `WC_Checkout::process_checkout()`, which isn't verified |
 | `woocommerce_after_checkout_validation` (`PHP_INT_MAX`) | action | `ShortcodeCheckoutProtector` | Verify; add a [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) on a block |
 | `woocommerce_before_pay_action` | action | `PayForOrderProtector` | Verify; add an error notice on a block |
 | `woocommerce_add_payment_method_form_is_valid` | filter | `AddPaymentMethodProtector` | Verify; return `false` on a block |
 | `woocommerce_checkout_order_created` | action | `SessionVerifier` | Copy the session ID to the new classic-checkout order |
-| `woocommerce_fraud_protection_skip_session_verify` | filter | `GatewayRequestVerifier`, `PayPalDecisionReuse`, `StripeSetupIntentCompat`, `WcposCompat` | Supply a decision kept from an earlier request, or the POS decision |
+| `woocommerce_fraud_protection_skip_session_verify` | filter | `GatewayRequestVerifier`, `PayPalDecisionReuse`, `StripeSetupIntentCompat`, `WooPaymentsSetupIntentCompat`, `WcposCompat` | Supply a decision kept from an earlier request, or the POS decision |
 | `woocommerce_fraud_protection_resolved_payment_data` | filter | `GatewayPaymentData`, payment-data compatibility layers | Resolve the payment instrument |
 
 ### Script loading
@@ -174,8 +177,11 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 | `woocommerce_checkout_before_order_review`, `woocommerce_checkout_order_review` | action | `ShortcodeCheckoutProtector` | Load `shortcode-checkout.js`; the second covers templates that fire only it |
 | `before_woocommerce_pay_form` | action | `PayForOrderProtector` | Load `pay-for-order.js` |
 | `woocommerce_add_payment_method_form_bottom` | action | `AddPaymentMethodProtector` | Load `add-payment-method.js` |
-| `woocommerce_add_payment_method_form_bottom` (20) | action | `StripeSetupIntentCompat` | Load `stripe-add-payment-method.js` |
+| `woocommerce_add_payment_method_form_bottom` (20) | action | `StripeSetupIntentCompat`, `WooPaymentsSetupIntentCompat` | Load `stripe-add-payment-method.js` or `woopayments-add-payment-method.js` |
 | [`wp_enqueue_scripts`](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/) (`PHP_INT_MAX`) | action | `ExpressCheckoutScriptCompat` | Load `express-checkout.js` where express buttons are enqueued |
+| `kco_wc_before_snippet` | action | `KustomCompat` | Load `shortcode-checkout.js` on Kustom's embedded classic checkout |
+| `woocommerce_blocks_enqueue_checkout_block_scripts_before` | action | `KustomCompat` | Load `kustom-blocks-checkout.js` when Kustom is available |
+| `print_scripts_array` | filter | `BlackboxScriptHandler` | Leave out the shared scripts that `register_scripts_for()` registered, on pages that must not load them |
 | PayPal render hooks, mini-cart hooks, `woocommerce_blocks_enqueue_checkout_block_scripts_before` and `woocommerce_blocks_enqueue_cart_block_scripts_before`, `wp_enqueue_scripts` (mostly at priority 20) | action/filter | `PayPalScriptCompat` | Load `paypal-express.js` on PayPal surfaces, and `blocks-checkout.js` on the Cart block |
 | `woocommerce_subscriptions_change_payment_after_submit` | action | `SubscriptionsChangePaymentCompat` | Load `pay-for-order.js` on the change-payment-method form |
 
@@ -188,6 +194,7 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 | `woocommerce_paypal_payments_woocommerce_order_created_from_cart` | action | `PayPalCompat` | Store the session ID on the WooCommerce order |
 | `ppcp_request_args` | filter | `PayPalCompat` | Verify setup-token and vault-order requests to PayPal |
 | `wc_stripe_is_valid_create_and_confirm_setup_intent_captcha` | filter | `StripeSetupIntentCompat` | Verify the setup-intent request |
+| `wcpay_create_and_confirm_setup_intention_request` | filter | `WooPaymentsSetupIntentCompat` | Verify the setup-intent request |
 | `woocommerce_subscription_change_payment_method_via_pay_shortcode` | action | `SubscriptionsChangePaymentCompat` | Verify the change-payment-method form |
 
 ### Data collection

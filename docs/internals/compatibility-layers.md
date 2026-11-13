@@ -30,7 +30,12 @@ WordPress hooks link to the WordPress developer reference. WooCommerce hooks lin
 - returns `false`, and logs, when called before [`init`](https://developer.wordpress.org/reference/hooks/init/);
 - returns `false` on any error, which keeps the layer on.
 
-`ExtensionNativeSupport::declared( $extension_slug, $integration )` reads the `woocommerce_fraud_protection_native_integrations` filter and checks for the integration under the slug. Any error means "not declared".
+`ExtensionNativeSupport::declared( $extension_slug, $integration )` checks for the integration under the slug among the extensions' registrations:
+
+- the first call after [`init`](https://developer.wordpress.org/reference/hooks/init/) fires the `woocommerce_fraud_protection_register_native_integrations` action with a `NativeIntegrationRegistry`, and keeps what was registered for the rest of the request;
+- before `init`, it declares nothing and doesn't fire the action, because plugins may still be adding their callbacks;
+- a callback that throws stops the action: registrations made before it count, and the layers for the skipped ones stay on;
+- `register()` calls made outside the action, or with an empty slug or integration, are ignored and logged.
 
 `wp wc fraud-protection native-integrations list` prints both kinds of declarations.
 
@@ -45,6 +50,7 @@ Each verification passes a source string (32 characters at most). Sources appear
 | `pay_for_order` | `PayForOrderProtector` |
 | `add_payment_method` | `AddPaymentMethodProtector` |
 | `stripe_setup_intent_creation` | `StripeSetupIntentCompat` |
+| `wcpay_setup_intent_creation` | `WooPaymentsSetupIntentCompat` |
 | `paypal_express_order_creation` | `PayPalCompat` (create-order) |
 | `paypal_setup_token_creation` | `PayPalCompat` (setup token) |
 | `paypal_vault_order_creation` | `PayPalCompat` (vault order) |
@@ -75,6 +81,8 @@ Reads the posted Stripe payment method ID and fetches its details from the Strip
 
 Resolves card and bank details through the WooPayments API. When WooPay is enabled, payment method IDs belong to the WooPay platform account and can't be read, so only the transaction mode and merchant identifier are resolved.
 
+On the Add payment method form post, it resolves the payment method held by the posted setup intent (`wcpay-setup-intent`), because that's the one WooPayments saves, and the browser can change the posted payment method ID after the setup-intent request.
+
 ### SquarePaymentDataCompat
 
 | | |
@@ -101,11 +109,11 @@ Resolves the PayPal merchant identifier, the transaction mode, and saved wallet 
 
 | | |
 |--|--|
-| Extension | WooPayments, Stripe |
+| Extension | WooPayments, Stripe, WooCommerce Square |
 | Hooks | [`wp_enqueue_scripts`](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/) at `PHP_INT_MAX` |
 | Stands aside | Per gateway, when it declares `fraud_protection_express_checkout` |
 
-Loads `express-checkout.js` when `WCPAY_EXPRESS_CHECKOUT_ECE` or `wc_stripe_express_checkout` is enqueued. Those handles are enqueued only where express buttons show, including the Cart and Checkout blocks. The gateways' general block integration handles aren't used, because they're registered even when express buttons are off. The script receives the list of gateways to handle, so a gateway that declares the feature on the same page is left alone.
+Loads `express-checkout.js` when `WCPAY_EXPRESS_CHECKOUT_ECE`, `wc_stripe_express_checkout` or `wc-square-digital-wallet` is enqueued. Those handles are enqueued only where express buttons show, including the Cart and Checkout blocks. WooPayments and Stripe place the order through the Store API, where `BlocksCheckoutProtector` reads the session ID; Square posts it to its own AJAX endpoint, which runs the classic checkout process, where `ShortcodeCheckoutProtector` reads it. The gateways' general block integration handles aren't used, because they're registered even when express buttons are off. The script receives the list of gateways to handle, so a gateway that declares the feature on the same page is left alone.
 
 ### PayPalScriptCompat
 
@@ -158,6 +166,39 @@ Keeps the latest PayPal request decision in the WooCommerce session (`_fraud_pro
 - Keeps the decision in `_fraud_protection_stripe_setup_intent_verification` with the session ID, user and payment method, only when the request carried a session ID.
 - On the form post (source `add_payment_method`), supplies the decision once, when the session ID and user match. An allow isn't supplied when the posted setup intent now holds another payment method. The record is retired on every Stripe add-payment-method verification, match or not.
 - Loads `stripe-add-payment-method.js` after `add-payment-method.js`, when a Stripe gateway is available.
+
+### WooPaymentsSetupIntentCompat
+
+| | |
+|--|--|
+| Extension | WooPayments |
+| Hooks | `wcpay_create_and_confirm_setup_intention_request`, `woocommerce_fraud_protection_skip_session_verify`, `woocommerce_add_payment_method_form_bottom` (20) |
+| Stands aside | `woocommerce_payments` declares `fraud_protection_add_payment_method` |
+
+Works like `StripeSetupIntentCompat`, for WooPayments' `create_setup_intent` AJAX request:
+
+- Verifies the session in that request, after WooPayments' nonce, fraud-prevention and rate-limit checks, before the setup intent is created. WooPayments also applies the filter when it saves a card for a zero-total checkout order, where the checkout protectors verify instead, so the layer acts only while `wp_ajax_create_setup_intent` runs.
+- Verifies the payment method that the request confirms. WooPayments reads it from `wcpay-confirmation-token` before `wcpay-payment-method`, so the layer reads it from the setup intent request, falling back to the posted fields in the same order.
+- On a block, responds with WooPayments' error shape through [`wp_send_json_error()`](https://developer.wordpress.org/reference/functions/wp_send_json_error/).
+- Keeps an actionable decision in `_fraud_protection_woopayments_setup_intent_verification` with the session ID, user and payment method, only when the request carried a session ID.
+- On the form post (source `add_payment_method`), supplies the decision once, when the session ID and user match. An allow isn't supplied when the posted setup intent holds another payment method. A value that an earlier skip-filter consumer returned is kept, so an earlier block can't become an allow. The record is retired on every WooPayments add-payment-method verification.
+- Loads `woopayments-add-payment-method.js` after `add-payment-method.js`, when the WooPayments card gateway is available.
+
+### KustomCompat
+
+| | |
+|--|--|
+| Extension | Kustom Checkout (gateway `kco`) |
+| Hooks | `kco_wc_before_snippet`, `woocommerce_blocks_enqueue_checkout_block_scripts_before`, `woocommerce_store_api_checkout_update_order_from_request` (5), `woocommerce_store_api_checkout_order_processed` (5) |
+| Stands aside | `kco` declares `fraud_protection_express_checkout` |
+
+Kustom replaces the checkout form with an embedded checkout, and its orders still go through WooCommerce's checkout, where the protectors verify them as usual. The layer only gets the session ID to them:
+
+- **Classic checkout.** Kustom's template replaces `form-checkout.php` and fires neither action that `ShortcodeCheckoutProtector` uses to enqueue its script, so the layer enqueues it on `kco_wc_before_snippet`. Kustom posts the form from its iframe callback without a submit event, so the script's `$.ajaxPrefilter` adds the prepared session ID.
+- **Checkout block.** Kustom's servers place the order through the Store API after the shopper pays in its iframe, so the block's submit events never run. Since Kustom 2.24.1, Kustom stores the block's extension data in the WooCommerce session and sends it with that request. The layer loads `kustom-blocks-checkout.js`, which keeps the prepared session ID in that data while Kustom is selected.
+- **One attempt per ID.** The browser isn't told when Kustom's servers use the ID, so it keeps it after a refused order. The layer records the ID of each Kustom order in the WooCommerce session (`_wc_fraud_protection_kustom_sent_session_id`) when the order reaches verification, on `woocommerce_store_api_checkout_order_processed`. A later Checkout block request with any payment method that carries the same ID is sent on with `not_ready` instead. An order that WooCommerce rejects before verification leaves the ID for the retry.
+
+Limitation: until the prepared ID expires and the page prepares a new one, later attempts on the same page are verified without a session.
 
 ### SubscriptionsChangePaymentCompat
 

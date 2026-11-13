@@ -95,6 +95,8 @@ The WooCommerce session ([`WC()->session`](https://woocommerce.github.io/code-re
 | `_wc_fraud_protection_reusable_decisions` | `GatewayRequestVerifier` | Kept decisions, keyed by reference-reader pattern: source, session ID, decision, reference, cart hash | One use, or replaced by the next request |
 | `_fraud_protection_paypal_verification` | `PayPalDecisionReuse` | The latest PayPal request decision: create-order and vault-order decisions are bound to the PayPal order, setup-token decisions to the session ID and cart | Marked used on reuse, then retired |
 | `_fraud_protection_stripe_setup_intent_verification` | `StripeSetupIntentCompat` | Setup-intent decision: session ID, decision, user, payment method | One use |
+| `_fraud_protection_woopayments_setup_intent_verification` | `WooPaymentsSetupIntentCompat` | Setup-intent decision: session ID, decision, user, payment method | One use |
+| `_wc_fraud_protection_kustom_sent_session_id` | `KustomCompat` | Session ID of the last Kustom order that reached verification on the Checkout block | Until the next Kustom order reaches verification |
 
 [`WC()->session->set()`](https://woocommerce.github.io/code-reference/classes/WC-Session.html#method_set) marks the session as changed, and WooCommerce writes it to the database at shutdown. Write only when the value changes.
 

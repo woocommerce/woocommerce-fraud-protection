@@ -15,6 +15,7 @@ WordPress hooks link to the WordPress developer reference. WooCommerce hooks lin
 - [Express checkouts](#express-checkouts)
 - [PayPal Payments](#paypal-payments)
 - [Square](#square)
+- [Kustom](#kustom)
 - [Saved payment methods](#saved-payment-methods)
 - [WooCommerce Subscriptions](#woocommerce-subscriptions)
 - [Where a fraud check can sit](#where-a-fraud-check-can-sit)
@@ -212,7 +213,9 @@ sequenceDiagram
     F->>St: read seti_456, save its card
 ```
 
-By the time WooCommerce's own Add payment method hook runs, the issuer has already seen the card. And between the AJAX request and the form post, the browser holds the SetupIntent's client secret. [Chapter 4](04-gateway-specific-flows.md#stripe-on-add-payment-method) shows how the plugin handles this for Stripe.
+By the time WooCommerce's own Add payment method hook runs, the issuer has already seen the card. And between the AJAX request and the form post, the browser holds the SetupIntent's client secret. [Chapter 4](04-gateway-specific-flows.md#stripe-and-woopayments-on-add-payment-method) shows how the plugin handles this for both gateways.
+
+The two gateways differ in the details. Stripe sends its AJAX request (`wc_stripe_create_and_confirm_setup_intent`) with jQuery. WooPayments sends its `create_setup_intent` request with `fetch()`, and confirms the payment method it reads from `wcpay-confirmation-token` before `wcpay-payment-method`.
 
 ### Stripe webhooks
 
@@ -235,6 +238,8 @@ Things that matter:
 - The filter is **synchronous**: there's no time to wait for anything.
 - The script handles that signal "express buttons are on this page" are `wc_stripe_express_checkout` and `WCPAY_EXPRESS_CHECKOUT_ECE`. The gateways' general block integration scripts load even when express buttons are off.
 - WooPayments' product-page buttons use a separate tokenized cart, so the request carries a [`Cart-Token`](https://developer.woocommerce.com/docs/apis/store-api/cart-tokens/).
+
+Square's wallet buttons (Apple Pay and Google Pay) work differently. On product, cart and classic checkout pages, Square's script posts the order to its own endpoint, `?wc-ajax=square_digital_wallet_process_checkout`, with data from the wallet rather than the checkout form. That endpoint runs the classic checkout process, so the classic checkout hooks fire. Square has no filter for that request. See [Square](#square) for its Pay for order buttons.
 
 ## PayPal Payments
 
@@ -283,7 +288,7 @@ sequenceDiagram
 - **`ppc-create-order` is the last store-side point** before the buyer's account or card reaches PayPal. After it, the buyer works in PayPal's window or the card fields send the card to PayPal, and 3DS can run in the browser. The charge itself waits for the capture or authorization in [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment).
 - **The request says where it comes from** in its `context` field: `checkout`, `checkout-block`, `cart`, `cart-block`, `mini-cart`, `product` or `pay-now`. On the product page, the script first puts the product in the cart through `ppc-change-cart`.
 - **On Pay for order** (`pay-now`), the WooCommerce order already exists. The request carries its ID and key, and the PayPal order is built from it.
-- **On the checkout page**, `ppc-create-order` can also run WooCommerce's checkout validation on the posted form ("early validation"). That calls [`WC_Checkout::validate_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_validate_checkout) directly, so `woocommerce_after_checkout_validation` fires inside a PayPal request, without `woocommerce_checkout_process`.
+- **On the checkout page**, `ppc-create-order` can also run WooCommerce's checkout validation on the posted form ("early validation"). That calls [`WC_Checkout::validate_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_validate_checkout) directly, so `woocommerce_after_checkout_validation` fires inside a PayPal request, without `woocommerce_before_checkout_process` or `woocommerce_checkout_process`.
 - **The final submission** finds the PayPal order in the WooCommerce session. A Store API submission also posts `paypal_order_id` in its payment data; PayPal Payments accepts it only for a PayPal order that the same session created.
 - **The "Pay Now" path skips the checkout.** `ppc-approve-order` creates the WooCommerce order from the cart and calls `process_payment()` in the same request. The checkout's validation and processing hooks (`woocommerce_checkout_process`, `woocommerce_after_checkout_validation`, `woocommerce_checkout_create_order`, `woocommerce_checkout_order_processed`) and the Store API checkout hooks don't run. Only the item hooks that fire while the order is built, such as `woocommerce_checkout_create_order_line_item`, do.
 - **The card fields submit before the checkout.** On the Checkout block, they create the PayPal order and approve it inside the payment method's [`onPaymentSetup`](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/checkout-flow-and-events/#onpaymentsetup) callback, before the Store API checkout request.
@@ -301,6 +306,18 @@ The [PayPal Payments repository](https://github.com/woocommerce/woocommerce-payp
 ## Square
 
 WooCommerce Square uses Square's Web Payments SDK. The card iframe returns a single-use **payment nonce** (`cnon:...`; unrelated to WordPress nonces), and the gateway's script posts it with card details such as type, last four digits and expiry in fields named `wc-square-credit-card-*`. The charge happens on the server in [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment). Buyer verification (3DS) can run in the browser while the card is tokenized.
+
+Square's wallet buttons skip the checkout form (see [Express checkouts](#express-checkouts)). On Pay for order, its Apple Pay, Google Pay and Cash App Pay buttons submit the `#order_review` form with jQuery's `trigger( 'submit' )`. That runs the form's jQuery handlers and then calls the form's native `submit()`, which fires no `submit` event, so a script that listens only for the native event never sees these submissions.
+
+## Kustom
+
+Kustom Checkout (gateway ID `kco`) replaces the checkout form with an **embedded checkout**: an iframe where the shopper pays.
+
+- **On the classic checkout**, Kustom's template replaces `form-checkout.php` and fires neither `woocommerce_checkout_before_order_review` nor `woocommerce_checkout_order_review`. Its iframe callback then posts the form to the classic checkout endpoint, without submitting the form, so `checkout_place_order` never fires.
+- **On the Checkout block**, Kustom's servers place the order through the Store API after the shopper pays in the iframe. The request doesn't come from the shopper's browser, so the block's submit events never run. Since version 2.24.1, Kustom stores the block's extension data in the WooCommerce session before the shopper pays, and sends it with that request.
+- **When Kustom refuses an order**, the browser isn't told. The shopper can pay again in the iframe, or switch to another payment method.
+
+Either way, the order goes through WooCommerce's checkout, and its hooks run.
 
 ## Saved payment methods
 
@@ -330,6 +347,8 @@ WooCommerce Subscriptions adds recurring payments. A subscription is a special o
 |------|------------------------------------------|------------------------------------------|
 | Classic checkout | Any checkout hook up to [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) | No |
 | Block checkout and express buttons | Store API hooks up to `woocommerce_store_api_checkout_order_processed` | No |
+| Square wallet buttons | Classic checkout hooks, inside Square's wallet checkout request | No |
+| Kustom embedded checkout | The classic or Store API checkout hooks, in the request that Kustom's callback or servers send | No |
 | Saved card | Same as the checkout | No |
 | 3DS continuation | None: the server confirmed the intent earlier | Only for an intent the server created after its check |
 | Pay for order | `woocommerce_before_pay_action` | No |

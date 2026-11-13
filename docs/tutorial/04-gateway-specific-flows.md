@@ -11,7 +11,8 @@ WordPress hooks link to the WordPress developer reference. WooCommerce hooks lin
 - [Payment data resolvers](#payment-data-resolvers)
 - [Express checkouts](#express-checkouts)
 - [PayPal Payments](#paypal-payments)
-- [Stripe on Add payment method](#stripe-on-add-payment-method)
+- [Kustom's embedded checkout](#kustoms-embedded-checkout)
+- [Stripe and WooPayments on Add payment method](#stripe-and-woopayments-on-add-payment-method)
 - [WooCommerce Subscriptions: change payment method](#woocommerce-subscriptions-change-payment-method)
 - [WooCommerce POS](#woocommerce-pos)
 - [Native integrations](#native-integrations)
@@ -19,16 +20,17 @@ WordPress hooks link to the WordPress developer reference. WooCommerce hooks lin
 
 ## Where the generic protectors fall short
 
-A protector verifies the request that WooCommerce hands to the gateway. That works when the gateway does all its work inside [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) or [`add_payment_method()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_add_payment_method). It fails in four situations:
+A protector verifies the request that WooCommerce hands to the gateway. That works when the gateway does all its work inside [`process_payment()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_process_payment) or [`add_payment_method()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_add_payment_method). It fails in five situations:
 
 | Situation | Example | What goes wrong without help |
 |-----------|---------|------------------------------|
-| The card reaches the network **before** the WooCommerce form is posted | On My Account > Add payment method, Stripe creates and confirms a setup intent in its own AJAX request, before the form post | The protector runs after the issuer has already seen the card. |
+| The card reaches the network **before** the WooCommerce form is posted | On My Account > Add payment method, Stripe and WooPayments create and confirm a setup intent in their own AJAX request, before the form post | The protector runs after the issuer has already seen the card. |
 | The gateway starts the payment through **its own endpoint** | PayPal creates a PayPal order through its own AJAX request | That request never reaches a protector. |
-| The request **skips the form** the plugin's script hooks into | Apple Pay or Google Pay buttons on a product page post straight to the Store API | The request reaches the protector, but without a session ID. |
+| The request **skips the form** the plugin's script hooks into | Apple Pay or Google Pay buttons on a product page post straight to the Store API, or to Square's own endpoint | The request reaches the protector, but without a session ID. |
+| The order is placed **without the shopper's browser** | Kustom's servers place the order through the Store API after the shopper pays in its iframe | The request reaches the protector, but no script can add a session ID when it's sent. |
 | An extension **replaces WooCommerce's form handler** | WooCommerce Subscriptions handles the "change payment method" form on the Pay for order page itself | The protector's hook never fires. |
 
-There's also a fifth, quieter gap: the protectors know the gateway ID but not much about the payment instrument. Each gateway posts different fields, so the plugin needs gateway-specific code to turn them into a card brand, last four digits, and so on.
+There's also a sixth, quieter gap: the protectors know the gateway ID but not much about the payment instrument. Each gateway posts different fields, so the plugin needs gateway-specific code to turn them into a card brand, last four digits, and so on.
 
 ## The compatibility layers
 
@@ -40,11 +42,13 @@ Each gap has a class under `src/Internal/FraudProtectionPlugin/Compat/`. They re
 | `WooPaymentsPaymentDataCompat` | WooPayments | Resolves card details through the WooPayments API. |
 | `SquarePaymentDataCompat` | Square | Reads card details from Square's posted fields. |
 | `PayPalPaymentDataCompat` | PayPal Payments | Resolves the merchant identifier, transaction mode and saved wallet data. |
-| `ExpressCheckoutScriptCompat` | WooPayments, Stripe | Loads `express-checkout.js` where express buttons render. |
+| `ExpressCheckoutScriptCompat` | WooPayments, Stripe, Square | Loads `express-checkout.js` where express buttons render. |
 | `PayPalScriptCompat` | PayPal Payments | Loads `paypal-express.js` on every PayPal payment surface. |
 | `PayPalCompat` | PayPal Payments | Verifies PayPal's create-order, setup-token and vault-order requests. |
 | `PayPalDecisionReuse` | PayPal Payments | Lets the final checkout reuse the create-order decision. |
 | `StripeSetupIntentCompat` | Stripe | Verifies Stripe's setup-intent AJAX request, and lets the form post reuse the decision. |
+| `WooPaymentsSetupIntentCompat` | WooPayments | Does the same for WooPayments' setup-intent AJAX request. |
+| `KustomCompat` | Kustom | Gets the session ID to the orders that Kustom's embedded checkout places, and keeps each ID to one attempt. |
 | `SubscriptionsChangePaymentCompat` | WooCommerce Subscriptions | Verifies the change-payment-method form. |
 | `WcposCompat` | WooCommerce POS | Skips verification for tenders a cashier records. |
 
@@ -79,6 +83,22 @@ WooPayments and Stripe show Apple Pay, Google Pay and similar buttons on product
 
 The gateways build that data **synchronously**, inside the wallet's callback, so there's no time to wait for the SDK. That's why the ID is prepared ahead of time, and why `takePreparedSessionId()` never hands out the same ID twice.
 
+Square's wallet buttons need two more pieces:
+
+- On product, cart and classic checkout pages, they post the order to Square's own endpoint, `?wc-ajax=square_digital_wallet_process_checkout`, which runs the classic checkout process, so `ShortcodeCheckoutProtector` verifies it. Square has no filter for the request, so `express-checkout.js` adds the prepared session ID, or `not_ready`, to its body with a jQuery AJAX prefilter. `ExpressCheckoutScriptCompat` loads the script when Square enqueues `wc-square-digital-wallet`.
+- On Pay for order, they submit the form with jQuery's `trigger( 'submit' )`, which fires no native `submit` event. `pay-for-order.js` adds a jQuery `submit` handler for this case, which adds a prepared session ID without holding the submit (see [Browser scripts](../internals/browser-scripts.md#submits-started-with-jquery)).
+
+## Kustom's embedded checkout
+
+Kustom replaces the checkout form with an iframe (see [chapter 2](02-payment-gateways.md#kustom)). Its orders still go through WooCommerce's checkout, where the protectors verify them, so `KustomCompat` only has to get the session ID to them:
+
+- **Classic checkout.** Kustom's template doesn't fire the hooks that load `shortcode-checkout.js`, so the layer loads it on Kustom's `kco_wc_before_snippet`. Kustom posts the form without submitting it, and the script's AJAX prefilter adds the prepared session ID.
+- **Checkout block.** No browser request carries the order, so `kustom-blocks-checkout.js` keeps the prepared session ID in the block's extension data while Kustom is selected, and Kustom sends that data with the order it places. The script follows the prepared ID without taking it, so the session keeps collecting until the shopper pays.
+
+Because the browser isn't told when Kustom uses the ID, it can't reset the session afterwards. So the layer keeps each ID to one attempt on the server: it records the ID of each Kustom order that reaches verification, and a later Checkout block request, with any payment method, that carries the same ID is verified with `not_ready` instead. Until the prepared ID expires, later attempts on the same page are verified without a session.
+
+A native integration only has to supply the session ID: once Kustom declares `fraud_protection_express_checkout`, the layer stands aside.
+
 ## PayPal Payments
 
 PayPal's buttons create a PayPal order **before** the WooCommerce order exists:
@@ -95,9 +115,17 @@ The plugin covers it with three layers and a script:
 - `PayPalCompat` verifies the create-order request, the vault-order request that pays with a saved PayPal account, and the setup-token request that saves an account or card. It blocks them on a `Block`, and associates the PayPal order with the verification.
 - `PayPalDecisionReuse` supplies that decision through `woocommerce_fraud_protection_skip_session_verify` when the final submission matches the PayPal order that was verified, so the attempt is scored once. A blocked create-order request never creates a PayPal order, so there's nothing to complete.
 
-## Stripe on Add payment method
+Keeping one session ID per attempt takes care here, because PayPal's requests and the checkout belong to the same attempt:
 
-On My Account > Add payment method, Stripe doesn't wait for the form post:
+- A setup-token or vault-order decision is reused only when the checkout sends the same session ID. So after a confirmed success, `paypal-express.js` hands that ID over to the checkout's next acquisition, as long as PayPal is still the selected gateway then.
+- When the shopper closes PayPal and pays with another gateway, the script starts a new session for that payment.
+- On the Checkout block, PayPal's card fields send their request while the block is already processing the order, so that request sends the checkout's session ID instead of acquiring its own.
+
+[Browser scripts](../internals/browser-scripts.md#paypal-expressjs) has the details.
+
+## Stripe and WooPayments on Add payment method
+
+On My Account > Add payment method, Stripe and WooPayments don't wait for the form post. Stripe's flow:
 
 1. The shopper enters a card in Stripe's fields and submits. Stripe's script turns it into a payment method (`pm_...`) in the browser; the issuer isn't involved yet.
 2. Stripe's script sends `wc_stripe_create_and_confirm_setup_intent` through AJAX, with the payment method ID.
@@ -115,6 +143,13 @@ On My Account > Add payment method, Stripe doesn't wait for the form post:
 The last condition matters. The browser holds the setup intent's client secret, so Stripe's browser API can attach a different card to the same intent after the AJAX request. An allow for one card must not save another.
 
 `stripe-add-payment-method.js` copies the form's session ID into Stripe's AJAX request, and resets the attempt when the setup fails in the browser.
+
+WooPayments follows the same steps with its `create_setup_intent` AJAX request, and `WooPaymentsSetupIntentCompat` and `woopayments-add-payment-method.js` mirror the Stripe pair:
+
+- The layer verifies on `wcpay_create_and_confirm_setup_intention_request`, which WooPayments applies right before it sends the setup intent, after its nonce, fraud-prevention and rate-limit checks. WooPayments also applies it when it saves a card for a $0 checkout order, where the checkout protectors already verify, so the layer acts only in the `create_setup_intent` request.
+- It verifies the payment method that the request confirms, because WooPayments reads it from `wcpay-confirmation-token` before `wcpay-payment-method`, and the two can differ.
+- WooPayments sends the request with `fetch()`, so the script wraps `fetch()` instead of using a jQuery prefilter.
+- On the form post, `WooPaymentsPaymentDataCompat` resolves the card of the posted setup intent, because that's the one WooPayments saves.
 
 ## WooCommerce Subscriptions: change payment method
 
@@ -142,9 +177,9 @@ The compatibility layers work, but they're fragile and they live in the wrong pl
 
 The pieces:
 
-- **Declarations.** A gateway adds `FraudProtectionFeature` strings to its [`$supports`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#property_supports) array: `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, `fraud_protection_express_checkout`. Other extensions add `FraudProtectionIntegration` strings, such as `change_payment_method`, under their plugin slug through the `woocommerce_fraud_protection_native_integrations` filter.
+- **Declarations.** A gateway adds `FraudProtectionFeature` strings to its [`$supports`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#property_supports) array: `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, `fraud_protection_express_checkout`. Other extensions register `FraudProtectionIntegration` strings, such as `change_payment_method`, under their plugin slug: they hook the `woocommerce_fraud_protection_register_native_integrations` action and call `register()` on the `NativeIntegrationRegistry` it passes. The action fires once per request, the first time a compatibility layer asks.
 - **Standing aside.** Each compatibility layer asks `GatewayNativeSupport` or `ExtensionNativeSupport` inside its hook callbacks whether the matching feature is declared, and does nothing if it is. The check must run inside the callbacks: gateway instances don't exist until [`WC_Payment_Gateways`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateways.html) initializes them, after [`init`](https://developer.wordpress.org/reference/hooks/init/).
-- **Public building blocks.** `GatewayPaymentData`, `GatewayRequestVerifier`, `BlackboxScriptHandler::request_scripts_for()`, `ClassicFormRequestData`, and the browser methods `takeSessionId()`, `prepareSessionId()`, `takePreparedSessionId()` and `addSessionIdToExtensions()`.
+- **Public building blocks.** `GatewayPaymentData`, `GatewayRequestVerifier`, `BlackboxScriptHandler::register_scripts_for()`, `ClassicFormRequestData`, and the browser methods `takeSessionId()`, `prepareSessionId()`, `takePreparedSessionId()` and `addSessionIdToExtensions()`.
 
 A gateway switches a built-in layer off by **declaring** the matching feature; registering a resolver or reference reader alone doesn't. `GatewayPaymentData` and `GatewayRequestVerifier` also have internal `register_compatibility_*()` methods, so that future layers built on those public services give way to a gateway's own registration, whichever registers first. No current layer uses them yet.
 

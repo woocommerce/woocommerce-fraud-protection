@@ -141,7 +141,7 @@ These are jQuery `triggerHandler()` events. The result is the **last** handler's
 **On the server** ([`WC_Checkout::process_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_process_checkout)):
 
 1. Verify the nonce.
-2. `woocommerce_before_checkout_process`, then `woocommerce_checkout_process`: early validation. Add an error notice or throw to stop.
+2. `woocommerce_before_checkout_process`, then `woocommerce_checkout_process`: early validation. Add an error notice or throw to stop. Only `process_checkout()` fires `woocommerce_before_checkout_process`; other code can fire the validation hooks (see [Gotchas](#gotchas)).
 3. [`get_posted_data()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_get_posted_data) reads only the declared checkout fields and a few fixed keys. **Gateway fields stay in `$_POST`.**
 4. [`update_session()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_update_session) saves the addresses and chosen methods.
 5. [`validate_checkout()`](https://woocommerce.github.io/code-reference/classes/WC-Checkout.html#method_validate_checkout) checks required fields, the cart, terms, shipping, and the gateway's own [`validate_fields()`](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html#method_validate_fields), then fires **`woocommerce_after_checkout_validation( $data, $errors )`**. Adding to the [`WP_Error`](https://developer.wordpress.org/reference/classes/wp_error/) stops the checkout.
@@ -376,6 +376,7 @@ To send your own data with the block checkout, register an `extensions` schema w
 13. **`woocommerce_thankyou` fires on every page view.** It's not an "order placed" event.
 14. **"Order placed" isn't "order paid".** Redirect and asynchronous gateways mark the order paid in a later request, often a webhook without the shopper's session.
 15. **Store API nonces don't identify a shopper.** Any client can get one.
+16. **The checkout validation hooks don't mean a checkout.** Gateways fire `woocommerce_checkout_process` or `woocommerce_after_checkout_validation` to check the form before their own flow, without creating an order: PayPal's early validation calls `validate_checkout()`, and Mercado Pago posts the form to its own `?wc-ajax=mp_validate_checkout`. To act only in the real submission, start from `woocommerce_before_checkout_process`.
 
 ## Further reading
 
