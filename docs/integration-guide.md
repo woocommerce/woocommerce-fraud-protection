@@ -115,7 +115,7 @@ const body = await addSessionId( { action: 'my_gateway_create_order' } );
 
 `takeSessionId()` never rejects. It resolves to an empty string when there is no session ID, for example when a content blocker stopped the SDK; send the request anyway. It also starts a fresh session for the next attempt, so there is no `reset()` call. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
 
-A code path that must add the ID synchronously uses `prepareSessionId()` and `takePreparedSessionId()` instead; see [Express checkout](#express-checkout).
+`takeSessionId()` sends the shopper's latest session data in a network request first, and resolves when that completes or after at most 3 seconds. Where that delay matters, for example in code that must open a payment sheet or popup in response to a click, or in a code path that must add the ID synchronously, use the prepared session ID instead (see [Express checkout](#express-checkout)).
 
 ### 3. Verify the request and reuse its decision
 
@@ -276,7 +276,7 @@ const extensions = canAdd ? fp.addSessionIdToExtensions( buttonExtensions ) : bu
 
 `addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out with the reason instead of a session ID. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
 
-Load the browser scripts on every page where the buttons render, as in [step 1](#1-load-the-browser-scripts). If your button code can wait for a promise, use `takeSessionId()` as in [step 2](#2-send-the-session-id) instead. Call it when you build the order request, after the shopper clicks the button and confirms the payment, not when the buttons load or render.
+Make your button script depend on the browser scripts as in [step 1](#1-load-the-browser-scripts), and enqueue it on every page where the buttons render. Use the prepared session ID even when your button code could wait for a promise: `takeSessionId()` sends a network request and can take up to 3 seconds, which an express flow can't afford between the click and the payment sheet or the order request.
 
 ### Change payment method forms
 
