@@ -188,6 +188,11 @@
 		[ window, 'focus' ],
 	];
 	const handedOutSessionIds = new Set();
+	// A handed-out ID that the next acquisition may return once more, for the
+	// payment that completes the request it was handed out for.
+	let handedOverSessionId = '';
+	// Whether that payment still continues when the acquisition runs.
+	let handOverCondition = null;
 	let preparedSessionId = '';
 	let preparedAt = 0;
 	let isPreparing = false;
@@ -198,6 +203,34 @@
 	let retryTimer = 0;
 	let preparationRetries = 0;
 	let isWaitingForActivity = false;
+	const preparedSessionIdListeners = [];
+
+	/**
+	 * Tell a listener the prepared session ID. A failing listener is ignored.
+	 *
+	 * @param {Function} listener Listener.
+	 */
+	function notifyPreparedSessionId( listener ) {
+		try {
+			listener( preparedSessionId );
+		} catch {
+			// Fail open.
+		}
+	}
+
+	/**
+	 * Change the prepared session ID.
+	 *
+	 * @param {string} sessionId Session ID, or an empty string for none.
+	 */
+	function setPreparedSessionId( sessionId ) {
+		if ( preparedSessionId === sessionId ) {
+			return;
+		}
+
+		preparedSessionId = sessionId;
+		preparedSessionIdListeners.forEach( notifyPreparedSessionId );
+	}
 
 	/**
 	 * Record a session ID as handed out for a payment attempt.
@@ -211,7 +244,7 @@
 
 		handedOutSessionIds.add( sessionId );
 		if ( preparedSessionId === sessionId ) {
-			preparedSessionId = '';
+			setPreparedSessionId( '' );
 		}
 	}
 
@@ -264,8 +297,8 @@
 				}
 
 				preparationRetries = 0;
-				preparedSessionId = result;
 				preparedAt = Date.now();
+				setPreparedSessionId( result );
 				clearTimeout( refreshTimer );
 				refreshTimer = setTimeout(
 					expirePreparedSessionId,
@@ -359,6 +392,87 @@
 	}
 
 	/**
+	 * Reset Blackbox state, so that the next session ID is a new one.
+	 *
+	 * @return {Promise<boolean>} Whether the reset completed. Never rejects.
+	 */
+	function startNewSession() {
+		handedOverSessionId = '';
+		handOverCondition = null;
+		setPreparedSessionId( '' );
+		const current = ++preparation;
+		isFetching = false;
+		preparationRetries = 0;
+		clearTimeout( refreshTimer );
+		clearTimeout( retryTimer );
+
+		if ( ! window.Blackbox || ! window.Blackbox.reset ) {
+			return Promise.resolve( false );
+		}
+
+		let timeoutTimer = 0;
+		try {
+			isFetching = isPreparing;
+			// Like each preparation, a reset that never settles must not keep the
+			// slot waiting.
+			return Promise.race( [
+				Promise.resolve( window.Blackbox.reset() ),
+				new Promise( function ( _, reject ) {
+					timeoutTimer = setTimeout( function () {
+						reject( new Error( 'timeout' ) );
+					}, fraudProtection.config.timeout );
+				} ),
+			] ).then(
+				function () {
+					clearTimeout( timeoutTimer );
+					// A later reset prepares its own session.
+					if ( current === preparation ) {
+						prepareSessionId();
+					}
+					return true;
+				},
+				function () {
+					clearTimeout( timeoutTimer );
+					if ( current === preparation ) {
+						isFetching = false;
+					}
+					return false;
+				}
+			);
+		} catch {
+			clearTimeout( timeoutTimer );
+			// Fail open.
+			isFetching = false;
+			return Promise.resolve( false );
+		}
+	}
+
+	/**
+	 * Take the handed-over session ID, if its payment still continues.
+	 *
+	 * Only the first acquisition after the hand-over can use it.
+	 *
+	 * @return {string} Session ID, or an empty string.
+	 */
+	function takeHandedOverSessionId() {
+		const sessionId = handedOverSessionId;
+		const condition = handOverCondition;
+		handedOverSessionId = '';
+		handOverCondition = null;
+
+		if ( ! sessionId || typeof condition !== 'function' ) {
+			return sessionId;
+		}
+
+		try {
+			return true === condition() ? sessionId : '';
+		} catch {
+			// Fail open: a new session ID is acquired.
+			return '';
+		}
+	}
+
+	/**
 	 * Convert a flush() result into a session ID result.
 	 *
 	 * @param {*} flushed Value that flush() resolved with.
@@ -380,15 +494,82 @@
 	}
 
 	/**
+	 * Send the shopper's latest data and read the session ID.
+	 *
+	 * @param {number} deadlineMs Time flush() has to resolve.
+	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
+	 */
+	function flushSessionId( deadlineMs ) {
+		try {
+			return Promise.resolve(
+				window.Blackbox.flush( { deadlineMs } )
+			).then( fromFlushResult, function () {
+				return withoutSessionId( 'sdk_error' );
+			} );
+		} catch {
+			return Promise.resolve( withoutSessionId( 'sdk_error' ) );
+		}
+	}
+
+	/**
+	 * Start a new session and acquire its ID, within what is left of a deadline.
+	 *
+	 * @param {number} startedAt When the acquisition started.
+	 * @return {Promise<{sessionId: string, error: string}>} Session ID, or the `reused` error when no new one arrives.
+	 */
+	function acquireNewSessionId( startedAt ) {
+		const getRemainingMs = function () {
+			return fraudProtection.config.timeout - ( Date.now() - startedAt );
+		};
+
+		let timeoutTimer = 0;
+		return Promise.race( [
+			startNewSession(),
+			new Promise( function ( resolve ) {
+				timeoutTimer = setTimeout(
+					function () {
+						resolve( false );
+					},
+					Math.max( getRemainingMs(), 0 )
+				);
+			} ),
+		] )
+			.then( function ( isNewSession ) {
+				clearTimeout( timeoutTimer );
+				const remainingMs = getRemainingMs();
+				return isNewSession && remainingMs > 0
+					? flushSessionId( remainingMs )
+					: withoutSessionId( 'reused' );
+			} )
+			.then( function ( result ) {
+				if (
+					! result.sessionId ||
+					handedOutSessionIds.has( result.sessionId )
+				) {
+					return withoutSessionId( 'reused' );
+				}
+
+				markHandedOut( result.sessionId );
+				return result;
+			} );
+	}
+
+	/**
 	 * Acquire a Blackbox session ID, or the reason why there is none.
 	 *
 	 * Uses flush(), so the session has the shopper's latest data when the
 	 * payment is verified. flush() resolves by the deadline it is given. A
 	 * challenge that flush() starts is not awaited.
 	 *
+	 * A session ID is handed out at most once. When flush() returns one that was
+	 * already handed out, a new session is started within the same deadline.
+	 * The exception is an ID passed to handOverSessionId(), which this
+	 * acquisition returns once more if its condition still holds.
+	 *
 	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
-	 * answer in time, `sdk_error` when it fails or returns no session ID, and
-	 * `sdk_unavailable` when its API is missing. Internal to the plugin's own
+	 * answer in time, `sdk_error` when it fails or returns no session ID,
+	 * `sdk_unavailable` when its API is missing, and `reused` when it only has a
+	 * session ID that was already handed out. Internal to the plugin's own
 	 * scripts.
 	 *
 	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
@@ -401,25 +582,25 @@
 			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
 		}
 
-		let flushed;
-		try {
-			flushed = Promise.resolve(
-				window.Blackbox.flush( {
-					deadlineMs: fraudProtection.config.timeout,
-				} )
-			).then( fromFlushResult, function () {
-				return withoutSessionId( 'sdk_error' );
-			} );
-		} catch {
-			flushed = Promise.resolve( withoutSessionId( 'sdk_error' ) );
-		}
+		const startedAt = Date.now();
+		const handedOver = takeHandedOverSessionId();
 
-		return flushed.then( function ( result ) {
-			// The payment flows get their session ID here, so record it before
-			// the prepared slot can hand it out again.
-			markHandedOut( result.sessionId );
-			return result;
-		} );
+		return flushSessionId( fraudProtection.config.timeout ).then(
+			function ( result ) {
+				if ( handedOver && result.sessionId === handedOver ) {
+					return result;
+				}
+
+				if ( handedOutSessionIds.has( result.sessionId ) ) {
+					return acquireNewSessionId( startedAt );
+				}
+
+				// The payment flows get their session ID here, so record it before
+				// the prepared slot, or a concurrent acquisition, can hand it out again.
+				markHandedOut( result.sessionId );
+				return result;
+			}
+		);
 	};
 
 	/**
@@ -465,45 +646,27 @@
 	 * Reset Blackbox state. Silently no-ops if reset is unavailable.
 	 */
 	fraudProtection.reset = function () {
-		preparedSessionId = '';
-		const current = ++preparation;
-		isFetching = false;
-		preparationRetries = 0;
-		clearTimeout( refreshTimer );
-		clearTimeout( retryTimer );
+		startNewSession();
+	};
 
-		if ( window.Blackbox && window.Blackbox.reset ) {
-			let timeoutTimer = 0;
-			try {
-				isFetching = isPreparing;
-				// Like each preparation, a reset that never settles must not
-				// keep the slot waiting.
-				Promise.race( [
-					Promise.resolve( window.Blackbox.reset() ),
-					new Promise( function ( _, reject ) {
-						timeoutTimer = setTimeout( function () {
-							reject( new Error( 'timeout' ) );
-						}, fraudProtection.config.timeout );
-					} ),
-				] )
-					.then( function () {
-						clearTimeout( timeoutTimer );
-						// A later reset prepares its own session.
-						if ( current === preparation ) {
-							prepareSessionId();
-						}
-					} )
-					.catch( function () {
-						clearTimeout( timeoutTimer );
-						if ( current === preparation ) {
-							isFetching = false;
-						}
-					} );
-			} catch {
-				clearTimeout( timeoutTimer );
-				// Fail open.
-				isFetching = false;
-			}
+	/**
+	 * Let the next acquisition return a handed-out session ID once more.
+	 *
+	 * For a request whose payment is completed by a later request of the same
+	 * attempt, which must send the same session ID. A reset cancels this.
+	 * Internal to the plugin's own scripts.
+	 *
+	 * @param {string}   sessionId   Session ID that the request was handed.
+	 * @param {Function} [condition] Called by that acquisition. Unless it returns true, a new session ID is acquired.
+	 */
+	fraudProtection.handOverSessionId = function ( sessionId, condition ) {
+		if (
+			typeof sessionId === 'string' &&
+			handedOutSessionIds.has( sessionId )
+		) {
+			handedOverSessionId = sessionId;
+			handOverCondition =
+				typeof condition === 'function' ? condition : null;
 		}
 	};
 
@@ -522,6 +685,20 @@
 
 		isPreparing = true;
 		prepareSessionId();
+	};
+
+	/**
+	 * Follow the prepared session ID without taking it.
+	 *
+	 * For flows that place the order without the browser, so the ID has to be
+	 * stored ahead of time. The session stays current and keeps collecting.
+	 * Internal to the plugin's own scripts.
+	 *
+	 * @param {Function} listener Called now and on each change, with the session ID or an empty string.
+	 */
+	fraudProtection.onPreparedSessionIdChange = function ( listener ) {
+		preparedSessionIdListeners.push( listener );
+		notifyPreparedSessionId( listener );
 	};
 
 	/**

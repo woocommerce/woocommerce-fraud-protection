@@ -3,7 +3,11 @@
 YYYY-xx-xx - version 0.3.2
 * Fixed - Cards saved with WooPayments on the My Account "Add payment method" page are now analyzed before WooPayments sends them to the card issuer, instead of after.
 * Fixed - When a card saved with WooPayments on the My Account "Add payment method" page is changed after it is first submitted, the card that WooPayments saves is now the one analyzed.
+* Fixed - Payments with Mercado Pago saved cards on the classic checkout are no longer rejected after the shopper authorizes them.
+* Fixed - When a shopper retries a payment, or closes PayPal and pays with another gateway, the new attempt now always gets a new browser session.
+* Fixed - Apple Pay, Google Pay, and Cash App Pay payments made with Square on the pay-for-order page are now analyzed with the shopper's browser session.
 * Fixed - When a classic checkout update contains a NUL byte, only the malformed field is ignored. Previously, the fields after it were ignored, and on PHP 8.6 the update was not tracked and an error was logged.
+* Fixed - Payment attempts with Kustom's embedded checkout are now analyzed with the shopper's browser session. On the Checkout block, this requires Kustom Checkout 2.24.1 or later.
 * Dev - Payment gateways can declare a native Fraud Protection integration by adding `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, or `fraud_protection_express_checkout` to their supported features, and the new `wp wc fraud-protection native-integrations list` command lists the declaring gateways.
 * Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug with the new `NativeIntegrationRegistry`, from the new `woocommerce_fraud_protection_register_native_integrations` action, and `wp wc fraud-protection native-integrations list` lists the declarations.
 * Dev - Payment gateways can make one of their own scripts depend on the shared browser scripts when they register it, with the new `BlackboxScriptHandler::register_scripts_for()`, so the shared scripts load only on pages where that script is enqueued.
@@ -13,6 +17,7 @@ YYYY-xx-xx - version 0.3.2
 * Dev - The `window.wcFraudProtection.prepareSessionId()` and `takePreparedSessionId()` browser methods are now part of the public API, for payment surfaces that must add the session ID synchronously.
 * Dev - The new `window.wcFraudProtection.takeSessionId()` browser method resolves to a session ID for one payment attempt and starts a fresh session for the next one, so payment surfaces no longer call `reset()` themselves, and `addSessionIdToExtensions()` adds a prepared session ID to the extension data of a Store API request, such as an express button's.
 * Dev - The `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, was removed.
+* Dev - `window.wcFraudProtection.acquireSessionId()` no longer returns a session ID that it already returned. It starts a fresh session instead, and resolves to an empty string if that session does not arrive in time.
 
 2026-11-02 - version 0.3.1
 * Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when sending that activity is slow.

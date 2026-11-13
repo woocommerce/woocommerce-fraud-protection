@@ -25,7 +25,7 @@ Most gateways should provide [payment data](#payment-data). It needs only a reso
 | Is a gateway and can provide the details of the payment method that each payment uses, such as the card brand and last four digits | `fraud_protection_payment_data` | [Payment data](#payment-data) |
 | Is a gateway that places or authorizes a purchase through its own requests, before or instead of the checkout submission | `fraud_protection_checkout` | [Checkout requests](#checkout-requests) |
 | Is a gateway that checks or saves a payment method through its own requests, before the "Add payment method" or change-payment-method form is submitted | `fraud_protection_add_payment_method` | [Add payment method requests](#add-payment-method-requests) |
-| Is a gateway with express payment buttons that place the order through the Store API | `fraud_protection_express_checkout` | [Express checkout](#express-checkout) |
+| Is a gateway with express payment buttons that place the order through WooCommerce's checkout: the Store API, or the classic checkout process | `fraud_protection_express_checkout` | [Express checkout](#express-checkout) |
 | Is not a gateway and handles its own change-payment-method form | `change_payment_method` | [Change payment method forms](#change-payment-method-forms) |
 
 ## Declare your integrations
@@ -255,6 +255,8 @@ The reader you pass to `register_reference_reader()` serves both flows: return t
 **Declare:** `fraud_protection_express_checkout` in the gateway's `$supports`.
 
 **Implement:** add the session ID to the Store API checkout request your express buttons send. Put it in the request's extension data, under the `woocommerce/fraud-protection` namespace as `blackbox_session_id`. The plugin verifies that request like any other Store API checkout, so there is nothing to do on the server.
+
+If your buttons post the order to a request that runs WooCommerce's classic checkout process instead, such as your own AJAX endpoint that calls `WC_Checkout::process_checkout()`, add the session ID to the request body under the field name in `config.sessionIdField`. Prepare a session ID when the buttons are set up, as below, and take one with `takePreparedSessionId()` for each request. The plugin verifies the request in the classic checkout, so again there is nothing to do on the server.
 
 Express buttons usually build their request in a synchronous callback, which can't wait for a promise. Prepare a session ID when the buttons are set up, and add it with `addSessionIdToExtensions()` when the request's extension data is built:
 

@@ -2,12 +2,13 @@
 
 /**
  * Tests for express-checkout.js — session ID in WooPayments and Stripe
- * express checkout extension data.
+ * express checkout extension data, and in Square's wallet checkout request.
  *
  * express-checkout.js is an IIFE. We test it by loading blackbox-init.js
  * with a minimal SDK for the real wcFraudProtection.addSessionIdToExtensions(),
  * replacing the prepared-session methods with mocks, requiring the file
- * (which executes the IIFE), and applying the filters the way the gateways do.
+ * (which executes the IIFE), and applying the filters or posting the request
+ * the way the gateways do.
  */
 
 const WOOPAYMENTS_FILTER =
@@ -41,7 +42,10 @@ function setupAndLoad( { sdk = true } = {} ) {
 		},
 	};
 	window.wcFraudProtection = {
-		config: { sessionIdField: 'wc_fraud_protection_session_id' },
+		config: {
+			sessionIdField: 'wc_fraud_protection_session_id',
+			sessionIdErrorField: 'wc_fraud_protection_session_id_error',
+		},
 	};
 	if ( sdk ) {
 		window.Blackbox = { configure: jest.fn(), init: jest.fn() };
@@ -111,7 +115,7 @@ describe( 'express-checkout', () => {
 		} );
 	} );
 
-	it( 'handles both gateways when the gateway list is missing or invalid', () => {
+	it( 'handles every gateway when the gateway list is missing or invalid', () => {
 		window.wcFraudProtectionExpressCheckout = { gateways: 'stripe' };
 		setupAndLoad();
 
@@ -234,5 +238,148 @@ describe( 'express-checkout', () => {
 		} );
 
 		expect( window.wp.hooks.addFilter ).not.toHaveBeenCalled();
+	} );
+
+	describe( 'Square wallet checkout', () => {
+		const SQUARE_CHECKOUT_URL =
+			'/?wc-ajax=square_digital_wallet_process_checkout';
+		const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+		const SESSION_ID_ERROR_FIELD = 'wc_fraud_protection_session_id_error';
+
+		let $;
+		let sentBodies;
+
+		beforeEach( () => {
+			// A fresh jQuery, so AJAX prefilters and transports do not pile up.
+			jest.isolateModules( () => {
+				$ = require( 'jquery' );
+			} );
+			window.jQuery = $;
+
+			sentBodies = [];
+			$.ajaxTransport( '+*', function ( options ) {
+				return {
+					send() {
+						sentBodies.push( options.data );
+					},
+					abort() {},
+				};
+			} );
+		} );
+
+		afterEach( () => {
+			delete window.jQuery;
+		} );
+
+		function postedFields() {
+			return new URLSearchParams( sentBodies[ 0 ] );
+		}
+
+		it( 'adds the prepared session ID to the request and keeps its fields', () => {
+			setupAndLoad();
+
+			$.post( SQUARE_CHECKOUT_URL, {
+				payment_method: 'square_credit_card',
+				'wc-square-digital-wallet-type': 'GOOGLE_PAY',
+			} );
+
+			const fields = postedFields();
+			expect( fields.get( SESSION_ID_FIELD ) ).toBe(
+				'prepared-session-id'
+			);
+			expect( fields.has( SESSION_ID_ERROR_FIELD ) ).toBe( false );
+			expect( fields.get( 'payment_method' ) ).toBe(
+				'square_credit_card'
+			);
+			expect( fields.get( 'wc-square-digital-wallet-type' ) ).toBe(
+				'GOOGLE_PAY'
+			);
+			expect( mockTakePreparedSessionId ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'takes a new session ID for each attempt', () => {
+			mockTakePreparedSessionId
+				.mockReturnValueOnce( 'first-session-id' )
+				.mockReturnValueOnce( 'second-session-id' );
+			setupAndLoad();
+
+			$.post( SQUARE_CHECKOUT_URL, { payment_method: 'a' } );
+			$.post( SQUARE_CHECKOUT_URL, { payment_method: 'a' } );
+
+			expect(
+				new URLSearchParams( sentBodies[ 0 ] ).get( SESSION_ID_FIELD )
+			).toBe( 'first-session-id' );
+			expect(
+				new URLSearchParams( sentBodies[ 1 ] ).get( SESSION_ID_FIELD )
+			).toBe( 'second-session-id' );
+		} );
+
+		it( 'reports not_ready when no session ID is ready', () => {
+			mockTakePreparedSessionId.mockReturnValue( '' );
+			setupAndLoad();
+
+			$.post( SQUARE_CHECKOUT_URL, { payment_method: 'a' } );
+
+			const fields = postedFields();
+			expect( fields.get( SESSION_ID_FIELD ) ).toBe( '' );
+			expect( fields.get( SESSION_ID_ERROR_FIELD ) ).toBe( 'not_ready' );
+		} );
+
+		it.each( [
+			[
+				'Square totals',
+				'/?wc-ajax=square_digital_wallet_recalculate_totals',
+			],
+			[ 'classic checkout', '/?wc-ajax=checkout' ],
+			[ 'another site page', '/some-page/' ],
+		] )( 'does not touch a %s request', ( _, url ) => {
+			setupAndLoad();
+
+			$.post( url, { field: 'value' } );
+
+			expect( sentBodies[ 0 ] ).toBe( 'field=value' );
+			expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'sends the request unchanged when taking the session ID throws', () => {
+			mockTakePreparedSessionId.mockImplementation( () => {
+				throw new Error( 'broken' );
+			} );
+			setupAndLoad();
+
+			$.post( SQUARE_CHECKOUT_URL, { field: 'value' } );
+
+			expect( sentBodies[ 0 ] ).toBe( 'field=value' );
+		} );
+
+		it( 'leaves the request alone when Square is not in the gateway list', () => {
+			window.wcFraudProtectionExpressCheckout = {
+				gateways: [ 'woocommerce_payments' ],
+			};
+			setupAndLoad();
+
+			$.post( SQUARE_CHECKOUT_URL, { field: 'value' } );
+
+			expect( sentBodies[ 0 ] ).toBe( 'field=value' );
+			expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'still prepares a session ID and adds it when wp.hooks is missing', () => {
+			window.wcFraudProtection = {
+				config: { sessionIdField: SESSION_ID_FIELD },
+				prepareSessionId: mockPrepareSessionId,
+				takePreparedSessionId: mockTakePreparedSessionId,
+			};
+			jest.isolateModules( () => {
+				require( '../../assets/js/express-checkout' );
+			} );
+
+			$.post( SQUARE_CHECKOUT_URL, { field: 'value' } );
+
+			expect( mockPrepareSessionId ).toHaveBeenCalledTimes( 1 );
+			expect( postedFields().get( SESSION_ID_FIELD ) ).toBe(
+				'prepared-session-id'
+			);
+		} );
 	} );
 } );

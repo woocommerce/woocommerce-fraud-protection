@@ -85,9 +85,9 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'The shared scripts should be requested' );
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ), 'The express checkout script should be enqueued' );
 		$this->assertSame(
-			array( 'wc-fraud-protection-blackbox-init', 'wp-hooks' ),
+			array( 'wc-fraud-protection-blackbox-init', 'wp-hooks', 'jquery' ),
 			wp_scripts()->query( 'wc-fraud-protection-express-checkout', 'registered' )->deps,
-			'The express checkout script should run after the shared API and the hooks library'
+			'The express checkout script should run after the shared API, the hooks library, and jQuery'
 		);
 	}
 
@@ -100,6 +100,7 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 		return array(
 			'WooPayments' => array( 'WCPAY_EXPRESS_CHECKOUT_ECE' ),
 			'Stripe'      => array( 'wc_stripe_express_checkout' ),
+			'Square'      => array( 'wc-square-digital-wallet' ),
 		);
 	}
 
@@ -120,11 +121,25 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 		$this->run_wp_enqueue_scripts();
 
 		$this->assertTrue( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ), 'WooPayments declared nothing and keeps the compatibility script' );
-		$this->assertSame( array( 'woocommerce_payments' ), $this->get_express_script_gateways(), 'The script must leave Stripe\'s express checkout data alone' );
+		$this->assertSame( array( 'woocommerce_payments', 'square_credit_card' ), $this->get_express_script_gateways(), 'The script must leave Stripe\'s express checkout data alone' );
 	}
 
 	/**
-	 * @testdox Without native declarations, the express checkout script handles both gateways.
+	 * @testdox Leaves Square's wallet buttons alone when Square declares native express checkout support.
+	 */
+	public function test_stands_aside_for_square_declaring_native_express_checkout(): void {
+		$this->mock_jetpack_blog_id( 12345 );
+		$this->register_payment_gateways( new FakeNativeGateway( 'square_credit_card', array( FraudProtectionFeature::EXPRESS_CHECKOUT ) ) );
+		$this->sut->register();
+		$this->register_gateway_handle( 'wc-square-digital-wallet', true );
+
+		$this->run_wp_enqueue_scripts();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-express-checkout', 'enqueued' ), 'Square sends the session ID itself' );
+	}
+
+	/**
+	 * @testdox Without native declarations, the express checkout script handles every gateway.
 	 */
 	public function test_script_handles_every_gateway_without_declarations(): void {
 		$this->mock_jetpack_blog_id( 12345 );
@@ -133,7 +148,7 @@ class ExpressCheckoutScriptCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->run_wp_enqueue_scripts();
 
-		$this->assertSame( array( 'woocommerce_payments', 'stripe' ), $this->get_express_script_gateways() );
+		$this->assertSame( array( 'woocommerce_payments', 'stripe', 'square_credit_card' ), $this->get_express_script_gateways() );
 	}
 
 	/**

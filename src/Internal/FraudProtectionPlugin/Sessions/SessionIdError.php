@@ -33,9 +33,11 @@ class SessionIdError {
 	 * Reasons the browser can report.
 	 *
 	 * `not_ready` means the request was sent before the session ID was ready,
-	 * for example because another script let the submit continue.
+	 * for example because another script let the submit continue. `reused` means
+	 * the browser only had a session ID that an earlier attempt already took, and
+	 * no new one arrived in time.
 	 */
-	private const REPORTED = array( 'timeout', 'sdk_error', 'sdk_unavailable', 'not_ready' );
+	private const REPORTED = array( 'timeout', 'sdk_error', 'sdk_unavailable', 'not_ready', 'reused' );
 
 	/**
 	 * Reason used when the browser reported no valid reason.

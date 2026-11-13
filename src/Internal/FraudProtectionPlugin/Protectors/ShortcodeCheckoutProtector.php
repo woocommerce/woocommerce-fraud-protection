@@ -23,8 +23,14 @@ defined( 'ABSPATH' ) || exit;
  * Handles the collect -> verify -> verdict flow for the classic AJAX checkout:
  * 1. Enqueues shortcode-checkout.js which gates form submission to acquire a
  *    Blackbox session ID and inject it as a hidden field.
- * 2. Registers checkout validation verification when WooCommerce starts the
- *    classic checkout process, before order creation.
+ * 2. Registers checkout validation verification when WC_Checkout::process_checkout()
+ *    starts, before order creation.
+ *
+ * Other code can fire the checkout validation hooks to check the form, such as a
+ * gateway's request before it asks the shopper to authorize a payment. Those requests
+ * are not verified: the checkout request that follows carries the same session ID,
+ * which is valid for one payment attempt. A flow that creates the order itself,
+ * without process_checkout(), verifies its own request.
  *
  * Fail-open: Delegated to SessionVerifier — all internal errors result in ALLOW.
  */
@@ -84,7 +90,9 @@ class ShortcodeCheckoutProtector {
 	 * @return void
 	 */
 	public function register(): void {
-		add_action( 'woocommerce_checkout_process', array( $this, 'register_checkout_validation_verifier' ), PHP_INT_MAX );
+		// Only process_checkout() fires this hook. The validation hooks can fire elsewhere.
+		add_action( 'woocommerce_before_checkout_process', array( $this, 'register_checkout_validation_verifier' ), 10, 0 );
+		add_action( 'woocommerce_checkout_process', array( $this, 'log_validation_outside_checkout_process' ), 10, 0 );
 		add_action( 'woocommerce_checkout_before_order_review', array( $this, 'enqueue_shortcode_checkout_script' ), 10, 0 );
 		// Checkout templates such as FunnelKit's fire only this one of the two.
 		add_action( 'woocommerce_checkout_order_review', array( $this, 'enqueue_shortcode_checkout_script' ), 10, 0 );
@@ -100,6 +108,32 @@ class ShortcodeCheckoutProtector {
 	public function register_checkout_validation_verifier(): void {
 		// Run as late as possible so verify_and_block()'s guard sees other validators' errors.
 		add_action( 'woocommerce_after_checkout_validation', array( $this, 'verify_and_block' ), PHP_INT_MAX, 2 );
+	}
+
+	/**
+	 * Log checkout validation that runs outside the checkout process, which is not verified.
+	 *
+	 * This shows which request ran the hooks if a flow that creates an order is not verified.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function log_validation_outside_checkout_process(): void {
+		global $wp_current_filter;
+
+		if ( did_action( 'woocommerce_before_checkout_process' ) ) {
+			return;
+		}
+
+		FraudProtectionController::log(
+			'info',
+			'Checkout validation ran outside the checkout process, so the session is not verified',
+			array(
+				'event_source' => self::SOURCE,
+				'hooks'        => $wp_current_filter,
+			)
+		);
 	}
 
 	/**
@@ -125,6 +159,11 @@ class ShortcodeCheckoutProtector {
 		}
 
 		$posted_data = is_array( $posted_data ) ? $posted_data : array();
+
+		// Core only updates the totals for this submission, using the same value, and creates no order.
+		if ( ! empty( $posted_data['woocommerce_checkout_update_totals'] ) ) {
+			return;
+		}
 
 		$request_data = $this->build_request_data( $posted_data );
 
