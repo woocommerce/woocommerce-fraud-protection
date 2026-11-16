@@ -334,6 +334,42 @@ describe( 'kustom-blocks-checkout', () => {
 			expect( window.wp.apiFetch ).toHaveBeenCalledTimes( 1 );
 		} );
 
+		it( 'gets the cart again when the shopper came back again while it was being fetched', async () => {
+			const sentCart = {
+				extensions: {
+					[ NAMESPACE ]: { kustom_sent_session_id: 'sess-1' },
+				},
+			};
+			let resolveFirstFetch;
+			window.wp.apiFetch
+				.mockImplementationOnce(
+					() =>
+						new Promise( ( resolve ) => {
+							resolveFirstFetch = resolve;
+						} )
+				)
+				.mockImplementation( () => Promise.resolve( sentCart ) );
+			setupWithPreparedSessionIds();
+			sessionIdListener( 'sess-1' );
+
+			// The first response is from before the attempt sent the session ID.
+			payInIframeAndComeBack();
+			await flushPromises();
+			payInIframeAndComeBack();
+			payInIframeAndComeBack();
+			await flushPromises();
+
+			expect( window.wp.apiFetch ).toHaveBeenCalledTimes( 1 );
+
+			resolveFirstFetch( { extensions: {} } );
+			await flushPromises();
+			// The second fetch starts when the first one ends.
+			await flushPromises();
+
+			expect( window.wp.apiFetch ).toHaveBeenCalledTimes( 2 );
+			expect( window.wcFraudProtection.reset ).toHaveBeenCalledTimes( 1 );
+		} );
+
 		it( 'does not get the cart when the shopper comes back from another tab or window', async () => {
 			setupWithPreparedSessionIds();
 			sessionIdListener( 'sess-1' );

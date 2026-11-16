@@ -50,6 +50,9 @@
 	// the page last had the focus.
 	let isInKustomIframe = false;
 	let isFetchingCart = false;
+	// Whether the shopper came back again while the cart was being fetched. That
+	// response can be older than the attempt they come back from.
+	let isCartFetchRequested = false;
 
 	/**
 	 * Whether Kustom is the selected payment method.
@@ -133,14 +136,18 @@
 
 	/**
 	 * Get the cart from the server, and check it for the session ID that Kustom sent.
+	 *
+	 * Requests made while the cart is being fetched are joined into one more
+	 * fetch, which starts when that one ends.
 	 */
 	function fetchCart() {
+		if ( isFetchingCart ) {
+			isCartFetchRequested = true;
+			return;
+		}
+
 		const apiFetch = window.wp.apiFetch;
-		if (
-			isFetchingCart ||
-			! preparedSessionId ||
-			typeof apiFetch !== 'function'
-		) {
+		if ( ! preparedSessionId || typeof apiFetch !== 'function' ) {
 			return;
 		}
 
@@ -159,6 +166,10 @@
 			} )
 			.then( function () {
 				isFetchingCart = false;
+				if ( isCartFetchRequested ) {
+					isCartFetchRequested = false;
+					fetchCart();
+				}
 			} );
 	}
 
