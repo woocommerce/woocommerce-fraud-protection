@@ -31,9 +31,11 @@ defined( 'ABSPATH' ) || exit;
  * Kustom's servers do not tell the browser when they use the session ID. The
  * Store API cart data carries the last session ID that a Kustom attempt sent to
  * verification, and the script starts a new session when it matches its own.
- * The script gets the cart again when the shopper comes back to the page from
- * an iframe. Requests that still carry a used ID, such as a retry made without
- * leaving Kustom's iframe, are sent without it, with any payment method.
+ * The script reads that data on each cart update, which Kustom sends when the
+ * shopper changes the address or the shipping option in its iframe. It also
+ * gets the cart again when the shopper comes back to the page from an iframe.
+ * Requests that still carry a used ID, such as a retry made in Kustom's iframe
+ * with no such change, are sent without it, with any payment method.
  */
 class KustomCompat {
 

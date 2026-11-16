@@ -13,9 +13,11 @@
  *
  * Kustom's servers do not tell the page when they use the session ID. The
  * cart data carries the last session ID that a Kustom attempt sent, and this
- * script starts a new session when it is the prepared one. The script gets the
- * cart again when the shopper comes back to the page from Kustom's iframe. It
- * only reads the response: a GET leaves Kustom's order and the cart store alone.
+ * script starts a new session when it is the prepared one. The script reads
+ * that data on each cart update, which Kustom sends when the shopper changes
+ * the address or the shipping option in its iframe. It also gets the cart again
+ * when the shopper comes back to the page from Kustom's iframe. It only reads
+ * that response: a GET leaves Kustom's order and the cart store alone.
  *
  * Depends on blackbox-init.js (wcFraudProtection), wp-data and wp-api-fetch.
  */

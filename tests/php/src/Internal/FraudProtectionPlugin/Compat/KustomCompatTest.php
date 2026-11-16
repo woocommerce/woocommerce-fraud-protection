@@ -12,6 +12,9 @@ use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\KustomCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
+use Automattic\WooCommerce\StoreApi\Schemas\ExtendSchema;
+use Automattic\WooCommerce\StoreApi\Schemas\V1\CartSchema;
+use Automattic\WooCommerce\StoreApi\StoreApi;
 
 /**
  * Tests for the KustomCompat class.
@@ -64,6 +67,8 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 		remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_blocks_checkout_script' ) );
 		remove_action( self::CHECKOUT_HOOK, array( $this->sut, 'send_session_id_only_once' ), 5 );
 		remove_action( self::PROCESS_HOOK, array( $this->sut, 'record_sent_session_id' ), 5 );
+		remove_action( 'init', array( $this->sut, 'register_store_api_cart_extension' ) );
+		$this->unregister_cart_data();
 		remove_filter( 'woocommerce_available_payment_gateways', array( $this, 'add_kustom_gateway' ) );
 		wp_dequeue_script( self::SCRIPT_HANDLE );
 		wp_deregister_script( self::SCRIPT_HANDLE );
@@ -230,6 +235,21 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Remove the cart data that a test registered, so that later tests get the cart without it.
+	 *
+	 * The Store API has no way to remove endpoint data, so this edits its registry.
+	 */
+	private function unregister_cart_data(): void {
+		$extend_schema = StoreApi::container()->get( ExtendSchema::class );
+		$property      = new \ReflectionProperty( ExtendSchema::class, 'extend_data' );
+		$property->setAccessible( true );
+
+		$extend_data = $property->getValue( $extend_schema );
+		unset( $extend_data[ CartSchema::IDENTIFIER ][ self::NAMESPACE ] );
+		$property->setValue( $extend_schema, $extend_data );
+	}
+
+	/**
 	 * Register the cart data and get the Fraud Protection data of the Store API cart.
 	 *
 	 * @param bool $is_kustom_active Whether Kustom is active.
@@ -239,7 +259,11 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 		if ( $is_kustom_active && ! defined( 'KCO_WC_VERSION' ) ) {
 			define( 'KCO_WC_VERSION', '2.24.1' );
 		}
-		$this->sut->register_store_api_cart_extension();
+
+		// Firing init again would run every other callback, so run only the one that register() added.
+		$callback = array( $this->sut, 'register_store_api_cart_extension' );
+		$this->assertSame( 10, has_action( 'init', $callback ), 'The cart data should be registered on init' );
+		$callback();
 
 		$response = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc/store/v1/cart' ) );
 
@@ -249,10 +273,11 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Keep this test before the ones that activate Kustom: they define a constant, which cannot be removed.
+	 *
 	 * @testdox The cart has no Fraud Protection data without Kustom.
 	 */
 	public function test_cart_has_no_data_without_kustom(): void {
-		// Constants cannot be removed, and the cart data stays registered for the process.
 		if ( defined( 'KCO_WC_VERSION' ) ) {
 			$this->markTestSkipped( 'Kustom was already active in this process.' );
 		}
