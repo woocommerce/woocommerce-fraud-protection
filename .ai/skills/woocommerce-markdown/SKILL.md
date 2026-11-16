@@ -183,6 +183,8 @@ Skills live under `.ai/skills/<name>/SKILL.md` with optional companion files. `.
 
 `docs/api-reference.md` documents the public contract; update it whenever the public API changes. `docs/integration-guide.md` is the starting point for extension developers; update it when a change affects how an extension integrates, and keep one short example per declarable integration. Put each example in one of the two documents, not both: the reference links to the guide for the examples the guide already has.
 
+`docs/README.md` is the index; add every new document to it. `docs/tutorial/` holds the numbered tutorial chapters and the glossary: explain flows step by step, with diagrams, and link to the reference documents instead of repeating their tables. `docs/internals/` is the maintainers' reference for everything that is not public API; keep it in step with the code. Diagrams are Mermaid fenced blocks (`mermaid`), which GitHub renders.
+
 ### changelog.txt
 
 `changelog.txt` is plain text in the WooCommerce extension format, not markdown:
