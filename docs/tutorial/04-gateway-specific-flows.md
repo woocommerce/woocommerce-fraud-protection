@@ -95,7 +95,12 @@ Kustom replaces the checkout form with an iframe (see [chapter 2](02-payment-gat
 - **Classic checkout.** Kustom's template doesn't fire the hooks that load `shortcode-checkout.js`, so the layer loads it on Kustom's `kco_wc_before_snippet`. Kustom posts the form without submitting it, and the script's AJAX prefilter adds the prepared session ID.
 - **Checkout block.** No browser request carries the order, so `kustom-blocks-checkout.js` keeps the prepared session ID in the block's extension data while Kustom is selected, and Kustom sends that data with the order it places. The script follows the prepared ID without taking it, so the session keeps collecting until the shopper pays.
 
-Because the browser isn't told when Kustom uses the ID, it can't reset the session afterwards. So the layer keeps each ID to one attempt on the server: it records the ID of each Kustom order that reaches verification, and a later Checkout block request, with any payment method, that carries the same ID is verified with `not_ready` instead. Until the prepared ID expires, later attempts on the same page are verified without a session.
+The browser isn't told when Kustom uses the ID, so the layer keeps each ID to one attempt in two ways:
+
+- **On the server.** It records the ID of each Kustom order that reaches verification, and a later Checkout block request, with any payment method, that carries the same ID is verified with `not_ready` instead.
+- **In the browser.** It adds the recorded ID to the Store API cart data. When the script sees its prepared ID there, it starts a new session, and Kustom stores the new ID for the next attempt. The script reads the cart data on each cart update, and gets the cart again when the shopper comes back to the page from Kustom's iframe.
+
+A retry made in the iframe, with no cart update in between, still carries the used ID and is verified without a session.
 
 A native integration only has to supply the session ID: once Kustom declares `fraud_protection_express_checkout`, the layer stands aside.
 

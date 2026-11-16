@@ -149,6 +149,7 @@ Every hook the plugin attaches to, grouped by purpose. Priority is 10 unless sta
 | `woocommerce_loaded` | action | `PluginInitializer` | Start the plugin |
 | [`init`](https://developer.wordpress.org/reference/hooks/init/) | action | `FraudProtectionController` | Register first-party components |
 | `init` (0) | action | `PluginInitializer` | Load managed translations |
+| `init` | action | `KustomCompat` | Add the session ID that a Kustom attempt sent to the Store API cart data, when Kustom is active |
 | [`plugins_url`](https://developer.wordpress.org/reference/hooks/plugins_url/) (0) | filter | MU-plugin loader | Fix asset URLs on managed installations |
 | `after_wp_load` (WP-CLI) | action | `FraudProtectionCommands` | Add the WP-CLI commands |
 

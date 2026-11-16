@@ -42,7 +42,7 @@ This reference describes each script under `assets/js/`: when it loads, what it 
 | `wc-fraud-protection-woopayments-add-payment-method` | `woopayments-add-payment-method.js` | `WooPaymentsSetupIntentCompat` | add-payment-method |
 | `wc-fraud-protection-express-checkout` | `express-checkout.js` | `ExpressCheckoutScriptCompat` | init, [`wp-hooks`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-hooks/), `jquery` |
 | `wc-fraud-protection-paypal-express` | `paypal-express.js` | `PayPalScriptCompat` | init |
-| `wc-fraud-protection-kustom-blocks-checkout` | `kustom-blocks-checkout.js` | `KustomCompat` | init, `wp-data` |
+| `wc-fraud-protection-kustom-blocks-checkout` | `kustom-blocks-checkout.js` | `KustomCompat` | init, `wp-data`, `wp-api-fetch` |
 
 `wc-fraud-protection-blackbox-init` and `wc-fraud-protection-pay-for-order` are public handles. The others may change.
 
@@ -237,7 +237,14 @@ Loaded on the Checkout block when the Kustom gateway is available and doesn't de
 - While Kustom (`kco`) is the selected payment method, it keeps the ID, or `not_ready` when none is ready, in the checkout's extension data under `woocommerce/fraud-protection`. It subscribes to `wc/store/payment`, because the shopper can select Kustom after the ID is ready.
 - Another payment method overwrites the data when its own submit runs.
 
-The browser isn't told when Kustom's servers use the ID, so it isn't reset after the attempt. `KustomCompat` makes sure the ID is verified only once (see [Compatibility layers](compatibility-layers.md#kustomcompat)).
+Kustom's servers don't tell the page when they use the ID. `KustomCompat` adds the last ID that a Kustom attempt sent to the Store API cart data, as `kustom_sent_session_id` under `woocommerce/fraud-protection`, and the script calls `reset()` when that ID is the prepared one:
+
+- It subscribes to `wc/store/cart` and checks the cart data on each change. Kustom updates the cart when the shopper changes the address or the shipping option in its iframe, and when the extension data changes.
+- When the shopper comes back to the page from the iframe, it gets the cart with a `GET` request and checks the response. It doesn't write the response to the cart store, and a `GET` doesn't make Kustom update its order. The script knows the shopper was in the iframe when the window lost the focus while Kustom was selected and the document kept it.
+- It starts a new session only once for each used ID, also when the SDK returns the same ID again.
+- Kustom suspends its iframe while it stores the changed extension data, so the shopper pays again with the new ID.
+
+A request that still carries a used ID is covered on the server (see [Compatibility layers](compatibility-layers.md#kustomcompat)).
 
 ## Missing session ID reasons
 

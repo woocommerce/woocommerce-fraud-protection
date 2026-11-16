@@ -189,7 +189,7 @@ Works like `StripeSetupIntentCompat`, for WooPayments' `create_setup_intent` AJA
 | | |
 |--|--|
 | Extension | Kustom Checkout (gateway `kco`) |
-| Hooks | `kco_wc_before_snippet`, `woocommerce_blocks_enqueue_checkout_block_scripts_before`, `woocommerce_store_api_checkout_update_order_from_request` (5), `woocommerce_store_api_checkout_order_processed` (5) |
+| Hooks | `kco_wc_before_snippet`, `woocommerce_blocks_enqueue_checkout_block_scripts_before`, `woocommerce_store_api_checkout_update_order_from_request` (5), `woocommerce_store_api_checkout_order_processed` (5), `init` |
 | Stands aside | `kco` declares `fraud_protection_express_checkout` |
 
 Kustom replaces the checkout form with an embedded checkout, and its orders still go through WooCommerce's checkout, where the protectors verify them as usual. The layer only gets the session ID to them:
@@ -197,8 +197,9 @@ Kustom replaces the checkout form with an embedded checkout, and its orders stil
 - **Classic checkout.** Kustom's template replaces `form-checkout.php` and fires neither action that `ShortcodeCheckoutProtector` uses to enqueue its script, so the layer enqueues it on `kco_wc_before_snippet`. Kustom posts the form from its iframe callback without a submit event, so the script's `$.ajaxPrefilter` adds the prepared session ID.
 - **Checkout block.** Kustom's servers place the order through the Store API after the shopper pays in its iframe, so the block's submit events never run. Since Kustom 2.24.1, Kustom stores the block's extension data in the WooCommerce session and sends it with that request. The layer loads `kustom-blocks-checkout.js`, which keeps the prepared session ID in that data while Kustom is selected.
 - **One attempt per ID.** The browser isn't told when Kustom's servers use the ID, so it keeps it after a refused order. The layer records the ID of each Kustom order in the WooCommerce session (`_wc_fraud_protection_kustom_sent_session_id`) when the order reaches verification, on `woocommerce_store_api_checkout_order_processed`. A later Checkout block request with any payment method that carries the same ID is sent on with `not_ready` instead. An order that WooCommerce rejects before verification leaves the ID for the retry.
+- **A new session for the next attempt.** On `init`, when Kustom is active, the layer registers Store API cart data under `woocommerce/fraud-protection`. Its `kustom_sent_session_id` field holds the recorded ID, or an empty string. `kustom-blocks-checkout.js` starts a new session when that ID is its prepared one (see [Browser scripts](browser-scripts.md#kustom-blocks-checkoutjs)). Stores without Kustom keep their cart data unchanged.
 
-Limitation: until the prepared ID expires and the page prepares a new one, later attempts on the same page are verified without a session.
+Limitation: a retry made in Kustom's iframe, with no cart update in between, still carries the used ID and is verified without a session.
 
 ### SubscriptionsChangePaymentCompat
 

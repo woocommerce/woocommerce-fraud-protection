@@ -316,6 +316,7 @@ Kustom Checkout (gateway ID `kco`) replaces the checkout form with an **embedded
 - **On the classic checkout**, Kustom's template replaces `form-checkout.php` and fires neither `woocommerce_checkout_before_order_review` nor `woocommerce_checkout_order_review`. Its iframe callback then posts the form to the classic checkout endpoint, without submitting the form, so `checkout_place_order` never fires.
 - **On the Checkout block**, Kustom's servers place the order through the Store API after the shopper pays in the iframe. The request doesn't come from the shopper's browser, so the block's submit events never run. Since version 2.24.1, Kustom stores the block's extension data in the WooCommerce session before the shopper pays, and sends it with that request.
 - **When Kustom refuses an order**, the browser isn't told. The shopper can pay again in the iframe, or switch to another payment method.
+- **When the block's extension data changes**, Kustom's script suspends the iframe, sends the data to the store with a cart update, and resumes the iframe. It also sends a cart update when the shopper changes the address or the shipping option in the iframe.
 
 Either way, the order goes through WooCommerce's checkout, and its hooks run.
 

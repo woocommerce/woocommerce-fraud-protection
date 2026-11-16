@@ -151,7 +151,7 @@ Each case shows a real finding, what would have gone wrong, and the knowledge th
 
 - **The change:** `KustomCompat` kept each session ID to one Kustom attempt.
 - **The problem:** After a blocked Kustom payment, the shopper could switch to Cash on delivery without reloading the page. That submission sent the same session ID, because the browser had never been told to reset it.
-- **What catches it:** When the browser isn't told about an attempt, the server has to enforce single use for every payment method on the page, not only the one that used the ID. The fix sends any Checkout block request that carries a Kustom attempt's ID on with `not_ready`.
+- **What catches it:** When the browser isn't told about an attempt, the server has to enforce single use for every payment method on the page, not only the one that used the ID. The fix sends any Checkout block request that carries a Kustom attempt's ID on with `not_ready`. A later change tells the browser as well: the Store API cart data carries the used ID, and the script starts a new session when it sees it, so the next attempt is verified with a session.
 
 ### A non-actionable decision leaked out ([#69](https://github.com/woocommerce/woocommerce-fraud-protection/pull/69))
 

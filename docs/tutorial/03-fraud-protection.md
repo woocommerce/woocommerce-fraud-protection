@@ -145,7 +145,7 @@ Each surface has its own script, because each surface submits payments different
 | Express buttons (WooPayments, Stripe, Square) | `express-checkout.js` | Adds a prepared session ID through each gateway's synchronous extension-data filter, or, for Square, to its AJAX request. |
 | PayPal buttons | `paypal-express.js` | Adds the session ID to PayPal Payments' own `fetch` requests. |
 | Stripe and WooPayments on Add payment method | `stripe-add-payment-method.js`, `woopayments-add-payment-method.js` | Copy the form's session ID into the gateway's setup-intent AJAX request. |
-| Kustom on the Checkout block | `kustom-blocks-checkout.js` | Keeps the prepared session ID in the block's extension data, which Kustom sends with the order it places. |
+| Kustom on the Checkout block | `kustom-blocks-checkout.js` | Keeps the prepared session ID in the block's extension data, which Kustom sends with the order it places. Starts a new session once a Kustom attempt has sent that ID. |
 
 All of them go through `window.wcFraudProtection`:
 
