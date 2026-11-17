@@ -501,6 +501,30 @@ class SessionEventStore {
 	}
 
 	/**
+	 * Get one event with the columns of the checkout attempts list.
+	 *
+	 * @param int $event_id Recorded session event row ID.
+	 * @return ?array<string, mixed> The row typed like {@see query_events()} rows, or null when no event has the ID.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_list_event( int $event_id ): ?array {
+		global $wpdb;
+
+		if ( $event_id <= 0 ) {
+			return null;
+		}
+
+		$table   = $this->schema_manager->get_sessions_table_name();
+		$columns = implode( ', ', self::LIST_COLUMNS );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager and the columns are an allowlisted constant.
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT {$columns} FROM {$table} WHERE id = %d", $event_id ), ARRAY_A );
+		$this->throw_on_database_error( 'Session event read failed.' );
+
+		return is_array( $row ) ? self::type_row( $row ) : null;
+	}
+
+	/**
 	 * Get the distinct payment method ids of the retained events.
 	 *
 	 * @param int $days Only events recorded within this many days.

@@ -232,6 +232,25 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should read one event with the typed list columns and without the risk score.
+	 */
+	public function test_get_list_event_returns_typed_list_row(): void {
+		$this->sut->record_event( $this->an_event( array( 'matched_rule_id' => 7 ) ) );
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$event_id = (int) $wpdb->get_var( 'SELECT MAX(id) FROM ' . $this->schema_manager->get_sessions_table_name() );
+
+		$row = $this->sut->get_list_event( $event_id );
+
+		$this->assertSame( $event_id, $row['id'] );
+		$this->assertSame( 7, $row['matched_rule_id'] );
+		$this->assertSame( 'San Francisco', $row['billing_city'] );
+		$this->assertArrayNotHasKey( 'risk_score', $row, 'The risk score is never exposed' );
+		$this->assertNull( $this->sut->get_list_event( $event_id + 1 ) );
+		$this->assertNull( $this->sut->get_list_event( 0 ) );
+	}
+
+	/**
 	 * @testdox Should insert a separate row for each event with the same session ID, preserving both decisions.
 	 */
 	public function test_repeated_session_ids_insert_separate_rows(): void {
