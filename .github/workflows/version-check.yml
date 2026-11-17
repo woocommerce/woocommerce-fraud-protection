@@ -1,0 +1,38 @@
+name: Plugin Version Check
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    name: Plugin version unchanged
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+
+    steps:
+      # The pull_request event checks out the merge commit. Its first parent is the
+      # base branch, so comparing HEAD^1 with HEAD isolates the pull request's own
+      # changes even when the base branch received a release after the branch was cut.
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check that the plugin version is unchanged
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          if [[ $HEAD_BRANCH == release/* ]]; then
+            echo "Release branch $HEAD_BRANCH may change the plugin version."
+            exit 0
+          fi
+
+          bin/check-version-unchanged.sh HEAD^1 HEAD
