@@ -338,7 +338,7 @@ class CustomRulesCommands {
 			$this->output->error( $this->duplicate_rule_message( $error, (string) $conditions['field'] ) );
 			return;
 		} catch ( \InvalidArgumentException ) {
-			$this->output->error( self::invalid_value_message() );
+			$this->output->error( self::invalid_value_message( (string) $conditions['field'] ) );
 			return;
 		} catch ( \RuntimeException ) {
 			$this->output->error( __( 'The rule could not be created.', 'woocommerce-fraud-protection' ) );
@@ -411,7 +411,7 @@ class CustomRulesCommands {
 			$this->output->error( $this->duplicate_rule_message( $error, (string) ( $conditions['field'] ?? '' ) ) );
 			return;
 		} catch ( \InvalidArgumentException ) {
-			$this->output->error( self::invalid_value_message() );
+			$this->output->error( self::invalid_value_message( isset( $conditions['field'] ) ? (string) $conditions['field'] : null ) );
 			return;
 		} catch ( \RuntimeException ) {
 			$this->output->error( __( 'The rule could not be updated.', 'woocommerce-fraud-protection' ) );
@@ -636,10 +636,29 @@ class CustomRulesCommands {
 		$type       = is_string( $type ) ? $type : RuleManager::detect_type( $value );
 		$conditions = is_string( $type ) ? RuleManager::build_conditions( $type, $value ) : null;
 		if ( is_null( $conditions ) ) {
-			$this->output->error( self::invalid_value_message() );
+			$this->output->error( self::invalid_value_message( $type ?? self::intended_type( $value ) ) );
 		}
 
 		return $conditions;
+	}
+
+	/**
+	 * Guess the rule type that an invalid value was meant to have.
+	 *
+	 * Only email addresses contain "@", and IP addresses contain only hexadecimal
+	 * digits, dots, and colons.
+	 *
+	 * @param string $value The invalid value.
+	 * @return ?string The rule type, or null when the value fits neither shape.
+	 */
+	private static function intended_type( string $value ): ?string {
+		$value = trim( $value );
+
+		if ( str_contains( $value, '@' ) ) {
+			return RuleConditions::FIELD_EMAIL;
+		}
+
+		return 1 === preg_match( '/^[0-9a-f.:]+$/i', $value ) ? RuleConditions::FIELD_IP : null;
 	}
 
 	/**
@@ -707,10 +726,15 @@ class CustomRulesCommands {
 	/**
 	 * Get the message for an invalid rule value.
 	 *
+	 * @param ?string $type The rule type the value was meant to have, if known.
 	 * @return string
 	 */
-	private static function invalid_value_message(): string {
-		return __( 'Enter a complete email address or IP address.', 'woocommerce-fraud-protection' );
+	private static function invalid_value_message( ?string $type ): string {
+		return match ( $type ) {
+			RuleConditions::FIELD_EMAIL => __( 'Enter a complete email address.', 'woocommerce-fraud-protection' ),
+			RuleConditions::FIELD_IP => __( 'Enter a complete IP address.', 'woocommerce-fraud-protection' ),
+			default => __( 'Enter a complete email address or IP address.', 'woocommerce-fraud-protection' ),
+		};
 	}
 
 	/**

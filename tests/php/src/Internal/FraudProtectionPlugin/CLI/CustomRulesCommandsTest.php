@@ -420,32 +420,39 @@ class CustomRulesCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Create rejects a value that does not fit the requested or detected type.
+	 * @testdox Create rejects an invalid value with a message for the requested or apparent type.
 	 * @dataProvider invalid_create_provider
 	 *
 	 * @param string               $value      Value argument.
 	 * @param array<string, mixed> $assoc_args Associative arguments.
+	 * @param string               $expected   Expected error.
 	 */
-	public function test_create_rejects_invalid_value( string $value, array $assoc_args ): void {
+	public function test_create_rejects_invalid_value( string $value, array $assoc_args, string $expected ): void {
 		$this->telemetry->expects( $this->never() )->method( 'record_rule_change' );
 
 		$this->assertFalse( $this->run_command( 'create_rule', array( 'block', $value ), $assoc_args ) );
 
-		$this->assertSame( array( 'Enter a complete email address or IP address.' ), $this->messages( 'error' ) );
+		$this->assertSame( array( $expected ), $this->messages( 'error' ) );
 		$this->assertSame( array(), $this->rule_store->get_active_rules() );
 	}
 
 	/**
 	 * Invalid create values.
 	 *
-	 * @return array<string, array{string, array<string, mixed>}>
+	 * @return array<string, array{string, array<string, mixed>, string}>
 	 */
 	public function invalid_create_provider(): array {
+		$email   = 'Enter a complete email address.';
+		$ip      = 'Enter a complete IP address.';
+		$generic = 'Enter a complete email address or IP address.';
+
 		return array(
-			'incomplete email'  => array( 'shopper@', array() ),
-			'incomplete IP'     => array( '192.0.2', array() ),
-			'email given as IP' => array( 'shopper@example.com', array( 'type' => 'ip' ) ),
-			'IP given as email' => array( '192.0.2.10', array( 'type' => 'email' ) ),
+			'incomplete email'  => array( 'shopper@', array(), $email ),
+			'incomplete IPv4'   => array( '192.0.2', array(), $ip ),
+			'incomplete IPv6'   => array( '2001:db8:::1', array(), $ip ),
+			'neither shape'     => array( 'shopper', array(), $generic ),
+			'email given as IP' => array( 'shopper@example.com', array( 'type' => 'ip' ), $ip ),
+			'IP given as email' => array( '192.0.2.10', array( 'type' => 'email' ), $email ),
 		);
 	}
 
@@ -546,7 +553,15 @@ class CustomRulesCommandsTest extends FraudProtectionUnitTestCase {
 		return array(
 			'nothing to change'  => array( array(), 'Use --action, --value, or both.' ),
 			'type without value' => array( array( 'type' => 'ip' ), 'Use --type only together with --value.' ),
-			'invalid value'      => array( array( 'value' => 'shopper@' ), 'Enter a complete email address or IP address.' ),
+			'invalid email'      => array( array( 'value' => 'shopper@' ), 'Enter a complete email address.' ),
+			'IP given as email'  => array(
+				array(
+					'value' => '192.0.2.10',
+					'type'  => 'email',
+				),
+				'Enter a complete email address.',
+			),
+			'invalid IP'         => array( array( 'value' => '192.0.2' ), 'Enter a complete IP address.' ),
 		);
 	}
 
