@@ -251,6 +251,23 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should report the latest event ID and limit the list to events up to a maximum ID.
+	 */
+	public function test_latest_event_id_bounds_the_list(): void {
+		$this->assertSame( 0, $this->sut->get_latest_event_id(), 'An empty table has no latest ID' );
+
+		$this->sut->record_event( $this->an_event( array( 'email' => 'first@example.com' ) ) );
+		$max_id = $this->sut->get_latest_event_id();
+		$this->sut->record_event( $this->an_event( array( 'email' => 'second@example.com' ) ) );
+
+		$this->assertSame( $max_id + 1, $this->sut->get_latest_event_id() );
+		$bounded = $this->sut->query_events( array( 'max_id' => $max_id ) );
+		$this->assertSame( array( 'first@example.com' ), array_column( $bounded['items'], 'email' ) );
+		$this->assertSame( 1, $bounded['total'] );
+		$this->assertSame( 2, $this->sut->query_events()['total'], 'Without a maximum ID every event is listed' );
+	}
+
+	/**
 	 * @testdox Should insert a separate row for each event with the same session ID, preserving both decisions.
 	 */
 	public function test_repeated_session_ids_insert_separate_rows(): void {

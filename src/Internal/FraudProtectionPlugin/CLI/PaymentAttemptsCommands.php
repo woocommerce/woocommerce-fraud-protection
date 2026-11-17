@@ -7,7 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
@@ -56,13 +55,6 @@ class PaymentAttemptsCommands {
 	private PaymentMethodTitleResolver $payment_method_titles;
 
 	/**
-	 * Schema manager instance.
-	 *
-	 * @var SchemaManager
-	 */
-	private SchemaManager $schema_manager;
-
-	/**
 	 * Command output.
 	 *
 	 * @var CommandOutput
@@ -77,14 +69,12 @@ class PaymentAttemptsCommands {
 	 * @param SessionEventStore          $event_store           The session event store instance.
 	 * @param SessionRuleFinder          $rule_finder           The session rule finder instance.
 	 * @param PaymentMethodTitleResolver $payment_method_titles The payment method title resolver instance.
-	 * @param SchemaManager              $schema_manager        The schema manager instance.
 	 * @param CommandOutput              $output                Command output.
 	 */
-	final public function init( SessionEventStore $event_store, SessionRuleFinder $rule_finder, PaymentMethodTitleResolver $payment_method_titles, SchemaManager $schema_manager, CommandOutput $output ): void {
+	final public function init( SessionEventStore $event_store, SessionRuleFinder $rule_finder, PaymentMethodTitleResolver $payment_method_titles, CommandOutput $output ): void {
 		$this->event_store           = $event_store;
 		$this->rule_finder           = $rule_finder;
 		$this->payment_method_titles = $payment_method_titles;
-		$this->schema_manager        = $schema_manager;
 		$this->output                = $output;
 	}
 
@@ -181,7 +171,7 @@ class PaymentAttemptsCommands {
 	public function list_attempts( array $args, array $assoc_args ): void {
 		unset( $args );
 
-		if ( ! $this->require_schema() ) {
+		if ( ! $this->output->require_schema() ) {
 			return;
 		}
 
@@ -208,7 +198,9 @@ class PaymentAttemptsCommands {
 				$query['rule_values'] = $this->rule_finder->get_targeted_values();
 			}
 
-			$query['page'] = 1;
+			// Attempts recorded while the pages are read would shift the later pages.
+			$query['max_id'] = $this->event_store->get_latest_event_id();
+			$query['page']   = 1;
 			do {
 				$result  = $this->event_store->query_events( $query );
 				$total   = $result['total'];
@@ -233,7 +225,7 @@ class PaymentAttemptsCommands {
 	 * @param array<string, mixed> $assoc_args Associative command arguments.
 	 */
 	public function get_attempt( array $args, array $assoc_args ): void {
-		if ( ! $this->require_schema() ) {
+		if ( ! $this->output->require_schema() ) {
 			return;
 		}
 
@@ -353,20 +345,6 @@ class PaymentAttemptsCommands {
 		}
 
 		return $items;
-	}
-
-	/**
-	 * Stop with an error when the database schema is not installed.
-	 *
-	 * @return bool True when the schema is installed.
-	 */
-	private function require_schema(): bool {
-		if ( $this->schema_manager->is_schema_installed() ) {
-			return true;
-		}
-
-		$this->output->error( __( 'The Fraud Protection database schema is incomplete. Run "wp wc fraud-protection database install" to repair it.', 'woocommerce-fraud-protection' ) );
-		return false;
 	}
 
 	/**

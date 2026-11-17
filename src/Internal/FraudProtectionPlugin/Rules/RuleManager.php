@@ -146,18 +146,20 @@ class RuleManager {
 	}
 
 	/**
-	 * Update the action and conditions of an active rule, recording the change when there is one.
+	 * Update the action or conditions of an active rule, recording the change when there is one.
 	 *
-	 * @param int           $id         Rule ID.
-	 * @param FraudDecision $action     New rule action.
-	 * @param array         $conditions New condition document from {@see build_conditions()}.
-	 * @param string        $origin     Telemetry origin of the change.
+	 * A null action or conditions keeps the stored value, so a concurrent change to that field is not overwritten.
+	 *
+	 * @param int            $id         Rule ID.
+	 * @param ?FraudDecision $action     New rule action, or null to keep it.
+	 * @param ?array         $conditions New condition document from {@see build_conditions()}, or null to keep it.
+	 * @param string         $origin     Telemetry origin of the change.
 	 * @return ?array{rule: Rule, changed: bool} The current rule and whether it changed, or null when no active rule has the ID.
 	 * @throws \InvalidArgumentException When the action is not actionable or the conditions are invalid.
 	 * @throws DuplicateRuleException When the new conditions duplicate another live rule.
 	 * @throws \RuntimeException When the update fails.
 	 */
-	public function update_rule( int $id, FraudDecision $action, array $conditions, string $origin ): ?array {
+	public function update_rule( int $id, ?FraudDecision $action, ?array $conditions, string $origin ): ?array {
 		$result = $this->rule_store->update_rule_with_result( $id, $action, $conditions, required_status: RuleStatus::Active );
 
 		if ( ! is_null( $result ) && $result['changed'] ) {

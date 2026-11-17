@@ -434,6 +434,8 @@ class SessionEventStore {
 	 *                                               active rule targeting their email or IP. Default '' (any).
 	 *     @type array{email: string[], ip: string[]} $rule_values The normalized values active rules target, used when
 	 *                                               $rules is set. Default empty.
+	 *     @type int                 $max_id          Only events with this ID or lower, so that events recorded while
+	 *                                               several pages are read do not shift the later pages. Default 0 (any).
 	 * }
 	 * @return array{items: array<int, array<string, mixed>>, total: int} The page rows, with integer id, order_id and
 	 *                                                                    matched_rule_id, and the total matching count.
@@ -456,6 +458,7 @@ class SessionEventStore {
 				'search'               => '',
 				'rules'                => '',
 				'rule_values'          => array(),
+				'max_id'               => 0,
 				// Provider ids in the order rows should sort by when ordering by
 				// payment method (they are resolved to display titles upstream).
 				'payment_method_order' => array(),
@@ -498,6 +501,24 @@ class SessionEventStore {
 			'items' => array_map( fn( array $row ): array => self::type_row( $row ), is_array( $rows ) ? $rows : array() ),
 			'total' => (int) $total,
 		);
+	}
+
+	/**
+	 * Get the ID of the most recently recorded event.
+	 *
+	 * @return int The ID, or 0 when no event is recorded.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_latest_event_id(): int {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_sessions_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager.
+		$id = $wpdb->get_var( "SELECT MAX(id) FROM {$table}" );
+		$this->throw_on_database_error( 'Session event ID query failed.' );
+
+		return (int) $id;
 	}
 
 	/**
@@ -555,6 +576,11 @@ class SessionEventStore {
 		global $wpdb;
 
 		$clauses = array( $wpdb->prepare( 'recorded_at >= %s', self::cutoff( max( 1, (int) $args['days'] ) ) ) );
+
+		$max_id = (int) $args['max_id'];
+		if ( $max_id > 0 ) {
+			$clauses[] = $wpdb->prepare( 'id <= %d', $max_id );
+		}
 
 		$final_status = $args['final_status'];
 		if ( $final_status instanceof SessionFinalStatus ) {

@@ -8,7 +8,6 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\DuplicateRuleException;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleManager;
@@ -47,13 +46,6 @@ class CustomRulesCommands {
 	private RuleManager $rule_manager;
 
 	/**
-	 * Schema manager instance.
-	 *
-	 * @var SchemaManager
-	 */
-	private SchemaManager $schema_manager;
-
-	/**
 	 * Command output.
 	 *
 	 * @var CommandOutput
@@ -65,16 +57,14 @@ class CustomRulesCommands {
 	 *
 	 * @internal
 	 *
-	 * @param RuleStore     $rule_store     Rule persistence.
-	 * @param RuleManager   $rule_manager   Custom rule management.
-	 * @param SchemaManager $schema_manager The schema manager instance.
-	 * @param CommandOutput $output         Command output.
+	 * @param RuleStore     $rule_store   Rule persistence.
+	 * @param RuleManager   $rule_manager Custom rule management.
+	 * @param CommandOutput $output       Command output.
 	 */
-	final public function init( RuleStore $rule_store, RuleManager $rule_manager, SchemaManager $schema_manager, CommandOutput $output ): void {
-		$this->rule_store     = $rule_store;
-		$this->rule_manager   = $rule_manager;
-		$this->schema_manager = $schema_manager;
-		$this->output         = $output;
+	final public function init( RuleStore $rule_store, RuleManager $rule_manager, CommandOutput $output ): void {
+		$this->rule_store   = $rule_store;
+		$this->rule_manager = $rule_manager;
+		$this->output       = $output;
 	}
 
 	/**
@@ -248,7 +238,7 @@ class CustomRulesCommands {
 	public function list_rules( array $args, array $assoc_args ): void {
 		unset( $args );
 
-		if ( ! $this->require_schema() ) {
+		if ( ! $this->output->require_schema() ) {
 			return;
 		}
 
@@ -295,7 +285,7 @@ class CustomRulesCommands {
 	 * @param array<string, mixed> $assoc_args Associative command arguments.
 	 */
 	public function get_rule( array $args, array $assoc_args ): void {
-		if ( ! $this->require_schema() ) {
+		if ( ! $this->output->require_schema() ) {
 			return;
 		}
 
@@ -328,7 +318,7 @@ class CustomRulesCommands {
 	 * @param array<string, mixed> $assoc_args Associative command arguments.
 	 */
 	public function create_rule( array $args, array $assoc_args ): void {
-		if ( ! $this->require_schema() ) {
+		if ( ! $this->output->require_schema() ) {
 			return;
 		}
 
@@ -378,7 +368,7 @@ class CustomRulesCommands {
 	 * @param array<string, mixed> $assoc_args Associative command arguments.
 	 */
 	public function update_rule( array $args, array $assoc_args ): void {
-		if ( ! $this->require_schema() ) {
+		if ( ! $this->output->require_schema() ) {
 			return;
 		}
 
@@ -414,20 +404,9 @@ class CustomRulesCommands {
 			}
 		}
 
+		// Omitted fields are passed as null, so the store keeps their current values.
 		try {
-			$existing = $this->rule_manager->get_active_rule( $id );
-		} catch ( \RuntimeException ) {
-			$this->output->error( self::update_failed_message() );
-			return;
-		}
-		if ( ! $existing instanceof Rule ) {
-			$this->output->error( __( 'The rule could not be found.', 'woocommerce-fraud-protection' ) );
-			return;
-		}
-
-		$conditions ??= $existing->conditions;
-		try {
-			$result = $this->rule_manager->update_rule( $id, $action ?? $existing->action, $conditions, RuleManager::ORIGIN_CLI );
+			$result = $this->rule_manager->update_rule( $id, $action, $conditions, RuleManager::ORIGIN_CLI );
 		} catch ( DuplicateRuleException $error ) {
 			$this->output->error( $this->duplicate_rule_message( $error, (string) ( $conditions['field'] ?? '' ) ) );
 			return;
@@ -435,7 +414,7 @@ class CustomRulesCommands {
 			$this->output->error( self::invalid_value_message() );
 			return;
 		} catch ( \RuntimeException ) {
-			$this->output->error( self::update_failed_message() );
+			$this->output->error( __( 'The rule could not be updated.', 'woocommerce-fraud-protection' ) );
 			return;
 		}
 
@@ -468,7 +447,7 @@ class CustomRulesCommands {
 	 * @param array<string, mixed> $assoc_args Associative command arguments.
 	 */
 	public function delete_rules( array $args, array $assoc_args ): void {
-		if ( ! $this->require_schema() ) {
+		if ( ! $this->output->require_schema() ) {
 			return;
 		}
 
@@ -726,35 +705,12 @@ class CustomRulesCommands {
 	}
 
 	/**
-	 * Stop with an error when the database schema is not installed.
-	 *
-	 * @return bool True when the schema is installed.
-	 */
-	private function require_schema(): bool {
-		if ( $this->schema_manager->is_schema_installed() ) {
-			return true;
-		}
-
-		$this->output->error( __( 'The Fraud Protection database schema is incomplete. Run "wp wc fraud-protection database install" to repair it.', 'woocommerce-fraud-protection' ) );
-		return false;
-	}
-
-	/**
 	 * Get the message for an invalid rule value.
 	 *
 	 * @return string
 	 */
 	private static function invalid_value_message(): string {
 		return __( 'Enter a complete email address or IP address.', 'woocommerce-fraud-protection' );
-	}
-
-	/**
-	 * Get the message for a failed rule update.
-	 *
-	 * @return string
-	 */
-	private static function update_failed_message(): string {
-		return __( 'The rule could not be updated.', 'woocommerce-fraud-protection' );
 	}
 
 	/**

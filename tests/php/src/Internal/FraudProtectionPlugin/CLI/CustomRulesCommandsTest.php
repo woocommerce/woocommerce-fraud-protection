@@ -144,10 +144,10 @@ class CustomRulesCommandsTest extends FraudProtectionUnitTestCase {
 		$rule_manager    = new RuleManager();
 		$rule_manager->init( $this->rule_store, $this->telemetry );
 		$output = new CommandOutput();
-		$output->init( wc_get_container()->get( LegacyProxy::class ) );
+		$output->init( wc_get_container()->get( LegacyProxy::class ), $this->schema_manager );
 
 		$this->sut = new CustomRulesCommands();
-		$this->sut->init( $this->rule_store, $rule_manager, $this->schema_manager, $output );
+		$this->sut->init( $this->rule_store, $rule_manager, $output );
 	}
 
 	/**
@@ -569,6 +569,43 @@ class CustomRulesCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $this->run_command( 'update_rule', array( '999' ), array( 'action' => 'allow' ) ) );
 
 		$this->assertSame( array( 'The rule could not be found.' ), $this->messages( 'error' ) );
+	}
+
+	/**
+	 * @testdox Update passes only the given fields, so it does not overwrite concurrent changes to the others.
+	 */
+	public function test_update_passes_only_given_fields(): void {
+		$rule         = $this->a_rule( FraudDecision::Block, 'email', 'shopper@example.com' );
+		$rule_manager = $this->createMock( RuleManager::class );
+		$calls        = 0;
+		$rule_manager->expects( $this->exactly( 2 ) )
+			->method( 'update_rule' )
+			->willReturnCallback(
+				function ( int $id, ?FraudDecision $action, ?array $conditions, string $origin ) use ( $rule, &$calls ): array {
+					++$calls;
+					$this->assertSame( $rule->id, $id );
+					$this->assertSame( 'cli', $origin );
+					if ( 1 === $calls ) {
+						$this->assertSame( FraudDecision::Allow, $action, 'An action-only update passes the action' );
+						$this->assertNull( $conditions, 'An action-only update keeps the stored value' );
+					} else {
+						$this->assertNull( $action, 'A value-only update keeps the stored action' );
+						$this->assertSame( '192.0.2.10', $conditions['value'] ?? null );
+					}
+
+					return array(
+						'rule'    => $rule,
+						'changed' => true,
+					);
+				}
+			);
+		$output = new CommandOutput();
+		$output->init( wc_get_container()->get( LegacyProxy::class ), $this->schema_manager );
+		$this->sut = new CustomRulesCommands();
+		$this->sut->init( $this->rule_store, $rule_manager, $output );
+
+		$this->assertTrue( $this->run_command( 'update_rule', array( (string) $rule->id ), array( 'action' => 'allow' ) ) );
+		$this->assertTrue( $this->run_command( 'update_rule', array( (string) $rule->id ), array( 'value' => '192.0.2.10' ) ) );
 	}
 
 	/**

@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WP_CLI;
 use WP_CLI\Formatter;
@@ -43,14 +44,37 @@ class CommandOutput {
 	private LegacyProxy $legacy_proxy;
 
 	/**
+	 * Schema manager instance.
+	 *
+	 * @var SchemaManager
+	 */
+	private SchemaManager $schema_manager;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param LegacyProxy $legacy_proxy The legacy proxy instance.
+	 * @param LegacyProxy   $legacy_proxy   The legacy proxy instance.
+	 * @param SchemaManager $schema_manager The schema manager instance.
 	 */
-	final public function init( LegacyProxy $legacy_proxy ): void {
-		$this->legacy_proxy = $legacy_proxy;
+	final public function init( LegacyProxy $legacy_proxy, SchemaManager $schema_manager ): void {
+		$this->legacy_proxy   = $legacy_proxy;
+		$this->schema_manager = $schema_manager;
+	}
+
+	/**
+	 * Stop with an error when the database schema is not installed.
+	 *
+	 * @return bool True when the schema is installed.
+	 */
+	public function require_schema(): bool {
+		if ( $this->schema_manager->is_schema_installed() ) {
+			return true;
+		}
+
+		$this->error( __( 'The Fraud Protection database schema is incomplete. Run "wp wc fraud-protection database install" to repair it.', 'woocommerce-fraud-protection' ) );
+		return false;
 	}
 
 	/**

@@ -122,10 +122,10 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 		$rule_finder = new SessionRuleFinder();
 		$rule_finder->init( $this->rule_store, $this->schema_manager, new ConditionOperatorRegistry() );
 		$output = new CommandOutput();
-		$output->init( wc_get_container()->get( LegacyProxy::class ) );
+		$output->init( wc_get_container()->get( LegacyProxy::class ), $this->schema_manager );
 
 		$this->sut = new PaymentAttemptsCommands();
-		$this->sut->init( $this->event_store, $rule_finder, new PaymentMethodTitleResolver(), $this->schema_manager, $output );
+		$this->sut->init( $this->event_store, $rule_finder, new PaymentMethodTitleResolver(), $output );
 	}
 
 	/**
@@ -302,6 +302,56 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( $this->run_command( 'list_attempts', array(), $assoc_args ) );
 
 		$this->assertStringContainsString( $expected, $this->messages( 'error' )[0] );
+	}
+
+	/**
+	 * @testdox An attempt recorded while the pages are read does not repeat or omit listed attempts.
+	 */
+	public function test_list_is_stable_when_attempts_are_recorded_between_pages(): void {
+		$ids = array();
+		for ( $i = 0; $i < SessionEventStore::MAX_PER_PAGE + 1; $i++ ) {
+			$ids[] = $this->an_attempt();
+		}
+
+		// Records one more attempt right after the first page is read.
+		$event_store = new class() extends SessionEventStore {
+			/**
+			 * Callback run once after the first page query.
+			 *
+			 * @var ?callable
+			 */
+			public $after_first_page = null;
+
+			/**
+			 * Query a page, then run the callback once.
+			 *
+			 * @param array<string, mixed> $args Query arguments.
+			 * @return array{items: array<int, array<string, mixed>>, total: int}
+			 */
+			public function query_events( array $args = array() ): array {
+				$result = parent::query_events( $args );
+				if ( is_callable( $this->after_first_page ) ) {
+					( $this->after_first_page )();
+					$this->after_first_page = null;
+				}
+
+				return $result;
+			}
+		};
+		$event_store->init( $this->schema_manager );
+		$event_store->after_first_page = fn() => $this->an_attempt();
+		$rule_finder                   = new SessionRuleFinder();
+		$rule_finder->init( $this->rule_store, $this->schema_manager, new ConditionOperatorRegistry() );
+		$output = new CommandOutput();
+		$output->init( wc_get_container()->get( LegacyProxy::class ), $this->schema_manager );
+		$this->sut = new PaymentAttemptsCommands();
+		$this->sut->init( $event_store, $rule_finder, new PaymentMethodTitleResolver(), $output );
+
+		$this->run_command( 'list_attempts', array(), array( 'limit' => (string) count( $ids ) ) );
+
+		$listed = array_column( Formatter::$calls[0]['data'], 'id' );
+		sort( $listed );
+		$this->assertSame( $ids, $listed, 'The list holds each attempt that existed when it started, once' );
 	}
 
 	/**
