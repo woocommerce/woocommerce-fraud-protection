@@ -116,4 +116,15 @@ class PaymentMethodTitleResolverTest extends FraudProtectionUnitTestCase {
 	public function test_returns_null_icon_for_unregistered_gateway(): void {
 		$this->assertNull( $this->sut->resolve_icon( 'legacy_gateway' ) );
 	}
+
+	/**
+	 * @testdox Should sort gateway ids by their resolved title in either direction.
+	 */
+	public function test_sorts_gateway_ids_by_title(): void {
+		WC()->payment_gateways()->payment_gateways()['mock']->method_title = 'Zulu Gateway';
+		$ids = array( 'zeta_gateway', 'mock', 'alpha_gateway' );
+
+		$this->assertSame( array( 'alpha_gateway', 'zeta_gateway', 'mock' ), $this->sut->sort_by_title( $ids, 'asc' ), 'The mock gateway sorts by its "Zulu Gateway" title, not by its ID' );
+		$this->assertSame( array( 'mock', 'zeta_gateway', 'alpha_gateway' ), $this->sut->sort_by_title( $ids, 'desc' ) );
+	}
 }

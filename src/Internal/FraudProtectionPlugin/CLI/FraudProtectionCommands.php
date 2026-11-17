@@ -67,6 +67,20 @@ class FraudProtectionCommands {
 	private AutomaticProtectionSettingUpdater $automatic_protection_updater;
 
 	/**
+	 * Custom rules commands.
+	 *
+	 * @var CustomRulesCommands
+	 */
+	private CustomRulesCommands $custom_rules_commands;
+
+	/**
+	 * Payment attempts commands.
+	 *
+	 * @var PaymentAttemptsCommands
+	 */
+	private PaymentAttemptsCommands $payment_attempts_commands;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -77,6 +91,8 @@ class FraudProtectionCommands {
 	 * @param MerchantFacingFeaturesGate        $merchant_facing_features_gate Merchant-facing features gate.
 	 * @param AutomaticProtectionSetting        $automatic_protection         Automatic-protection setting.
 	 * @param AutomaticProtectionSettingUpdater $automatic_protection_updater Automatic-protection setting updater.
+	 * @param CustomRulesCommands               $custom_rules_commands        Custom rules commands.
+	 * @param PaymentAttemptsCommands           $payment_attempts_commands    Payment attempts commands.
 	 */
 	final public function init(
 		SchemaManager $schema_manager,
@@ -84,7 +100,9 @@ class FraudProtectionCommands {
 		LegacyProxy $legacy_proxy,
 		MerchantFacingFeaturesGate $merchant_facing_features_gate,
 		AutomaticProtectionSetting $automatic_protection,
-		AutomaticProtectionSettingUpdater $automatic_protection_updater
+		AutomaticProtectionSettingUpdater $automatic_protection_updater,
+		CustomRulesCommands $custom_rules_commands,
+		PaymentAttemptsCommands $payment_attempts_commands
 	): void {
 		$this->schema_manager                = $schema_manager;
 		$this->session_event_pruner          = $session_event_pruner;
@@ -92,6 +110,8 @@ class FraudProtectionCommands {
 		$this->merchant_facing_features_gate = $merchant_facing_features_gate;
 		$this->automatic_protection          = $automatic_protection;
 		$this->automatic_protection_updater  = $automatic_protection_updater;
+		$this->custom_rules_commands         = $custom_rules_commands;
+		$this->payment_attempts_commands     = $payment_attempts_commands;
 	}
 
 	/**
@@ -103,6 +123,10 @@ class FraudProtectionCommands {
 
 	/**
 	 * Register the supported command leaves.
+	 *
+	 * The payment attempts and custom rules data commands follow the
+	 * merchant-facing features gate, like the matching settings pages. Pruning
+	 * stays available because attempts are recorded either way.
 	 *
 	 * @internal
 	 */
@@ -138,10 +162,22 @@ class FraudProtectionCommands {
 		$this->legacy_proxy->call_static(
 			WP_CLI::class,
 			'add_command',
+			PaymentAttemptsCommands::COMMAND . ' prune',
+			array( $this, 'payment_attempts_prune' ),
+			array( 'shortdesc' => __( 'Prune expired payment attempts.', 'woocommerce-fraud-protection' ) )
+		);
+		$this->legacy_proxy->call_static(
+			WP_CLI::class,
+			'add_command',
 			'wc fraud-protection sessions prune',
 			array( $this, 'sessions_prune' ),
-			array( 'shortdesc' => __( 'Prune expired Fraud Protection sessions.', 'woocommerce-fraud-protection' ) )
+			array( 'shortdesc' => __( 'Deprecated. Use "wp wc fraud-protection payment-attempts prune".', 'woocommerce-fraud-protection' ) )
 		);
+
+		if ( $this->merchant_facing_features_gate->is_enabled() ) {
+			$this->payment_attempts_commands->register_commands();
+			$this->custom_rules_commands->register_commands();
+		}
 	}
 
 	/**
@@ -280,15 +316,26 @@ class FraudProtectionCommands {
 	}
 
 	/**
-	 * Prune expired Fraud Protection sessions.
+	 * Prune expired payment attempts through the deprecated command name.
 	 *
 	 * @internal
 	 */
 	public function sessions_prune(): void {
+		$this->legacy_proxy->call_static( WP_CLI::class, 'warning', __( '"wp wc fraud-protection sessions prune" is deprecated. Use "wp wc fraud-protection payment-attempts prune".', 'woocommerce-fraud-protection' ) );
+
+		$this->payment_attempts_prune();
+	}
+
+	/**
+	 * Prune expired payment attempts.
+	 *
+	 * @internal
+	 */
+	public function payment_attempts_prune(): void {
 		$status = $this->schema_manager->get_schema_status();
 
 		if ( ! $status['complete'] ) {
-			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'Fraud Protection sessions cannot be pruned because the database schema is incomplete.', 'woocommerce-fraud-protection' ) );
+			$this->legacy_proxy->call_static( WP_CLI::class, 'error', __( 'Payment attempts cannot be pruned because the database schema is incomplete.', 'woocommerce-fraud-protection' ) );
 			return;
 		}
 
@@ -303,8 +350,8 @@ class FraudProtectionCommands {
 			WP_CLI::class,
 			'success',
 			sprintf(
-				/* translators: %d: Number of deleted session rows. */
-				_n( 'Pruned %d expired Fraud Protection session.', 'Pruned %d expired Fraud Protection sessions.', $deleted, 'woocommerce-fraud-protection' ),
+				/* translators: %d: Number of deleted payment attempts. */
+				_n( 'Pruned %d expired payment attempt.', 'Pruned %d expired payment attempts.', $deleted, 'woocommerce-fraud-protection' ),
 				$deleted
 			)
 		);

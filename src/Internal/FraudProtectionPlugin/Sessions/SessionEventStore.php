@@ -434,6 +434,8 @@ class SessionEventStore {
 	 *                                               active rule targeting their email or IP. Default '' (any).
 	 *     @type array{email: string[], ip: string[]} $rule_values The normalized values active rules target, used when
 	 *                                               $rules is set. Default empty.
+	 *     @type int                 $max_id          Only events with this ID or lower, so that events recorded while
+	 *                                               several pages are read do not shift the later pages. Default 0 (any).
 	 * }
 	 * @return array{items: array<int, array<string, mixed>>, total: int} The page rows, with integer id, order_id and
 	 *                                                                    matched_rule_id, and the total matching count.
@@ -456,6 +458,7 @@ class SessionEventStore {
 				'search'               => '',
 				'rules'                => '',
 				'rule_values'          => array(),
+				'max_id'               => 0,
 				// Provider ids in the order rows should sort by when ordering by
 				// payment method (they are resolved to display titles upstream).
 				'payment_method_order' => array(),
@@ -501,6 +504,48 @@ class SessionEventStore {
 	}
 
 	/**
+	 * Get the ID of the most recently recorded event.
+	 *
+	 * @return int The ID, or 0 when no event is recorded.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_latest_event_id(): int {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_sessions_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager.
+		$id = $wpdb->get_var( "SELECT MAX(id) FROM {$table}" );
+		$this->throw_on_database_error( 'Session event ID query failed.' );
+
+		return (int) $id;
+	}
+
+	/**
+	 * Get one event with the columns of the checkout attempts list.
+	 *
+	 * @param int $event_id Recorded session event row ID.
+	 * @return ?array<string, mixed> The row typed like {@see query_events()} rows, or null when no event has the ID.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_list_event( int $event_id ): ?array {
+		global $wpdb;
+
+		if ( $event_id <= 0 ) {
+			return null;
+		}
+
+		$table   = $this->schema_manager->get_sessions_table_name();
+		$columns = implode( ', ', self::LIST_COLUMNS );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager and the columns are an allowlisted constant.
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT {$columns} FROM {$table} WHERE id = %d", $event_id ), ARRAY_A );
+		$this->throw_on_database_error( 'Session event read failed.' );
+
+		return is_array( $row ) ? self::type_row( $row ) : null;
+	}
+
+	/**
 	 * Get the distinct payment method ids of the retained events.
 	 *
 	 * @param int $days Only events recorded within this many days.
@@ -531,6 +576,11 @@ class SessionEventStore {
 		global $wpdb;
 
 		$clauses = array( $wpdb->prepare( 'recorded_at >= %s', self::cutoff( max( 1, (int) $args['days'] ) ) ) );
+
+		$max_id = (int) $args['max_id'];
+		if ( $max_id > 0 ) {
+			$clauses[] = $wpdb->prepare( 'id <= %d', $max_id );
+		}
 
 		$final_status = $args['final_status'];
 		if ( $final_status instanceof SessionFinalStatus ) {

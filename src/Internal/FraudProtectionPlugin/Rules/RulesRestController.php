@@ -15,8 +15,6 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\RuleStatus;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\SettingsTelemetry;
 use Automattic\WooCommerce\Internal\RestApiControllerBase;
 
 defined( 'ABSPATH' ) || exit;
@@ -76,11 +74,11 @@ class RulesRestController extends RestApiControllerBase {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
-	 * Settings telemetry.
+	 * Custom rule management.
 	 *
-	 * @var SettingsTelemetry
+	 * @var RuleManager
 	 */
-	private SettingsTelemetry $telemetry;
+	private RuleManager $rule_manager;
 
 	/**
 	 * Initialize with dependencies.
@@ -92,7 +90,7 @@ class RulesRestController extends RestApiControllerBase {
 	 * @param SessionEventStore   $event_store           Session event persistence.
 	 * @param ApiClient           $api_client            Blackbox API client.
 	 * @param SessionIdNormalizer $session_id_normalizer Session ID normalizer.
-	 * @param SettingsTelemetry   $telemetry             Settings telemetry.
+	 * @param RuleManager         $rule_manager          Custom rule management.
 	 */
 	final public function init(
 		RuleStore $rule_store,
@@ -100,14 +98,14 @@ class RulesRestController extends RestApiControllerBase {
 		SessionEventStore $event_store,
 		ApiClient $api_client,
 		SessionIdNormalizer $session_id_normalizer,
-		SettingsTelemetry $telemetry
+		RuleManager $rule_manager
 	): void {
 		$this->rule_store            = $rule_store;
 		$this->schema_manager        = $schema_manager;
 		$this->event_store           = $event_store;
 		$this->api_client            = $api_client;
 		$this->session_id_normalizer = $session_id_normalizer;
-		$this->telemetry             = $telemetry;
+		$this->rule_manager          = $rule_manager;
 	}
 
 	/**
@@ -250,13 +248,7 @@ class RulesRestController extends RestApiControllerBase {
 			return $this->invalid_create_error();
 		}
 
-		$conditions = RuleConditions::validate_and_normalize(
-			array(
-				'field'    => $type,
-				'operator' => 'equals',
-				'value'    => $value,
-			)
-		);
+		$conditions = RuleManager::build_conditions( $type, $value );
 		if ( is_null( $conditions ) ) {
 			return $this->invalid_create_error();
 		}
@@ -278,15 +270,7 @@ class RulesRestController extends RestApiControllerBase {
 			}
 
 			$event_value      = $event[ $type ] ?? null;
-			$event_conditions = is_string( $event_value )
-				? RuleConditions::validate_and_normalize(
-					array(
-						'field'    => $type,
-						'operator' => 'equals',
-						'value'    => $event_value,
-					)
-				)
-				: null;
+			$event_conditions = is_string( $event_value ) ? RuleManager::build_conditions( $type, $event_value ) : null;
 			if ( is_null( $event_conditions ) || $event_conditions['value'] !== $conditions['value'] ) {
 				return new \WP_Error( 'woocommerce_fraud_protection_recorded_attempt_mismatch', __( 'The rule value does not match the recorded payment attempt.', 'woocommerce-fraud-protection' ), array( 'status' => 400 ) );
 			}
@@ -295,7 +279,7 @@ class RulesRestController extends RestApiControllerBase {
 		}
 
 		try {
-			$rule = $this->rule_store->create_rule( $decision, $conditions, $session_id, $source_meta );
+			$rule = $this->rule_manager->create_rule( $decision, $conditions, $origin, $session_id, $source_meta );
 		} catch ( DuplicateRuleException $error ) {
 			return $this->duplicate_rule_error( $error, $type );
 		} catch ( \InvalidArgumentException ) {
@@ -336,7 +320,6 @@ class RulesRestController extends RestApiControllerBase {
 				);
 			}
 		}
-		$this->telemetry->record_rule_change( 'created', $decision, $type, $origin );
 
 		return rest_ensure_response( $this->to_public_rule( $rule ) );
 	}
@@ -391,24 +374,13 @@ class RulesRestController extends RestApiControllerBase {
 			return $this->invalid_update_error();
 		}
 		$decision   = FraudDecision::tryFrom( $action );
-		$conditions = RuleConditions::validate_and_normalize(
-			array(
-				'field'    => $type,
-				'operator' => 'equals',
-				'value'    => $value,
-			)
-		);
+		$conditions = RuleManager::build_conditions( $type, $value );
 		if ( ! $decision instanceof FraudDecision || ! in_array( $decision, FraudDecision::ACTIONABLE, true ) || is_null( $conditions ) ) {
 			return $this->invalid_update_error();
 		}
 
-		$changed = $decision !== $existing->action || $conditions !== $existing->conditions;
-		if ( ! $changed ) {
-			return rest_ensure_response( $this->to_public_rule( $existing ) );
-		}
-
 		try {
-			$result = $this->rule_store->update_rule_with_result( $id, $decision, $conditions, required_status: RuleStatus::Active );
+			$result = $this->rule_manager->update_rule( $id, $decision, $conditions, $this->get_origin( $request ) );
 		} catch ( DuplicateRuleException $error ) {
 			return $this->duplicate_rule_error( $error, $type );
 		} catch ( \InvalidArgumentException ) {
@@ -419,12 +391,8 @@ class RulesRestController extends RestApiControllerBase {
 		if ( is_null( $result ) ) {
 			return $this->rule_not_found_error();
 		}
-		$updated = $result['rule'];
 
-		if ( $result['changed'] ) {
-			$this->telemetry->record_rule_change( 'updated', $decision, $type, $this->get_origin( $request ) );
-		}
-		return rest_ensure_response( $this->to_public_rule( $updated ) );
+		return rest_ensure_response( $this->to_public_rule( $result['rule'] ) );
 	}
 
 	/**
@@ -440,7 +408,7 @@ class RulesRestController extends RestApiControllerBase {
 
 		$id = (int) $request->get_param( 'id' );
 		try {
-			$deleted_rule = $this->rule_store->delete_rule_with_result( $id, RuleStatus::Active );
+			$deleted_rule = $this->rule_manager->delete_rule( $id, $this->get_origin( $request ) );
 		} catch ( \RuntimeException ) {
 			return new \WP_Error( 'woocommerce_fraud_protection_rule_delete_failed', __( 'The rule could not be deleted.', 'woocommerce-fraud-protection' ), array( 'status' => 500 ) );
 		}
@@ -448,8 +416,6 @@ class RulesRestController extends RestApiControllerBase {
 			return $this->rule_not_found_error();
 		}
 
-		$type = (string) ( $deleted_rule->conditions['field'] ?? '' );
-		$this->telemetry->record_rule_change( 'deleted', $deleted_rule->action, $type, $this->get_origin( $request ) );
 		return new \WP_REST_Response( null, 204 );
 	}
 
@@ -490,8 +456,7 @@ class RulesRestController extends RestApiControllerBase {
 	 * @throws \RuntimeException When the rule query fails.
 	 */
 	private function get_active_rule( int $id ): ?Rule {
-		$rule = $id > 0 ? $this->rule_store->get_rule( $id ) : null;
-		return $rule instanceof Rule && RuleStatus::Active === $rule->status ? $rule : null;
+		return $this->rule_manager->get_active_rule( $id );
 	}
 
 	/**
@@ -506,34 +471,17 @@ class RulesRestController extends RestApiControllerBase {
 		} catch ( \RuntimeException ) {
 			return $this->rule_load_failed_error();
 		}
-		$existing_action = $existing instanceof Rule ? $existing->action->value : null;
+		$existing_action = $existing instanceof Rule ? $existing->action : null;
 
 		return new \WP_Error(
 			'woocommerce_fraud_protection_duplicate_rule',
-			$this->duplicate_rule_message( $type, $existing_action ),
+			RuleManager::duplicate_rule_message( $type, $existing_action ),
 			array(
 				'status'  => 409,
 				'rule_id' => $existing instanceof Rule ? $existing->id : 0,
-				'action'  => $existing_action,
+				'action'  => $existing_action?->value,
 			)
 		);
-	}
-
-	/**
-	 * Return the duplicate rule message for a rule type and action.
-	 *
-	 * @param string  $type            Rule condition type.
-	 * @param ?string $existing_action Existing rule action, when available.
-	 * @return string
-	 */
-	private function duplicate_rule_message( string $type, ?string $existing_action ): string {
-		return match ( array( $type, $existing_action ) ) {
-			array( RuleConditions::FIELD_EMAIL, FraudDecision::Allow->value ) => __( 'You already have a rule that allows this email address.', 'woocommerce-fraud-protection' ),
-			array( RuleConditions::FIELD_EMAIL, FraudDecision::Block->value ) => __( 'You already have a rule that blocks this email address.', 'woocommerce-fraud-protection' ),
-			array( RuleConditions::FIELD_IP, FraudDecision::Allow->value ) => __( 'You already have a rule that allows this IP address.', 'woocommerce-fraud-protection' ),
-			array( RuleConditions::FIELD_IP, FraudDecision::Block->value ) => __( 'You already have a rule that blocks this IP address.', 'woocommerce-fraud-protection' ),
-			default => __( 'You already have a rule with this value.', 'woocommerce-fraud-protection' ),
-		};
 	}
 
 	/**

@@ -39,6 +39,28 @@ class PaymentMethodTitleResolver {
 	}
 
 	/**
+	 * Sort payment gateway ids by their resolved title.
+	 *
+	 * Lets lists sort by the provider name the merchant sees rather than the
+	 * raw gateway id.
+	 *
+	 * @param string[] $gateway_ids The recorded gateway ids.
+	 * @param string   $order       'asc' or 'desc'.
+	 * @return string[] The ids in title order.
+	 */
+	public function sort_by_title( array $gateway_ids, string $order ): array {
+		$titles = array();
+		foreach ( $gateway_ids as $gateway_id ) {
+			$titles[ $gateway_id ] = $this->resolve( $gateway_id );
+		}
+		uasort( $titles, static fn( string $a, string $b ): int => strcasecmp( $a, $b ) );
+
+		$ordered = array_map( 'strval', array_keys( $titles ) );
+
+		return 'asc' === strtolower( $order ) ? $ordered : array_reverse( $ordered );
+	}
+
+	/**
 	 * Get the icon URL of a payment gateway id.
 	 *
 	 * There is no core gateway-id-to-logo registry, so the icon comes from the

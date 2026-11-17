@@ -203,15 +203,7 @@ class SessionsRestController extends RestApiControllerBase {
 			return array();
 		}
 
-		$titles = array();
-		foreach ( $ids as $id ) {
-			$titles[ $id ] = $this->payment_method_titles->resolve( $id );
-		}
-		uasort( $titles, static fn( string $a, string $b ): int => strcasecmp( $a, $b ) );
-
-		$ordered = array_keys( $titles );
-
-		return 'asc' === strtolower( $order ) ? $ordered : array_reverse( $ordered );
+		return $this->payment_method_titles->sort_by_title( $ids, $order );
 	}
 
 	/**

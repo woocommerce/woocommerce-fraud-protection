@@ -232,6 +232,42 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should read one event with the typed list columns and without the risk score.
+	 */
+	public function test_get_list_event_returns_typed_list_row(): void {
+		$this->sut->record_event( $this->an_event( array( 'matched_rule_id' => 7 ) ) );
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$event_id = (int) $wpdb->get_var( 'SELECT MAX(id) FROM ' . $this->schema_manager->get_sessions_table_name() );
+
+		$row = $this->sut->get_list_event( $event_id );
+
+		$this->assertSame( $event_id, $row['id'] );
+		$this->assertSame( 7, $row['matched_rule_id'] );
+		$this->assertSame( 'San Francisco', $row['billing_city'] );
+		$this->assertArrayNotHasKey( 'risk_score', $row, 'The risk score is never exposed' );
+		$this->assertNull( $this->sut->get_list_event( $event_id + 1 ) );
+		$this->assertNull( $this->sut->get_list_event( 0 ) );
+	}
+
+	/**
+	 * @testdox Should report the latest event ID and limit the list to events up to a maximum ID.
+	 */
+	public function test_latest_event_id_bounds_the_list(): void {
+		$this->assertSame( 0, $this->sut->get_latest_event_id(), 'An empty table has no latest ID' );
+
+		$this->sut->record_event( $this->an_event( array( 'email' => 'first@example.com' ) ) );
+		$max_id = $this->sut->get_latest_event_id();
+		$this->sut->record_event( $this->an_event( array( 'email' => 'second@example.com' ) ) );
+
+		$this->assertSame( $max_id + 1, $this->sut->get_latest_event_id() );
+		$bounded = $this->sut->query_events( array( 'max_id' => $max_id ) );
+		$this->assertSame( array( 'first@example.com' ), array_column( $bounded['items'], 'email' ) );
+		$this->assertSame( 1, $bounded['total'] );
+		$this->assertSame( 2, $this->sut->query_events()['total'], 'Without a maximum ID every event is listed' );
+	}
+
+	/**
 	 * @testdox Should insert a separate row for each event with the same session ID, preserving both decisions.
 	 */
 	public function test_repeated_session_ids_insert_separate_rows(): void {
