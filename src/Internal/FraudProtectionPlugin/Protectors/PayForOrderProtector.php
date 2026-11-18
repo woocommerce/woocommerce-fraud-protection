@@ -136,6 +136,10 @@ class PayForOrderProtector {
 		// A payment that ends without leaving the page can leave the earlier
 		// attempt's session ID in the form. That ID was already verified for
 		// this order, so this attempt is verified without a session instead.
+		// A used ID always comes from an earlier attempt: each attempt posts
+		// the form once, which leaves the page, and the supported gateways
+		// complete steps such as 3D Secure through their own requests, not by
+		// posting the form again.
 		if ( $is_reused ) {
 			FraudProtectionController::log(
 				'info',
