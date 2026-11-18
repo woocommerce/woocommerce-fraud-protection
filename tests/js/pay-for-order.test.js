@@ -27,8 +27,10 @@ let $;
 let form;
 let mockAcquireSessionId;
 let bubbleSubmitSpy;
+let windowListeners;
 
 beforeEach( () => {
+	windowListeners = [];
 	document.body.innerHTML = '<form id="order_review"></form>';
 	form = document.getElementById( 'order_review' );
 
@@ -48,6 +50,11 @@ beforeEach( () => {
 
 afterEach( () => {
 	document.body.removeEventListener( 'submit', bubbleSubmitSpy );
+	// The script's listeners on the form go with it, but the ones on the
+	// shared window stay unless they are removed.
+	windowListeners.forEach( ( args ) =>
+		window.removeEventListener( ...args )
+	);
 	document.body.innerHTML = '';
 	delete window.jQuery;
 	delete window.wcFraudProtection;
@@ -65,9 +72,12 @@ function setupFraudProtection() {
 }
 
 function loadScript() {
+	const addEventListener = jest.spyOn( window, 'addEventListener' );
 	jest.isolateModules( () => {
 		require( '../../assets/js/pay-for-order' );
 	} );
+	windowListeners.push( ...addEventListener.mock.calls );
+	addEventListener.mockRestore();
 }
 
 function dispatchSubmit() {
