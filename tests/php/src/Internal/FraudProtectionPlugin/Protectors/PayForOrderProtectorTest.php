@@ -581,6 +581,28 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_and_block() stores the used session ID without changing the order passed to the hook.
+	 */
+	public function test_used_session_id_is_stored_without_changing_the_hook_order(): void {
+		$this->order                             = \WC_Helper_Order::create_order();
+		$_POST['wc_fraud_protection_session_id'] = 'sess-first-attempt';
+
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'sess-first-attempt' );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+
+		// WooCommerce saves this order before it processes the payment, so a
+		// change left on it would be written, or a failed write retried, then.
+		$hook_order = wc_get_order( $this->order->get_id() );
+		$this->sut->verify_and_block( $hook_order );
+
+		$this->assertSame( '', $hook_order->get_meta( '_wc_fraud_protection_pay_for_order_used_session_ids' ) );
+		$this->assertSame(
+			array( 'sess-first-attempt' ),
+			wc_get_order( $this->order->get_id() )->get_meta( '_wc_fraud_protection_pay_for_order_used_session_ids' )
+		);
+	}
+
+	/**
 	 * @testdox verify_and_block() keeps a bounded list of used session IDs on the order.
 	 */
 	public function test_used_session_ids_list_is_bounded(): void {

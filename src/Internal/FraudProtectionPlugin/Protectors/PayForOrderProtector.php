@@ -213,6 +213,10 @@ class PayForOrderProtector {
 	 *
 	 * Keeps the latest MAX_USED_SESSION_IDS. Errors leave the list unchanged.
 	 *
+	 * The list is read and written through a new instance of the order.
+	 * WooCommerce saves the order passed to the hook before it processes the
+	 * payment, so a failed write must not leave a pending change on it.
+	 *
 	 * @param mixed     $session_id The submitted session ID.
 	 * @param \WC_Order $order      The order being paid for.
 	 * @return void
@@ -223,14 +227,19 @@ class PayForOrderProtector {
 		}
 
 		try {
-			$used = $this->get_used_session_ids( $order );
+			$stored_order = wc_get_order( $order->get_id() );
+			if ( ! $stored_order instanceof \WC_Order ) {
+				return;
+			}
+
+			$used = $this->get_used_session_ids( $stored_order );
 			if ( in_array( $session_id, $used, true ) ) {
 				return;
 			}
 
 			$used[] = $session_id;
-			$order->update_meta_data( self::USED_SESSION_IDS_KEY, array_slice( $used, -self::MAX_USED_SESSION_IDS ) );
-			$order->save_meta_data();
+			$stored_order->update_meta_data( self::USED_SESSION_IDS_KEY, array_slice( $used, -self::MAX_USED_SESSION_IDS ) );
+			$stored_order->save_meta_data();
 		} catch ( \Throwable $e ) {
 			FraudProtectionController::log(
 				'warning',
