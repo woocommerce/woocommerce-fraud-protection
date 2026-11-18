@@ -107,6 +107,10 @@
 	// True from the first held submit until its re-submit is dispatched.
 	let resubmitPending = false;
 
+	// Counts the restores from the back-forward cache. A held submit stops
+	// when the page was restored since it started.
+	let restoreCount = 0;
+
 	// True from the shopper's click on a submit button, or Enter key press in
 	// a field, until the end of its task. A submit that the shopper starts
 	// this way is dispatched in that same task.
@@ -216,9 +220,14 @@
 			e.preventDefault();
 			e.stopImmediatePropagation();
 			resubmitPending = true;
+			const startRestoreCount = restoreCount;
 
 			acquireSessionIdResult( fraudProtection ).then(
 				function ( result ) {
+					if ( startRestoreCount !== restoreCount ) {
+						return;
+					}
+
 					const sessionId = result.sessionId;
 					const errorField =
 						fraudProtection.config.sessionIdErrorField;
@@ -266,6 +275,10 @@
 					// being dispatched, and Firefox ignores a submit event fired on
 					// the form during that time.
 					setTimeout( function () {
+						if ( startRestoreCount !== restoreCount ) {
+							return;
+						}
+
 						resubmitPending = false;
 						const submitEvent = new Event( 'submit', {
 							bubbles: true,
@@ -320,10 +333,18 @@
 
 	// A page restored from the back-forward cache keeps the fields of the
 	// attempt made before the shopper left it. The next submit needs a new
-	// session ID.
+	// session ID. A submit still held when the shopper left is dropped, so
+	// it neither posts the restored page nor cancels the next submit.
 	window.addEventListener( 'pageshow', function ( e ) {
+		if ( ! e.persisted ) {
+			return;
+		}
+
+		restoreCount++;
+		resubmitPending = false;
+
 		const fraudProtection = window.wcFraudProtection;
-		if ( ! e.persisted || ! fraudProtection || ! fraudProtection.config ) {
+		if ( ! fraudProtection || ! fraudProtection.config ) {
 			return;
 		}
 

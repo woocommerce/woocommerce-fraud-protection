@@ -707,6 +707,68 @@ describe( 'pay-for-order', () => {
 				'sess-second'
 			);
 		} );
+
+		describe( 'a submit still held when the page was left', () => {
+			function restorePage() {
+				window.dispatchEvent(
+					new window.PageTransitionEvent( 'pageshow', {
+						persisted: true,
+					} )
+				);
+			}
+
+			it( 'is dropped when its session ID arrives after the page is restored', async () => {
+				let resolveFirst;
+				mockAcquireSessionId
+					.mockReturnValueOnce(
+						new Promise( ( resolve ) => {
+							resolveFirst = resolve;
+						} )
+					)
+					.mockReturnValueOnce( Promise.resolve( 'sess-second' ) );
+				setupFraudProtection();
+				loadScript();
+
+				dispatchSubmit();
+				restorePage();
+				resolveFirst( 'sess-first' );
+				await flushPromises();
+				jest.runOnlyPendingTimers();
+
+				expect(
+					document.getElementById( SESSION_ID_FIELD )
+				).toBeNull();
+				expect( form.submit ).not.toHaveBeenCalled();
+
+				// The next submit is not cancelled as a repeat of the dropped one.
+				expect( dispatchSubmit() ).toBe( false );
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			} );
+
+			it( 'does not post the restored page when its re-submit was already queued', async () => {
+				setupFraudProtection();
+				loadScript();
+				const gatewayHandler = jest.fn();
+				form.addEventListener( 'submit', gatewayHandler );
+
+				dispatchSubmit();
+				await flushPromises();
+				restorePage();
+				jest.runOnlyPendingTimers();
+				await flushPromises();
+				jest.runOnlyPendingTimers();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).not.toHaveBeenCalled();
+				expect( form.submit ).not.toHaveBeenCalled();
+				expect(
+					document.getElementById( SESSION_ID_FIELD )
+				).toBeNull();
+
+				expect( dispatchSubmit() ).toBe( false );
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			} );
+		} );
 	} );
 
 	describe( 'submit started with jQuery trigger()', () => {
