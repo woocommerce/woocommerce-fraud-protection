@@ -520,6 +520,33 @@ describe( 'pay-for-order', () => {
 			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
 		} );
 
+		it( 'acquires a new session ID when the shopper clicks a gateway Pay button that clicks the form button', async () => {
+			setupFraudProtection();
+			loadScript();
+			await completeFirstAttempt();
+
+			// A gateway's own button, with no type, that submits through the
+			// form's button from its click handler.
+			const gatewayButton = document.createElement( 'button' );
+			const icon = document.createElement( 'span' );
+			gatewayButton.append( icon );
+			gatewayButton.addEventListener( 'click', ( e ) => {
+				e.preventDefault();
+				button.click();
+			} );
+			form.append( gatewayButton );
+
+			dispatchTrusted(
+				icon,
+				new window.MouseEvent( 'click', {
+					bubbles: true,
+					cancelable: true,
+				} )
+			);
+
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+		} );
+
 		describe( 'a trusted submit that the shopper did not start', () => {
 			let gatewayHandler;
 
@@ -527,6 +554,42 @@ describe( 'pay-for-order', () => {
 				// The gateway completes the payment itself.
 				gatewayHandler = jest.fn( ( e ) => e.preventDefault() );
 				form.addEventListener( 'submit', gatewayHandler );
+			} );
+
+			it( 'keeps the session ID when a gateway clicks the button from a script in the task of a click on a field', async () => {
+				setupFraudProtection();
+				loadScript();
+				await completeFirstAttempt();
+
+				dispatchTrusted(
+					input,
+					new window.MouseEvent( 'click', { bubbles: true } )
+				);
+				button.click();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );
+			} );
+
+			it( 'keeps the session ID for a submit in the task of an Enter key press in a text area', async () => {
+				setupFraudProtection();
+				loadScript();
+				await completeFirstAttempt();
+				const textarea = document.createElement( 'textarea' );
+				form.append( textarea );
+
+				dispatchTrusted(
+					textarea,
+					new window.KeyboardEvent( 'keydown', {
+						key: 'Enter',
+						bubbles: true,
+						cancelable: true,
+					} )
+				);
+				form.requestSubmit();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );
 			} );
 
 			it( 'keeps the session ID when a gateway clicks the button from a script', async () => {
@@ -547,13 +610,22 @@ describe( 'pay-for-order', () => {
 				setupFraudProtection();
 				loadScript();
 				await completeFirstAttempt();
+				// A gateway Pay button that completes its work in a later task.
+				const gatewayButton = document.createElement( 'button' );
+				gatewayButton.addEventListener( 'click', ( e ) =>
+					e.preventDefault()
+				);
+				form.append( gatewayButton );
 
 				dispatchTrusted(
-					input,
-					new window.MouseEvent( 'click', { bubbles: true } )
+					gatewayButton,
+					new window.MouseEvent( 'click', {
+						bubbles: true,
+						cancelable: true,
+					} )
 				);
 				jest.runOnlyPendingTimers();
-				form.requestSubmit();
+				button.click();
 
 				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 				expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );

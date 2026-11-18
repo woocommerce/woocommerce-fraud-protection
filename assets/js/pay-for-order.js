@@ -27,8 +27,8 @@
  * come back from the back-forward cache. The session ID in the form was
  * already verified for the earlier attempt, so a submit by the shopper
  * acquires a new one, and a restored page drops it. A submit is the shopper's
- * when it is trusted and follows a trusted click or Enter key press in the
- * same task. Gateways that submit again after tokenization use
+ * when it is trusted and follows, in the same task, a trusted click on a
+ * submit button or Enter key press in an input field. Gateways that submit again after tokenization use
  * dispatchEvent(), jQuery's trigger(), or form.submit(), which are not trusted
  * or fire no submit event. A gateway that clicks the Pay button from a script
  * gets a trusted submit, but its click is not trusted. These keep the session
@@ -107,9 +107,9 @@
 	// True from the first held submit until its re-submit is dispatched.
 	let resubmitPending = false;
 
-	// True from the shopper's click or Enter key press until the end of its
-	// task. A submit that the shopper starts this way is dispatched in that
-	// same task.
+	// True from the shopper's click on a submit button, or Enter key press in
+	// a field, until the end of its task. A submit that the shopper starts
+	// this way is dispatched in that same task.
 	let isShopperAction = false;
 
 	/**
@@ -128,11 +128,48 @@
 		}, 0 );
 	}
 
-	form.addEventListener( 'click', noteShopperAction, true );
+	/**
+	 * Check whether an element is in a submit button of the form.
+	 *
+	 * A gateway's own Pay button is one as well when it has no type, and it
+	 * can submit the form from its click handler.
+	 *
+	 * @param {EventTarget} target Click target.
+	 * @return {boolean} True for a submit button of the form or an element in one.
+	 */
+	function isInSubmitButton( target ) {
+		const control =
+			target && typeof target.closest === 'function'
+				? target.closest( 'button, input' )
+				: null;
+
+		return (
+			!! control &&
+			control.form === form &&
+			( control.type === 'submit' || control.type === 'image' )
+		);
+	}
+
+	// Clicks on other elements are left out, so a gateway that clicks the
+	// Pay button from a script in the same task keeps its session ID.
+	form.addEventListener(
+		'click',
+		function ( e ) {
+			if ( isInSubmitButton( e.target ) ) {
+				noteShopperAction( e );
+			}
+		},
+		true
+	);
+	// Enter submits the form from an input field. On a button it fires a click.
 	form.addEventListener(
 		'keydown',
 		function ( e ) {
-			if ( e.key === 'Enter' ) {
+			if (
+				e.key === 'Enter' &&
+				! e.isComposing &&
+				e.target instanceof window.HTMLInputElement
+			) {
 				noteShopperAction( e );
 			}
 		},
