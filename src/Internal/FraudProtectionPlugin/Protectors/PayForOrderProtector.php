@@ -49,6 +49,16 @@ class PayForOrderProtector {
 	private const USED_SESSION_IDS_KEY = '_wc_fraud_protection_pay_for_order_used_session_ids';
 
 	/**
+	 * The submitted session ID is in the order's list of used ones.
+	 */
+	private const FOUND_IN_LIST = 'list';
+
+	/**
+	 * The submitted session ID is the one the latest verification stored on the order.
+	 */
+	private const FOUND_ON_ORDER = 'order';
+
+	/**
 	 * Maximum number of used session IDs kept per order.
 	 */
 	private const MAX_USED_SESSION_IDS = 10;
@@ -131,7 +141,8 @@ class PayForOrderProtector {
 		$request_data = $this->build_request_data( $_POST );
 		$submitted_id = $this->get_submitted_session_id();
 		$session_id   = $submitted_id;
-		$is_reused    = $this->is_used_session_id( $submitted_id, $order );
+		$found_in     = $this->find_used_session_id( $submitted_id, $order );
+		$is_reused    = '' !== $found_in;
 
 		// A payment that ends without leaving the page can leave the earlier
 		// attempt's session ID in the form. That ID was already verified for
@@ -163,8 +174,13 @@ class PayForOrderProtector {
 		);
 
 		// A completed verification used the submitted session ID. A failed one
-		// did not, so the same ID can be sent again.
-		if ( $is_reused || '' !== $this->session_verifier->last_verified_session_id() ) {
+		// did not, so the same ID can be sent again. An ID found in the list is
+		// not added again: another request may have pushed it out since, and
+		// adding it back would push out a newer one.
+		if (
+			self::FOUND_IN_LIST !== $found_in
+			&& ( $is_reused || '' !== $this->session_verifier->last_verified_session_id() )
+		) {
 			$this->remember_used_session_id( $submitted_id, $order );
 		}
 
@@ -177,26 +193,30 @@ class PayForOrderProtector {
 	}
 
 	/**
-	 * Check whether a submitted session ID was already used to verify a payment for the order.
+	 * Find where a submitted session ID is recorded as already used to verify a payment for the order.
 	 *
-	 * It was when it is the session ID that the latest verification stored on
-	 * the order, or one of the IDs that earlier pay-for-order submissions sent.
+	 * It is either in the list of IDs that earlier pay-for-order submissions
+	 * sent, or the session ID that the latest verification stored on the order.
 	 *
 	 * @param mixed     $session_id The submitted session ID.
 	 * @param \WC_Order $order      The order being paid for.
-	 * @return bool True when the submitted ID is a nonempty string that was already used.
+	 * @return string FOUND_IN_LIST, FOUND_ON_ORDER, or an empty string when the ID is not a nonempty string that was already used.
 	 */
-	private function is_used_session_id( mixed $session_id, \WC_Order $order ): bool {
+	private function find_used_session_id( mixed $session_id, \WC_Order $order ): string {
 		if ( ! is_string( $session_id ) || '' === $session_id ) {
-			return false;
+			return '';
 		}
 
 		try {
-			if ( $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) === $session_id ) {
-				return true;
+			if ( in_array( $session_id, $this->get_used_session_ids( $order ), true ) ) {
+				return self::FOUND_IN_LIST;
 			}
 
-			return in_array( $session_id, $this->get_used_session_ids( $order ), true );
+			if ( $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, true, 'edit' ) === $session_id ) {
+				return self::FOUND_ON_ORDER;
+			}
+
+			return '';
 		} catch ( \Throwable $e ) {
 			// Fail open: the submitted session ID is verified as before.
 			FraudProtectionController::log(
@@ -208,7 +228,7 @@ class PayForOrderProtector {
 					'exception_class' => $e::class,
 				)
 			);
-			return false;
+			return '';
 		}
 	}
 
@@ -217,9 +237,11 @@ class PayForOrderProtector {
 	 *
 	 * Keeps the latest MAX_USED_SESSION_IDS. Errors leave the list unchanged.
 	 *
-	 * The list is read and written through a new instance of the order.
-	 * WooCommerce saves the order passed to the hook before it processes the
-	 * payment, so a failed write must not leave a pending change on it.
+	 * The list is read and written through a new instance of the order, with
+	 * its metadata read again from the database. WooCommerce saves the order
+	 * passed to the hook before it processes the payment, so a failed write
+	 * must not leave a pending change on it. A cached copy of the order can
+	 * share metadata entries with it, and an update changes an entry in place.
 	 *
 	 * @param mixed     $session_id The submitted session ID.
 	 * @param \WC_Order $order      The order being paid for.
@@ -235,6 +257,7 @@ class PayForOrderProtector {
 			if ( ! $stored_order instanceof \WC_Order ) {
 				return;
 			}
+			$stored_order->read_meta_data( true );
 
 			$used = $this->get_used_session_ids( $stored_order );
 			if ( in_array( $session_id, $used, true ) ) {
@@ -264,7 +287,7 @@ class PayForOrderProtector {
 	 * @return string[] The stored session IDs; values that are not strings are dropped.
 	 */
 	private function get_used_session_ids( \WC_Order $order ): array {
-		$stored = $order->get_meta( self::USED_SESSION_IDS_KEY );
+		$stored = $order->get_meta( self::USED_SESSION_IDS_KEY, true, 'edit' );
 
 		return is_array( $stored ) ? array_values( array_filter( $stored, 'is_string' ) ) : array();
 	}

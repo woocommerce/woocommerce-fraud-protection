@@ -14,6 +14,9 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\DataStores\Orders\CustomOrdersTableController;
+use Automattic\WooCommerce\Internal\DataStores\Orders\DataSynchronizer;
+use Automattic\WooCommerce\Internal\Features\FeaturesController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
@@ -25,6 +28,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventR
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
+use Automattic\WooCommerce\Utilities\OrderUtil;
 
 /**
  * Tests for the PayForOrderProtector class.
@@ -32,6 +36,11 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
  * @covers \Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector
  */
 class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
+
+	/**
+	 * Order meta key of the list of used session IDs.
+	 */
+	private const USED_SESSION_IDS_KEY = '_wc_fraud_protection_pay_for_order_used_session_ids';
 
 	/**
 	 * The System Under Test.
@@ -67,6 +76,28 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	 * @var \WC_Order|null
 	 */
 	private $order;
+
+	/**
+	 * Whether the test switched orders to the WooCommerce order tables.
+	 *
+	 * @var bool
+	 */
+	private bool $uses_order_tables = false;
+
+	/**
+	 * Create the WooCommerce order tables for the tests that store orders in them.
+	 *
+	 * Tables created during a test would end its database transaction, so they
+	 * are created before the tests run.
+	 */
+	public static function setUpBeforeClass(): void {
+		parent::setUpBeforeClass();
+
+		$synchronizer = wc_get_container()->get( DataSynchronizer::class );
+		if ( ! $synchronizer->check_orders_table_exists() ) {
+			$synchronizer->create_database_tables();
+		}
+	}
 
 	/**
 	 * Set up test fixtures.
@@ -108,6 +139,10 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 		if ( $this->order instanceof \WC_Order ) {
 			\WC_Helper_Order::delete_order( $this->order->get_id() );
 			$this->order = null;
+		}
+
+		if ( $this->uses_order_tables ) {
+			$this->set_order_tables_usage( false );
 		}
 
 		parent::tearDown();
@@ -595,11 +630,77 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 		$hook_order = wc_get_order( $this->order->get_id() );
 		$this->sut->verify_and_block( $hook_order );
 
-		$this->assertSame( '', $hook_order->get_meta( '_wc_fraud_protection_pay_for_order_used_session_ids' ) );
+		$this->assertSame( '', $hook_order->get_meta( self::USED_SESSION_IDS_KEY ) );
 		$this->assertSame(
 			array( 'sess-first-attempt' ),
-			wc_get_order( $this->order->get_id() )->get_meta( '_wc_fraud_protection_pay_for_order_used_session_ids' )
+			wc_get_order( $this->order->get_id() )->get_meta( self::USED_SESSION_IDS_KEY )
 		);
+	}
+
+	/**
+	 * @testdox verify_and_block() updates an existing list of used session IDs without changing the order passed to the hook.
+	 */
+	public function test_existing_used_session_ids_list_is_updated_without_changing_the_hook_order(): void {
+		// Loads of an order share metadata entries only through the orders
+		// cache, which WooCommerce uses with its order tables.
+		$this->set_order_tables_usage( true );
+		$this->order = \WC_Helper_Order::create_order();
+		$this->order->update_meta_data( self::USED_SESSION_IDS_KEY, array( 'sess-earlier' ) );
+		$this->order->save_meta_data();
+		$_POST['wc_fraud_protection_session_id'] = 'sess-new';
+
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'sess-new' );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+
+		$hook_order = wc_get_order( $this->order->get_id() );
+
+		// Another load of a cached order can share metadata entries with this
+		// one, and an update changes the shared entry in place.
+		$this->assertSame(
+			$this->get_used_session_ids_entry( $hook_order ),
+			$this->get_used_session_ids_entry( wc_get_order( $this->order->get_id() ) ),
+			'The two loads of the order do not share metadata entries, so this test cannot detect a change to the hook order.'
+		);
+
+		$this->sut->verify_and_block( $hook_order );
+
+		$this->assertSame( array( 'sess-earlier' ), $hook_order->get_meta( self::USED_SESSION_IDS_KEY ) );
+		$this->assertSame(
+			array( 'sess-earlier', 'sess-new' ),
+			wc_get_order( $this->order->get_id() )->get_meta( self::USED_SESSION_IDS_KEY )
+		);
+	}
+
+	/**
+	 * @testdox verify_and_block() does not add again a used session ID found in the list.
+	 */
+	public function test_session_id_found_in_the_list_is_not_added_again(): void {
+		$this->order = \WC_Helper_Order::create_order();
+		$this->order->update_meta_data( self::USED_SESSION_IDS_KEY, $this->session_ids( 1, 10 ) );
+		$this->order->save_meta_data();
+		$_POST['wc_fraud_protection_session_id'] = 'sess-1';
+		$order_id                                = $this->order->get_id();
+
+		// Another request records a new ID while this one is verified, which
+		// pushes the submitted ID out of the list.
+		$this->session_verifier
+			->method( 'verify_session' )
+			->willReturnCallback(
+				function () use ( $order_id ): FraudDecision {
+					$other_request_order = wc_get_order( $order_id );
+					$other_request_order->update_meta_data( self::USED_SESSION_IDS_KEY, $this->session_ids( 2, 11 ) );
+					$other_request_order->save_meta_data();
+
+					return FraudDecision::Allow;
+				}
+			);
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'sessionless-response-id' );
+
+		$this->sut->verify_and_block( wc_get_order( $order_id ) );
+
+		$stored_order = wc_get_order( $order_id );
+		$stored_order->read_meta_data( true );
+		$this->assertSame( $this->session_ids( 2, 11 ), $stored_order->get_meta( self::USED_SESSION_IDS_KEY ) );
 	}
 
 	/**
@@ -616,8 +717,49 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 			$this->sut->verify_and_block( wc_get_order( $this->order->get_id() ) );
 		}
 
-		$used = wc_get_order( $this->order->get_id() )->get_meta( '_wc_fraud_protection_pay_for_order_used_session_ids' );
+		$used = wc_get_order( $this->order->get_id() )->get_meta( self::USED_SESSION_IDS_KEY );
 
-		$this->assertSame( array_map( fn( int $attempt ): string => 'sess-' . $attempt, range( 3, 12 ) ), $used );
+		$this->assertSame( $this->session_ids( 3, 12 ), $used );
+	}
+
+	/**
+	 * Store orders in the WooCommerce order tables, or in posts again.
+	 *
+	 * @param bool $enabled True to use the order tables.
+	 */
+	private function set_order_tables_usage( bool $enabled ): void {
+		wc_get_container()->get( FeaturesController::class )->change_feature_enable( 'custom_order_tables', $enabled );
+		update_option( CustomOrdersTableController::CUSTOM_ORDERS_TABLE_USAGE_ENABLED_OPTION, wc_bool_to_string( $enabled ) );
+		wp_cache_flush();
+
+		$this->uses_order_tables = $enabled;
+		$this->assertSame( $enabled, OrderUtil::custom_orders_table_usage_is_enabled() );
+	}
+
+	/**
+	 * Build the session IDs `sess-<first>` to `sess-<last>`.
+	 *
+	 * @param int $first First number.
+	 * @param int $last  Last number.
+	 * @return string[] The session IDs.
+	 */
+	private function session_ids( int $first, int $last ): array {
+		return array_map( fn( int $number ): string => 'sess-' . $number, range( $first, $last ) );
+	}
+
+	/**
+	 * Get the metadata entry that holds the list of used session IDs.
+	 *
+	 * @param \WC_Order $order The order.
+	 * @return \WC_Meta_Data|null The entry, or null when there is none.
+	 */
+	private function get_used_session_ids_entry( \WC_Order $order ): ?\WC_Meta_Data {
+		foreach ( $order->get_meta_data() as $entry ) {
+			if ( self::USED_SESSION_IDS_KEY === $entry->key ) {
+				return $entry;
+			}
+		}
+
+		return null;
 	}
 }
