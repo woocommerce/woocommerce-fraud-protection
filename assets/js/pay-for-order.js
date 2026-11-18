@@ -22,7 +22,17 @@
  * the session ID prepared in advance, or the `not_ready` reason when none is
  * ready, and lets the submit continue.
  *
- * No reset needed — every outcome is a full page navigation.
+ * A payment can end without leaving the page, for example a declined card
+ * shown inline or a payment window that the shopper closes, and the page can
+ * come back from the back-forward cache. The session ID in the form was
+ * already verified for the earlier attempt, so a submit by the shopper
+ * acquires a new one, and a restored page drops it. A submit is the shopper's
+ * when it is trusted and follows a trusted click or Enter key press in the
+ * same task. Gateways that submit again after tokenization use
+ * dispatchEvent(), jQuery's trigger(), or form.submit(), which are not trusted
+ * or fire no submit event. A gateway that clicks the Pay button from a script
+ * gets a trusted submit, but its click is not trusted. These keep the session
+ * ID of the attempt they complete.
  *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
  */
@@ -97,6 +107,38 @@
 	// True from the first held submit until its re-submit is dispatched.
 	let resubmitPending = false;
 
+	// True from the shopper's click or Enter key press until the end of its
+	// task. A submit that the shopper starts this way is dispatched in that
+	// same task.
+	let isShopperAction = false;
+
+	/**
+	 * Note a trusted click or key press until the end of the current task.
+	 *
+	 * @param {Event} e Click or keydown event.
+	 */
+	function noteShopperAction( e ) {
+		if ( ! e.isTrusted ) {
+			return;
+		}
+
+		isShopperAction = true;
+		setTimeout( function () {
+			isShopperAction = false;
+		}, 0 );
+	}
+
+	form.addEventListener( 'click', noteShopperAction, true );
+	form.addEventListener(
+		'keydown',
+		function ( e ) {
+			if ( e.key === 'Enter' ) {
+				noteShopperAction( e );
+			}
+		},
+		true
+	);
+
 	// Capture phase: fires before all bubble-phase (jQuery) handlers.
 	form.addEventListener(
 		'submit',
@@ -121,9 +163,16 @@
 				return;
 			}
 
-			// Session ID already injected — let through (handles both
-			// our re-submit and gateway re-triggers after tokenization).
-			if ( document.getElementById( sessionIdField ) ) {
+			// Session ID already injected — let through our re-submit and
+			// gateway re-triggers after tokenization. A submit by the shopper
+			// is a new attempt after a payment that stayed on the page, so it
+			// acquires a new session ID. The current fields stay until the new
+			// ones are ready, in case the gateway still posts the form for the
+			// earlier attempt.
+			if (
+				document.getElementById( sessionIdField ) &&
+				! ( e.isTrusted && isShopperAction )
+			) {
 				return;
 			}
 
@@ -230,6 +279,25 @@
 		) {
 			addPreparedSessionId( fraudProtection );
 		}
+	} );
+
+	// A page restored from the back-forward cache keeps the fields of the
+	// attempt made before the shopper left it. The next submit needs a new
+	// session ID.
+	window.addEventListener( 'pageshow', function ( e ) {
+		const fraudProtection = window.wcFraudProtection;
+		if ( ! e.persisted || ! fraudProtection || ! fraudProtection.config ) {
+			return;
+		}
+
+		const { sessionIdField, sessionIdErrorField } = fraudProtection.config;
+		[ sessionIdField, sessionIdErrorField ].forEach( function ( name ) {
+			if ( name ) {
+				$( form )
+					.find( 'input[name="' + name + '"]' )
+					.remove();
+			}
+		} );
 	} );
 
 	// Keep a session ID ready for a submit that cannot wait for one.

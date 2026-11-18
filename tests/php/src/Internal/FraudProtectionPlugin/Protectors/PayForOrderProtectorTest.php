@@ -13,8 +13,18 @@ use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\PayForOrderProtector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
+use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ApiClient;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\DecisionHandler;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleEvaluator;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionDataCollector;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventRecorder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Settings\AutomaticProtectionSetting;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 
 /**
  * Tests for the PayForOrderProtector class.
@@ -405,5 +415,189 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 
 		// Should still be just 1 notice, not 2.
 		$this->assertSame( 1, wc_notice_count( 'error' ) );
+	}
+
+	/**
+	 * @testdox verify_and_block() verifies without a session, with the `reused` reason, when the submitted session ID is the one stored on the order.
+	 */
+	public function test_verify_without_session_when_submitted_id_is_the_order_session_id(): void {
+		$this->order = \WC_Helper_Order::create_order();
+		$this->order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'sess-first-attempt' );
+		$this->order->save_meta_data();
+		$_POST['wc_fraud_protection_session_id'] = 'sess-first-attempt';
+		$_POST['payment_method']                 = 'stripe';
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with(
+				'',
+				'pay_for_order',
+				$this->order->get_id(),
+				$this->callback(
+					fn( array $request_data ): bool => SessionIdError::REUSED === ( $request_data[ SessionIdError::FIELD ] ?? null )
+						&& 'stripe' === $request_data['payment_method']
+				)
+			)
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block( $this->order );
+
+		$this->assertLogged(
+			'info',
+			'already verified for the order',
+			array(
+				'session_id' => 'sess-first-attempt',
+				'order_id'   => $this->order->get_id(),
+			)
+		);
+	}
+
+	/**
+	 * @testdox verify_and_block() sends the submitted session ID unchanged when it is not the one stored on the order.
+	 *
+	 * @dataProvider session_id_not_stored_on_order_provider
+	 *
+	 * @param mixed  $stored    Session ID stored on the order, or null for none.
+	 * @param string $submitted Submitted session ID.
+	 */
+	public function test_verify_sends_submitted_session_id_not_stored_on_order( $stored, string $submitted ): void {
+		$this->order = \WC_Helper_Order::create_order();
+		if ( null !== $stored ) {
+			$this->order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, $stored );
+			$this->order->save_meta_data();
+		}
+		$_POST['wc_fraud_protection_session_id'] = $submitted;
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with(
+				$submitted,
+				'pay_for_order',
+				$this->order->get_id(),
+				$this->callback( fn( array $request_data ): bool => ! array_key_exists( SessionIdError::FIELD, $request_data ) )
+			)
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block( $this->order );
+	}
+
+	/**
+	 * Data provider for submitted session IDs that are not the order's session ID.
+	 *
+	 * @return array<string, array{0: mixed, 1: string}>
+	 */
+	public function session_id_not_stored_on_order_provider(): array {
+		return array(
+			'no stored session ID'            => array( null, 'sess-new-attempt' ),
+			'another stored session ID'       => array( 'sess-first-attempt', 'sess-new-attempt' ),
+			'empty submitted and stored'      => array( '', '' ),
+			'stored session ID is not string' => array( array( 'sess-new-attempt' ), 'sess-new-attempt' ),
+		);
+	}
+
+	/**
+	 * @testdox verify_and_block() verifies without a session every time the same session ID is submitted again, not only the first time.
+	 */
+	public function test_every_later_submission_of_a_used_session_id_is_verified_without_a_session(): void {
+		$this->order = \WC_Helper_Order::create_order();
+		$sent_ids    = array();
+
+		// Only the transport is replaced. A verification without a session
+		// answers with a session ID of its own, which replaces the one stored
+		// on the order.
+		$api_client = $this->getMockBuilder( ApiClient::class )
+			->onlyMethods( array( 'jetpack_remote_request' ) )
+			->getMock();
+		$api_client
+			->expects( $this->exactly( 4 ) )
+			->method( 'jetpack_remote_request' )
+			->willReturnCallback(
+				function ( array $request_args, string $body ) use ( &$sent_ids ): array {
+					$payload    = json_decode( $body, true );
+					$sent_id    = is_string( $payload['session_id'] ?? null ) ? $payload['session_id'] : '';
+					$sent_ids[] = $sent_id;
+
+					return array(
+						'response' => array( 'code' => 200 ),
+						'body'     => wp_json_encode(
+							array(
+								'data' => array(
+									'decision'   => 'allow',
+									'session_id' => '' === $sent_id ? 'sessionless-' . count( $sent_ids ) : $sent_id,
+								),
+							)
+						),
+					);
+				}
+			);
+		$session_id_normalizer = new SessionIdNormalizer();
+		$api_client->init( wc_get_container()->get( VisitorIpResolver::class ), $session_id_normalizer );
+
+		$automatic_protection = new AutomaticProtectionSetting();
+		$decision_handler     = new DecisionHandler();
+		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $this->createMock( RuleEvaluator::class ), $automatic_protection );
+
+		$session_verifier = new SessionVerifier();
+		$session_verifier->init(
+			wc_get_container()->get( SessionDataCollector::class ),
+			$api_client,
+			$decision_handler,
+			wc_get_container()->get( PaymentDataResolver::class ),
+			$session_id_normalizer
+		);
+
+		$sut = new PayForOrderProtector();
+		$sut->init( $session_verifier, $this->blocked_session_message, $this->blackbox_script_handler );
+
+		$_POST['payment_method'] = 'cheque';
+		foreach ( array( 'sess-first', 'sess-first', 'sess-first', 'sess-second' ) as $submitted ) {
+			$_POST['wc_fraud_protection_session_id'] = $submitted;
+			// Each submission is a request of its own, with the order read again.
+			$sut->verify_and_block( wc_get_order( $this->order->get_id() ) );
+		}
+
+		$this->assertSame( array( 'sess-first', '', '', 'sess-second' ), $sent_ids );
+	}
+
+	/**
+	 * @testdox verify_and_block() does not record the session ID as used when the verification did not complete.
+	 */
+	public function test_session_id_of_a_failed_verification_can_be_sent_again(): void {
+		$this->order                             = \WC_Helper_Order::create_order();
+		$_POST['wc_fraud_protection_session_id'] = 'sess-first-attempt';
+
+		// A verification that fails open has no verified session ID.
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( '' );
+		$this->session_verifier
+			->expects( $this->exactly( 2 ) )
+			->method( 'verify_session' )
+			->with( 'sess-first-attempt', 'pay_for_order', $this->order->get_id(), $this->anything() )
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block( wc_get_order( $this->order->get_id() ) );
+		$this->sut->verify_and_block( wc_get_order( $this->order->get_id() ) );
+	}
+
+	/**
+	 * @testdox verify_and_block() keeps a bounded list of used session IDs on the order.
+	 */
+	public function test_used_session_ids_list_is_bounded(): void {
+		$this->order = \WC_Helper_Order::create_order();
+
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'response-session-id' );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+
+		for ( $attempt = 1; $attempt <= 12; $attempt++ ) {
+			$_POST['wc_fraud_protection_session_id'] = 'sess-' . $attempt;
+			$this->sut->verify_and_block( wc_get_order( $this->order->get_id() ) );
+		}
+
+		$used = wc_get_order( $this->order->get_id() )->get_meta( '_wc_fraud_protection_pay_for_order_used_session_ids' );
+
+		$this->assertSame( 10, count( $used ) );
+		$this->assertSame( 'sess-3', $used[0] );
+		$this->assertSame( 'sess-12', $used[9] );
 	}
 }

@@ -30,6 +30,11 @@ class SessionIdError {
 	public const NOT_SUBMITTED = 'not_submitted';
 
 	/**
+	 * Reason recorded when the only session ID available was already used by an earlier attempt.
+	 */
+	public const REUSED = 'reused';
+
+	/**
 	 * Reasons the browser can report.
 	 *
 	 * `not_ready` means the request was sent before the session ID was ready,
@@ -37,7 +42,7 @@ class SessionIdError {
 	 * the browser only had a session ID that an earlier attempt already took, and
 	 * no new one arrived in time.
 	 */
-	private const REPORTED = array( 'timeout', 'sdk_error', 'sdk_unavailable', 'not_ready', 'reused' );
+	private const REPORTED = array( 'timeout', 'sdk_error', 'sdk_unavailable', 'not_ready', self::REUSED );
 
 	/**
 	 * Reason used when the browser reported no valid reason.

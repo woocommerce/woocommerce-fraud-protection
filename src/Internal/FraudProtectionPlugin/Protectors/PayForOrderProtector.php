@@ -14,6 +14,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -36,6 +37,26 @@ class PayForOrderProtector {
 	 * Source identifier for verify requests from this protector.
 	 */
 	private const SOURCE = 'pay_for_order';
+
+	/**
+	 * Order meta key for the session IDs already sent to verify payments for the order.
+	 *
+	 * The order's session ID meta holds only the ID of the latest verification,
+	 * and a verification without a session replaces it. This list keeps the
+	 * earlier ones, so a session ID left in the form is recognized on every
+	 * later submission, not only on the next one.
+	 */
+	private const USED_SESSION_IDS_KEY = '_wc_fraud_protection_pay_for_order_used_session_ids';
+
+	/**
+	 * Maximum number of used session IDs kept per order.
+	 */
+	private const MAX_USED_SESSION_IDS = 10;
+
+	/**
+	 * Maximum length of a session ID kept in the list.
+	 */
+	private const MAX_SESSION_ID_LENGTH = 255;
 
 	/**
 	 * Session verifier instance.
@@ -108,13 +129,40 @@ class PayForOrderProtector {
 	public function verify_and_block( \WC_Order $order ): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce form handler.
 		$request_data = $this->build_request_data( $_POST );
+		$submitted_id = $this->get_submitted_session_id();
+		$session_id   = $submitted_id;
+		$is_reused    = $this->is_used_session_id( $submitted_id, $order );
+
+		// A payment that ends without leaving the page can leave the earlier
+		// attempt's session ID in the form. That ID was already verified for
+		// this order, so this attempt is verified without a session instead.
+		if ( $is_reused ) {
+			FraudProtectionController::log(
+				'info',
+				'Pay-for-order submitted the session ID already verified for the order; verifying without a session',
+				array(
+					'event_source' => self::SOURCE,
+					'session_id'   => $submitted_id,
+					'order_id'     => $order->get_id(),
+				)
+			);
+
+			$session_id                            = '';
+			$request_data[ SessionIdError::FIELD ] = SessionIdError::REUSED;
+		}
 
 		$decision = $this->session_verifier->verify_session(
-			$this->get_submitted_session_id(),
+			$session_id,
 			self::SOURCE,
 			$order->get_id(),
 			$request_data
 		);
+
+		// A completed verification used the submitted session ID. A failed one
+		// did not, so the same ID can be sent again.
+		if ( $is_reused || '' !== $this->session_verifier->last_verified_session_id() ) {
+			$this->remember_used_session_id( $submitted_id, $order );
+		}
 
 		if ( FraudDecision::Block === $decision ) {
 			$message = $this->blocked_session_message->get_html( MessageContext::Purchase );
@@ -122,6 +170,90 @@ class PayForOrderProtector {
 				wc_add_notice( $message, 'error' );
 			}
 		}
+	}
+
+	/**
+	 * Check whether a submitted session ID was already used to verify a payment for the order.
+	 *
+	 * It was when it is the session ID that the latest verification stored on
+	 * the order, or one of the IDs that earlier pay-for-order submissions sent.
+	 *
+	 * @param mixed     $session_id The submitted session ID.
+	 * @param \WC_Order $order      The order being paid for.
+	 * @return bool True when the submitted ID is a nonempty string that was already used.
+	 */
+	private function is_used_session_id( mixed $session_id, \WC_Order $order ): bool {
+		if ( ! is_string( $session_id ) || '' === $session_id ) {
+			return false;
+		}
+
+		try {
+			if ( $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ) === $session_id ) {
+				return true;
+			}
+
+			return in_array( $session_id, $this->get_used_session_ids( $order ), true );
+		} catch ( \Throwable $e ) {
+			// Fail open: the submitted session ID is verified as before.
+			FraudProtectionController::log(
+				'warning',
+				'Reading the order session IDs failed',
+				array(
+					'event_source'    => self::SOURCE,
+					'order_id'        => $order->get_id(),
+					'exception_class' => $e::class,
+				)
+			);
+			return false;
+		}
+	}
+
+	/**
+	 * Add a submitted session ID to the order's list of used ones.
+	 *
+	 * Keeps the latest MAX_USED_SESSION_IDS. Errors leave the list unchanged.
+	 *
+	 * @param mixed     $session_id The submitted session ID.
+	 * @param \WC_Order $order      The order being paid for.
+	 * @return void
+	 */
+	private function remember_used_session_id( mixed $session_id, \WC_Order $order ): void {
+		if ( ! is_string( $session_id ) || '' === $session_id || strlen( $session_id ) > self::MAX_SESSION_ID_LENGTH ) {
+			return;
+		}
+
+		try {
+			$used = $this->get_used_session_ids( $order );
+			if ( in_array( $session_id, $used, true ) ) {
+				return;
+			}
+
+			$used[] = $session_id;
+			$order->update_meta_data( self::USED_SESSION_IDS_KEY, array_slice( $used, -self::MAX_USED_SESSION_IDS ) );
+			$order->save_meta_data();
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Storing the used order session ID failed',
+				array(
+					'event_source'    => self::SOURCE,
+					'order_id'        => $order->get_id(),
+					'exception_class' => $e::class,
+				)
+			);
+		}
+	}
+
+	/**
+	 * Read the session IDs already sent to verify payments for the order.
+	 *
+	 * @param \WC_Order $order The order being paid for.
+	 * @return string[] The stored session IDs; values that are not strings are dropped.
+	 */
+	private function get_used_session_ids( \WC_Order $order ): array {
+		$stored = $order->get_meta( self::USED_SESSION_IDS_KEY );
+
+		return is_array( $stored ) ? array_values( array_filter( $stored, 'is_string' ) ) : array();
 	}
 
 	/**
