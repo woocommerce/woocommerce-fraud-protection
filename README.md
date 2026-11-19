@@ -244,3 +244,5 @@ withSessionId( requestBody ).then( function ( body ) {
 The plugin owns this shared Blackbox infrastructure (the SDK loader, the `wc-fraud-protection-blackbox-init` init script, and the localized `config`). A third-party gateway's own interceptor script is owned and enqueued by the gateway — from its own plugin URL and version; the one exception is the PayPal interceptor (`paypal-express.js`), which this plugin ships and enqueues itself.
 
 All the code in the `src/Internal/` directory (`Automattic\WooCommerce\Internal` as the root namespace) is for **exclusive internal usage** of the plugin and **MUST NOT** be used by other plugins (or otherwise from outside of this plugin): backwards compatibility for this code across plugin versions is not guaranteed.
+
+<!-- AI review live check; this PR is closed, not merged. -->
