@@ -208,12 +208,14 @@ class PaymentAttemptsCommands {
 				$fetched = count( $rows );
 				++$query['page'];
 			} while ( ! $is_count && $fetched < $limit && array() !== $result['items'] && $fetched < $total );
+
+			$items = $this->to_items( array_slice( $rows, 0, $limit ) );
 		} catch ( \RuntimeException ) {
 			$this->output->error( self::load_failed_message() );
 			return;
 		}
 
-		$this->output->display_list( $assoc_args, $this->to_items( array_slice( $rows, 0, $limit ) ), $total, self::DEFAULT_FIELDS );
+		$this->output->display_list( $assoc_args, $items, $total, self::DEFAULT_FIELDS );
 	}
 
 	/**
@@ -236,18 +238,19 @@ class PaymentAttemptsCommands {
 		}
 
 		try {
-			$row = $this->event_store->get_list_event( $id );
+			$row  = $this->event_store->get_list_event( $id );
+			$item = is_null( $row ) ? null : $this->to_items( array( $row ) )[0];
 		} catch ( \RuntimeException ) {
 			$this->output->error( self::load_failed_message() );
 			return;
 		}
 
-		if ( is_null( $row ) ) {
+		if ( is_null( $item ) ) {
 			$this->output->error( __( 'The payment attempt could not be found.', 'woocommerce-fraud-protection' ) );
 			return;
 		}
 
-		$this->output->display_item( $assoc_args, $this->to_items( array( $row ) )[0] );
+		$this->output->display_item( $assoc_args, $item );
 	}
 
 	/**
@@ -316,6 +319,7 @@ class PaymentAttemptsCommands {
 	 *
 	 * @param array<int, array<string, mixed>> $rows Typed event rows.
 	 * @return array<int, array<string, mixed>>
+	 * @throws \RuntimeException When the active rules cannot be loaded.
 	 */
 	private function to_items( array $rows ): array {
 		$rules = $this->rule_finder->find_for_events( $rows );

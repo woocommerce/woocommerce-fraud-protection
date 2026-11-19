@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FailingRuleQuery;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\SessionEventFixtures;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\CommandOutput;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\PaymentAttemptsCommands;
@@ -269,6 +270,41 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( array( $with ), array_column( Formatter::$calls[0]['data'], 'id' ) );
 		$this->assertSame( array( $without ), array_column( Formatter::$calls[1]['data'], 'id' ) );
+	}
+
+	/**
+	 * @testdox Reports an error instead of a wrong result when the active rules cannot be loaded.
+	 * @dataProvider rule_load_failure_provider
+	 *
+	 * @param string               $method     Command method.
+	 * @param array<string, mixed> $assoc_args Associative arguments.
+	 */
+	public function test_reports_rule_load_failures( string $method, array $assoc_args ): void {
+		$this->rule_store->create_rule( FraudDecision::Block, RuleManager::build_conditions( 'ip', '192.0.2.10' ) );
+		$id = $this->an_attempt( array( 'ip' => '192.0.2.10' ) );
+
+		$completed = FailingRuleQuery::active_ruleset(
+			$this->schema_manager,
+			fn() => $this->run_command( $method, 'get_attempt' === $method ? array( (string) $id ) : array(), $assoc_args )
+		);
+
+		$this->assertFalse( $completed, 'The command must exit with an error' );
+		$this->assertSame( array( 'The payment activity could not be loaded.' ), $this->messages( 'error' ) );
+		$this->assertSame( array(), Formatter::$calls, 'No attempts must be shown' );
+	}
+
+	/**
+	 * Commands that read the active rules.
+	 *
+	 * @return array<string, array{string, array<string, mixed>}>
+	 */
+	public function rule_load_failure_provider(): array {
+		return array(
+			'list with rules'    => array( 'list_attempts', array( 'rules' => 'with' ) ),
+			'list without rules' => array( 'list_attempts', array( 'rules' => 'without' ) ),
+			'list rule columns'  => array( 'list_attempts', array() ),
+			'get rule columns'   => array( 'get_attempt', array() ),
+		);
 	}
 
 	/**

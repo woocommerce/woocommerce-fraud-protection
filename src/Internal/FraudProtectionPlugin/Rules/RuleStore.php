@@ -415,7 +415,7 @@ class RuleStore {
 		$count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The query uses a dynamically built list of safe filter predicates and all values are passed to prepare().
 		$total = $wpdb->get_var( $wpdb->prepare( $count_sql, $values ) );
-		if ( false === $total || is_null( $total ) ) {
+		if ( self::has_database_error() || is_null( $total ) ) {
 			throw new \RuntimeException( 'Active rule count query failed.' );
 		}
 
@@ -435,7 +435,7 @@ class RuleStore {
 		$args   = array_merge( $values, array( $per_page, $offset ) );
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Expressions and direction are selected from fixed allowlists and all values are passed to prepare().
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
-		if ( ! is_array( $rows ) ) {
+		if ( self::has_database_error() || ! is_array( $rows ) ) {
 			throw new \RuntimeException( 'Active rule list query failed.' );
 		}
 
@@ -463,7 +463,11 @@ class RuleStore {
 	 * rules are logged and skipped, so one corrupt row never disables the
 	 * rest of the ruleset.
 	 *
+	 * A failed query throws instead of returning an empty ruleset, and is not
+	 * cached, so callers can tell a failure from a store without rules.
+	 *
 	 * @return Rule[] The active rules, evaluation order.
+	 * @throws \RuntimeException When the query fails.
 	 */
 	public function get_active_rules(): array {
 		global $wpdb;
@@ -475,7 +479,9 @@ class RuleStore {
 
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE status = %s ORDER BY position, id", RuleStatus::Active->value ), ARRAY_A );
-			$rows = is_array( $rows ) ? $rows : array();
+			if ( self::has_database_error() || ! is_array( $rows ) ) {
+				throw new \RuntimeException( 'Active ruleset query failed.' );
+			}
 
 			wp_cache_set( self::ACTIVE_RULES_CACHE_KEY, $rows, self::CACHE_GROUP, self::ACTIVE_RULES_CACHE_TTL );
 		}
@@ -741,5 +747,21 @@ class RuleStore {
 		wp_cache_delete( self::ACTIVE_RULES_CACHE_KEY, self::CACHE_GROUP );
 
 		return $result;
+	}
+
+	/**
+	 * Check whether the last database query failed.
+	 *
+	 * Read queries return an empty result when they fail, so the error must be
+	 * checked to tell a failure from a query without matches.
+	 *
+	 * @phpstan-impure
+	 *
+	 * @return bool
+	 */
+	private static function has_database_error(): bool {
+		global $wpdb;
+
+		return '' !== (string) $wpdb->last_error;
 	}
 }

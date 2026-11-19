@@ -18,6 +18,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\RuleStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\VisitorIpResolver;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FailingRuleQuery;
 
 /**
  * Tests for the RuleEvaluator class.
@@ -330,5 +331,18 @@ class RuleEvaluatorTest extends FraudProtectionUnitTestCase {
 
 		$this->assertNull( $sut->evaluate_for_session( $this->a_session_data_payload() ) );
 		$this->assertLogged( 'error', 'Rule evaluation failed, no rule applied' );
+	}
+
+	/**
+	 * @testdox Should fail open on a failed ruleset query, and apply the rules again on the next evaluation.
+	 */
+	public function test_failed_ruleset_query_does_not_disable_later_evaluations(): void {
+		$rule = $this->rule_store->create_rule( FraudDecision::Block, $this->email_condition( 'customer@example.com' ) );
+
+		$failed = FailingRuleQuery::active_ruleset( $this->schema_manager, fn() => $this->sut->evaluate_for_session( $this->a_session_data_payload() ) );
+
+		$this->assertNull( $failed, 'A failed ruleset query must fail open' );
+		$this->assertLogged( 'error', 'Rule evaluation failed, no rule applied' );
+		$this->assertSame( $rule->id, $this->sut->evaluate_for_session( $this->a_session_data_payload() )?->id, 'The failure must not leave an empty ruleset in the cache' );
 	}
 }

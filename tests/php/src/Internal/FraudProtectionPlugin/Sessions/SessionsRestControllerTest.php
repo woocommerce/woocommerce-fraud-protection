@@ -8,6 +8,7 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FailingRuleQuery;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\SessionEventFixtures;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
@@ -300,6 +301,38 @@ class SessionsRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$emails = array_column( $response->get_data(), 'email' );
 		sort( $emails );
 		$this->assertSame( array( 'clean1@example.com', 'ruled@example.com' ), $emails );
+	}
+
+	/**
+	 * @testdox The list reports an error instead of a wrong result when the active rules cannot be loaded.
+	 * @dataProvider rules_filter_provider
+	 *
+	 * @param string $rules The rules filter value, or an empty string for none.
+	 */
+	public function test_list_reports_rule_load_failures( string $rules ): void {
+		$this->seed_rule_filter_data();
+
+		$request = new \WP_REST_Request( 'GET', self::LIST_ROUTE );
+		if ( '' !== $rules ) {
+			$request->set_param( 'rules', $rules );
+		}
+		$response = FailingRuleQuery::active_ruleset( $this->schema_manager, fn() => $this->server->dispatch( $request ) );
+
+		$this->assertSame( 500, $response->get_status() );
+		$this->assertSame( 'woocommerce_fraud_protection_sessions_unavailable', $response->get_data()['code'] );
+	}
+
+	/**
+	 * Rules filter values.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public function rules_filter_provider(): array {
+		return array(
+			'with rules'    => array( 'with' ),
+			'without rules' => array( 'without' ),
+			'no filter'     => array( '' ),
+		);
 	}
 
 	/**
