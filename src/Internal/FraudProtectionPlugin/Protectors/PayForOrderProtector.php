@@ -39,24 +39,13 @@ class PayForOrderProtector {
 	private const SOURCE = 'pay_for_order';
 
 	/**
-	 * Order meta key for the session IDs already sent to verify payments for the order.
+	 * Order meta key for the session IDs that pay-for-order submissions already sent to verify payments for the order.
 	 *
-	 * The order's session ID meta holds only the ID of the latest verification,
-	 * and a verification without a session replaces it. This list keeps the
-	 * earlier ones, so a session ID left in the form is recognized on every
-	 * later submission, not only on the next one.
+	 * Only this protector writes the list. The order's session ID meta is not
+	 * used instead: other flows can store a session ID there that the form then
+	 * posts for the same attempt, and it holds only the latest verification.
 	 */
 	private const USED_SESSION_IDS_KEY = '_wc_fraud_protection_pay_for_order_used_session_ids';
-
-	/**
-	 * The submitted session ID is in the order's list of used ones.
-	 */
-	private const FOUND_IN_LIST = 'list';
-
-	/**
-	 * The submitted session ID is the one the latest verification stored on the order.
-	 */
-	private const FOUND_ON_ORDER = 'order';
 
 	/**
 	 * Maximum number of used session IDs kept per order.
@@ -141,8 +130,7 @@ class PayForOrderProtector {
 		$request_data = $this->build_request_data( $_POST );
 		$submitted_id = $this->get_submitted_session_id();
 		$session_id   = $submitted_id;
-		$found_in     = $this->find_used_session_id( $submitted_id, $order );
-		$is_reused    = '' !== $found_in;
+		$is_reused    = $this->is_used_session_id( $submitted_id, $order );
 
 		// A payment that ends without leaving the page can leave the earlier
 		// attempt's session ID in the form. That ID was already verified for
@@ -150,7 +138,8 @@ class PayForOrderProtector {
 		// A used ID always comes from an earlier attempt: each attempt posts
 		// the form once, which leaves the page, and the supported gateways
 		// complete steps such as 3D Secure through their own requests, not by
-		// posting the form again.
+		// posting the form again. Those requests can verify the session ID that
+		// the form then posts, so only IDs that this protector sent count.
 		if ( $is_reused ) {
 			FraudProtectionController::log(
 				'info',
@@ -174,13 +163,10 @@ class PayForOrderProtector {
 		);
 
 		// A completed verification used the submitted session ID. A failed one
-		// did not, so the same ID can be sent again. An ID found in the list is
-		// not added again: another request may have pushed it out since, and
-		// adding it back would push out a newer one.
-		if (
-			self::FOUND_IN_LIST !== $found_in
-			&& ( $is_reused || '' !== $this->session_verifier->last_verified_session_id() )
-		) {
+		// did not, so the same ID can be sent again. A used ID is not added
+		// again: another request may have pushed it out since, and adding it
+		// back would push out a newer one.
+		if ( ! $is_reused && '' !== $this->session_verifier->last_verified_session_id() ) {
 			$this->remember_used_session_id( $submitted_id, $order );
 		}
 
@@ -193,42 +179,31 @@ class PayForOrderProtector {
 	}
 
 	/**
-	 * Find where a submitted session ID is recorded as already used to verify a payment for the order.
-	 *
-	 * It is either in the list of IDs that earlier pay-for-order submissions
-	 * sent, or the session ID that the latest verification stored on the order.
+	 * Check whether an earlier pay-for-order submission already sent a session ID to verify a payment for the order.
 	 *
 	 * @param mixed     $session_id The submitted session ID.
 	 * @param \WC_Order $order      The order being paid for.
-	 * @return string FOUND_IN_LIST, FOUND_ON_ORDER, or an empty string when the ID is not a nonempty string that was already used.
+	 * @return bool True when the ID is a nonempty string in the order's list of used session IDs.
 	 */
-	private function find_used_session_id( mixed $session_id, \WC_Order $order ): string {
+	private function is_used_session_id( mixed $session_id, \WC_Order $order ): bool {
 		if ( ! is_string( $session_id ) || '' === $session_id ) {
-			return '';
+			return false;
 		}
 
 		try {
-			if ( in_array( $session_id, $this->get_used_session_ids( $order ), true ) ) {
-				return self::FOUND_IN_LIST;
-			}
-
-			if ( $order->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, true, 'edit' ) === $session_id ) {
-				return self::FOUND_ON_ORDER;
-			}
-
-			return '';
+			return in_array( $session_id, $this->get_used_session_ids( $order ), true );
 		} catch ( \Throwable $e ) {
 			// Fail open: the submitted session ID is verified as before.
 			FraudProtectionController::log(
 				'warning',
-				'Reading the order session IDs failed',
+				'Reading the used order session IDs failed',
 				array(
 					'event_source'    => self::SOURCE,
 					'order_id'        => $order->get_id(),
 					'exception_class' => $e::class,
 				)
 			);
-			return '';
+			return false;
 		}
 	}
 

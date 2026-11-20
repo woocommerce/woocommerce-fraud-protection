@@ -453,11 +453,11 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_and_block() verifies without a session, with the `reused` reason, when the submitted session ID is the one stored on the order.
+	 * @testdox verify_and_block() verifies without a session, with the `reused` reason, when an earlier submission already sent the submitted session ID.
 	 */
-	public function test_verify_without_session_when_submitted_id_is_the_order_session_id(): void {
+	public function test_verify_without_session_when_submitted_id_was_already_used(): void {
 		$this->order = \WC_Helper_Order::create_order();
-		$this->order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'sess-first-attempt' );
+		$this->order->update_meta_data( self::USED_SESSION_IDS_KEY, array( 'sess-earlier', 'sess-first-attempt' ) );
 		$this->order->save_meta_data();
 		$_POST['wc_fraud_protection_session_id'] = 'sess-first-attempt';
 		$_POST['payment_method']                 = 'stripe';
@@ -489,17 +489,17 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox verify_and_block() sends the submitted session ID unchanged when it is not the one stored on the order.
+	 * @testdox verify_and_block() sends the submitted session ID unchanged when no earlier submission sent it.
 	 *
-	 * @dataProvider session_id_not_stored_on_order_provider
+	 * @dataProvider session_id_not_used_provider
 	 *
-	 * @param mixed  $stored    Session ID stored on the order, or null for none.
+	 * @param mixed  $stored    Stored list of used session IDs, or null for none.
 	 * @param string $submitted Submitted session ID.
 	 */
-	public function test_verify_sends_submitted_session_id_not_stored_on_order( $stored, string $submitted ): void {
+	public function test_verify_sends_submitted_session_id_not_used( $stored, string $submitted ): void {
 		$this->order = \WC_Helper_Order::create_order();
 		if ( null !== $stored ) {
-			$this->order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, $stored );
+			$this->order->update_meta_data( self::USED_SESSION_IDS_KEY, $stored );
 			$this->order->save_meta_data();
 		}
 		$_POST['wc_fraud_protection_session_id'] = $submitted;
@@ -519,17 +519,44 @@ class PayForOrderProtectorTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Data provider for submitted session IDs that are not the order's session ID.
+	 * Data provider for submitted session IDs that no earlier submission sent.
 	 *
 	 * @return array<string, array{0: mixed, 1: string}>
 	 */
-	public function session_id_not_stored_on_order_provider(): array {
+	public function session_id_not_used_provider(): array {
 		return array(
-			'no stored session ID'            => array( null, 'sess-new-attempt' ),
-			'another stored session ID'       => array( 'sess-first-attempt', 'sess-new-attempt' ),
-			'empty submitted and stored'      => array( '', '' ),
-			'stored session ID is not string' => array( array( 'sess-new-attempt' ), 'sess-new-attempt' ),
+			'no list'                     => array( null, 'sess-new-attempt' ),
+			'other used session IDs'      => array( array( 'sess-first-attempt' ), 'sess-new-attempt' ),
+			'empty submitted and listed'  => array( array( '' ), '' ),
+			'stored list is not an array' => array( 'sess-new-attempt', 'sess-new-attempt' ),
 		);
+	}
+
+	/**
+	 * @testdox verify_and_block() sends the submitted session ID unchanged when another verification for the order stored it.
+	 */
+	public function test_verify_sends_submitted_session_id_stored_on_order_by_another_verification(): void {
+		// A request that verified the same attempt before the form was posted,
+		// for example a gateway's, stores its session ID on the order. The
+		// form posts that ID, and the verification needs it to find that
+		// earlier decision.
+		$this->order = \WC_Helper_Order::create_order();
+		$this->order->update_meta_data( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY, 'sess-attempt' );
+		$this->order->save_meta_data();
+		$_POST['wc_fraud_protection_session_id'] = 'sess-attempt';
+
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with(
+				'sess-attempt',
+				'pay_for_order',
+				$this->order->get_id(),
+				$this->callback( fn( array $request_data ): bool => ! array_key_exists( SessionIdError::FIELD, $request_data ) )
+			)
+			->willReturn( FraudDecision::Allow );
+
+		$this->sut->verify_and_block( $this->order );
 	}
 
 	/**
