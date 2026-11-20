@@ -2,8 +2,9 @@
 
 YYYY-xx-xx - version 0.3.3
 * Added - New `wp wc fraud-protection payment-attempts list` and `get` commands show recorded payment attempts, and new `wp wc fraud-protection custom-rules` commands list, show, create, update, and delete custom rules. They are available when the merchant-facing features are enabled.
-* Fixed - On the pay-for-order page, when a payment ends without leaving the page, for example a declined card or a closed payment window, the shopper's next try is now analyzed as a new attempt instead of being rejected.
+* Added - New `wp wc fraud-protection payment-attempts delete` command deletes recorded payment attempts by ID, or every attempt recorded with an email address or IP address. It is available when the merchant-facing features are enabled. New `--email` and `--ip` options of `payment-attempts list` list the attempts with an exact email address or IP address.
 * Dev - `wp wc fraud-protection sessions prune` is deprecated in favor of `wp wc fraud-protection payment-attempts prune`. It still works, and it now prints a deprecation warning.
+* Fixed - On the pay-for-order page, when a payment ends without leaving the page, for example a declined card or a closed payment window, the shopper's next try is now analyzed as a new attempt instead of being rejected.
 * Fixed - When custom rules can't be read from the database, they are applied again on the next checkout instead of being skipped for up to five minutes, and the payment activity list shows an error instead of showing attempts as having no rules.
 
 2026-11-16 - version 0.3.2

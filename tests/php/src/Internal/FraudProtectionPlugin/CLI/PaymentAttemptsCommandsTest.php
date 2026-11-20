@@ -84,6 +84,20 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 	private array $output = array();
 
 	/**
+	 * Arguments passed to WP_CLI::confirm(), or null when it was not called.
+	 *
+	 * @var ?array
+	 */
+	private ?array $confirmed = null;
+
+	/**
+	 * Whether WP_CLI::confirm() answers no.
+	 *
+	 * @var bool
+	 */
+	private bool $decline = false;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
@@ -100,10 +114,22 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 					'line'        => function ( string $message ): void {
 						$this->output[] = array( 'line', $message );
 					},
+					'success'     => function ( string $message ): void {
+						$this->output[] = array( 'success', $message );
+					},
+					'warning'     => function ( string $message ): void {
+						$this->output[] = array( 'warning', $message );
+					},
 					'error'       => function ( string $message ): void {
 						$this->output[] = array( 'error', $message );
 						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The test models the WP-CLI exit.
 						throw new PaymentAttemptsCommandExit( $message );
+					},
+					'confirm'     => function ( string $question, array $assoc_args ): void {
+						$this->confirmed = array( $question, $assoc_args );
+						if ( $this->decline && empty( $assoc_args['yes'] ) ) {
+							throw new PaymentAttemptsCommandExit( 'declined' );
+						}
 					},
 				),
 			)
@@ -188,18 +214,22 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Registers the list and get command leaves.
+	 * @testdox Registers the list, get, and delete command leaves.
 	 */
 	public function test_registers_command_leaves(): void {
 		$this->sut->register_commands();
 
 		$this->assertSame(
-			array( 'wc fraud-protection payment-attempts list', 'wc fraud-protection payment-attempts get' ),
+			array( 'wc fraud-protection payment-attempts list', 'wc fraud-protection payment-attempts get', 'wc fraud-protection payment-attempts delete' ),
 			array_keys( $this->commands )
 		);
 		$list = array_column( $this->commands['wc fraud-protection payment-attempts list']['synopsis'], null, 'name' );
 		$this->assertSame( SessionEventStore::SORTABLE_COLUMNS, $list['orderby']['options'] );
 		$this->assertSame( '30', $list['days']['default'] );
+		$delete = array_column( $this->commands['wc fraud-protection payment-attempts delete']['synopsis'], null, 'name' );
+		$this->assertTrue( $delete['attempt']['repeating'] );
+		$this->assertSame( array( 'id', 'email', 'ip' ), $delete['type']['options'] );
+		$this->assertSame( 'flag', $delete['yes']['type'], 'Confirmation is skipped with the --yes flag' );
 	}
 
 	/**
@@ -255,6 +285,24 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'a@example.com', 'b@example.com' ), array_column( Formatter::$calls[0]['data'], 'email' ) );
 		$this->assertSame( array( 'blocked@example.com' ), array_column( Formatter::$calls[1]['data'], 'email' ) );
 		$this->assertSame( array( 'c@example.com' ), array_column( Formatter::$calls[2]['data'], 'email' ) );
+	}
+
+	/**
+	 * @testdox Lists the attempts that delete matches for an exact email address or IP address.
+	 */
+	public function test_list_exact_value_filters_match_delete(): void {
+		$email = $this->an_attempt( array( 'email' => 'Shopper@Example.com' ) );
+		$this->an_attempt( array( 'email' => 'other.shopper@example.com' ) );
+		$ip = $this->an_attempt( array( 'ip' => '2001:db8::1' ) );
+		$this->an_attempt( array( 'ip' => '2001:db8::10' ) );
+
+		$this->run_command( 'list_attempts', array(), array( 'email' => ' shopper@EXAMPLE.com' ) );
+		$this->run_command( 'list_attempts', array(), array( 'ip' => '2001:DB8:0::1' ) );
+		$this->assertTrue( $this->run_command( 'delete_attempts', array( 'shopper@EXAMPLE.com', '2001:DB8:0::1' ), array( 'yes' => true ) ) );
+
+		$this->assertSame( array( $email ), array_column( Formatter::$calls[0]['data'], 'id' ), 'An address that only contains the value is not listed' );
+		$this->assertSame( array( $ip ), array_column( Formatter::$calls[1]['data'], 'id' ) );
+		$this->assertSame( array( 'Delete 2 payment attempts?', array( 'yes' => true ) ), $this->confirmed, 'Delete matches the listed attempts' );
 	}
 
 	/**
@@ -401,6 +449,8 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 			'unknown final status' => array( array( 'final_status' => 'pending' ), 'Use one of: allowed or blocked.' ),
 			'invalid days'         => array( array( 'days' => '-1' ), 'The number of days must be a positive whole number.' ),
 			'invalid limit'        => array( array( 'limit' => 'all' ), 'The limit must be a positive whole number.' ),
+			'invalid email'        => array( array( 'email' => 'shopper' ), 'Enter a complete email address.' ),
+			'invalid IP'           => array( array( 'ip' => '192.0.2' ), 'Enter a complete IP address.' ),
 		);
 	}
 
@@ -429,9 +479,196 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 
 		$this->assertFalse( $this->run_command( 'list_attempts' ) );
 		$this->assertFalse( $this->run_command( 'get_attempt', array( '1' ) ) );
+		$this->assertFalse( $this->run_command( 'delete_attempts', array( '1' ), array( 'yes' => true ) ) );
 
-		$this->assertCount( 2, $this->messages( 'error' ) );
+		$this->assertCount( 3, $this->messages( 'error' ) );
 		$this->assertStringContainsString( 'database schema is incomplete', $this->messages( 'error' )[0] );
+		$this->assertNull( $this->confirmed );
+	}
+
+	/**
+	 * Get the IDs of the recorded attempts.
+	 *
+	 * @return int[]
+	 */
+	private function remaining_ids(): array {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		return array_map( 'intval', $wpdb->get_col( 'SELECT id FROM ' . $this->schema_manager->get_sessions_table_name() . ' ORDER BY id' ) );
+	}
+
+	/**
+	 * @testdox Delete detects IDs, email addresses and IP addresses, confirms with the number of matching attempts, and deletes each attempt once.
+	 */
+	public function test_delete_detects_argument_types(): void {
+		$by_id    = $this->an_attempt( array( 'email' => 'other@example.com' ) );
+		$by_email = $this->an_attempt( array( 'email' => 'shopper@example.com' ) );
+		$by_both  = $this->an_attempt(
+			array(
+				'email' => 'shopper@example.com',
+				'ip'    => '2001:db8::1',
+			)
+		);
+		$kept     = $this->an_attempt( array( 'email' => 'kept@example.com' ) );
+		$by_ip    = $this->an_attempt(
+			array(
+				'email' => 'ipv6@example.com',
+				'ip'    => '2001:db8::1',
+			)
+		);
+
+		$this->assertTrue( $this->run_command( 'delete_attempts', array( (string) $by_id, 'Shopper@Example.com', '2001:DB8:0::1', (string) $by_both ), array( 'yes' => true ) ) );
+
+		$this->assertSame( array( 'Delete 4 payment attempts?', array( 'yes' => true ) ), $this->confirmed, 'An attempt matched by several arguments is counted once' );
+		$this->assertSame( array(), Formatter::$calls, 'The attempts are not listed' );
+		$this->assertSame( array( 'Deleted 4 payment attempts.' ), $this->messages( 'success' ) );
+		$this->assertSame( array( $kept ), $this->remaining_ids() );
+		$this->assertNotContains( $by_email, $this->remaining_ids() );
+		$this->assertNotContains( $by_ip, $this->remaining_ids() );
+	}
+
+	/**
+	 * @testdox Delete accepts every argument only as the type given with --type.
+	 */
+	public function test_delete_with_explicit_type(): void {
+		$this->an_attempt( array( 'email' => 'shopper@example.com' ) );
+		$kept = $this->an_attempt( array( 'ip' => '192.0.2.10' ) );
+
+		$this->assertFalse( $this->run_command( 'delete_attempts', array( 'shopper@example.com', '192.0.2.10', (string) $kept ), array( 'type' => 'email' ) ) );
+
+		$this->assertSame(
+			array(
+				'"192.0.2.10" is not an email address.',
+				'"' . $kept . '" is not an email address.',
+			),
+			$this->messages( 'warning' )
+		);
+		$this->assertSame( array( 'Deleted 1 payment attempt. Some arguments matched no payment attempts.' ), $this->messages( 'error' ) );
+		$this->assertSame( array( $kept ), $this->remaining_ids(), 'Only the attempt matched as an email address is deleted' );
+	}
+
+	/**
+	 * @testdox Delete reports each argument that is not valid for its type.
+	 * @dataProvider invalid_delete_argument_provider
+	 *
+	 * @param ?string $type     The --type value, if any.
+	 * @param string  $expected Expected warning.
+	 */
+	public function test_delete_reports_invalid_arguments( ?string $type, string $expected ): void {
+		$assoc_args = is_null( $type ) ? array() : array( 'type' => $type );
+
+		$this->assertFalse( $this->run_command( 'delete_attempts', array( 'not-a-value' ), $assoc_args ) );
+
+		$this->assertSame( array( $expected ), $this->messages( 'warning' ) );
+		$this->assertSame( array( 'No matching payment attempts were found.' ), $this->messages( 'error' ) );
+		$this->assertNull( $this->confirmed, 'Nothing is confirmed when nothing matches' );
+	}
+
+	/**
+	 * Delete argument types and their warning for an invalid value.
+	 *
+	 * @return array<string, array{?string, string}>
+	 */
+	public function invalid_delete_argument_provider(): array {
+		return array(
+			'detected' => array( null, '"not-a-value" is not a payment attempt ID, an email address, or an IP address.' ),
+			'id'       => array( 'id', '"not-a-value" is not a payment attempt ID.' ),
+			'email'    => array( 'email', '"not-a-value" is not an email address.' ),
+			'ip'       => array( 'ip', '"not-a-value" is not an IP address.' ),
+		);
+	}
+
+	/**
+	 * @testdox Delete rejects an unknown --type.
+	 */
+	public function test_delete_rejects_unknown_type(): void {
+		$id = $this->an_attempt();
+
+		$this->assertFalse( $this->run_command( 'delete_attempts', array( (string) $id ), array( 'type' => 'session' ) ) );
+
+		$this->assertSame( array( 'Use one of: id, email, or ip.' ), $this->messages( 'error' ) );
+		$this->assertSame( array( $id ), $this->remaining_ids() );
+	}
+
+	/**
+	 * @testdox Declining the confirmation deletes nothing.
+	 */
+	public function test_delete_declined(): void {
+		$id            = $this->an_attempt();
+		$this->decline = true;
+
+		$this->assertFalse( $this->run_command( 'delete_attempts', array( (string) $id ) ) );
+
+		$this->assertSame( array( 'Delete 1 payment attempt?', array() ), $this->confirmed );
+		$this->assertSame( array( $id ), $this->remaining_ids() );
+	}
+
+	/**
+	 * @testdox Delete warns about unmatched arguments, deletes the matches, and exits with an error summary.
+	 */
+	public function test_delete_reports_unmatched_arguments(): void {
+		$id = $this->an_attempt();
+
+		$this->assertFalse( $this->run_command( 'delete_attempts', array( (string) $id, (string) ( $id + 1 ), 'nobody@example.com' ), array( 'yes' => true ) ) );
+
+		$this->assertSame(
+			array(
+				'No payment attempt matches "' . ( $id + 1 ) . '".',
+				'No payment attempt matches "nobody@example.com".',
+			),
+			$this->messages( 'warning' )
+		);
+		$this->assertSame( array( 'Deleted 1 payment attempt. Some arguments matched no payment attempts.' ), $this->messages( 'error' ) );
+		$this->assertSame( array(), $this->remaining_ids() );
+	}
+
+	/**
+	 * @testdox Delete continues past a failed batch and reports how many attempts were deleted.
+	 */
+	public function test_delete_reports_failed_batches(): void {
+		$ids = array();
+		for ( $i = 0; $i < 101; $i++ ) {
+			$ids[] = $this->an_attempt();
+		}
+
+		// Fails the first delete query.
+		$event_store = new class() extends SessionEventStore {
+			/**
+			 * Whether the next delete query fails.
+			 *
+			 * @var bool
+			 */
+			public bool $fail_next = true;
+
+			/**
+			 * Delete events, failing once.
+			 *
+			 * @param int[] $ids Event IDs.
+			 * @return int
+			 * @throws \RuntimeException On the first call.
+			 */
+			public function delete_events( array $ids ): int {
+				if ( $this->fail_next ) {
+					$this->fail_next = false;
+					throw new \RuntimeException( 'Session event deletion failed.' );
+				}
+
+				return parent::delete_events( $ids );
+			}
+		};
+		$event_store->init( $this->schema_manager );
+		$rule_finder = new SessionRuleFinder();
+		$rule_finder->init( $this->rule_store, $this->schema_manager, new ConditionOperatorRegistry() );
+		$output = new CommandOutput();
+		$output->init( wc_get_container()->get( LegacyProxy::class ), $this->schema_manager );
+		$this->sut = new PaymentAttemptsCommands();
+		$this->sut->init( $event_store, $rule_finder, new PaymentMethodTitleResolver(), $output );
+
+		$this->assertFalse( $this->run_command( 'delete_attempts', array( 'customer@example.com' ), array( 'yes' => true ) ) );
+
+		$this->assertSame( array( 'Deleted 1 of 101 payment attempts.' ), $this->messages( 'error' ) );
+		$this->assertSame( array_slice( $ids, 0, 100 ), $this->remaining_ids(), 'Only the failed batch is kept' );
 	}
 }
 // phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound
