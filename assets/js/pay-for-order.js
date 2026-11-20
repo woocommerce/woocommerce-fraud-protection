@@ -22,7 +22,17 @@
  * the session ID prepared in advance, or the `not_ready` reason when none is
  * ready, and lets the submit continue.
  *
- * No reset needed — every outcome is a full page navigation.
+ * A payment can end without leaving the page, for example a declined card
+ * shown inline or a payment window that the shopper closes, and the page can
+ * come back from the back-forward cache. The session ID in the form was
+ * already verified for the earlier attempt, so a submit by the shopper
+ * acquires a new one, and a restored page drops it. A submit is the shopper's
+ * when it is trusted and follows, in the same task, a trusted click on a
+ * submit button or Enter key press in an input field. Gateways that submit again after tokenization use
+ * dispatchEvent(), jQuery's trigger(), or form.submit(), which are not trusted
+ * or fire no submit event. A gateway that clicks the Pay button from a script
+ * gets a trusted submit, but its click is not trusted. These keep the session
+ * ID of the attempt they complete.
  *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
  */
@@ -97,6 +107,79 @@
 	// True from the first held submit until its re-submit is dispatched.
 	let resubmitPending = false;
 
+	// Counts the restores from the back-forward cache. A held submit stops
+	// when the page was restored since it started.
+	let restoreCount = 0;
+
+	// True from the shopper's click on a submit button, or Enter key press in
+	// a field, until the end of its task. A submit that the shopper starts
+	// this way is dispatched in that same task.
+	let isShopperAction = false;
+
+	/**
+	 * Note a trusted click or key press until the end of the current task.
+	 *
+	 * @param {Event} e Click or keydown event.
+	 */
+	function noteShopperAction( e ) {
+		if ( ! e.isTrusted ) {
+			return;
+		}
+
+		isShopperAction = true;
+		setTimeout( function () {
+			isShopperAction = false;
+		}, 0 );
+	}
+
+	/**
+	 * Check whether an element is in a submit button of the form.
+	 *
+	 * A gateway's own Pay button is one as well when it has no type, and it
+	 * can submit the form from its click handler.
+	 *
+	 * @param {EventTarget} target Click target.
+	 * @return {boolean} True for a submit button of the form or an element in one.
+	 */
+	function isInSubmitButton( target ) {
+		const control =
+			target && typeof target.closest === 'function'
+				? target.closest( 'button, input' )
+				: null;
+
+		return (
+			!! control &&
+			control.form === form &&
+			( control.type === 'submit' || control.type === 'image' )
+		);
+	}
+
+	// Clicks on other elements are left out, so a gateway that clicks the
+	// Pay button from a script in the same task keeps its session ID.
+	form.addEventListener(
+		'click',
+		function ( e ) {
+			if ( isInSubmitButton( e.target ) ) {
+				noteShopperAction( e );
+			}
+		},
+		true
+	);
+	// Enter submits the form from an input field. On a button it fires a click.
+	form.addEventListener(
+		'keydown',
+		function ( e ) {
+			if (
+				e.key === 'Enter' &&
+				! e.isComposing &&
+				e.target instanceof window.HTMLInputElement
+			) {
+				noteShopperAction( e );
+			}
+		},
+		true
+	);
+
 	// Capture phase: fires before all bubble-phase (jQuery) handlers.
 	form.addEventListener(
 		'submit',
@@ -121,18 +204,30 @@
 				return;
 			}
 
-			// Session ID already injected — let through (handles both
-			// our re-submit and gateway re-triggers after tokenization).
-			if ( document.getElementById( sessionIdField ) ) {
+			// Session ID already injected — let through our re-submit and
+			// gateway re-triggers after tokenization. A submit by the shopper
+			// is a new attempt after a payment that stayed on the page, so it
+			// acquires a new session ID. The current fields stay until the new
+			// ones are ready, in case the gateway still posts the form for the
+			// earlier attempt.
+			if (
+				document.getElementById( sessionIdField ) &&
+				! ( e.isTrusted && isShopperAction )
+			) {
 				return;
 			}
 
 			e.preventDefault();
 			e.stopImmediatePropagation();
 			resubmitPending = true;
+			const startRestoreCount = restoreCount;
 
 			acquireSessionIdResult( fraudProtection ).then(
 				function ( result ) {
+					if ( startRestoreCount !== restoreCount ) {
+						return;
+					}
+
 					const sessionId = result.sessionId;
 					const errorField =
 						fraudProtection.config.sessionIdErrorField;
@@ -180,6 +275,10 @@
 					// being dispatched, and Firefox ignores a submit event fired on
 					// the form during that time.
 					setTimeout( function () {
+						if ( startRestoreCount !== restoreCount ) {
+							return;
+						}
+
 						resubmitPending = false;
 						const submitEvent = new Event( 'submit', {
 							bubbles: true,
@@ -230,6 +329,33 @@
 		) {
 			addPreparedSessionId( fraudProtection );
 		}
+	} );
+
+	// A page restored from the back-forward cache keeps the fields of the
+	// attempt made before the shopper left it. The next submit needs a new
+	// session ID. A submit still held when the shopper left is dropped, so
+	// it neither posts the restored page nor cancels the next submit.
+	window.addEventListener( 'pageshow', function ( e ) {
+		if ( ! e.persisted ) {
+			return;
+		}
+
+		restoreCount++;
+		resubmitPending = false;
+
+		const fraudProtection = window.wcFraudProtection;
+		if ( ! fraudProtection || ! fraudProtection.config ) {
+			return;
+		}
+
+		const { sessionIdField, sessionIdErrorField } = fraudProtection.config;
+		[ sessionIdField, sessionIdErrorField ].forEach( function ( name ) {
+			if ( name ) {
+				$( form )
+					.find( 'input[name="' + name + '"]' )
+					.remove();
+			}
+		} );
 	} );
 
 	// Keep a session ID ready for a submit that cannot wait for one.
