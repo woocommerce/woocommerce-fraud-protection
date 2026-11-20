@@ -7,6 +7,7 @@ YYYY-xx-xx - version 0.3.3
 * Fixed - On the pay-for-order page, when a payment ends without leaving the page, for example a declined card or a closed payment window, the shopper's next try is now analyzed as a new attempt instead of being rejected.
 * Fixed - When custom rules can't be read from the database, they are applied again on the next checkout instead of being skipped for up to five minutes, and the payment activity list shows an error instead of showing attempts as having no rules.
 * Fixed - The payment activity filter for attempts with or without custom rules no longer counts an attempt as having a rule for an email address that differs from the attempt's address only in accents or similar letters, such as "jose@" and "josé@". It also finds the rules for IPv6 addresses that contain a single zero group, such as `2001:db8:1:2:3:4:0:5`.
+* Fixed - Payment attempts keep the shopper's browser session when the Blackbox SDK loaded on the page has no flush() method.
 
 2026-11-16 - version 0.3.2
 * Fixed - Cards saved with WooPayments on the My Account "Add payment method" page are now analyzed before WooPayments sends them to the card issuer, instead of after.
