@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionOutcome;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
@@ -265,6 +266,175 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( 'first@example.com' ), array_column( $bounded['items'], 'email' ) );
 		$this->assertSame( 1, $bounded['total'] );
 		$this->assertSame( 2, $this->sut->query_events()['total'], 'Without a maximum ID every event is listed' );
+	}
+
+	/**
+	 * @testdox Should find the IDs of every event of any age whose stored email or IP normalizes to the value.
+	 */
+	public function test_get_event_ids_by_value_matches_normalized_values(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'old',
+					'email'      => 'shopper@example.com',
+					'ip'         => '2001:DB8:0:0::1',
+				)
+			)
+		);
+		$this->set_recorded_at( 'old', gmdate( 'Y-m-d H:i:s', time() - ( 400 * DAY_IN_SECONDS ) ) );
+		$old = $this->sut->get_latest_event_id();
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'other' ) ) );
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'new',
+					'email'      => 'shopper@example.com',
+					'ip'         => 'not-an-ip',
+				)
+			)
+		);
+		$new = $this->sut->get_latest_event_id();
+
+		$this->assertSame( array( $old, $new ), $this->sut->get_event_ids_by_value( 'email', 'shopper@example.com' ), 'Events of any age match, in ID order' );
+		$this->assertSame( array( $old ), $this->sut->get_event_ids_by_value( 'ip', '2001:db8::1' ) );
+		$this->assertSame( array(), $this->sut->get_event_ids_by_value( 'ip', '192.0.2.1' ) );
+		$this->assertSame( array(), $this->sut->get_event_ids_by_value( 'country', 'ES' ), 'Only email and IP values are matched' );
+	}
+
+	/**
+	 * @testdox Should match IPs as addresses whatever notation the database and PHP shorten them to.
+	 */
+	public function test_ip_matches_compare_addresses(): void {
+		$ids = array();
+		foreach ( array( '2001:db8:1:2:3:4:0:5', '2001:DB8:1:2:3:4::5', '2001:db8:1:2:3:4:0:6', '192.0.2.1', 'not-an-ip' ) as $ip ) {
+			$this->sut->record_event(
+				$this->an_event(
+					array(
+						'session_id' => $ip,
+						'ip'         => $ip,
+					)
+				)
+			);
+			$ids[ $ip ] = $this->sut->get_latest_event_id();
+		}
+		// PHP keeps the single zero group that INET6_NTOA() shortens to "::".
+		$normalized = RuleConditions::normalize_value( 'ip', '2001:db8:1:2:3:4::5' );
+		$this->assertSame( '2001:db8:1:2:3:4:0:5', $normalized );
+		$matching    = array( $ids['2001:db8:1:2:3:4:0:5'], $ids['2001:DB8:1:2:3:4::5'] );
+		$rule_values = array(
+			'email' => array(),
+			'ip'    => array( $normalized ),
+		);
+
+		$by_value = $this->sut->get_event_ids_by_value( 'ip', $normalized );
+		$filtered = $this->sut->query_events( array( 'ip' => $normalized ) );
+		$with     = $this->sut->query_events(
+			array(
+				'rules'       => 'with',
+				'rule_values' => $rule_values,
+			)
+		);
+		$without  = $this->sut->query_events(
+			array(
+				'rules'       => 'without',
+				'rule_values' => $rule_values,
+			)
+		);
+
+		$sorted = function ( array $items ): array {
+			$ids = array_column( $items, 'id' );
+			sort( $ids );
+			return $ids;
+		};
+
+		$this->assertSame( $matching, $by_value );
+		$this->assertSame( $matching, $sorted( $filtered['items'] ) );
+		$this->assertSame( $matching, $sorted( $with['items'] ) );
+		$this->assertSame( array( $ids['2001:db8:1:2:3:4:0:6'], $ids['192.0.2.1'], $ids['not-an-ip'] ), $sorted( $without['items'] ), 'An unparseable stored IP has no rule' );
+	}
+
+	/**
+	 * @testdox Should match emails byte for byte, not as the column collation compares them.
+	 */
+	public function test_email_matches_are_exact_bytes(): void {
+		$ids = array();
+		foreach ( array( 'jose@example.com', 'josé@example.com', 'josÉ@example.com', 'straße@example.com', 'strasse@example.com' ) as $email ) {
+			$this->sut->record_event(
+				$this->an_event(
+					array(
+						'session_id' => $email,
+						'email'      => $email,
+					)
+				)
+			);
+			$ids[ $email ] = $this->sut->get_latest_event_id();
+		}
+
+		foreach ( $ids as $email => $id ) {
+			$this->assertSame( array( $id ), $this->sut->get_event_ids_by_value( 'email', $email ), "Only {$email} matches itself" );
+			$this->assertSame( array( $email ), array_column( $this->sut->query_events( array( 'email' => $email ) )['items'], 'email' ) );
+		}
+
+		$rule_values = array(
+			'email' => array( 'jose@example.com' ),
+			'ip'    => array(),
+		);
+		$with        = $this->sut->query_events(
+			array(
+				'rules'       => 'with',
+				'rule_values' => $rule_values,
+			)
+		);
+		$without     = $this->sut->query_events(
+			array(
+				'rules'       => 'without',
+				'rule_values' => $rule_values,
+			)
+		);
+		$this->assertSame( array( 'jose@example.com' ), array_column( $with['items'], 'email' ), 'An accented variant of a rule value has no rule' );
+		$this->assertSame( 4, $without['total'] );
+	}
+
+	/**
+	 * @testdox Should delete only the given events and clear the cached outcome counts.
+	 */
+	public function test_delete_events_deletes_given_ids(): void {
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'first' ) ) );
+		$first = $this->sut->get_latest_event_id();
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'kept' ) ) );
+		$this->sut->record_event( $this->an_event( array( 'session_id' => 'third' ) ) );
+		$third = $this->sut->get_latest_event_id();
+		set_transient( self::PERFORMANCE_COUNTS_TRANSIENT, array( 'blocked_by_rules' => 1 ) );
+		set_transient( self::TRACKER_COUNTS_TRANSIENT, array( 'sessions_total_30d' => 3 ) );
+
+		$this->assertSame( 2, $this->sut->delete_events( array( $first, $third, $third + 1 ) ), 'IDs with no row are skipped' );
+
+		$this->assertSame( 1, $this->count_rows() );
+		$this->assertNotNull( $this->latest_row_for( 'kept' ) );
+		$this->assertFalse( get_transient( self::PERFORMANCE_COUNTS_TRANSIENT ) );
+		$this->assertFalse( get_transient( self::TRACKER_COUNTS_TRANSIENT ) );
+		$this->assertSame( 0, $this->sut->delete_events( array() ) );
+	}
+
+	/**
+	 * @testdox Should throw when the delete query fails.
+	 */
+	public function test_delete_events_throws_on_database_failure(): void {
+		global $wpdb;
+
+		$original_wpdb = $wpdb;
+		$wpdb          = $this->createMock( \wpdb::class ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Direct database failure boundary.
+		$wpdb->method( 'prepare' )->willReturn( 'DELETE failed' );
+		$wpdb->method( 'query' )->willReturn( false );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'Session event deletion failed.' );
+
+		try {
+			$this->sut->delete_events( array( 1 ) );
+		} finally {
+			$wpdb = $original_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the test database.
+		}
 	}
 
 	/**
@@ -917,6 +1087,43 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox Should filter by the exact normalized email and IP.
+	 */
+	public function test_query_events_filters_by_exact_email_and_ip(): void {
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'exact',
+					'email'      => 'buyer@example.com',
+					'ip'         => '2001:DB8::1',
+				)
+			)
+		);
+		$this->sut->record_event(
+			$this->an_event(
+				array(
+					'session_id' => 'contains',
+					'email'      => 'other.buyer@example.com',
+					'ip'         => '2001:db8::10',
+				)
+			)
+		);
+
+		$this->assertSame( array( 'exact' ), array_column( $this->sut->query_events( array( 'email' => 'buyer@example.com' ) )['items'], 'session_id' ) );
+		$this->assertSame( array( 'exact' ), array_column( $this->sut->query_events( array( 'ip' => '2001:db8::1' ) )['items'], 'session_id' ) );
+		$this->assertSame(
+			0,
+			$this->sut->query_events(
+				array(
+					'email' => 'buyer@example.com',
+					'ip'    => '2001:db8::10',
+				)
+			)['total'],
+			'Both filters apply together'
+		);
+	}
+
+	/**
 	 * The event set and rule values shared by the rule-filter tests.
 	 */
 	private function seed_rule_filter_events(): void {
@@ -924,7 +1131,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			$this->an_event(
 				array(
 					'session_id' => 'ruled-email',
-					'email'      => 'Blocked@Example.com',
+					'email'      => 'blocked@example.com',
 					'ip'         => '203.0.113.1',
 				)
 			)

@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionOutcome;
@@ -19,7 +20,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionRuleFi
 defined( 'ABSPATH' ) || exit;
 
 /**
- * WP-CLI commands that list recorded payment attempts.
+ * WP-CLI commands that list and delete recorded payment attempts.
  */
 class PaymentAttemptsCommands {
 
@@ -32,6 +33,16 @@ class PaymentAttemptsCommands {
 	 * Fields listed when `--fields` is not given.
 	 */
 	private const DEFAULT_FIELDS = array( 'id', 'recorded_at', 'outcome', 'email', 'ip', 'ip_country', 'payment_method', 'order_id', 'email_rule_id', 'ip_rule_id' );
+
+	/**
+	 * Maximum number of attempts deleted by one query.
+	 */
+	private const DELETE_BATCH_SIZE = 100;
+
+	/**
+	 * Argument type of a payment attempt ID.
+	 */
+	private const TYPE_ID = 'id';
 
 	/**
 	 * Session event store instance.
@@ -79,7 +90,7 @@ class PaymentAttemptsCommands {
 	}
 
 	/**
-	 * Register the payment attempts list and get command leaves.
+	 * Register the payment attempts list, get, and delete command leaves.
 	 */
 	public function register_commands(): void {
 		$this->output->add_command(
@@ -115,6 +126,18 @@ class PaymentAttemptsCommands {
 						'type'        => 'assoc',
 						'name'        => 'search',
 						'description' => __( 'Only list attempts whose email address or IP address contains this text.', 'woocommerce-fraud-protection' ),
+						'optional'    => true,
+					),
+					array(
+						'type'        => 'assoc',
+						'name'        => 'email',
+						'description' => __( 'Only list attempts with this exact email address, ignoring letter case. The address is matched like in "delete".', 'woocommerce-fraud-protection' ),
+						'optional'    => true,
+					),
+					array(
+						'type'        => 'assoc',
+						'name'        => 'ip',
+						'description' => __( 'Only list attempts with this exact IP address, in any notation. The address is matched like in "delete".', 'woocommerce-fraud-protection' ),
 						'optional'    => true,
 					),
 					array(
@@ -156,6 +179,33 @@ class PaymentAttemptsCommands {
 					),
 				),
 				CommandOutput::format_synopsis( CommandOutput::ITEM_FORMATS )
+			)
+		);
+
+		$this->output->add_command(
+			self::COMMAND . ' delete',
+			array( $this, 'delete_attempts' ),
+			__( 'Delete recorded payment attempts.', 'woocommerce-fraud-protection' ),
+			array(
+				array(
+					'type'        => 'positional',
+					'name'        => 'attempt',
+					'description' => __( 'A payment attempt ID, or an email address or IP address. An email address or IP address deletes every attempt recorded with it. The type is detected from the value.', 'woocommerce-fraud-protection' ),
+					'repeating'   => true,
+				),
+				array(
+					'type'        => 'assoc',
+					'name'        => 'type',
+					'description' => __( 'Accept every value only as this type instead of detecting it.', 'woocommerce-fraud-protection' ),
+					'optional'    => true,
+					'options'     => self::type_options(),
+				),
+				array(
+					'type'        => 'flag',
+					'name'        => 'yes',
+					'description' => __( 'Delete the payment attempts without asking for confirmation.', 'woocommerce-fraud-protection' ),
+					'optional'    => true,
+				),
 			)
 		);
 	}
@@ -254,6 +304,171 @@ class PaymentAttemptsCommands {
 	}
 
 	/**
+	 * Delete recorded payment attempts by ID, email address, or IP address.
+	 *
+	 * @internal
+	 *
+	 * @param string[]             $args       Positional command arguments.
+	 * @param array<string, mixed> $assoc_args Associative command arguments.
+	 */
+	public function delete_attempts( array $args, array $assoc_args ): void {
+		if ( ! $this->output->require_schema() ) {
+			return;
+		}
+
+		$type = $assoc_args['type'] ?? null;
+		if ( ! is_null( $type ) && ! in_array( $type, self::type_options(), true ) ) {
+			$this->output->error( __( 'Use one of: id, email, or ip.', 'woocommerce-fraud-protection' ) );
+			return;
+		}
+
+		$ids       = array();
+		$unmatched = 0;
+		foreach ( array_unique( array_map( 'strval', $args ) ) as $arg ) {
+			try {
+				$matches = $this->find_attempts( $arg, $type );
+			} catch ( \RuntimeException ) {
+				$this->output->error( self::load_failed_message() );
+				return;
+			}
+
+			if ( is_null( $matches ) ) {
+				$this->output->warning( self::invalid_argument_message( $arg, $type ) );
+				++$unmatched;
+				continue;
+			}
+
+			if ( array() === $matches ) {
+				$this->output->warning(
+					sprintf(
+						/* translators: %s: Payment attempt ID, email address, or IP address. */
+						__( 'No payment attempt matches "%s".', 'woocommerce-fraud-protection' ),
+						$arg
+					)
+				);
+				++$unmatched;
+				continue;
+			}
+
+			$ids = array_merge( $ids, $matches );
+		}
+
+		if ( array() === $ids ) {
+			$this->output->error( __( 'No matching payment attempts were found.', 'woocommerce-fraud-protection' ) );
+			return;
+		}
+
+		// Only the count is shown. The list command's --email and --ip filters show the matching attempts.
+		$ids = array_values( array_unique( $ids ) );
+		sort( $ids );
+		$requested = count( $ids );
+		$this->output->confirm(
+			sprintf(
+				/* translators: %d: Number of payment attempts. */
+				_n( 'Delete %d payment attempt?', 'Delete %d payment attempts?', $requested, 'woocommerce-fraud-protection' ),
+				$requested
+			),
+			$assoc_args
+		);
+
+		$deleted = 0;
+		$failed  = 0;
+		foreach ( array_chunk( $ids, self::DELETE_BATCH_SIZE ) as $batch ) {
+			try {
+				$deleted += $this->event_store->delete_events( $batch );
+			} catch ( \RuntimeException ) {
+				$failed += count( $batch );
+			}
+		}
+
+		if ( $failed > 0 ) {
+			$this->output->error(
+				sprintf(
+					/* translators: 1: Number of deleted payment attempts, 2: Number of payment attempts requested. */
+					_n( 'Deleted %1$d of %2$d payment attempt.', 'Deleted %1$d of %2$d payment attempts.', $requested, 'woocommerce-fraud-protection' ),
+					$deleted,
+					$requested
+				)
+			);
+			return;
+		}
+
+		if ( $unmatched > 0 ) {
+			$this->output->error(
+				sprintf(
+					/* translators: %d: Number of deleted payment attempts. */
+					_n( 'Deleted %d payment attempt. Some arguments matched no payment attempts.', 'Deleted %d payment attempts. Some arguments matched no payment attempts.', $deleted, 'woocommerce-fraud-protection' ),
+					$deleted
+				)
+			);
+			return;
+		}
+
+		$this->output->success(
+			sprintf(
+				/* translators: %d: Number of deleted payment attempts. */
+				_n( 'Deleted %d payment attempt.', 'Deleted %d payment attempts.', $deleted, 'woocommerce-fraud-protection' ),
+				$deleted
+			)
+		);
+	}
+
+	/**
+	 * Find the attempts a delete argument refers to.
+	 *
+	 * Without a type, digits only are an attempt ID, which is never a valid IP address or
+	 * email address. Any other value is matched as an email address or IP address.
+	 *
+	 * @param string  $arg  A payment attempt ID, email address, or IP address.
+	 * @param ?string $type The argument type, or null to detect it.
+	 * @return ?int[] The IDs of the matching attempts, or null when the argument is not valid for the type.
+	 * @throws \RuntimeException When a query fails.
+	 */
+	private function find_attempts( string $arg, ?string $type ): ?array {
+		$id   = CommandOutput::positive_int( $arg );
+		$type = $type ?? ( is_null( $id ) ? RuleManager::detect_type( $arg ) : self::TYPE_ID );
+
+		if ( self::TYPE_ID === $type ) {
+			if ( is_null( $id ) ) {
+				return null;
+			}
+
+			return is_null( $this->event_store->get_list_event( $id ) ) ? array() : array( $id );
+		}
+
+		if ( is_null( $type ) ) {
+			return null;
+		}
+
+		$value = RuleConditions::normalize_value( $type, $arg );
+
+		return is_null( $value ) ? null : $this->event_store->get_event_ids_by_value( $type, $value );
+	}
+
+	/**
+	 * Get the warning for a delete argument that is not valid for its type.
+	 *
+	 * @param string  $arg  The argument.
+	 * @param ?string $type The type given with --type, or null when it was detected.
+	 * @return string
+	 */
+	private static function invalid_argument_message( string $arg, ?string $type ): string {
+		return sprintf(
+			match ( $type ) {
+				/* translators: %s: Command argument. */
+				self::TYPE_ID => __( '"%s" is not a payment attempt ID.', 'woocommerce-fraud-protection' ),
+				/* translators: %s: Command argument. */
+				RuleConditions::FIELD_EMAIL => __( '"%s" is not an email address.', 'woocommerce-fraud-protection' ),
+				/* translators: %s: Command argument. */
+				RuleConditions::FIELD_IP => __( '"%s" is not an IP address.', 'woocommerce-fraud-protection' ),
+				/* translators: %s: Command argument. */
+				default => __( '"%s" is not a payment attempt ID, an email address, or an IP address.', 'woocommerce-fraud-protection' ),
+			},
+			$arg
+		);
+	}
+
+	/**
 	 * Read the list query arguments.
 	 *
 	 * @param array<string, mixed> $assoc_args Associative command arguments.
@@ -292,6 +507,27 @@ class PaymentAttemptsCommands {
 			return null;
 		}
 
+		$values = array(
+			RuleConditions::FIELD_EMAIL => '',
+			RuleConditions::FIELD_IP    => '',
+		);
+		foreach ( array_keys( $values ) as $field ) {
+			if ( ! array_key_exists( $field, $assoc_args ) ) {
+				continue;
+			}
+
+			$value = is_string( $assoc_args[ $field ] ) ? RuleConditions::normalize_value( $field, $assoc_args[ $field ] ) : null;
+			if ( is_null( $value ) ) {
+				$this->output->error(
+					RuleConditions::FIELD_EMAIL === $field
+						? __( 'Enter a complete email address.', 'woocommerce-fraud-protection' )
+						: __( 'Enter a complete IP address.', 'woocommerce-fraud-protection' )
+				);
+				return null;
+			}
+			$values[ $field ] = $value;
+		}
+
 		$days = CommandOutput::positive_int( $assoc_args['days'] ?? SessionEventPruner::RETENTION_DAYS );
 		if ( is_null( $days ) ) {
 			$this->output->error( __( 'The number of days must be a positive whole number.', 'woocommerce-fraud-protection' ) );
@@ -310,6 +546,8 @@ class PaymentAttemptsCommands {
 			'outcomes'        => $outcomes,
 			'payment_methods' => CommandOutput::comma_list( $assoc_args['payment_method'] ?? null ),
 			'search'          => is_string( $search ) ? $search : '',
+			'email'           => $values[ RuleConditions::FIELD_EMAIL ],
+			'ip'              => $values[ RuleConditions::FIELD_IP ],
 			'rules'           => $rules,
 		);
 	}
@@ -367,6 +605,15 @@ class PaymentAttemptsCommands {
 	 */
 	private static function outcome_values(): array {
 		return array_map( fn( SessionOutcome $outcome ): string => $outcome->value, SessionOutcome::cases() );
+	}
+
+	/**
+	 * Get the accepted delete argument types.
+	 *
+	 * @return string[]
+	 */
+	private static function type_options(): array {
+		return array( self::TYPE_ID, RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP );
 	}
 
 	/**
