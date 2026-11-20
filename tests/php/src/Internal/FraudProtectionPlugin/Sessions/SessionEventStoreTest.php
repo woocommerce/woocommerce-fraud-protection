@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Sessions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionOutcome;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventStore;
@@ -298,6 +299,58 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( array( $old ), $this->sut->get_event_ids_by_value( 'ip', '2001:db8::1' ) );
 		$this->assertSame( array(), $this->sut->get_event_ids_by_value( 'ip', '192.0.2.1' ) );
 		$this->assertSame( array(), $this->sut->get_event_ids_by_value( 'country', 'ES' ), 'Only email and IP values are matched' );
+	}
+
+	/**
+	 * @testdox Should match IPs as addresses whatever notation the database and PHP shorten them to.
+	 */
+	public function test_ip_matches_compare_addresses(): void {
+		$ids = array();
+		foreach ( array( '2001:db8:1:2:3:4:0:5', '2001:DB8:1:2:3:4::5', '2001:db8:1:2:3:4:0:6', '192.0.2.1', 'not-an-ip' ) as $ip ) {
+			$this->sut->record_event(
+				$this->an_event(
+					array(
+						'session_id' => $ip,
+						'ip'         => $ip,
+					)
+				)
+			);
+			$ids[ $ip ] = $this->sut->get_latest_event_id();
+		}
+		// PHP keeps the single zero group that INET6_NTOA() shortens to "::".
+		$normalized = RuleConditions::normalize_value( 'ip', '2001:db8:1:2:3:4::5' );
+		$this->assertSame( '2001:db8:1:2:3:4:0:5', $normalized );
+		$matching    = array( $ids['2001:db8:1:2:3:4:0:5'], $ids['2001:DB8:1:2:3:4::5'] );
+		$rule_values = array(
+			'email' => array(),
+			'ip'    => array( $normalized ),
+		);
+
+		$by_value = $this->sut->get_event_ids_by_value( 'ip', $normalized );
+		$filtered = $this->sut->query_events( array( 'ip' => $normalized ) );
+		$with     = $this->sut->query_events(
+			array(
+				'rules'       => 'with',
+				'rule_values' => $rule_values,
+			)
+		);
+		$without  = $this->sut->query_events(
+			array(
+				'rules'       => 'without',
+				'rule_values' => $rule_values,
+			)
+		);
+
+		$sorted = function ( array $items ): array {
+			$ids = array_column( $items, 'id' );
+			sort( $ids );
+			return $ids;
+		};
+
+		$this->assertSame( $matching, $by_value );
+		$this->assertSame( $matching, $sorted( $filtered['items'] ) );
+		$this->assertSame( $matching, $sorted( $with['items'] ) );
+		$this->assertSame( array( $ids['2001:db8:1:2:3:4:0:6'], $ids['192.0.2.1'], $ids['not-an-ip'] ), $sorted( $without['items'] ), 'An unparseable stored IP has no rule' );
 	}
 
 	/**
