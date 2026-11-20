@@ -443,6 +443,56 @@
 	}
 
 	/**
+	 * Read the session ID with getSessionId(), for an SDK without flush().
+	 *
+	 * getSessionId() takes no deadline, so the deadline is applied here.
+	 *
+	 * @param {number} deadlineMs Time getSessionId() has to resolve.
+	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
+	 */
+	function getSessionIdWithin( deadlineMs ) {
+		let timer = 0;
+		const timeout = new Promise( function ( resolve ) {
+			timer = setTimeout( function () {
+				resolve( withoutSessionId( 'timeout' ) );
+			}, deadlineMs );
+		} );
+
+		let session;
+		try {
+			session = Promise.resolve( window.Blackbox.getSessionId() ).then(
+				function ( result ) {
+					return typeof result === 'string' && result
+						? { sessionId: result, error: '' }
+						: withoutSessionId( 'sdk_error' );
+				},
+				function () {
+					return withoutSessionId( 'sdk_error' );
+				}
+			);
+		} catch {
+			session = Promise.resolve( withoutSessionId( 'sdk_error' ) );
+		}
+
+		return Promise.race( [ session, timeout ] ).then( function ( result ) {
+			clearTimeout( timer );
+			return result;
+		} );
+	}
+
+	/**
+	 * Read the session ID, with flush() when the SDK has it.
+	 *
+	 * @param {number} deadlineMs Time the SDK has to resolve.
+	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
+	 */
+	function readSessionId( deadlineMs ) {
+		return window.Blackbox && typeof window.Blackbox.flush === 'function'
+			? flushSessionId( deadlineMs )
+			: getSessionIdWithin( deadlineMs );
+	}
+
+	/**
 	 * Start a new session and acquire its ID, within what is left of a deadline.
 	 *
 	 * @param {number} startedAt When the acquisition started.
@@ -469,7 +519,7 @@
 				clearTimeout( timeoutTimer );
 				const remainingMs = getRemainingMs();
 				return isNewSession && remainingMs > 0
-					? flushSessionId( remainingMs )
+					? readSessionId( remainingMs )
 					: withoutSessionId( 'reused' );
 			} )
 			.then( function ( result ) {
@@ -490,25 +540,28 @@
 	 *
 	 * Uses flush(), so the session has the shopper's latest data when the
 	 * payment is verified. flush() resolves by the deadline it is given. A
-	 * challenge that flush() starts is not awaited.
+	 * challenge that flush() starts is not awaited. If the SDK on the page has
+	 * no flush(), getSessionId() provides the session ID, within the same
+	 * deadline.
 	 *
-	 * A session ID is handed out at most once. When flush() returns one that was
+	 * A session ID is handed out at most once. When the SDK returns one that was
 	 * already handed out, a new session is started within the same deadline.
 	 * The exception is an ID passed to handOverSessionId(), which this
 	 * acquisition returns once more if its condition still holds.
 	 *
 	 * Fail-open: never rejects. The error is `timeout` when the SDK does not
 	 * answer in time, `sdk_error` when it fails or returns no session ID,
-	 * `sdk_unavailable` when its API is missing, and `reused` when it only has a
-	 * session ID that was already handed out. Internal to the plugin's own
-	 * scripts.
+	 * `sdk_unavailable` when it has neither flush() nor getSessionId(), and
+	 * `reused` when it only has a session ID that was already handed out.
+	 * Internal to the plugin's own scripts.
 	 *
 	 * @return {Promise<{sessionId: string, error: string}>} Session ID and error.
 	 */
 	fraudProtection.acquireSessionIdResult = function () {
 		if (
 			! window.Blackbox ||
-			typeof window.Blackbox.flush !== 'function'
+			( typeof window.Blackbox.flush !== 'function' &&
+				typeof window.Blackbox.getSessionId !== 'function' )
 		) {
 			return Promise.resolve( withoutSessionId( 'sdk_unavailable' ) );
 		}
@@ -516,7 +569,7 @@
 		const startedAt = Date.now();
 		const handedOver = takeHandedOverSessionId();
 
-		return flushSessionId( fraudProtection.config.timeout ).then(
+		return readSessionId( fraudProtection.config.timeout ).then(
 			function ( result ) {
 				if ( handedOver && result.sessionId === handedOver ) {
 					return result;
