@@ -291,18 +291,22 @@ class PaymentAttemptsCommandsTest extends FraudProtectionUnitTestCase {
 	 * @testdox Lists the attempts that delete matches for an exact email address or IP address.
 	 */
 	public function test_list_exact_value_filters_match_delete(): void {
-		$email = $this->an_attempt( array( 'email' => 'Shopper@Example.com' ) );
-		$this->an_attempt( array( 'email' => 'other.shopper@example.com' ) );
-		$ip = $this->an_attempt( array( 'ip' => '2001:db8::1' ) );
-		$this->an_attempt( array( 'ip' => '2001:db8::10' ) );
+		$email  = $this->an_attempt( array( 'email' => 'shopper@example.com' ) );
+		$others = array(
+			$this->an_attempt( array( 'email' => 'other.shopper@example.com' ) ),
+			$this->an_attempt( array( 'email' => 'shopper@exámple.com' ) ),
+			$this->an_attempt( array( 'ip' => '2001:db8::10' ) ),
+		);
+		$ip     = $this->an_attempt( array( 'ip' => '2001:db8::1' ) );
 
 		$this->run_command( 'list_attempts', array(), array( 'email' => ' shopper@EXAMPLE.com' ) );
 		$this->run_command( 'list_attempts', array(), array( 'ip' => '2001:DB8:0::1' ) );
 		$this->assertTrue( $this->run_command( 'delete_attempts', array( 'shopper@EXAMPLE.com', '2001:DB8:0::1' ), array( 'yes' => true ) ) );
 
-		$this->assertSame( array( $email ), array_column( Formatter::$calls[0]['data'], 'id' ), 'An address that only contains the value is not listed' );
+		$this->assertSame( array( $email ), array_column( Formatter::$calls[0]['data'], 'id' ), 'Addresses that contain the value or differ by accents are not listed' );
 		$this->assertSame( array( $ip ), array_column( Formatter::$calls[1]['data'], 'id' ) );
 		$this->assertSame( array( 'Delete 2 payment attempts?', array( 'yes' => true ) ), $this->confirmed, 'Delete matches the listed attempts' );
+		$this->assertSame( $others, $this->remaining_ids(), 'Delete keeps the attempts that were not listed' );
 	}
 
 	/**

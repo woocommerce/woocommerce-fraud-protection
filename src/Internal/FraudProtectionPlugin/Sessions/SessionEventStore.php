@@ -65,12 +65,18 @@ class SessionEventStore {
 	);
 
 	/**
-	 * SQL expressions that normalize the stored email and IP like {@see RuleConditions::normalize_value()}:
-	 * emails are trimmed and lowercased, and IPs are reduced to their canonical text form. A value
-	 * INET6_ATON cannot parse falls back to the raw column.
+	 * SQL expressions of the stored email and IP in the form of {@see RuleConditions::normalize_value()}.
+	 *
+	 * The recorder already stores emails trimmed and lowercased like the normalizer, so they are
+	 * compared byte for byte, like rules compare them at checkout. Comparing them under the column
+	 * collation would also match other addresses, such as "josé@" for "jose@". SQL LOWER() can't be
+	 * used either: it lowercases non-ASCII letters, which the normalizer keeps.
+	 *
+	 * IPs are reduced to their canonical text form. A value INET6_ATON cannot parse falls back to
+	 * the raw column, so it never matches a valid normalized IP.
 	 */
 	private const NORMALIZED_MATCH_COLUMNS = array(
-		RuleConditions::FIELD_EMAIL => 'LOWER(TRIM(email))',
+		RuleConditions::FIELD_EMAIL => 'CAST(email AS BINARY)',
 		RuleConditions::FIELD_IP    => 'COALESCE(INET6_NTOA(INET6_ATON(ip)), ip)',
 	);
 
@@ -708,14 +714,13 @@ class SessionEventStore {
 	/**
 	 * Build the clauses keeping only events with or without a matching rule.
 	 *
-	 * The rule values are the finder's normalized keys, so the stored value is
-	 * normalized the same way in SQL before comparing: emails are trimmed and
-	 * lowercased, and IPs are reduced to their canonical text form with
-	 * INET6_NTOA(INET6_ATON(...)) (compressed lowercase for IPv6, unchanged for
-	 * IPv4). This keeps the "with/without rules" filter consistent with the
-	 * per-row rule lookup, which also normalizes the IP, so a stored non-canonical
-	 * IPv6 address is filtered the same way it is chipped. A value INET6_ATON
-	 * cannot parse falls back to the raw column so it is never wrongly matched.
+	 * The rule values are the finder's normalized keys, so the stored values are
+	 * compared in their normalized form (see NORMALIZED_MATCH_COLUMNS): emails
+	 * byte for byte, and IPs in their canonical text form. This keeps the
+	 * "with/without rules" filter consistent with the per-row rule lookup, so a
+	 * stored non-canonical IPv6 address is filtered the same way it is chipped,
+	 * and an email that differs from a rule only by accents is not filtered as
+	 * having that rule.
 	 *
 	 * @param string $mode        '' (no filter), 'with', or 'without'.
 	 * @param mixed  $rule_values The normalized values active rules target, keyed by field.
@@ -728,22 +733,24 @@ class SessionEventStore {
 			return array();
 		}
 
-		$rule_values = is_array( $rule_values ) ? $rule_values : array();
-		$normalize   = fn( $values ): array => array_values( array_filter( array_filter( (array) $values, 'is_string' ), fn( string $value ): bool => '' !== $value ) );
-		$emails      = $normalize( $rule_values['email'] ?? array() );
-		$ips         = $normalize( $rule_values['ip'] ?? array() );
+		$rule_values  = is_array( $rule_values ) ? $rule_values : array();
+		$normalize    = fn( $values ): array => array_values( array_filter( array_filter( (array) $values, 'is_string' ), fn( string $value ): bool => '' !== $value ) );
+		$emails       = $normalize( $rule_values['email'] ?? array() );
+		$ips          = $normalize( $rule_values['ip'] ?? array() );
+		$email_column = self::NORMALIZED_MATCH_COLUMNS[ RuleConditions::FIELD_EMAIL ];
+		$ip_column    = self::NORMALIZED_MATCH_COLUMNS[ RuleConditions::FIELD_IP ];
 
 		if ( 'with' === $mode ) {
 			$parts = array();
 			if ( array() !== $emails ) {
 				$placeholders = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-				$parts[] = $wpdb->prepare( "LOWER(TRIM(email)) IN ({$placeholders})", ...$emails );
+				$parts[] = $wpdb->prepare( "{$email_column} IN ({$placeholders})", ...$emails );
 			}
 			if ( array() !== $ips ) {
 				$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-				$parts[] = $wpdb->prepare( "COALESCE(INET6_NTOA(INET6_ATON(ip)), ip) IN ({$placeholders})", ...$ips );
+				$parts[] = $wpdb->prepare( "{$ip_column} IN ({$placeholders})", ...$ips );
 			}
 
 			// With no active rules, nothing can match a rule.
@@ -754,12 +761,12 @@ class SessionEventStore {
 		if ( array() !== $emails ) {
 			$placeholders = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-			$clauses[] = $wpdb->prepare( "(email IS NULL OR email = '' OR LOWER(TRIM(email)) NOT IN ({$placeholders}))", ...$emails );
+			$clauses[] = $wpdb->prepare( "(email IS NULL OR email = '' OR {$email_column} NOT IN ({$placeholders}))", ...$emails );
 		}
 		if ( array() !== $ips ) {
 			$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-			$clauses[] = $wpdb->prepare( "(ip IS NULL OR ip = '' OR COALESCE(INET6_NTOA(INET6_ATON(ip)), ip) NOT IN ({$placeholders}))", ...$ips );
+			$clauses[] = $wpdb->prepare( "(ip IS NULL OR ip = '' OR {$ip_column} NOT IN ({$placeholders}))", ...$ips );
 		}
 
 		return $clauses;

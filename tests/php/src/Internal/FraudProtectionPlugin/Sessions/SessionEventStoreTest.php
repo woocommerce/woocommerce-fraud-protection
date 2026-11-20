@@ -274,30 +274,72 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 		$this->sut->record_event(
 			$this->an_event(
 				array(
-					'session_id' => 'mixed-case',
-					'email'      => ' Shopper@Example.com',
+					'session_id' => 'old',
+					'email'      => 'shopper@example.com',
 					'ip'         => '2001:DB8:0:0::1',
 				)
 			)
 		);
-		$this->set_recorded_at( 'mixed-case', gmdate( 'Y-m-d H:i:s', time() - ( 400 * DAY_IN_SECONDS ) ) );
-		$mixed_case = $this->sut->get_latest_event_id();
+		$this->set_recorded_at( 'old', gmdate( 'Y-m-d H:i:s', time() - ( 400 * DAY_IN_SECONDS ) ) );
+		$old = $this->sut->get_latest_event_id();
 		$this->sut->record_event( $this->an_event( array( 'session_id' => 'other' ) ) );
 		$this->sut->record_event(
 			$this->an_event(
 				array(
-					'session_id' => 'lowercase',
+					'session_id' => 'new',
 					'email'      => 'shopper@example.com',
 					'ip'         => 'not-an-ip',
 				)
 			)
 		);
-		$lowercase = $this->sut->get_latest_event_id();
+		$new = $this->sut->get_latest_event_id();
 
-		$this->assertSame( array( $mixed_case, $lowercase ), $this->sut->get_event_ids_by_value( 'email', 'shopper@example.com' ), 'Events of any age match, in ID order' );
-		$this->assertSame( array( $mixed_case ), $this->sut->get_event_ids_by_value( 'ip', '2001:db8::1' ) );
+		$this->assertSame( array( $old, $new ), $this->sut->get_event_ids_by_value( 'email', 'shopper@example.com' ), 'Events of any age match, in ID order' );
+		$this->assertSame( array( $old ), $this->sut->get_event_ids_by_value( 'ip', '2001:db8::1' ) );
 		$this->assertSame( array(), $this->sut->get_event_ids_by_value( 'ip', '192.0.2.1' ) );
 		$this->assertSame( array(), $this->sut->get_event_ids_by_value( 'country', 'ES' ), 'Only email and IP values are matched' );
+	}
+
+	/**
+	 * @testdox Should match emails byte for byte, not as the column collation compares them.
+	 */
+	public function test_email_matches_are_exact_bytes(): void {
+		$ids = array();
+		foreach ( array( 'jose@example.com', 'josé@example.com', 'josÉ@example.com', 'straße@example.com', 'strasse@example.com' ) as $email ) {
+			$this->sut->record_event(
+				$this->an_event(
+					array(
+						'session_id' => $email,
+						'email'      => $email,
+					)
+				)
+			);
+			$ids[ $email ] = $this->sut->get_latest_event_id();
+		}
+
+		foreach ( $ids as $email => $id ) {
+			$this->assertSame( array( $id ), $this->sut->get_event_ids_by_value( 'email', $email ), "Only {$email} matches itself" );
+			$this->assertSame( array( $email ), array_column( $this->sut->query_events( array( 'email' => $email ) )['items'], 'email' ) );
+		}
+
+		$rule_values = array(
+			'email' => array( 'jose@example.com' ),
+			'ip'    => array(),
+		);
+		$with        = $this->sut->query_events(
+			array(
+				'rules'       => 'with',
+				'rule_values' => $rule_values,
+			)
+		);
+		$without     = $this->sut->query_events(
+			array(
+				'rules'       => 'without',
+				'rule_values' => $rule_values,
+			)
+		);
+		$this->assertSame( array( 'jose@example.com' ), array_column( $with['items'], 'email' ), 'An accented variant of a rule value has no rule' );
+		$this->assertSame( 4, $without['total'] );
 	}
 
 	/**
@@ -999,7 +1041,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			$this->an_event(
 				array(
 					'session_id' => 'exact',
-					'email'      => 'Buyer@Example.com',
+					'email'      => 'buyer@example.com',
 					'ip'         => '2001:DB8::1',
 				)
 			)
@@ -1036,7 +1078,7 @@ class SessionEventStoreTest extends FraudProtectionUnitTestCase {
 			$this->an_event(
 				array(
 					'session_id' => 'ruled-email',
-					'email'      => 'Blocked@Example.com',
+					'email'      => 'blocked@example.com',
 					'ip'         => '203.0.113.1',
 				)
 			)
