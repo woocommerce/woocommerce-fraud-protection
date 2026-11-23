@@ -91,12 +91,14 @@ else
 		--notes-file "$notes_path"
 fi
 
-release=$(gh release view "$tag" --repo "$repository" --json assets,isDraft,url)
-draft=$(jq -r '.isDraft' <<< "$release")
-release_url=$(jq -r '.url' <<< "$release")
+# Read the release from the REST API, because older GitHub CLI versions omit the
+# asset digest from `gh release view --json assets`.
+release_api_url=$(gh release view "$tag" --repo "$repository" --json apiUrl --jq '.apiUrl')
+release=$(gh api "$release_api_url")
+draft=$(jq -r '.draft' <<< "$release")
 tag_sha=$(resolve_tag_commit)
 asset_count=$(jq '.assets | length' <<< "$release")
-remote_digest=$(jq -r --arg asset_name "$asset_name" '.assets[] | select(.name == $asset_name) | .digest' <<< "$release")
+remote_digest=$(jq -r --arg asset_name "$asset_name" '.assets[] | select(.name == $asset_name) | .digest // empty' <<< "$release")
 local_digest="sha256:$(sha256sum "$archive_path" | cut -d ' ' -f 1)"
 
 if [[ $tag_sha != "$release_sha" ]]; then
@@ -104,8 +106,13 @@ if [[ $tag_sha != "$release_sha" ]]; then
 	exit 1
 fi
 
-if [[ $asset_count -ne 1 || -z $remote_digest ]]; then
+if [[ $asset_count -ne 1 ]]; then
 	echo "The GitHub release must contain only $asset_name." >&2
+	exit 1
+fi
+
+if [[ -z $remote_digest ]]; then
+	echo "GitHub did not report a digest for the uploaded $asset_name." >&2
 	exit 1
 fi
 
@@ -117,6 +124,9 @@ fi
 if [[ $draft == true ]]; then
 	gh release edit "$tag" --repo "$repository" --draft=false
 fi
+
+# A draft's URL uses a temporary "untagged-" path, so read it after publication.
+release_url=$(gh release view "$tag" --repo "$repository" --json url --jq '.url')
 
 translation_import_queued=false
 translation_import_response=''
