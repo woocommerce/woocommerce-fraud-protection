@@ -424,6 +424,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 			'SDK error'        => array( array( $field => 'sdk_error' ), 'sdk_error' ),
 			'SDK unavailable'  => array( array( $field => 'sdk_unavailable' ), 'sdk_unavailable' ),
 			'not ready'        => array( array( $field => 'not_ready' ), 'not_ready' ),
+			'reused'           => array( array( $field => 'reused' ), 'reused' ),
 			'not submitted'    => array( array( $field => SessionIdError::NOT_SUBMITTED ), 'not_submitted' ),
 			'no reason'        => array( array(), 'unknown' ),
 			'unlisted reason'  => array( array( $field => 'blocked_by_extension' ), 'unknown' ),

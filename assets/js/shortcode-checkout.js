@@ -19,6 +19,8 @@
  * the `not_ready` reason when none is ready. A session ID that arrives
  * after such a request was sent is unused, and stays for the next attempt.
  * The form is not submitted again for the attempt that already left.
+ * Kustom's embedded checkout always takes this path, because its iframe
+ * callback posts the form without submitting it.
  *
  * Depends on blackbox-init.js (wcFraudProtection) and jQuery.
  */

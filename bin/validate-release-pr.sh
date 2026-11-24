@@ -35,8 +35,15 @@ if [[ $head_sha != "$release_sha" ]]; then
 	exit 1
 fi
 
-if [[ $is_draft != false || $merge_state != CLEAN ]]; then
-	echo "The release pull request must be ready to merge." >&2
+if [[ $is_draft != false ]]; then
+	echo "The release pull request must be ready for review, not a draft." >&2
+	exit 1
+fi
+
+# UNSTABLE means that the pull request can be merged, but a check that is not
+# required has not passed. The required checks are validated below.
+if [[ $merge_state != CLEAN && $merge_state != UNSTABLE ]]; then
+	echo "The release pull request must be ready to merge. Its merge state is $merge_state." >&2
 	exit 1
 fi
 

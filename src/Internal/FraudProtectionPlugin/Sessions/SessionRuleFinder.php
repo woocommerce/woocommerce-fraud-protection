@@ -68,6 +68,7 @@ class SessionRuleFinder {
 	 *
 	 * @param array<int, array<string, mixed>> $events Event rows with `id`, `email` and `ip` keys.
 	 * @return array<int, array{email: ?Rule, ip: ?Rule}> The matching rules per field, keyed by event id.
+	 * @throws \RuntimeException When the active rules cannot be loaded.
 	 */
 	public function find_for_events( array $events ): array {
 		$index   = $this->build_index();
@@ -90,6 +91,7 @@ class SessionRuleFinder {
 	 * "without rules" list filter and the per-row rule chips stay consistent.
 	 *
 	 * @return array{email: string[], ip: string[]} The targeted values, keyed by condition field.
+	 * @throws \RuntimeException When the active rules cannot be loaded.
 	 */
 	public function get_targeted_values(): array {
 		$index = $this->build_index();
@@ -122,6 +124,7 @@ class SessionRuleFinder {
 	 * Index the active single-condition equals rules by field and normalized value.
 	 *
 	 * @return array<string, array<string, Rule>>
+	 * @throws \RuntimeException When the active rules cannot be loaded.
 	 */
 	private function build_index(): array {
 		$index = array(

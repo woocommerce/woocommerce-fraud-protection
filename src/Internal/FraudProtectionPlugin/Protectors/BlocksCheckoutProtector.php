@@ -36,7 +36,7 @@ class BlocksCheckoutProtector {
 	/**
 	 * Extension namespace for Store API endpoint data.
 	 */
-	private const EXTENSION_NAMESPACE = 'woocommerce/fraud-protection';
+	public const EXTENSION_NAMESPACE = 'woocommerce/fraud-protection';
 
 	/**
 	 * Source identifier for verify requests from this protector.

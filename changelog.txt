@@ -1,10 +1,25 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-YYYY-xx-xx - version 0.3.2
+2026-11-23 - version 0.3.3
+* Added - New `wp wc fraud-protection payment-attempts list` and `get` commands show recorded payment attempts, and new `wp wc fraud-protection custom-rules` commands list, show, create, update, and delete custom rules. They are available when the merchant-facing features are enabled.
+* Added - New `wp wc fraud-protection payment-attempts delete` command deletes recorded payment attempts by ID, or every attempt recorded with an email address or IP address. It is available when the merchant-facing features are enabled. New `--email` and `--ip` options of `payment-attempts list` list the attempts with an exact email address or IP address.
+* Dev - `wp wc fraud-protection sessions prune` is deprecated in favor of `wp wc fraud-protection payment-attempts prune`. It still works, and it now prints a deprecation warning.
+* Fixed - On the pay-for-order page, when a payment ends without leaving the page, for example a declined card or a closed payment window, the shopper's next try is now analyzed as a new attempt instead of being rejected.
+* Fixed - When custom rules can't be read from the database, the payment activity list now shows an error instead of showing attempts as having no rules. On sites with a persistent object cache, the rules also apply again on the next checkout instead of being skipped for up to five minutes.
+* Fixed - The payment activity filter for attempts with or without custom rules no longer counts an attempt as having a rule for an email address that differs from the attempt's address only in accents or similar letters, such as "jose@" and "josé@". It also finds the rules for IPv6 addresses that contain a single zero group, such as `2001:db8:1:2:3:4:0:5`.
+* Fixed - Payment attempts keep the shopper's browser session when the Blackbox SDK loaded on the page has no flush() method.
+
+2026-11-16 - version 0.3.2
 * Fixed - Cards saved with WooPayments on the My Account "Add payment method" page are now analyzed before WooPayments sends them to the card issuer, instead of after.
 * Fixed - When a card saved with WooPayments on the My Account "Add payment method" page is changed after it is first submitted, the card that WooPayments saves is now the one analyzed.
+* Fixed - Payments with Mercado Pago saved cards on the classic checkout are no longer rejected after the shopper authorizes them.
+* Fixed - When a shopper retries a payment, or closes PayPal and pays with another gateway, the new attempt now always gets a new browser session.
+* Fixed - Apple Pay and Google Pay payments made with Square's wallet buttons on product, cart, and classic checkout pages are now analyzed with the shopper's browser session.
 * Fixed - Apple Pay, Google Pay, and Cash App Pay payments made with Square on the pay-for-order page are now analyzed with the shopper's browser session.
 * Fixed - When a classic checkout update contains a NUL byte, only the malformed field is ignored. Previously, the fields after it were ignored, and on PHP 8.6 the update was not tracked and an error was logged.
+* Fixed - Payment attempts with Kustom's embedded checkout are now analyzed with the shopper's browser session. On the Checkout block, this requires Kustom Checkout 2.24.1 or later.
+* Fixed - On the Checkout block, when Kustom refuses a payment and the shopper comes back to the page to pay again or to choose another payment method, the new attempt now gets a new browser session instead of being analyzed without one.
+* Dev - `window.wcFraudProtection.acquireSessionId()` no longer returns a session ID that it already returned. It starts a fresh session instead, and resolves to an empty string if that session does not arrive in time.
 
 2026-11-02 - version 0.3.1
 * Updated - Payment attempts now include the shopper's latest browser activity, and keep the browser session when sending that activity is slow.

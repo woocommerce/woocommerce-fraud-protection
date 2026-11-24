@@ -44,7 +44,7 @@ Follow these conventions when adding or modifying backend PHP code:
 
 ## Version Information
 
-The plugin version lives in three places that the `release` skill keeps in sync: the `Version` header in `woocommerce-fraud-protection.php`, the `WC_FRAUD_PROTECTION_VERSION` constant in `src/Internal/FraudProtectionPlugin/PluginInitializer.php`, and `package.json`.
+The plugin version lives in three places that the `release` skill keeps in sync: the `Version` header in `woocommerce-fraud-protection.php`, the `WC_FRAUD_PROTECTION_VERSION` constant in `src/Internal/FraudProtectionPlugin/PluginInitializer.php`, and `package.json`. Only `release/<version>` pull requests may change it; the `Plugin Version Check` workflow fails any other pull request that does.
 
 To determine the version for a new `@since` annotation:
 

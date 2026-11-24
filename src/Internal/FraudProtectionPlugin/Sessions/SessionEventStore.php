@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions;
 
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleConditions;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionFinalStatus;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionOutcome;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\SessionTrigger;
@@ -61,6 +62,26 @@ class SessionEventStore {
 		'order_id',
 		'payment_method',
 		'matched_rule_id',
+	);
+
+	/**
+	 * SQL expressions that compare a stored email or IP with values normalized by
+	 * {@see RuleConditions::normalize_value()}, the way rules compare them at checkout.
+	 * Each field has the expression of the stored column and the placeholder of a value.
+	 *
+	 * The recorder already stores emails trimmed and lowercased like the normalizer, so they are
+	 * compared byte for byte. Comparing them under the column collation would also match other
+	 * addresses, such as "josé@" for "jose@". SQL LOWER() can't be used either: it lowercases
+	 * non-ASCII letters, which the normalizer keeps.
+	 *
+	 * IPs are compared as packed binary addresses, with both sides packed by INET6_ATON. Their text
+	 * forms can't be compared, because the database and PHP shorten some IPv6 addresses differently:
+	 * INET6_NTOA writes "2001:db8:1:2:3:4::5" where inet_ntop() writes "2001:db8:1:2:3:4:0:5".
+	 * A stored value INET6_ATON can't parse is NULL, so it never matches.
+	 */
+	private const MATCH_EXPRESSIONS = array(
+		RuleConditions::FIELD_EMAIL => array( 'CAST(email AS BINARY)', '%s' ),
+		RuleConditions::FIELD_IP    => array( 'INET6_ATON(ip)', 'INET6_ATON(%s)' ),
 	);
 
 	/**
@@ -430,10 +451,16 @@ class SessionEventStore {
 	 *     @type SessionOutcome[]    $outcomes        Only events with one of these outcomes. Default none (any).
 	 *     @type string[]            $payment_methods Only events with one of these payment method ids. Default none (any).
 	 *     @type string              $search          Only events whose email or IP contains this text. Default ''.
+	 *     @type string              $email           Only events with this email address, normalized with
+	 *                                               RuleConditions::normalize_value(). Default '' (any).
+	 *     @type string              $ip              Only events with this IP address, normalized with
+	 *                                               RuleConditions::normalize_value(). Default '' (any).
 	 *     @type string              $rules           'with' or 'without' to keep only events that do or do not have an
 	 *                                               active rule targeting their email or IP. Default '' (any).
 	 *     @type array{email: string[], ip: string[]} $rule_values The normalized values active rules target, used when
 	 *                                               $rules is set. Default empty.
+	 *     @type int                 $max_id          Only events with this ID or lower, so that events recorded while
+	 *                                               several pages are read do not shift the later pages. Default 0 (any).
 	 * }
 	 * @return array{items: array<int, array<string, mixed>>, total: int} The page rows, with integer id, order_id and
 	 *                                                                    matched_rule_id, and the total matching count.
@@ -454,8 +481,11 @@ class SessionEventStore {
 				'outcomes'             => array(),
 				'payment_methods'      => array(),
 				'search'               => '',
+				'email'                => '',
+				'ip'                   => '',
 				'rules'                => '',
 				'rule_values'          => array(),
+				'max_id'               => 0,
 				// Provider ids in the order rows should sort by when ordering by
 				// payment method (they are resolved to display titles upstream).
 				'payment_method_order' => array(),
@@ -501,6 +531,112 @@ class SessionEventStore {
 	}
 
 	/**
+	 * Get the ID of the most recently recorded event.
+	 *
+	 * @return int The ID, or 0 when no event is recorded.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_latest_event_id(): int {
+		global $wpdb;
+
+		$table = $this->schema_manager->get_sessions_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager.
+		$id = $wpdb->get_var( "SELECT MAX(id) FROM {$table}" );
+		$this->throw_on_database_error( 'Session event ID query failed.' );
+
+		return (int) $id;
+	}
+
+	/**
+	 * Get one event with the columns of the checkout attempts list.
+	 *
+	 * @param int $event_id Recorded session event row ID.
+	 * @return ?array<string, mixed> The row typed like {@see query_events()} rows, or null when no event has the ID.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_list_event( int $event_id ): ?array {
+		global $wpdb;
+
+		if ( $event_id <= 0 ) {
+			return null;
+		}
+
+		$table   = $this->schema_manager->get_sessions_table_name();
+		$columns = implode( ', ', self::LIST_COLUMNS );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager and the columns are an allowlisted constant.
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT {$columns} FROM {$table} WHERE id = %d", $event_id ), ARRAY_A );
+		$this->throw_on_database_error( 'Session event read failed.' );
+
+		return is_array( $row ) ? self::type_row( $row ) : null;
+	}
+
+	/**
+	 * Get the IDs of every event whose email or IP matches a value.
+	 *
+	 * Events of any age match. The stored value is compared the same way as in the
+	 * "with/without rules" list filter (see MATCH_EXPRESSIONS), so the value must be
+	 * normalized with {@see RuleConditions::normalize_value()} first.
+	 *
+	 * @param string $field The condition field: email or ip.
+	 * @param string $value The normalized email address or IP address.
+	 * @return int[] The event IDs, in ascending order. None when the field is not email or ip.
+	 * @throws \RuntimeException When the query fails.
+	 */
+	public function get_event_ids_by_value( string $field, string $value ): array {
+		global $wpdb;
+
+		if ( ! isset( self::MATCH_EXPRESSIONS[ $field ] ) ) {
+			return array();
+		}
+
+		$table = $this->schema_manager->get_sessions_table_name();
+		$where = self::match_clause( $field, array( $value ), false );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The table name comes from SchemaManager and the clause is prepared.
+		$ids = $wpdb->get_col( "SELECT id FROM {$table} WHERE {$where} ORDER BY id ASC" );
+		$this->throw_on_database_error( 'Session event match query failed.' );
+
+		return array_map( 'intval', is_array( $ids ) ? $ids : array() );
+	}
+
+	/**
+	 * Delete events by ID.
+	 *
+	 * Runs one query, so callers delete large sets in batches. The cached outcome
+	 * counts are cleared when rows are deleted, so they no longer include them.
+	 *
+	 * @param int[] $ids Recorded session event row IDs.
+	 * @return int The number of rows deleted. IDs with no row are skipped.
+	 * @throws \RuntimeException When the delete query fails.
+	 */
+	public function delete_events( array $ids ): int {
+		global $wpdb;
+
+		$ids = array_values( array_unique( array_filter( $ids, fn( $id ): bool => is_int( $id ) && $id > 0 ) ) );
+		if ( array() === $ids ) {
+			return 0;
+		}
+
+		$table        = $this->schema_manager->get_sessions_table_name();
+		$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- The table name comes from SchemaManager and the placeholders match the IDs.
+		$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE id IN ({$placeholders})", ...$ids ) );
+		if ( false === $deleted ) {
+			throw new \RuntimeException( 'Session event deletion failed.' );
+		}
+
+		if ( $deleted > 0 ) {
+			delete_transient( self::PERFORMANCE_COUNTS_TRANSIENT );
+			delete_transient( self::TRACKER_COUNTS_TRANSIENT );
+		}
+
+		return (int) $deleted;
+	}
+
+	/**
 	 * Get the distinct payment method ids of the retained events.
 	 *
 	 * @param int $days Only events recorded within this many days.
@@ -532,6 +668,11 @@ class SessionEventStore {
 
 		$clauses = array( $wpdb->prepare( 'recorded_at >= %s', self::cutoff( max( 1, (int) $args['days'] ) ) ) );
 
+		$max_id = (int) $args['max_id'];
+		if ( $max_id > 0 ) {
+			$clauses[] = $wpdb->prepare( 'id <= %d', $max_id );
+		}
+
 		$final_status = $args['final_status'];
 		if ( $final_status instanceof SessionFinalStatus ) {
 			$clauses[] = $wpdb->prepare( 'final_status = %s', $final_status->value );
@@ -560,6 +701,13 @@ class SessionEventStore {
 			$clauses[] = $wpdb->prepare( '(email LIKE %s OR ip LIKE %s)', $like, $like );
 		}
 
+		foreach ( array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ) as $field ) {
+			$value = is_string( $args[ $field ] ?? null ) ? $args[ $field ] : '';
+			if ( '' !== $value ) {
+				$clauses[] = self::match_clause( $field, array( $value ), false );
+			}
+		}
+
 		foreach ( $this->rule_filter_clauses( (string) $args['rules'], $args['rule_values'] ?? array() ) as $clause ) {
 			$clauses[] = $clause;
 		}
@@ -570,61 +718,61 @@ class SessionEventStore {
 	/**
 	 * Build the clauses keeping only events with or without a matching rule.
 	 *
-	 * The rule values are the finder's normalized keys, so the stored value is
-	 * normalized the same way in SQL before comparing: emails are trimmed and
-	 * lowercased, and IPs are reduced to their canonical text form with
-	 * INET6_NTOA(INET6_ATON(...)) (compressed lowercase for IPv6, unchanged for
-	 * IPv4). This keeps the "with/without rules" filter consistent with the
-	 * per-row rule lookup, which also normalizes the IP, so a stored non-canonical
-	 * IPv6 address is filtered the same way it is chipped. A value INET6_ATON
-	 * cannot parse falls back to the raw column so it is never wrongly matched.
+	 * The rule values are the finder's normalized keys, so the stored values are
+	 * compared with them like rules compare them at checkout (see MATCH_EXPRESSIONS).
+	 * This keeps the "with/without rules" filter consistent with the per-row rule
+	 * lookup: an IPv6 address is filtered the same way it is chipped whatever its
+	 * notation, and an email that differs from a rule only by accents is not
+	 * filtered as having that rule.
 	 *
 	 * @param string $mode        '' (no filter), 'with', or 'without'.
 	 * @param mixed  $rule_values The normalized values active rules target, keyed by field.
 	 * @return string[] The prepared clauses to AND into the query.
 	 */
 	private function rule_filter_clauses( string $mode, $rule_values ): array {
-		global $wpdb;
-
 		if ( 'with' !== $mode && 'without' !== $mode ) {
 			return array();
 		}
 
 		$rule_values = is_array( $rule_values ) ? $rule_values : array();
 		$normalize   = fn( $values ): array => array_values( array_filter( array_filter( (array) $values, 'is_string' ), fn( string $value ): bool => '' !== $value ) );
-		$emails      = $normalize( $rule_values['email'] ?? array() );
-		$ips         = $normalize( $rule_values['ip'] ?? array() );
-
-		if ( 'with' === $mode ) {
-			$parts = array();
-			if ( array() !== $emails ) {
-				$placeholders = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-				$parts[] = $wpdb->prepare( "LOWER(TRIM(email)) IN ({$placeholders})", ...$emails );
-			}
-			if ( array() !== $ips ) {
-				$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-				$parts[] = $wpdb->prepare( "COALESCE(INET6_NTOA(INET6_ATON(ip)), ip) IN ({$placeholders})", ...$ips );
-			}
-
-			// With no active rules, nothing can match a rule.
-			return array( array() === $parts ? '0 = 1' : '(' . implode( ' OR ', $parts ) . ')' );
-		}
+		$is_without  = 'without' === $mode;
 
 		$clauses = array();
-		if ( array() !== $emails ) {
-			$placeholders = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-			$clauses[] = $wpdb->prepare( "(email IS NULL OR email = '' OR LOWER(TRIM(email)) NOT IN ({$placeholders}))", ...$emails );
-		}
-		if ( array() !== $ips ) {
-			$placeholders = implode( ', ', array_fill( 0, count( $ips ), '%s' ) );
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-			$clauses[] = $wpdb->prepare( "(ip IS NULL OR ip = '' OR COALESCE(INET6_NTOA(INET6_ATON(ip)), ip) NOT IN ({$placeholders}))", ...$ips );
+		foreach ( array( RuleConditions::FIELD_EMAIL, RuleConditions::FIELD_IP ) as $field ) {
+			$values = $normalize( $rule_values[ $field ] ?? array() );
+			if ( array() !== $values ) {
+				$clauses[] = self::match_clause( $field, $values, $is_without );
+			}
 		}
 
-		return $clauses;
+		if ( $is_without ) {
+			return $clauses;
+		}
+
+		// With no active rules, nothing can match a rule.
+		return array( array() === $clauses ? '0 = 1' : '(' . implode( ' OR ', $clauses ) . ')' );
+	}
+
+	/**
+	 * Build the clause matching events whose email or IP equals, or equals none of, some values.
+	 *
+	 * @param string   $field  The condition field: email or ip.
+	 * @param string[] $values The normalized values; at least one.
+	 * @param bool     $negate Whether to match events whose value equals none of the values,
+	 *                         including events without a value.
+	 * @return string The prepared clause.
+	 */
+	private static function match_clause( string $field, array $values, bool $negate ): string {
+		global $wpdb;
+
+		list( $column, $placeholder ) = self::MATCH_EXPRESSIONS[ $field ];
+
+		$placeholders = implode( ', ', array_fill( 0, count( $values ), $placeholder ) );
+		$sql          = $negate ? "({$column} IS NULL OR {$column} NOT IN ({$placeholders}))" : "{$column} IN ({$placeholders})";
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- The column and placeholder expressions are allowlisted constants.
+		return $wpdb->prepare( $sql, ...$values );
 	}
 
 	/**
