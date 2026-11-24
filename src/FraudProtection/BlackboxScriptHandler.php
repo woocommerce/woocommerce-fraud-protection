@@ -35,7 +35,8 @@ class BlackboxScriptHandler {
 	/**
 	 * Session ID acquisition timeout in milliseconds.
 	 *
-	 * Browser-side fail-open deadline for Blackbox.flush(). Sized to bound
+	 * Browser-side fail-open deadline for Blackbox.flush(), or for
+	 * Blackbox.getSessionId() on an SDK without flush(). Sized to bound
 	 * checkout latency when the SDK or its backend is slow; on timeout we
 	 * proceed with the session ID the SDK still has, or an empty one, and let
 	 * server-side verify decide.

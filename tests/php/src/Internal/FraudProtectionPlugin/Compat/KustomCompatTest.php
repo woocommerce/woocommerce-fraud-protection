@@ -15,6 +15,9 @@ use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\KustomCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
+use Automattic\WooCommerce\StoreApi\Schemas\ExtendSchema;
+use Automattic\WooCommerce\StoreApi\Schemas\V1\CartSchema;
+use Automattic\WooCommerce\StoreApi\StoreApi;
 
 /**
  * Tests for the KustomCompat class.
@@ -67,6 +70,8 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 		remove_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this->sut, 'enqueue_blocks_checkout_script' ) );
 		remove_action( self::CHECKOUT_HOOK, array( $this->sut, 'send_session_id_only_once' ), 5 );
 		remove_action( self::PROCESS_HOOK, array( $this->sut, 'record_sent_session_id' ), 5 );
+		remove_action( 'init', array( $this->sut, 'register_store_api_cart_extension' ) );
+		$this->unregister_cart_data();
 		remove_filter( 'woocommerce_available_payment_gateways', array( $this, 'add_kustom_gateway' ) );
 		wp_dequeue_script( self::SCRIPT_HANDLE );
 		wp_deregister_script( self::SCRIPT_HANDLE );
@@ -233,6 +238,76 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Remove the cart data that a test registered, so that later tests get the cart without it.
+	 *
+	 * The Store API has no way to remove endpoint data, so this edits its registry.
+	 */
+	private function unregister_cart_data(): void {
+		$extend_schema = StoreApi::container()->get( ExtendSchema::class );
+		$property      = new \ReflectionProperty( ExtendSchema::class, 'extend_data' );
+		$property->setAccessible( true );
+
+		$extend_data = $property->getValue( $extend_schema );
+		unset( $extend_data[ CartSchema::IDENTIFIER ][ self::NAMESPACE ] );
+		$property->setValue( $extend_schema, $extend_data );
+	}
+
+	/**
+	 * Register the cart data and get the Fraud Protection data of the Store API cart.
+	 *
+	 * @param bool $is_kustom_active Whether Kustom is active.
+	 * @return mixed The Fraud Protection data of the cart response.
+	 */
+	private function get_cart_data( bool $is_kustom_active = true ): mixed {
+		if ( $is_kustom_active && ! defined( 'KCO_WC_VERSION' ) ) {
+			define( 'KCO_WC_VERSION', '2.24.1' );
+		}
+
+		// Firing init again would run every other callback, so run only the one that register() added.
+		$callback = array( $this->sut, 'register_store_api_cart_extension' );
+		$this->assertSame( 10, has_action( 'init', $callback ), 'The cart data should be registered on init' );
+		$callback();
+
+		$response = rest_get_server()->dispatch( new \WP_REST_Request( 'GET', '/wc/store/v1/cart' ) );
+
+		$this->assertSame( 200, $response->get_status() );
+
+		return $response->get_data()['extensions']->{self::NAMESPACE} ?? null;
+	}
+
+	/**
+	 * Keep this test before the ones that activate Kustom: they define a constant, which cannot be removed.
+	 *
+	 * @testdox The cart has no Fraud Protection data without Kustom.
+	 */
+	public function test_cart_has_no_data_without_kustom(): void {
+		if ( defined( 'KCO_WC_VERSION' ) ) {
+			$this->markTestSkipped( 'Kustom was already active in this process.' );
+		}
+
+		$this->submit_checkout( 'session-1' );
+
+		$this->assertNull( $this->get_cart_data( false ) );
+	}
+
+	/**
+	 * @testdox The cart has no sent session ID before a Kustom attempt.
+	 */
+	public function test_cart_has_no_sent_session_id_before_kustom_attempt(): void {
+		$this->assertSame( array( 'kustom_sent_session_id' => '' ), $this->get_cart_data() );
+	}
+
+	/**
+	 * @testdox The cart has the session ID of the last Kustom attempt that reached verification.
+	 */
+	public function test_cart_has_session_id_of_last_kustom_attempt(): void {
+		$this->submit_checkout( 'session-1' );
+		$this->submit_checkout( 'session-2', 'kco', false );
+
+		$this->assertSame( array( 'kustom_sent_session_id' => 'session-1' ), $this->get_cart_data() );
+	}
+
+	/**
 	 * @testdox Invalid hook arguments are ignored.
 	 */
 	public function test_invalid_request_is_ignored(): void {
@@ -257,6 +332,7 @@ class KustomCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertFalse( wp_script_is( self::SCRIPT_HANDLE, 'enqueued' ), 'Kustom keeps the session ID in the Checkout block itself' );
 		$this->assertSame( array( 'blackbox_session_id' => 'session-1' ), $this->submit_checkout( 'session-1' ), 'Kustom decides which session ID it sends' );
 		$this->assertNull( WC()->session->get( '_wc_fraud_protection_kustom_sent_session_id' ) );
+		$this->assertSame( array( 'kustom_sent_session_id' => '' ), $this->get_cart_data(), 'The cart has no used session ID for the browser to replace' );
 	}
 
 	/**

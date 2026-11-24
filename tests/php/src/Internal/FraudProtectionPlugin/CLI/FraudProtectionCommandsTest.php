@@ -9,7 +9,9 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\CLI;
 
 use Automattic\WooCommerce\FraudProtection\NativeIntegrationRegistry;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\CustomRulesCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\FraudProtectionCommands;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI\PaymentAttemptsCommands;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExtensionNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
@@ -58,11 +60,20 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	/** @var AutomaticProtectionSettingUpdater&\PHPUnit\Framework\MockObject\MockObject */
 	private $automatic_protection_updater;
 
+	/** @var CustomRulesCommands&\PHPUnit\Framework\MockObject\MockObject */
+	private $custom_rules_commands;
+
+	/** @var PaymentAttemptsCommands&\PHPUnit\Framework\MockObject\MockObject */
+	private $payment_attempts_commands;
+
 	/** @var GatewayNativeSupport&\PHPUnit\Framework\MockObject\MockObject */
 	private $native_support;
 
 	/** @var array<string, callable> */
 	private array $wp_cli_hooks;
+
+	/** @var string[] */
+	private array $wp_cli_warnings;
 
 	/** @var array<string, callable> */
 	private array $wp_cli_commands;
@@ -86,6 +97,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->wp_cli_commands  = array();
 		$this->wp_cli_lines     = array();
 		$this->wp_cli_successes = array();
+		$this->wp_cli_warnings  = array();
 		$this->formatted_items  = array();
 
 		$this->register_legacy_proxy_static_mocks(
@@ -103,6 +115,9 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 					},
 					'success'     => function ( string $message ): void {
 						$this->wp_cli_successes[] = $message;
+					},
+					'warning'     => function ( string $message ): void {
+						$this->wp_cli_warnings[] = $message;
 					},
 					'error'       => function ( mixed $message ): void {
 						if ( $message instanceof \Throwable ) {
@@ -132,10 +147,23 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		$this->merchant_facing_features_gate = $this->createMock( MerchantFacingFeaturesGate::class );
 		$this->automatic_protection          = $this->createMock( AutomaticProtectionSetting::class );
 		$this->automatic_protection_updater  = $this->createMock( AutomaticProtectionSettingUpdater::class );
+		$this->custom_rules_commands         = $this->createMock( CustomRulesCommands::class );
+		$this->payment_attempts_commands     = $this->createMock( PaymentAttemptsCommands::class );
 		$this->native_support                = $this->createMock( GatewayNativeSupport::class );
 		$this->native_support->method( 'get_declarations' )->willReturn( array() );
 		$this->sut = new FraudProtectionCommands();
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $this->native_support, new ExtensionNativeSupport() );
+		$this->sut->init(
+			$this->schema_manager,
+			$this->session_event_pruner,
+			wc_get_container()->get( LegacyProxy::class ),
+			$this->merchant_facing_features_gate,
+			$this->automatic_protection,
+			$this->automatic_protection_updater,
+			$this->custom_rules_commands,
+			$this->payment_attempts_commands,
+			$this->native_support,
+			new ExtensionNativeSupport()
+		);
 	}
 
 	/**
@@ -171,9 +199,13 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Should register only the accepted Fraud Protection command leaves.
+	 * @testdox Should register only the maintenance command leaves when merchant-facing features are disabled.
 	 */
-	public function test_registers_accepted_command_leaves(): void {
+	public function test_registers_maintenance_command_leaves_when_gate_disabled(): void {
+		$this->merchant_facing_features_gate->method( 'is_enabled' )->willReturn( false );
+		$this->custom_rules_commands->expects( $this->never() )->method( 'register_commands' );
+		$this->payment_attempts_commands->expects( $this->never() )->method( 'register_commands' );
+
 		$this->sut->register();
 		$this->assertArrayHasKey( 'after_wp_load', $this->wp_cli_hooks );
 		$this->wp_cli_hooks['after_wp_load']();
@@ -185,10 +217,25 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 				'wc fraud-protection status',
 				'wc fraud-protection native-integrations list',
 				'wc fraud-protection database install',
+				'wc fraud-protection payment-attempts prune',
 				'wc fraud-protection sessions prune',
 			),
 			array_keys( $this->wp_cli_commands )
 		);
+	}
+
+	/**
+	 * @testdox Should also register the payment attempts and custom rules commands when merchant-facing features are enabled.
+	 */
+	public function test_registers_data_commands_when_gate_enabled(): void {
+		$this->merchant_facing_features_gate->method( 'is_enabled' )->willReturn( true );
+		$this->custom_rules_commands->expects( $this->once() )->method( 'register_commands' );
+		$this->payment_attempts_commands->expects( $this->once() )->method( 'register_commands' );
+
+		$this->sut->register();
+		$this->wp_cli_hooks['after_wp_load']();
+
+		$this->assertContains( 'wc fraud-protection payment-attempts prune', array_keys( $this->wp_cli_commands ) );
 	}
 
 	/**
@@ -366,7 +413,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 		);
 		$extension_native_support = $this->createMock( ExtensionNativeSupport::class );
 		$extension_native_support->method( 'get_declarations' )->willReturn( array( 'my-extension' => array( 'change_payment_method' ) ) );
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $native_support, $extension_native_support );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $this->custom_rules_commands, $this->payment_attempts_commands, $native_support, $extension_native_support );
 
 		$this->sut->native_integrations_list( array(), array( 'format' => 'table' ) );
 
@@ -462,7 +509,7 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 				'shared'       => array( 'fraud_protection_checkout', 'change_payment_method' ),
 			)
 		);
-		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $native_support, $extension_native_support );
+		$this->sut->init( $this->schema_manager, $this->session_event_pruner, wc_get_container()->get( LegacyProxy::class ), $this->merchant_facing_features_gate, $this->automatic_protection, $this->automatic_protection_updater, $this->custom_rules_commands, $this->payment_attempts_commands, $native_support, $extension_native_support );
 
 		$this->sut->native_integrations_list(
 			array(),
@@ -783,54 +830,68 @@ class FraudProtectionCommandsTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Session prune should report the fixed-retention deletion count.
+	 * @testdox Payment attempts prune should report the fixed-retention deletion count.
 	 */
-	public function test_sessions_prune_reports_deleted_count(): void {
+	public function test_payment_attempts_prune_reports_deleted_count(): void {
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
 		$this->session_event_pruner->expects( $this->once() )->method( 'prune_sessions' )->willReturn( 0 );
 
-		$this->sut->sessions_prune();
+		$this->sut->payment_attempts_prune();
 
-		$this->assertSame( array( 'Pruned 0 expired Fraud Protection sessions.' ), $this->wp_cli_successes );
+		$this->assertSame( array( 'Pruned 0 expired payment attempts.' ), $this->wp_cli_successes );
+		$this->assertEmpty( $this->wp_cli_warnings, 'The current command name must not warn about deprecation' );
 	}
 
 	/**
-	 * @testdox Session prune should stop with an error when the schema is incomplete.
+	 * @testdox The deprecated sessions prune command warns and still prunes.
 	 */
-	public function test_sessions_prune_stops_for_incomplete_schema(): void {
+	public function test_sessions_prune_warns_and_prunes(): void {
+		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
+		$this->session_event_pruner->expects( $this->once() )->method( 'prune_sessions' )->willReturn( 2 );
+
+		$this->sut->sessions_prune();
+
+		$this->assertSame( array( '"wp wc fraud-protection sessions prune" is deprecated. Use "wp wc fraud-protection payment-attempts prune".' ), $this->wp_cli_warnings );
+		$this->assertSame( array( 'Pruned 2 expired payment attempts.' ), $this->wp_cli_successes );
+	}
+
+	/**
+	 * @testdox Payment attempts prune should stop with an error when the schema is incomplete.
+	 */
+	public function test_payment_attempts_prune_stops_for_incomplete_schema(): void {
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status( array( 'complete' => false ) ) );
 		$this->session_event_pruner->expects( $this->never() )->method( 'prune_sessions' );
 
 		$this->expectException( WPCLIErrorException::class );
 		$this->expectExceptionMessage( 'database schema is incomplete' );
 
-		$this->sut->sessions_prune();
+		$this->sut->payment_attempts_prune();
 	}
 
 	/**
-	 * @testdox Session prune should convert storage failure to a WP-CLI error.
+	 * @testdox Payment attempts prune should convert storage failure to a WP-CLI error.
 	 */
-	public function test_sessions_prune_errors_on_storage_failure(): void {
+	public function test_payment_attempts_prune_errors_on_storage_failure(): void {
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
 		$this->session_event_pruner->method( 'prune_sessions' )->willThrowException( new \RuntimeException( 'raw database error' ) );
 
 		$this->expectException( WPCLIErrorException::class );
 		$this->expectExceptionMessage( 'RuntimeException: raw database error' );
 
-		$this->sut->sessions_prune();
+		$this->sut->payment_attempts_prune();
 	}
 
 	/**
-	 * @testdox Session prune should leave unexpected exceptions for WP-CLI.
+	 * @testdox Payment attempts prune should leave unexpected exceptions for WP-CLI.
 	 */
-	public function test_sessions_prune_does_not_catch_unexpected_exception(): void {
+	public function test_payment_attempts_prune_does_not_catch_unexpected_exception(): void {
 		$this->schema_manager->method( 'get_schema_status' )->willReturn( self::schema_status() );
 		$this->session_event_pruner->method( 'prune_sessions' )->willThrowException( new \LogicException( 'unexpected programming error' ) );
 
 		$this->expectException( \LogicException::class );
 		$this->expectExceptionMessage( 'unexpected programming error' );
 
-		$this->sut->sessions_prune();
+		$this->sut->payment_attempts_prune();
 	}
 }
 // phpcs:enable Generic.Files.OneObjectStructurePerFile.MultipleFound

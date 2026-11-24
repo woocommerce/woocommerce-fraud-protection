@@ -11,6 +11,7 @@ use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Logging\FraudProtectionLogger;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\MerchantListsFeature;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RuleStore;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Rules\RulesRestController;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
@@ -60,10 +61,24 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			wc_get_container()->get( SessionEventStore::class ),
 			wc_get_container()->get( ApiClient::class ),
 			new SessionIdNormalizer(),
-			wc_get_container()->get( SettingsTelemetry::class )
+			$this->rule_manager( $this->rule_store, wc_get_container()->get( SettingsTelemetry::class ) )
 		);
 		$this->sut->register_routes();
 		wp_set_current_user( 1 );
+	}
+
+	/**
+	 * Build a rule manager for the controller under test.
+	 *
+	 * @param RuleStore         $rule_store Rule persistence.
+	 * @param SettingsTelemetry $telemetry  Settings telemetry.
+	 * @return RuleManager
+	 */
+	private function rule_manager( RuleStore $rule_store, SettingsTelemetry $telemetry ): RuleManager {
+		$rule_manager = new RuleManager();
+		$rule_manager->init( $rule_store, $telemetry );
+
+		return $rule_manager;
 	}
 
 	/** Tear down test fixtures. */
@@ -370,7 +385,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 					'pages' => 0,
 				)
 			);
-		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->createMock( SettingsTelemetry::class ) );
+		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $rule_store, $this->createMock( SettingsTelemetry::class ) ) );
 		$request = new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' );
 		$request->set_query_params(
 			array(
@@ -438,7 +453,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			wc_get_container()->get( SessionEventStore::class ),
 			wc_get_container()->get( ApiClient::class ),
 			new SessionIdNormalizer(),
-			wc_get_container()->get( SettingsTelemetry::class )
+			$this->rule_manager( $rule_store, wc_get_container()->get( SettingsTelemetry::class ) )
 		);
 
 		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/wc-admin/fraud-protection/rules' ) );
@@ -465,7 +480,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			$telemetry
+			$this->rule_manager( $this->rule_store, $telemetry )
 		);
 		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
@@ -494,7 +509,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$api_client->expects( $this->never() )->method( 'report' );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $this->rule_manager( $rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
 		$request->set_body_params(
 			array(
@@ -556,7 +571,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	public function test_create_route_rejects_invalid_typed_arguments_before_persistence( array $params ): void {
 		$rule_store = $this->createMock( RuleStore::class );
 		$rule_store->expects( $this->never() )->method( 'create_rule' );
-		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->createMock( SettingsTelemetry::class ) );
+		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $rule_store, $this->createMock( SettingsTelemetry::class ) ) );
 
 		$response = $this->dispatch_create( $params );
 
@@ -602,7 +617,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			$telemetry
+			$this->rule_manager( $this->rule_store, $telemetry )
 		);
 
 		$request = new \WP_REST_Request( 'POST', '/wc-admin/fraud-protection/rules' );
@@ -636,7 +651,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Allow, 'email', 'api' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_query_params( array( 'origin' => 'unexpected' ) );
 
@@ -657,7 +672,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			$this->createMock( SettingsTelemetry::class )
+			$this->rule_manager( $this->rule_store, $this->createMock( SettingsTelemetry::class ) )
 		);
 		$event_id = $this->record_event( array( 'session_id' => '' ) );
 
@@ -689,7 +704,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			$this->createMock( SettingsTelemetry::class )
+			$this->rule_manager( $this->rule_store, $this->createMock( SettingsTelemetry::class ) )
 		);
 		$event_id = $this->record_event();
 
@@ -723,7 +738,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			$telemetry
+			$this->rule_manager( $this->rule_store, $telemetry )
 		);
 		$params = array(
 			'action'              => 'allow',
@@ -776,39 +791,6 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Duplicate messages describe known combinations and use a generic fallback for unknown data.
-	 * @dataProvider duplicate_message_provider
-	 *
-	 * @param string  $type            Rule type.
-	 * @param ?string $existing_action Existing action.
-	 * @param string  $expected        Expected message.
-	 */
-	public function test_duplicate_rule_messages( string $type, ?string $existing_action, string $expected ): void {
-		$method = new \ReflectionMethod( RulesRestController::class, 'duplicate_rule_message' );
-
-		$this->assertSame( $expected, $method->invoke( $this->sut, $type, $existing_action ) );
-	}
-
-	/**
-	 * Duplicate rule message cases.
-	 *
-	 * @return array<string, array{string, ?string, string}>
-	 */
-	public function duplicate_message_provider(): array {
-		$generic = 'You already have a rule with this value.';
-
-		return array(
-			'email allow'    => array( 'email', 'allow', 'You already have a rule that allows this email address.' ),
-			'email block'    => array( 'email', 'block', 'You already have a rule that blocks this email address.' ),
-			'IP allow'       => array( 'ip', 'allow', 'You already have a rule that allows this IP address.' ),
-			'IP block'       => array( 'ip', 'block', 'You already have a rule that blocks this IP address.' ),
-			'unknown field'  => array( 'country', 'allow', $generic ),
-			'unknown action' => array( 'email', 'challenge', $generic ),
-			'null action'    => array( 'email', null, $generic ),
-		);
-	}
-
-	/**
 	 * @testdox A contextual create uses the stored event and sends feedback after writing.
 	 */
 	public function test_create_rule_context_uses_stored_event(): void {
@@ -832,7 +814,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			wc_get_container()->get( SettingsTelemetry::class )
+			$this->rule_manager( $this->rule_store, wc_get_container()->get( SettingsTelemetry::class ) )
 		);
 		$this->event_store->record_event(
 			array(
@@ -914,7 +896,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 			$this->event_store,
 			$api_client,
 			new SessionIdNormalizer(),
-			$telemetry
+			$this->rule_manager( $this->rule_store, $telemetry )
 		);
 		$event_id = $this->record_event( array( 'final_status' => 'allowed' ) );
 
@@ -1055,7 +1037,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$api_client->expects( $this->never() )->method( 'report' );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'updated', FraudDecision::Allow, 'email', 'rules' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
@@ -1096,7 +1078,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $target->id );
 		$request->set_body_params(
 			array(
@@ -1131,7 +1113,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
@@ -1164,7 +1146,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$table  = $this->schema_manager->get_rules_table_name();
 		$reads  = 0;
 		$filter = function ( string $query ) use ( $table, $rule, &$reads, &$filter ): string {
@@ -1211,7 +1193,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$table  = $this->schema_manager->get_rules_table_name();
 		$reads  = 0;
 		$filter = function ( string $query ) use ( $table, $rule, &$reads, &$filter ): string {
@@ -1262,7 +1244,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$api_client->expects( $this->never() )->method( 'report' );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Block, 'ip', 'rules' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $api_client, new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_query_params( array( 'origin' => 'rules' ) );
 
@@ -1288,7 +1270,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$this->assertNotNull( $this->rule_store->update_rule( $rule->id, status: RuleStatus::Disabled ) );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 
 		$response = $this->server->dispatch( new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/' . $rule->id ) );
 
@@ -1320,7 +1302,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$rule_store->expects( $this->once() )->method( 'delete_rule_with_result' )->with( 42, RuleStatus::Active )->willReturn( $deleted_rule );
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->once() )->method( 'record_rule_change' )->with( 'deleted', FraudDecision::Allow, 'email', 'rules' );
-		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'DELETE', '/wc-admin/fraud-protection/rules/42' );
 		$request->set_query_params( array( 'origin' => 'rules' ) );
 
@@ -1343,7 +1325,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
@@ -1382,7 +1364,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		);
 		$telemetry = $this->createMock( SettingsTelemetry::class );
 		$telemetry->expects( $this->never() )->method( 'record_rule_change' );
-		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $telemetry );
+		$this->sut->init( $this->rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $this->rule_store, $telemetry ) );
 		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/' . $rule->id );
 		$request->set_body_params(
 			array(
@@ -1412,7 +1394,7 @@ class RulesRestControllerTest extends \WC_REST_Unit_Test_Case {
 		$rule_store = $this->createMock( RuleStore::class );
 		$rule_store->expects( $this->never() )->method( 'get_rule' );
 		$rule_store->expects( $this->never() )->method( 'update_rule_with_result' );
-		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->createMock( SettingsTelemetry::class ) );
+		$this->sut->init( $rule_store, $this->schema_manager, $this->event_store, $this->createMock( ApiClient::class ), new SessionIdNormalizer(), $this->rule_manager( $rule_store, $this->createMock( SettingsTelemetry::class ) ) );
 		$request = new \WP_REST_Request( 'PUT', '/wc-admin/fraud-protection/rules/1' );
 		$request->set_body_params( $params );
 

@@ -168,11 +168,11 @@ class SessionsRestController extends RestApiControllerBase {
 					'payment_method_order' => $this->payment_method_order_by_title( $orderby, $order ),
 				)
 			);
+			$rules  = $this->rule_finder->find_for_events( $result['items'] );
 		} catch ( \RuntimeException $e ) {
 			return $this->unavailable_error( 'Sessions list query failed.', $e );
 		}
 
-		$rules = $this->rule_finder->find_for_events( $result['items'] );
 		$items = array();
 		foreach ( $result['items'] as $row ) {
 			$items[] = $this->prepare_item( $row, $rules[ $row['id'] ] ?? array() );
@@ -203,15 +203,7 @@ class SessionsRestController extends RestApiControllerBase {
 			return array();
 		}
 
-		$titles = array();
-		foreach ( $ids as $id ) {
-			$titles[ $id ] = $this->payment_method_titles->resolve( $id );
-		}
-		uasort( $titles, static fn( string $a, string $b ): int => strcasecmp( $a, $b ) );
-
-		$ordered = array_keys( $titles );
-
-		return 'asc' === strtolower( $order ) ? $ordered : array_reverse( $ordered );
+		return $this->payment_method_titles->sort_by_title( $ids, $order );
 	}
 
 	/**

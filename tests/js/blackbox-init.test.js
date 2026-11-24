@@ -267,9 +267,20 @@ describe( 'blackbox-init', () => {
 			expect( sessionId ).toBe( '' );
 		} );
 
-		it( 'resolves with empty string when flush() is missing', async () => {
+		it( 'resolves with the session ID from getSessionId() when flush() is missing', async () => {
 			setupAndLoad();
 			delete window.Blackbox.flush;
+
+			const sessionId = await window.wcFraudProtection.acquireSessionId();
+
+			expect( sessionId ).toBe( 'test-session-id' );
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'resolves with empty string when flush() and getSessionId() are missing', async () => {
+			setupAndLoad();
+			delete window.Blackbox.flush;
+			delete window.Blackbox.getSessionId;
 
 			const sessionId = await window.wcFraudProtection.acquireSessionId();
 
@@ -358,14 +369,91 @@ describe( 'blackbox-init', () => {
 			expect( mockFlush ).toHaveBeenCalledTimes( 1 );
 		} );
 
-		it( 'reports an unavailable SDK when flush() is missing', async () => {
+		it.each( [
+			[ 'missing', undefined ],
+			[ 'not a function', 'flush' ],
+		] )(
+			'falls back to getSessionId() when flush() is %s',
+			async ( _, flush ) => {
+				setupAndLoad();
+				window.Blackbox.flush = flush;
+
+				await expect(
+					window.wcFraudProtection.acquireSessionIdResult()
+				).resolves.toEqual( {
+					sessionId: 'test-session-id',
+					error: '',
+				} );
+				expect( mockGetSessionId ).toHaveBeenCalledTimes( 1 );
+			}
+		);
+
+		it( 'does not fall back to getSessionId() when flush() fails', async () => {
+			mockFlush.mockImplementation( () =>
+				Promise.reject( new Error( 'SDK error' ) )
+			);
+			setupAndLoad();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: '', error: 'sdk_error' } );
+			expect( mockGetSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'reports a timeout when the getSessionId() fallback does not answer in time', async () => {
+			mockGetSessionId.mockImplementation(
+				() => new Promise( () => {} )
+			);
 			setupAndLoad();
 			delete window.Blackbox.flush;
+
+			let result = null;
+			window.wcFraudProtection
+				.acquireSessionIdResult()
+				.then( ( resolved ) => {
+					result = resolved;
+				} );
+
+			jest.advanceTimersByTime( 2999 );
+			await flushPromises();
+			expect( result ).toBeNull();
+
+			jest.advanceTimersByTime( 1 );
+			await flushPromises();
+			expect( result ).toEqual( { sessionId: '', error: 'timeout' } );
+		} );
+
+		it.each( [
+			[ 'rejects', () => Promise.reject( new Error( 'SDK error' ) ) ],
+			[
+				'throws',
+				() => {
+					throw new Error( 'SDK error' );
+				},
+			],
+			[ 'resolves with an empty string', () => Promise.resolve( '' ) ],
+			[ 'resolves with a non-string', () => Promise.resolve( {} ) ],
+		] )(
+			'reports an SDK error when the getSessionId() fallback %s',
+			async ( _, impl ) => {
+				mockGetSessionId.mockImplementation( impl );
+				setupAndLoad();
+				delete window.Blackbox.flush;
+
+				await expect(
+					window.wcFraudProtection.acquireSessionIdResult()
+				).resolves.toEqual( { sessionId: '', error: 'sdk_error' } );
+			}
+		);
+
+		it( 'reports an unavailable SDK when flush() and getSessionId() are missing', async () => {
+			setupAndLoad();
+			delete window.Blackbox.flush;
+			delete window.Blackbox.getSessionId;
 
 			await expect(
 				window.wcFraudProtection.acquireSessionIdResult()
 			).resolves.toEqual( { sessionId: '', error: 'sdk_unavailable' } );
-			expect( mockGetSessionId ).not.toHaveBeenCalled();
 		} );
 
 		it( 'sets only the methods that work without the SDK when it is missing', async () => {
@@ -723,6 +811,55 @@ describe( 'blackbox-init', () => {
 			expect( mockFlush ).toHaveBeenCalledTimes( 2 );
 		} );
 
+		it( 'is replaced through the getSessionId() fallback when flush() is missing', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'used-id' )
+				.mockResolvedValueOnce( 'used-id' )
+				.mockResolvedValueOnce( 'new-id' );
+			setupAndLoad();
+			delete window.Blackbox.flush;
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			await expect(
+				window.wcFraudProtection.acquireSessionIdResult()
+			).resolves.toEqual( { sessionId: 'new-id', error: '' } );
+
+			expect( mockReset ).toHaveBeenCalledTimes( 1 );
+			expect( mockReset.mock.invocationCallOrder[ 0 ] ).toBeLessThan(
+				mockGetSessionId.mock.invocationCallOrder[ 2 ]
+			);
+		} );
+
+		it( 'gives the getSessionId() fallback only what is left of the deadline for the new session', async () => {
+			mockGetSessionId
+				.mockResolvedValueOnce( 'used-id' )
+				.mockImplementationOnce( () => {
+					jest.advanceTimersByTime( 1000 );
+					return Promise.resolve( 'used-id' );
+				} )
+				.mockImplementationOnce( () => new Promise( () => {} ) );
+			setupAndLoad();
+			delete window.Blackbox.flush;
+			await window.wcFraudProtection.acquireSessionIdResult();
+
+			let result = null;
+			window.wcFraudProtection
+				.acquireSessionIdResult()
+				.then( ( resolved ) => {
+					result = resolved;
+				} );
+			await flushPromises();
+			expect( mockGetSessionId ).toHaveBeenCalledTimes( 3 );
+
+			jest.advanceTimersByTime( 1999 );
+			await flushPromises();
+			expect( result ).toBeNull();
+
+			jest.advanceTimersByTime( 1 );
+			await flushPromises();
+			expect( result ).toEqual( { sessionId: '', error: 'reused' } );
+		} );
+
 		it( 'reports `reused` without another flush when the deadline has passed', async () => {
 			mockFlush.mockImplementationOnce( () =>
 				flushed( { sessionId: 'used-id' } )
@@ -1037,6 +1174,21 @@ describe( 'blackbox-init', () => {
 
 		it( 'is not handed out after acquireSessionIdResult() returned it', async () => {
 			setupAndLoad();
+			window.wcFraudProtection.prepareSessionId();
+			await flushPromises();
+
+			const result =
+				await window.wcFraudProtection.acquireSessionIdResult();
+
+			expect( result.sessionId ).toBe( 'test-session-id' );
+			expect( window.wcFraudProtection.takePreparedSessionId() ).toBe(
+				''
+			);
+		} );
+
+		it( 'is not handed out after the getSessionId() fallback returned it', async () => {
+			setupAndLoad();
+			delete window.Blackbox.flush;
 			window.wcFraudProtection.prepareSessionId();
 			await flushPromises();
 

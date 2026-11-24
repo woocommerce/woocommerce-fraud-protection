@@ -17,6 +17,7 @@ use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\Rule;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Schemas\RuleStatus;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FailingRuleQuery;
 
 /**
  * Tests for the RuleStore class.
@@ -779,6 +780,38 @@ class RuleStoreTest extends FraudProtectionUnitTestCase {
 		$ordered = $this->sut->get_active_rules();
 		$this->assertCount( 1, $ordered, 'The write must invalidate the cache, revealing the direct status change' );
 		$this->assertSame( 'other@example.com', $ordered[0]->conditions['value'] );
+	}
+
+	/**
+	 * @testdox A failed active ruleset query throws instead of returning, or caching, an empty ruleset.
+	 */
+	public function test_active_rules_query_failure_throws_and_is_not_cached(): void {
+		$rule = $this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'someone@example.com' ) );
+
+		$thrown = null;
+		try {
+			FailingRuleQuery::active_ruleset( $this->schema_manager, fn() => $this->sut->get_active_rules() );
+		} catch ( \RuntimeException $e ) {
+			$thrown = $e;
+		}
+
+		$this->assertInstanceOf( \RuntimeException::class, $thrown, 'A failed query must not look like an empty ruleset' );
+		$this->assertSame(
+			array( $rule->id ),
+			array_map( static fn( Rule $active ): int => $active->id, $this->sut->get_active_rules() ),
+			'The failure must not be cached'
+		);
+	}
+
+	/**
+	 * @testdox A failed rules list page query throws instead of returning an empty page.
+	 */
+	public function test_active_rules_page_rows_query_failure_throws(): void {
+		$this->sut->create_rule( FraudDecision::Block, $this->email_condition( 'someone@example.com' ) );
+
+		$this->expectException( \RuntimeException::class );
+
+		FailingRuleQuery::list_page_rows( $this->schema_manager, fn() => $this->sut->get_active_rules_page() );
 	}
 
 	/**

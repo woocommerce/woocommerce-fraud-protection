@@ -27,8 +27,10 @@ let $;
 let form;
 let mockAcquireSessionId;
 let bubbleSubmitSpy;
+let windowListeners;
 
 beforeEach( () => {
+	windowListeners = [];
 	document.body.innerHTML = '<form id="order_review"></form>';
 	form = document.getElementById( 'order_review' );
 
@@ -48,6 +50,11 @@ beforeEach( () => {
 
 afterEach( () => {
 	document.body.removeEventListener( 'submit', bubbleSubmitSpy );
+	// The script's listeners on the form go with it, but the ones on the
+	// shared window stay unless they are removed.
+	windowListeners.forEach( ( args ) =>
+		window.removeEventListener( ...args )
+	);
 	document.body.innerHTML = '';
 	delete window.jQuery;
 	delete window.wcFraudProtection;
@@ -65,9 +72,12 @@ function setupFraudProtection() {
 }
 
 function loadScript() {
+	const addEventListener = jest.spyOn( window, 'addEventListener' );
 	jest.isolateModules( () => {
 		require( '../../assets/js/pay-for-order' );
 	} );
+	windowListeners.push( ...addEventListener.mock.calls );
+	addEventListener.mockRestore();
 }
 
 function dispatchSubmit() {
@@ -375,6 +385,390 @@ describe( 'pay-for-order', () => {
 		expect(
 			form.querySelector( 'input[name="' + SESSION_ID_ERROR_FIELD + '"]' )
 		).toBeNull();
+	} );
+
+	describe( 'new attempt after a payment that stays on the page', () => {
+		let button;
+		let input;
+
+		beforeEach( () => {
+			input = document.createElement( 'input' );
+			button = document.createElement( 'button' );
+			button.type = 'submit';
+			form.append( input, button );
+		} );
+
+		// jsdom marks as trusted only the events that it fires itself, so this
+		// dispatches through its implementation, as it does for the shopper's
+		// input. Activating the button then fires a trusted submit event.
+		function dispatchTrusted( target, event ) {
+			const impl = ( object ) =>
+				object[
+					Object.getOwnPropertySymbols( object ).find(
+						( symbol ) => symbol.description === 'impl'
+					)
+				];
+			const eventImpl = impl( event );
+			eventImpl.isTrusted = true;
+			return impl( target )._dispatch( eventImpl );
+		}
+
+		function shopperSubmit() {
+			dispatchTrusted(
+				button,
+				new window.MouseEvent( 'click', {
+					bubbles: true,
+					cancelable: true,
+				} )
+			);
+		}
+
+		async function completeFirstAttempt() {
+			dispatchSubmit();
+			await flushPromises();
+			jest.runOnlyPendingTimers();
+		}
+
+		it( 'acquires a new session ID when the shopper submits again', async () => {
+			mockAcquireSessionId
+				.mockReturnValueOnce( Promise.resolve( 'sess-first' ) )
+				.mockReturnValueOnce( Promise.resolve( 'sess-second' ) );
+			setupFraudProtection();
+			loadScript();
+			const gatewayHandler = jest.fn();
+			form.addEventListener( 'submit', gatewayHandler );
+
+			await completeFirstAttempt();
+			expect( gatewayHandler ).toHaveBeenCalledTimes( 1 );
+
+			shopperSubmit();
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			expect( gatewayHandler ).toHaveBeenCalledTimes( 1 );
+
+			await flushPromises();
+			jest.runOnlyPendingTimers();
+
+			const fields = form.querySelectorAll(
+				'input[name="' + SESSION_ID_FIELD + '"]'
+			);
+			expect( Array.from( fields, ( field ) => field.value ) ).toEqual( [
+				'sess-second',
+			] );
+			expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );
+			expect( form.submit ).toHaveBeenCalledTimes( 2 );
+		} );
+
+		it( 'keeps the earlier session ID until the new one is ready', async () => {
+			let resolveSecond;
+			mockAcquireSessionId
+				.mockReturnValueOnce( Promise.resolve( 'sess-first' ) )
+				.mockReturnValueOnce(
+					new Promise( ( resolve ) => {
+						resolveSecond = resolve;
+					} )
+				);
+			setupFraudProtection();
+			loadScript();
+
+			await completeFirstAttempt();
+			shopperSubmit();
+
+			// A gateway still completing the earlier attempt posts its ID.
+			expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+				'sess-first'
+			);
+
+			resolveSecond( 'sess-second' );
+			await flushPromises();
+
+			expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+				'sess-second'
+			);
+		} );
+
+		it( 'replaces the session ID with the reason when the new acquisition has none', async () => {
+			setupFraudProtection();
+			window.wcFraudProtection.acquireSessionIdResult = jest
+				.fn()
+				.mockResolvedValueOnce( { sessionId: 'sess-first', error: '' } )
+				.mockResolvedValueOnce( { sessionId: '', error: 'reused' } );
+			loadScript();
+			let postedSessionId;
+			let postedError;
+			form.submit = jest.fn( () => {
+				postedSessionId = document.getElementById( SESSION_ID_FIELD );
+				postedError = form.querySelector(
+					'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
+				);
+			} );
+
+			await completeFirstAttempt();
+			shopperSubmit();
+			await flushPromises();
+			jest.runOnlyPendingTimers();
+
+			expect( postedSessionId.value ).toBe( '' );
+			expect( postedError.value ).toBe( 'reused' );
+		} );
+
+		it( 'acquires a new session ID when the shopper presses Enter in a field', async () => {
+			setupFraudProtection();
+			loadScript();
+			await completeFirstAttempt();
+
+			// The key press submits the form in the same task.
+			dispatchTrusted(
+				input,
+				new window.KeyboardEvent( 'keydown', {
+					key: 'Enter',
+					bubbles: true,
+					cancelable: true,
+				} )
+			);
+			form.requestSubmit();
+
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+		} );
+
+		it( 'acquires a new session ID when the shopper clicks a gateway Pay button that clicks the form button', async () => {
+			setupFraudProtection();
+			loadScript();
+			await completeFirstAttempt();
+
+			// A gateway's own button, with no type, that submits through the
+			// form's button from its click handler.
+			const gatewayButton = document.createElement( 'button' );
+			const icon = document.createElement( 'span' );
+			gatewayButton.append( icon );
+			gatewayButton.addEventListener( 'click', ( e ) => {
+				e.preventDefault();
+				button.click();
+			} );
+			form.append( gatewayButton );
+
+			dispatchTrusted(
+				icon,
+				new window.MouseEvent( 'click', {
+					bubbles: true,
+					cancelable: true,
+				} )
+			);
+
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+		} );
+
+		describe( 'a trusted submit that the shopper did not start', () => {
+			let gatewayHandler;
+
+			beforeEach( () => {
+				// The gateway completes the payment itself.
+				gatewayHandler = jest.fn( ( e ) => e.preventDefault() );
+				form.addEventListener( 'submit', gatewayHandler );
+			} );
+
+			it( 'keeps the session ID when a gateway clicks the button from a script in the task of a click on a field', async () => {
+				setupFraudProtection();
+				loadScript();
+				await completeFirstAttempt();
+
+				dispatchTrusted(
+					input,
+					new window.MouseEvent( 'click', { bubbles: true } )
+				);
+				button.click();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );
+			} );
+
+			it( 'keeps the session ID for a submit in the task of an Enter key press in a text area', async () => {
+				setupFraudProtection();
+				loadScript();
+				await completeFirstAttempt();
+				const textarea = document.createElement( 'textarea' );
+				form.append( textarea );
+
+				dispatchTrusted(
+					textarea,
+					new window.KeyboardEvent( 'keydown', {
+						key: 'Enter',
+						bubbles: true,
+						cancelable: true,
+					} )
+				);
+				form.requestSubmit();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );
+			} );
+
+			it( 'keeps the session ID when a gateway clicks the button from a script', async () => {
+				setupFraudProtection();
+				loadScript();
+				await completeFirstAttempt();
+
+				button.click();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );
+				expect( gatewayHandler.mock.calls[ 1 ][ 0 ].isTrusted ).toBe(
+					true
+				);
+			} );
+
+			it( 'keeps the session ID for a submit after the task of the shopper click', async () => {
+				setupFraudProtection();
+				loadScript();
+				await completeFirstAttempt();
+				// A gateway Pay button that completes its work in a later task.
+				const gatewayButton = document.createElement( 'button' );
+				gatewayButton.addEventListener( 'click', ( e ) =>
+					e.preventDefault()
+				);
+				form.append( gatewayButton );
+
+				dispatchTrusted(
+					gatewayButton,
+					new window.MouseEvent( 'click', {
+						bubbles: true,
+						cancelable: true,
+					} )
+				);
+				jest.runOnlyPendingTimers();
+				button.click();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).toHaveBeenCalledTimes( 2 );
+			} );
+		} );
+
+		it( 'lets a gateway re-trigger keep the session ID', async () => {
+			setupFraudProtection();
+			loadScript();
+
+			await completeFirstAttempt();
+
+			expect( dispatchSubmit() ).toBe( true );
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it.each( [
+			[ 'removes', true, [] ],
+			[ 'keeps', false, [ 'sess-pay-order' ] ],
+		] )(
+			'%s the session ID fields on pageshow when persisted is %s',
+			async ( _, persisted, expected ) => {
+				setupFraudProtection();
+				loadScript();
+				await completeFirstAttempt();
+				$( '<input>', {
+					type: 'hidden',
+					name: SESSION_ID_ERROR_FIELD,
+					value: 'timeout',
+				} ).appendTo( form );
+
+				window.dispatchEvent(
+					new window.PageTransitionEvent( 'pageshow', { persisted } )
+				);
+
+				const sessionIds = form.querySelectorAll(
+					'input[name="' + SESSION_ID_FIELD + '"]'
+				);
+				expect(
+					Array.from( sessionIds, ( field ) => field.value )
+				).toEqual( expected );
+				expect(
+					form.querySelectorAll(
+						'input[name="' + SESSION_ID_ERROR_FIELD + '"]'
+					)
+				).toHaveLength( persisted ? 0 : 1 );
+			}
+		);
+
+		it( 'acquires a new session ID for a submit after the page is restored', async () => {
+			mockAcquireSessionId
+				.mockReturnValueOnce( Promise.resolve( 'sess-first' ) )
+				.mockReturnValueOnce( Promise.resolve( 'sess-second' ) );
+			setupFraudProtection();
+			loadScript();
+			await completeFirstAttempt();
+
+			window.dispatchEvent(
+				new window.PageTransitionEvent( 'pageshow', {
+					persisted: true,
+				} )
+			);
+
+			expect( dispatchSubmit() ).toBe( false );
+			await flushPromises();
+
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			expect( document.getElementById( SESSION_ID_FIELD ).value ).toBe(
+				'sess-second'
+			);
+		} );
+
+		describe( 'a submit still held when the page was left', () => {
+			function restorePage() {
+				window.dispatchEvent(
+					new window.PageTransitionEvent( 'pageshow', {
+						persisted: true,
+					} )
+				);
+			}
+
+			it( 'is dropped when its session ID arrives after the page is restored', async () => {
+				let resolveFirst;
+				mockAcquireSessionId
+					.mockReturnValueOnce(
+						new Promise( ( resolve ) => {
+							resolveFirst = resolve;
+						} )
+					)
+					.mockReturnValueOnce( Promise.resolve( 'sess-second' ) );
+				setupFraudProtection();
+				loadScript();
+
+				dispatchSubmit();
+				restorePage();
+				resolveFirst( 'sess-first' );
+				await flushPromises();
+				jest.runOnlyPendingTimers();
+
+				expect(
+					document.getElementById( SESSION_ID_FIELD )
+				).toBeNull();
+				expect( form.submit ).not.toHaveBeenCalled();
+
+				// The next submit is not cancelled as a repeat of the dropped one.
+				expect( dispatchSubmit() ).toBe( false );
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			} );
+
+			it( 'does not post the restored page when its re-submit was already queued', async () => {
+				setupFraudProtection();
+				loadScript();
+				const gatewayHandler = jest.fn();
+				form.addEventListener( 'submit', gatewayHandler );
+
+				dispatchSubmit();
+				await flushPromises();
+				restorePage();
+				jest.runOnlyPendingTimers();
+				await flushPromises();
+				jest.runOnlyPendingTimers();
+
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
+				expect( gatewayHandler ).not.toHaveBeenCalled();
+				expect( form.submit ).not.toHaveBeenCalled();
+				expect(
+					document.getElementById( SESSION_ID_FIELD )
+				).toBeNull();
+
+				expect( dispatchSubmit() ).toBe( false );
+				expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 2 );
+			} );
+		} );
 	} );
 
 	describe( 'submit started with jQuery trigger()', () => {
