@@ -116,7 +116,7 @@ class ExtensionNativeSupport {
 			 * Payment gateways declare their integration through `WC_Payment_Gateway::supports()`
 			 * instead. A callback that throws stops the action; registrations made before it count.
 			 *
-			 * @since 0.3.2
+			 * @since 0.4.0
 			 *
 			 * @param NativeIntegrationRegistry $registry The registry to declare integrations in.
 			 */

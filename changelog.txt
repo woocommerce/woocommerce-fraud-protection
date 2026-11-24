@@ -1,6 +1,6 @@
 *** WooCommerce Fraud Protection Changelog ***
 
-YYYY-xx-xx - version 0.3.4
+YYYY-xx-xx - version 0.4.0
 * Dev - Payment gateways can declare a native Fraud Protection integration by adding `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, or `fraud_protection_express_checkout` to their supported features, and the new `wp wc fraud-protection native-integrations list` command lists the declaring gateways.
 * Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug with the new `NativeIntegrationRegistry`, from the new `woocommerce_fraud_protection_register_native_integrations` action, and `wp wc fraud-protection native-integrations list` lists the declarations.
 * Dev - Payment gateways can make one of their own scripts depend on the shared browser scripts when they register it, with the new `BlackboxScriptHandler::register_scripts_for()`, so the shared scripts load only on pages where that script is enqueued.

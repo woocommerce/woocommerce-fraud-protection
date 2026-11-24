@@ -114,7 +114,7 @@ The session ID that the last `verify_session()` call resolved and stored, or an 
 
 ### GatewayRequestVerifier
 
-Verifies a request that a payment gateway handles itself, such as a create-order or setup-intent call, and reuses its decision for the WooCommerce submission that completes the same attempt, so the attempt is scored once. It wraps `SessionVerifier` and the `woocommerce_fraud_protection_skip_session_verify` filter, and keeps the decision record for you. Since 0.3.2.
+Verifies a request that a payment gateway handles itself, such as a create-order or setup-intent call, and reuses its decision for the WooCommerce submission that completes the same attempt, so the attempt is scored once. It wraps `SessionVerifier` and the `woocommerce_fraud_protection_skip_session_verify` filter, and keeps the decision record for you. Since 0.4.0.
 
 #### verify_request()
 
@@ -161,7 +161,7 @@ The [integration guide](integration-guide.md#3-verify-the-request-and-reuse-its-
 
 ### GatewayPaymentData
 
-Provides the details of the payment method that a gateway's attempts use, which WooCommerce doesn't hold: the payment method type, such as card or bank debit; the card brand, last four digits and expiry date; the wallet; the results of the CVC and address checks; the transaction mode; and the merchant account. It wraps the `woocommerce_fraud_protection_resolved_payment_data` filter, so the gateway's code runs only for its own attempts and cannot break other gateways' data. Since 0.3.2.
+Provides the details of the payment method that a gateway's attempts use, which WooCommerce doesn't hold: the payment method type, such as card or bank debit; the card brand, last four digits and expiry date; the wallet; the results of the CVC and address checks; the transaction mode; and the merchant account. It wraps the `woocommerce_fraud_protection_resolved_payment_data` filter, so the gateway's code runs only for its own attempts and cannot break other gateways' data. Since 0.4.0.
 
 #### register_resolver()
 
@@ -212,7 +212,7 @@ public function register_scripts_for( string $handle ): bool
 
 Registers the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script without enqueuing them, and adds `wc-fraud-protection-blackbox-init` to the dependencies of your script `$handle`. WordPress then prints the shared scripts only on the pages where `$handle` is enqueued, before it, so `window.wcFraudProtection` is set up before your script runs. Call it right after you register your script, wherever you register it; it also works for a script that is already enqueued and not yet printed. Pass only a script that you enqueue on your payment surfaces, since the shared scripts load on every page where it is enqueued.
 
-It returns `false` and changes nothing when the store has no Jetpack blog ID, and on admin pages. It also returns `false`, logging a warning, when `$handle` is not registered or was already printed. On the other pages that do not render a payment surface, listed under `request_scripts()`, the shared scripts are left out when the scripts are printed, and your script prints without them. Calling it again adds no second dependency. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call. Since 0.3.2.
+It returns `false` and changes nothing when the store has no Jetpack blog ID, and on admin pages. It also returns `false`, logging a warning, when `$handle` is not registered or was already printed. On the other pages that do not render a payment surface, listed under `request_scripts()`, the shared scripts are left out when the scripts are printed, and your script prints without them. Calling it again adds no second dependency. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call. Since 0.4.0.
 
 #### request_pay_for_order_script()
 
@@ -220,7 +220,7 @@ It returns `false` and changes nothing when the store has no Jetpack blog ID, an
 public function request_pay_for_order_script(): bool
 ```
 
-Calls `request_scripts()` and also enqueues `wc-fraud-protection-pay-for-order`. That script holds the submission of the page's `#order_review` form until it has added the session ID as a hidden `SESSION_ID_FIELD` field. Read it on the server with `ClassicFormRequestData`. Returns `false`, enqueuing nothing, when `request_scripts()` does. Since 0.3.2.
+Calls `request_scripts()` and also enqueues `wc-fraud-protection-pay-for-order`. That script holds the submission of the page's `#order_review` form until it has added the session ID as a hidden `SESSION_ID_FIELD` field. Read it on the server with `ClassicFormRequestData`. Returns `false`, enqueuing nothing, when `request_scripts()` does. Since 0.4.0.
 
 ### FraudProtectionReporter
 
@@ -271,7 +271,7 @@ wc_get_container()->get( FraudProtectionReporter::class )->report(
 
 ### ClassicFormRequestData
 
-Reads a classic (non-Store API) form submission for `SessionVerifier::verify_session()`. It is stateless: create it with `new`. Check the nonce before calling it. Since 0.3.2.
+Reads a classic (non-Store API) form submission for `SessionVerifier::verify_session()`. It is stateless: create it with `new`. Check the nonce before calling it. Since 0.4.0.
 
 | Method | Description |
 |--------|-------------|
@@ -317,7 +317,7 @@ Converts a session ID value from an untrusted source into the form `verify_sessi
 
 ### FraudProtectionFeature
 
-The feature strings a payment gateway adds to its `$supports` array to declare a native integration. Declare a feature only when your gateway implements all of it. Use the literal strings in your gateway; the constants are for code that runs with the plugin. Since 0.3.2.
+The feature strings a payment gateway adds to its `$supports` array to declare a native integration. Declare a feature only when your gateway implements all of it. Use the literal strings in your gateway; the constants are for code that runs with the plugin. Since 0.4.0.
 
 | Constant | String | The gateway commits to |
 |----------|--------|------------------------|
@@ -331,7 +331,7 @@ A plugin that registers one gateway instance per payment method declares the fea
 
 ### FraudProtectionIntegration
 
-The integration strings an extension that is not a payment gateway declares under its own plugin slug, with [`NativeIntegrationRegistry::register()`](#nativeintegrationregistry). Since 0.3.2.
+The integration strings an extension that is not a payment gateway declares under its own plugin slug, with [`NativeIntegrationRegistry::register()`](#nativeintegrationregistry). Since 0.4.0.
 
 | Constant | String | The extension commits to |
 |----------|--------|--------------------------|
@@ -340,7 +340,7 @@ The integration strings an extension that is not a payment gateway declares unde
 
 ### NativeIntegrationRegistry
 
-Collects the integrations that extensions other than payment gateways declare. The plugin passes an instance to the [`woocommerce_fraud_protection_register_native_integrations`](#woocommerce_fraud_protection_register_native_integrations) action; don't create one yourself. Since 0.3.2.
+Collects the integrations that extensions other than payment gateways declare. The plugin passes an instance to the [`woocommerce_fraud_protection_register_native_integrations`](#woocommerce_fraud_protection_register_native_integrations) action; don't create one yourself. Since 0.4.0.
 
 ```php
 public function register( string $extension, string $integration ): void
@@ -362,7 +362,7 @@ new SuppliedDecision( FraudDecision $decision, ?string $session_id_for_order = n
 
 ### VerifiedRequest
 
-The result of `GatewayRequestVerifier::verify_request()`. Since 0.3.2.
+The result of `GatewayRequestVerifier::verify_request()`. Since 0.4.0.
 
 | Method | Description |
 |--------|-------------|
@@ -524,7 +524,7 @@ Supply a decision only to the attempt that received it: key your record by evide
 
 ### woocommerce_fraud_protection_register_native_integrations
 
-Action. Lets extensions that are not payment gateways declare native integrations. Since 0.3.2.
+Action. Lets extensions that are not payment gateways declare native integrations. Since 0.4.0.
 
 ```php
 do_action( 'woocommerce_fraud_protection_register_native_integrations', NativeIntegrationRegistry $registry );
@@ -607,12 +607,12 @@ On pages where the shared scripts loaded, through `BlackboxScriptHandler::reques
 
 | Member | Description |
 |--------|-------------|
-| `takeSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID for one payment attempt, or to an empty string when no session ID is available, including without the SDK; it never rejects. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. This is a network request: it resolves when the send completes, or after at most 3 seconds. Where that delay matters, use `prepareSessionId()` and `takePreparedSessionId()`, which don't wait. After handing out an ID, it starts a fresh session for the next attempt, so no `reset()` call is needed. Use it for code that can wait for a promise. Since 0.3.2. |
+| `takeSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID for one payment attempt, or to an empty string when no session ID is available, including without the SDK; it never rejects. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. This is a network request: it resolves when the send completes, or after at most 3 seconds. Where that delay matters, use `prepareSessionId()` and `takePreparedSessionId()`, which don't wait. After handing out an ID, it starts a fresh session for the next attempt, so no `reset()` call is needed. Use it for code that can wait for a promise. Since 0.4.0. |
 | `acquireSessionId(): Promise<string>` | Sends the shopper's latest session data, then resolves to a session ID, or to an empty string when no session ID is available. A slow or failed send still resolves to the session ID when one exists. Each session ID is returned at most once: when the only one available was already returned, a fresh session is started, and the result is an empty string if it does not arrive in time. The one exception is the plugin's PayPal Payments integration: after a successful PayPal setup-token or vault-order request, the next call returns that request's ID once more, for the checkout that completes it, unless the shopper has selected another payment method by then. Call it when the payment attempt starts, not ahead of time, so the session includes the shopper's activity up to that point. It resolves within a few seconds. Call `reset()` after the attempt that used it. |
 | `reset(): void` | Starts a fresh session for the next payment attempt. Call it after each attempt that used `acquireSessionId()`. |
 | `prepareSessionId(): void` | For code that must add the session ID synchronously: call it once when the payment surface is set up, and a session ID is kept ready for `takePreparedSessionId()`. A prepared ID that gets too old is replaced on the shopper's next activity. Calling it again does nothing. |
 | `takePreparedSessionId(): string` | Hands out the prepared session ID for one payment attempt, or an empty string when none is ready. It returns immediately: it hands out the ID that `prepareSessionId()` fetched in the background, and starts the next session without blocking. The same ID is never returned twice, and a fresh session starts for the next attempt, so no `reset()` call is needed. Call it for each payment attempt; never keep an ID for a later one. |
-| `addSessionIdToExtensions( extensions: object ): object` | For a Store API request whose extension data is built synchronously, such as an express button's. Returns a copy of `extensions` with the ID from `takePreparedSessionId()` under the `woocommerce/fraud-protection` namespace, as `blackbox_session_id`. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again; when no session ID is ready, the copy reports why instead. A value that is not an object is returned unchanged. Since 0.3.2. |
+| `addSessionIdToExtensions( extensions: object ): object` | For a Store API request whose extension data is built synchronously, such as an express button's. Returns a copy of `extensions` with the ID from `takePreparedSessionId()` under the `woocommerce/fraud-protection` namespace, as `blackbox_session_id`. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again; when no session ID is ready, the copy reports why instead. A value that is not an object is returned unchanged. Since 0.4.0. |
 | `config.sessionIdField` | The name of the request field for the session ID: `SessionVerifier::SESSION_ID_FIELD`. The other `config` entries are internal. |
 
 A session ID belongs to one payment attempt: verify each ID only once. The [integration guide](integration-guide.md#2-send-the-session-id) shows `takeSessionId()`, and its [express checkout section](integration-guide.md#express-checkout) shows `prepareSessionId()` and `addSessionIdToExtensions()`.

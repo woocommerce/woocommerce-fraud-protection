@@ -32,7 +32,7 @@ defined( 'ABSPATH' ) || exit;
  * Payment gateways declare their integrations through `WC_Payment_Gateway::supports()`
  * instead; see {@see FraudProtectionFeature}.
  *
- * @since 0.3.2
+ * @since 0.4.0
  */
 final class NativeIntegrationRegistry {
 
@@ -60,7 +60,7 @@ final class NativeIntegrationRegistry {
 	 * @param string $extension   Your plugin slug, as on WordPress.org or WooCommerce.com, such as `woocommerce-subscriptions`.
 	 * @param string $integration The integration your extension implements, such as `change_payment_method`; see {@see FraudProtectionIntegration}.
 	 *
-	 * @since 0.3.2
+	 * @since 0.4.0
 	 */
 	public function register( string $extension, string $integration ): void {
 		if ( ! $this->open ) {

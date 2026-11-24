@@ -12,7 +12,7 @@ A request that only checks the checkout form before the submission needs no nati
 
 Three rules apply to every native integration:
 
-- **Fraud Protection is optional.** Register your native integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.3.2 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
+- **Fraud Protection is optional.** Register your native integration only when the classes you use exist, for example `class_exists( GatewayRequestVerifier::class )`, which also requires Fraud Protection 0.4.0 or later, and declare features with literal strings rather than the plugin's constants, so your extension keeps working without it.
 - **Fail open.** Never stop a payment because Fraud Protection is unavailable. Send a request without a session ID when you have none; the server still verifies it.
 - **Declare only what you implement.** A declaration never turns off the built-in protection of the standard flows. It tells Fraud Protection that your extension handles that part itself, so Fraud Protection can stop any handling specific to your extension. Declaring something you don't implement can leave your extension's own requests unprotected, or your payments verified without payment data.
 
@@ -112,7 +112,7 @@ const body = await addSessionId( { action: 'my_gateway_create_order' } );
 // Send the request with body.
 ```
 
-`takeSessionId()` never rejects. It resolves to an empty string when there is no session ID, for example when a content blocker stopped the SDK; send the request anyway. It also starts a fresh session for the next attempt, so there is no `reset()` call. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
+`takeSessionId()` never rejects. It resolves to an empty string when there is no session ID, for example when a content blocker stopped the SDK; send the request anyway. It also starts a fresh session for the next attempt, so there is no `reset()` call. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.4.0.
 
 `takeSessionId()` sends the shopper's latest session data in a network request first, and resolves when that completes or after at most 3 seconds. Where that delay matters, for example in code that must open a payment sheet or popup in response to a click, or in a code path that must add the ID synchronously, use the prepared session ID instead (see [Express checkout](#express-checkout)).
 
@@ -277,7 +277,7 @@ const extensions = canAdd ? fp.addSessionIdToExtensions( buttonExtensions ) : bu
 
 `prepareSessionId()` fetches the session ID in the background, so `addSessionIdToExtensions()` adds it without waiting. Call `addSessionIdToExtensions()` for every request, so each click gets its own session ID, and never keep an ID for a later request.
 
-`addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out with the reason instead of a session ID. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.3.2.
+`addSessionIdToExtensions()` returns a copy of the extension data with the prepared session ID under the plugin's namespace. It always replaces a session ID already in the data, so an earlier attempt's ID is never sent again, and it starts a fresh session for the next attempt, so there is no `reset()` call. Pass an object, `{}` when your request has no other extension data; any other value is returned unchanged. When no session ID is ready, the request goes out with the reason instead of a session ID. The check covers pages where the shared scripts were not loaded, and Fraud Protection versions before 0.4.0.
 
 Make your button script depend on the browser scripts as in [step 1](#1-load-the-browser-scripts), and enqueue it on every page where the buttons render. Use the prepared session ID even when your button code could wait for a promise: `takeSessionId()` sends a network request and can take up to 3 seconds, which an express flow can't afford between the click and the payment sheet or the order request.
 

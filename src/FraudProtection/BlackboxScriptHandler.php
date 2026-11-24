@@ -113,7 +113,7 @@ class BlackboxScriptHandler {
 	 * @param string $handle Handle of a script registered with WordPress.
 	 * @return bool True when `$handle` depends on the shared scripts; false when they are unavailable, or `$handle` is not registered or was already printed.
 	 *
-	 * @since 0.3.2
+	 * @since 0.4.0
 	 */
 	public function register_scripts_for( string $handle ): bool {
 		$scripts = wp_scripts();
@@ -187,7 +187,7 @@ class BlackboxScriptHandler {
 	 *
 	 * @return bool True when the scripts are enqueued; false when the shared scripts are unavailable.
 	 *
-	 * @since 0.3.2
+	 * @since 0.4.0
 	 */
 	public function request_pay_for_order_script(): bool {
 		if ( ! $this->request_scripts() ) {
