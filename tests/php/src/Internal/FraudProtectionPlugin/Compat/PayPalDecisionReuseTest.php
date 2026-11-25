@@ -457,16 +457,16 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The record answers at this callback's priority, over an earlier consumer's decision.
+	 * @testdox The record answers at this callback's priority, over an earlier consumer's Allow.
 	 *
 	 * This callback may answer at its own priority; consumers that need the final
 	 * decision can register later.
 	 */
 	public function test_supply_answers_from_its_record_over_an_earlier_decision(): void {
-		$this->set_verification_record( session_id: 'some-session-id', order_id: 'PP-123' );
+		$this->set_verification_record( session_id: 'some-session-id', decision: FraudDecision::Block, order_id: 'PP-123' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
-		$supplied_decision = new SuppliedDecision( FraudDecision::Block );
+		$supplied_decision = new SuppliedDecision( FraudDecision::Allow );
 
 		$returned = $this->decision_reuse->supply_decision_for_paypal_express(
 			$supplied_decision,
@@ -476,7 +476,33 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertInstanceOf( SuppliedDecision::class, $returned );
-		$this->assertSame( FraudDecision::Allow, $returned->decision );
+		$this->assertSame( FraudDecision::Block, $returned->decision );
+	}
+
+	/**
+	 * @testdox A recorded Allow never replaces an earlier consumer's Block, and the record is used up.
+	 *
+	 * @dataProvider recorded_allow_provider
+	 *
+	 * @param string   $record_type Kind of recorded request.
+	 * @param string   $source      Source of the final request.
+	 * @param string[] $features    Features the main PayPal gateway declares.
+	 */
+	public function test_recorded_allow_keeps_an_earlier_block( string $record_type, string $source, array $features ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', $features ) );
+		$request = $this->create_protected_paypal_request_record( $record_type );
+		$earlier = new SuppliedDecision( FraudDecision::Block );
+
+		$this->assertSame( $earlier, $this->decision_reuse->supply_decision_for_paypal_express( $earlier, $source, $request, 'response-session' ) );
+		$this->assertFalse( $this->decision_reuse->supply_decision_for_paypal_express( false, $source, $request, 'response-session' ), 'The record was used up' );
+	}
+
+	/** @return array<string, array{string, string, string[]}> */
+	public function recorded_allow_provider(): array {
+		return array(
+			'order, no declaration'             => array( 'create', 'blocks_checkout', array() ),
+			'setup token, native checkout only' => array( 'setup', 'blocks_checkout', array( FraudProtectionFeature::CHECKOUT ) ),
+		);
 	}
 
 	/** @testdox A final record read failure preserves the incoming decision and retires stored state. */

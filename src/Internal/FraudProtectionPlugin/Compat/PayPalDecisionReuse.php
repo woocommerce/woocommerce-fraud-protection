@@ -172,7 +172,9 @@ class PayPalDecisionReuse {
 	 * Answers requests this class already scored with the decision that scoring
 	 * produced, so one payment attempt is not scored twice; everything else is
 	 * deferred and verified normally. Standard filter arbitration: a consumer
-	 * that wants the last word registers with a later priority.
+	 * that wants the last word registers with a later priority. The one
+	 * exception is a Block that an earlier callback supplied, which a recorded
+	 * Allow never replaces: the record is used up and the Block kept.
 	 *
 	 * @internal
 	 *
@@ -223,6 +225,11 @@ class PayPalDecisionReuse {
 
 			$record['used'] = true;
 			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
+
+			// Reusing a decision must not turn an earlier Block in the attempt into an allow.
+			if ( $supplied_decision instanceof SuppliedDecision && FraudDecision::Block === $supplied_decision->decision ) {
+				return $supplied_decision;
+			}
 
 			return new SuppliedDecision( $record['decision'], $record['session_id'] );
 		} catch ( \Throwable $e ) {
