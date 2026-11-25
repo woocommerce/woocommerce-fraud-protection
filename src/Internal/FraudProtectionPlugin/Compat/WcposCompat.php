@@ -31,7 +31,9 @@ defined( 'ABSPATH' ) || exit;
  * - the selected gateway is a WCPOS gateway.
  *
  * The order may have been created anywhere: a cashier can also take payment at
- * the till for an order that the customer placed online.
+ * the till for an order that the customer placed online. Merchant rules don't
+ * apply to the tender either: they target shoppers, and the cashier decides about
+ * a payment taken in person.
  *
  * Other gateways used inside the POS, and orders paid through the regular pay
  * page, are verified as before.
@@ -106,7 +108,8 @@ class WcposCompat {
 			return $supplied_decision;
 		}
 
-		return new SuppliedDecision( FraudDecision::Allow );
+		// Merchant rules target shoppers; the cashier decides about the payment taken at the till.
+		return new SuppliedDecision( FraudDecision::Allow, null, false );
 	}
 
 	/**

@@ -22,6 +22,7 @@ const PROTECTED_ENDPOINTS = [
 
 beforeEach( () => {
 	delete window.wcFraudProtection;
+	delete window.wcFraudProtectionPayPal;
 	delete window.jQuery;
 	delete window.wp;
 
@@ -99,6 +100,29 @@ describe( 'paypal-express fetch interceptor', () => {
 			await window.fetch( url, { body: '{}' } );
 
 			expect( mockAcquireSessionId ).not.toHaveBeenCalled();
+		} );
+
+		it( 'leaves the endpoints the server does not list untouched', async () => {
+			window.wcFraudProtectionPayPal = {
+				endpoints: [ 'ppc-create-setup-token' ],
+			};
+			setupAndLoad();
+
+			await fetchPayPalEndpoint( 'ppc-create-order', {
+				wc_fraud_protection_session_id: 'native-session',
+			} );
+			await fetchPayPalEndpoint( 'ppc-vault-create-order', {} );
+			await fetchPayPalEndpoint( 'ppc-create-setup-token', {} );
+
+			expect( JSON.parse( fetchCalls[ 0 ].init.body ) ).toEqual( {
+				wc_fraud_protection_session_id: 'native-session',
+			} );
+			expect( JSON.parse( fetchCalls[ 1 ].init.body ) ).toEqual( {} );
+			expect(
+				JSON.parse( fetchCalls[ 2 ].init.body )
+					.wc_fraud_protection_session_id
+			).toBe( 'test-session-abc' );
+			expect( mockAcquireSessionId ).toHaveBeenCalledTimes( 1 );
 		} );
 
 		it( 'does not intercept non-PayPal fetch calls', async () => {

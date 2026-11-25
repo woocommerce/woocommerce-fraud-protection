@@ -94,7 +94,7 @@ Consult the `woocommerce-frontend-dev` skill and go through its [review-checklis
 ### Pull Request Hygiene (`AGENTS.md`, "Issues and pull requests")
 
 - ❌ **Missing `changelog.txt` entry** under the placeholder release for a merchant-facing or developer-facing change (tests, CI, documentation, and internal refactoring are exempt)
-- ❌ **README public API section not updated** when the public API changed
+- ❌ **`docs/api-reference.md` not updated** when the public API changed, or `docs/integration-guide.md` not updated when the change affects how an extension integrates
 - ❌ **Private service behavior disclosed** in comments, commit messages, or the pull request description
 
 ### UI Text & Copy

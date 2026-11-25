@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
@@ -34,6 +35,8 @@ defined( 'ABSPATH' ) || exit;
  * An ALLOW is not applied when the posted setup intent holds another payment
  * method than the verified one, because the setup intent ID in the form can
  * be changed in the browser after the setup intent request.
+ *
+ * Stands aside once the gateway declares `fraud_protection_add_payment_method`.
  *
  * Fail-open: SessionVerifier handles all internal errors and returns ALLOW.
  */
@@ -98,6 +101,13 @@ class WooPaymentsSetupIntentCompat {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -105,15 +115,27 @@ class WooPaymentsSetupIntentCompat {
 	 * @param SessionVerifier       $session_verifier        The session verifier instance.
 	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
 	 * @param SessionIdNormalizer   $session_id_normalizer   The session ID normalizer.
+	 * @param GatewayNativeSupport  $native_support          Native gateway support lookup.
 	 */
 	final public function init(
 		SessionVerifier $session_verifier,
 		BlockedSessionMessage $blocked_session_message,
-		SessionIdNormalizer $session_id_normalizer
+		SessionIdNormalizer $session_id_normalizer,
+		GatewayNativeSupport $native_support
 	): void {
 		$this->session_verifier        = $session_verifier;
 		$this->blocked_session_message = $blocked_session_message;
 		$this->session_id_normalizer   = $session_id_normalizer;
+		$this->native_support          = $native_support;
+	}
+
+	/**
+	 * Check whether the WooPayments gateway verifies its own add-payment-method requests.
+	 *
+	 * @return bool
+	 */
+	private function is_native(): bool {
+		return $this->native_support->declared( FraudProtectionFeature::ADD_PAYMENT_METHOD, self::GATEWAY_ID );
 	}
 
 	/**
@@ -146,7 +168,7 @@ class WooPaymentsSetupIntentCompat {
 	 * @return mixed The unchanged request.
 	 */
 	public function verify_and_block_setup_intent( $request ) {
-		if ( ! doing_action( self::SETUP_INTENT_AJAX_ACTION ) ) {
+		if ( ! doing_action( self::SETUP_INTENT_AJAX_ACTION ) || $this->is_native() ) {
 			return $request;
 		}
 
@@ -198,7 +220,7 @@ class WooPaymentsSetupIntentCompat {
 			return $supplied_decision;
 		}
 
-		if ( self::GATEWAY_ID !== ( $request_data['payment_method'] ?? null ) ) {
+		if ( self::GATEWAY_ID !== ( $request_data['payment_method'] ?? null ) || $this->is_native() ) {
 			return $supplied_decision;
 		}
 
@@ -257,7 +279,7 @@ class WooPaymentsSetupIntentCompat {
 	 * @return void
 	 */
 	public function enqueue_add_payment_method_script(): void {
-		if ( ! wp_script_is( self::ADD_PAYMENT_METHOD_SCRIPT_HANDLE, 'enqueued' ) || ! $this->has_available_woopayments_gateway() ) {
+		if ( ! wp_script_is( self::ADD_PAYMENT_METHOD_SCRIPT_HANDLE, 'enqueued' ) || ! $this->has_available_woopayments_gateway() || $this->is_native() ) {
 			return;
 		}
 

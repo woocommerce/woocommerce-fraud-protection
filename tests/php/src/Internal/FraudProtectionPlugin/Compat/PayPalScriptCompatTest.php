@@ -9,7 +9,10 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\Blocks\BlockTypes\AbstractBlock;
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalScriptCompat;
 
 /**
@@ -697,6 +700,116 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox No PayPal surface loads the interceptor when the main PayPal gateway declares native checkout support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_checkout(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$sut = $this->make_sut_expecting_no_script_request();
+
+		$sut->enqueue_paypal_script();
+
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox Purchase surfaces still load the interceptor when PayPal declares only native add-payment-method support.
+	 */
+	public function test_purchase_surface_ignores_add_payment_method_declaration(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_script();
+
+		$this->assertTrue( wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox The add-payment-method and change-payment-method forms follow the add-payment-method declaration.
+	 *
+	 * @dataProvider add_payment_method_declaration_provider
+	 *
+	 * @param string[] $features      Features the main PayPal gateway declares.
+	 * @param bool     $expect_script Whether the interceptor loads.
+	 */
+	public function test_add_payment_method_surface_follows_its_feature( array $features, bool $expect_script ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', $features ) );
+		$sut = $expect_script ? $this->make_sut_expecting_script_request( true ) : $this->make_sut_expecting_no_script_request();
+		$this->run_wp_enqueue_scripts();
+		wp_register_script( 'ppcp-add-payment-method', 'https://example.com/add.js', array(), '1.0', true );
+		wp_enqueue_script( 'ppcp-add-payment-method' );
+		$this->touched_add_payment_method_handle = true;
+
+		$sut->enqueue_paypal_script_if_add_payment_method_enqueued();
+
+		$this->assertSame( $expect_script, wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @return array<string, array{string[], bool}> */
+	public function add_payment_method_declaration_provider(): array {
+		return array(
+			'checkout only'           => array( array( FraudProtectionFeature::CHECKOUT ), true ),
+			'add payment method only' => array( array( FraudProtectionFeature::ADD_PAYMENT_METHOD ), false ),
+		);
+	}
+
+	/**
+	 * @testdox The SDK v6 vault component stands aside only when both checkout and add-payment-method support are declared.
+	 *
+	 * @dataProvider vault_component_declaration_provider
+	 *
+	 * @param string[] $features      Features the main PayPal gateway declares.
+	 * @param bool     $expect_script Whether the interceptor loads.
+	 */
+	public function test_sdk_v6_vault_component_needs_both_features( array $features, bool $expect_script ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', $features ) );
+		$this->register_sdk_v6_handle( 'ppcp-vault-component' );
+		$sut = $expect_script ? $this->make_sut_expecting_script_request( true ) : $this->make_sut_expecting_no_script_request();
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		$this->assertSame( $expect_script, wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) );
+	}
+
+	/** @return array<string, array{string[], bool}> */
+	public function vault_component_declaration_provider(): array {
+		return array(
+			'checkout only'           => array( array( FraudProtectionFeature::CHECKOUT ), true ),
+			'add payment method only' => array( array( FraudProtectionFeature::ADD_PAYMENT_METHOD ), true ),
+			'both'                    => array( array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD ), false ),
+		);
+	}
+
+	/**
+	 * @testdox The interceptor handles only the PayPal endpoints whose requests are not verified natively, so a native request keeps its session ID.
+	 *
+	 * @dataProvider intercepted_endpoints_provider
+	 *
+	 * @param string[] $features  Features the main PayPal gateway declares.
+	 * @param string[] $endpoints Endpoints the interceptor handles.
+	 */
+	public function test_interceptor_handles_only_endpoints_without_native_verification( array $features, array $endpoints ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', $features ) );
+		$this->register_sdk_v6_handle( 'ppcp-vault-component' );
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		$this->assertSame(
+			'var wcFraudProtectionPayPal = ' . wp_json_encode( array( 'endpoints' => $endpoints ) ) . ';',
+			wp_scripts()->get_data( 'wc-fraud-protection-paypal-express', 'data' )
+		);
+	}
+
+	/** @return array<string, array{string[], string[]}> */
+	public function intercepted_endpoints_provider(): array {
+		return array(
+			'no declaration'          => array( array(), array( 'ppc-create-order', 'ppc-create-setup-token', 'ppc-vault-create-order' ) ),
+			'checkout only'           => array( array( FraudProtectionFeature::CHECKOUT ), array( 'ppc-create-setup-token' ) ),
+			'add payment method only' => array( array( FraudProtectionFeature::ADD_PAYMENT_METHOD ), array( 'ppc-create-order', 'ppc-create-setup-token', 'ppc-vault-create-order' ) ),
+		);
+	}
+
+	/**
 	 * Build a PayPal compatibility layer with a controlled script handler.
 	 *
 	 * @param BlackboxScriptHandler $handler Test value.
@@ -704,7 +817,7 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	 */
 	private function make_compat_with_script_handler( BlackboxScriptHandler $handler ): PayPalScriptCompat {
 		$sut = new PayPalScriptCompat();
-		$sut->init( $handler );
+		$sut->init( $handler, new GatewayNativeSupport() );
 
 		return $sut;
 	}

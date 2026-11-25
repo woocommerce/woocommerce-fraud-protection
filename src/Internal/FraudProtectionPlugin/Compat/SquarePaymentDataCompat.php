@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -17,9 +18,17 @@ defined( 'ABSPATH' ) || exit;
  * Resolves Square payment data into structured PaymentMethodData.
  *
  * Extracts card details directly from the checkout payment field keys sent by the
- * Square gateway (no API call needed).
+ * Square gateway (no API call needed). Stands aside once the gateway declares
+ * `fraud_protection_payment_data`.
  */
 class SquarePaymentDataCompat {
+
+	/**
+	 * Main Square gateway ID.
+	 *
+	 * @var string
+	 */
+	private const MAIN_GATEWAY_ID = 'square_credit_card';
 
 	/**
 	 * Cash App Pay gateway ID.
@@ -27,6 +36,24 @@ class SquarePaymentDataCompat {
 	 * @var string
 	 */
 	private const CASH_APP_PAY_GATEWAY_ID = 'square_cash_app_pay';
+
+	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param GatewayNativeSupport $native_support Native gateway support lookup.
+	 */
+	final public function init( GatewayNativeSupport $native_support ): void {
+		$this->native_support = $native_support;
+	}
 
 	/**
 	 * Wallet names accepted from Square payment data.
@@ -59,7 +86,11 @@ class SquarePaymentDataCompat {
 	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
 		$gateway = $resolved->get_gateway();
 
-		if ( 'square_credit_card' !== $gateway && self::CASH_APP_PAY_GATEWAY_ID !== $gateway ) {
+		if ( self::MAIN_GATEWAY_ID !== $gateway && self::CASH_APP_PAY_GATEWAY_ID !== $gateway ) {
+			return $resolved;
+		}
+
+		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $gateway, self::MAIN_GATEWAY_ID ) ) {
 			return $resolved;
 		}
 
@@ -97,7 +128,7 @@ class SquarePaymentDataCompat {
 		}
 
 		$result = new PaymentMethodData(
-			'square_credit_card',
+			self::MAIN_GATEWAY_ID,
 			'card',
 			$is_saved,
 			PaymentInstrumentData::from_array(

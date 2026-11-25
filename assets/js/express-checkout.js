@@ -12,6 +12,10 @@
  * Square has no filter for that request, so the session ID is added to its body
  * with a jQuery AJAX prefilter. Errors leave the request unchanged.
  *
+ * Only the gateways listed in wcFraudProtectionExpressCheckout.gateways are
+ * handled: a gateway that sends the session ID itself is left out, so its
+ * session ID is not replaced. Without the list, every gateway is handled.
+ *
  * Depends on blackbox-init.js (wcFraudProtection), wp-hooks, and jQuery.
  */
 /* global jQuery */
@@ -19,24 +23,39 @@
 	'use strict';
 
 	const NAMESPACE = 'woocommerce/fraud-protection';
-	const EXTENSION_DATA_FILTERS = [
-		'wcpay.express-checkout.cart-place-order-extension-data',
-		'wcstripe.express-checkout.cart-place-order-extension-data',
-	];
+	const EXTENSION_DATA_FILTERS = {
+		woocommerce_payments:
+			'wcpay.express-checkout.cart-place-order-extension-data',
+		stripe: 'wcstripe.express-checkout.cart-place-order-extension-data',
+	};
+	const SQUARE_GATEWAY = 'square_credit_card';
 	const SQUARE_WALLET_CHECKOUT_ENDPOINT =
 		'square_digital_wallet_process_checkout';
+
+	const settings = window.wcFraudProtectionExpressCheckout;
+	const gateways =
+		settings && Array.isArray( settings.gateways )
+			? settings.gateways
+			: Object.keys( EXTENSION_DATA_FILTERS ).concat( SQUARE_GATEWAY );
 
 	const fraudProtection = window.wcFraudProtection;
 	const hooks = window.wp && window.wp.hooks;
 	const $ = typeof jQuery === 'undefined' ? null : jQuery;
 	const canFilterExtensionData =
-		!! hooks && typeof hooks.addFilter === 'function';
-	const canFilterAjaxRequests = !! $ && typeof $.ajaxPrefilter === 'function';
+		!! hooks &&
+		typeof hooks.addFilter === 'function' &&
+		!! fraudProtection &&
+		typeof fraudProtection.addSessionIdToExtensions === 'function';
+	const canFilterAjaxRequests =
+		!! $ &&
+		typeof $.ajaxPrefilter === 'function' &&
+		!! fraudProtection &&
+		typeof fraudProtection.takePreparedSessionId === 'function' &&
+		gateways.includes( SQUARE_GATEWAY );
 
 	if (
 		! fraudProtection ||
 		typeof fraudProtection.prepareSessionId !== 'function' ||
-		typeof fraudProtection.takePreparedSessionId !== 'function' ||
 		( ! canFilterExtensionData && ! canFilterAjaxRequests )
 	) {
 		return;
@@ -54,21 +73,7 @@
 	 */
 	function addSessionId( extensionData ) {
 		try {
-			if (
-				! extensionData ||
-				typeof extensionData !== 'object' ||
-				Array.isArray( extensionData )
-			) {
-				return extensionData;
-			}
-
-			const sessionId = fraudProtection.takePreparedSessionId();
-
-			return Object.assign( {}, extensionData, {
-				[ NAMESPACE ]: sessionId
-					? { blackbox_session_id: sessionId }
-					: { blackbox_session_id_error: 'not_ready' },
-			} );
+			return fraudProtection.addSessionIdToExtensions( extensionData );
 		} catch {
 			return extensionData;
 		}
@@ -77,12 +82,12 @@
 	/**
 	 * Check whether an AJAX request is Square's wallet checkout request.
 	 *
-	 * @param {Object} settings jQuery AJAX settings.
+	 * @param {Object} ajaxSettings jQuery AJAX settings.
 	 * @return {boolean} Whether it is the wallet checkout request.
 	 */
-	function isSquareWalletCheckout( settings ) {
+	function isSquareWalletCheckout( ajaxSettings ) {
 		return (
-			new URL( settings.url, window.location.href ).searchParams.get(
+			new URL( ajaxSettings.url, window.location.href ).searchParams.get(
 				'wc-ajax'
 			) === SQUARE_WALLET_CHECKOUT_ENDPOINT
 		);
@@ -95,13 +100,13 @@
 	 * so it never holds the session ID field of an earlier attempt. Without a
 	 * fresh ID, the request reports `not_ready` instead.
 	 *
-	 * @param {Object} settings jQuery AJAX settings, before the request is sent.
+	 * @param {Object} ajaxSettings jQuery AJAX settings, before the request is sent.
 	 */
-	function addSessionIdToSquareWalletCheckout( settings ) {
+	function addSessionIdToSquareWalletCheckout( ajaxSettings ) {
 		try {
 			if (
-				typeof settings.data !== 'string' ||
-				! isSquareWalletCheckout( settings )
+				typeof ajaxSettings.data !== 'string' ||
+				! isSquareWalletCheckout( ajaxSettings )
 			) {
 				return;
 			}
@@ -113,15 +118,27 @@
 				fields[ config.sessionIdErrorField ] = 'not_ready';
 			}
 
-			settings.data += ( settings.data ? '&' : '' ) + $.param( fields );
+			ajaxSettings.data +=
+				( ajaxSettings.data ? '&' : '' ) + $.param( fields );
 		} catch {
 			// Fail open: the request continues unchanged.
 		}
 	}
 
 	if ( canFilterExtensionData ) {
-		EXTENSION_DATA_FILTERS.forEach( function ( filterName ) {
-			hooks.addFilter( filterName, NAMESPACE, addSessionId );
+		gateways.forEach( function ( gateway ) {
+			if (
+				Object.prototype.hasOwnProperty.call(
+					EXTENSION_DATA_FILTERS,
+					gateway
+				)
+			) {
+				hooks.addFilter(
+					EXTENSION_DATA_FILTERS[ gateway ],
+					NAMESPACE,
+					addSessionId
+				);
+			}
 		} );
 	}
 

@@ -8,6 +8,7 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\ShortcodeCheckoutProtector;
 use Automattic\WooCommerce\StoreApi\Schemas\V1\CartSchema;
@@ -36,6 +37,11 @@ defined( 'ABSPATH' ) || exit;
  * gets the cart again when the shopper comes back to the page from an iframe.
  * Requests that still carry a used ID, such as a retry made in Kustom's iframe
  * with no such change, are sent without it, with any payment method.
+ *
+ * Native integration: Kustom's orders go through WooCommerce's checkout, where they
+ * are verified as usual, so a native integration only has to supply the session ID.
+ * Once Kustom does that and declares `fraud_protection_express_checkout`, this layer
+ * stands aside on every hook.
  */
 class KustomCompat {
 
@@ -76,19 +82,29 @@ class KustomCompat {
 	private BlackboxScriptHandler $blackbox_script_handler;
 
 	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
 	 * @param ShortcodeCheckoutProtector $shortcode_checkout_protector The classic checkout protector.
 	 * @param BlackboxScriptHandler      $blackbox_script_handler      The shared script handler.
+	 * @param GatewayNativeSupport       $native_support               Native gateway support lookup.
 	 */
 	final public function init(
 		ShortcodeCheckoutProtector $shortcode_checkout_protector,
-		BlackboxScriptHandler $blackbox_script_handler
+		BlackboxScriptHandler $blackbox_script_handler,
+		GatewayNativeSupport $native_support
 	): void {
 		$this->shortcode_checkout_protector = $shortcode_checkout_protector;
 		$this->blackbox_script_handler      = $blackbox_script_handler;
+		$this->native_support               = $native_support;
 	}
 
 	/**
@@ -100,7 +116,7 @@ class KustomCompat {
 	 * @return void
 	 */
 	public function register(): void {
-		add_action( 'kco_wc_before_snippet', array( $this->shortcode_checkout_protector, 'enqueue_shortcode_checkout_script' ), 10, 0 );
+		add_action( 'kco_wc_before_snippet', array( $this, 'enqueue_classic_checkout_script' ), 10, 0 );
 		add_action( 'woocommerce_blocks_enqueue_checkout_block_scripts_before', array( $this, 'enqueue_blocks_checkout_script' ), 10, 0 );
 		// Before BlocksCheckoutProtector reads the request.
 		add_action( 'woocommerce_store_api_checkout_update_order_from_request', array( $this, 'send_session_id_only_once' ), 5, 2 );
@@ -160,6 +176,30 @@ class KustomCompat {
 	}
 
 	/**
+	 * Check whether Kustom supplies the session ID of its orders itself.
+	 *
+	 * @return bool
+	 */
+	private function is_native(): bool {
+		return $this->native_support->declared( FraudProtectionFeature::EXPRESS_CHECKOUT, self::GATEWAY_ID );
+	}
+
+	/**
+	 * Load the classic checkout script on Kustom's embedded classic checkout.
+	 *
+	 * @internal
+	 *
+	 * @return void
+	 */
+	public function enqueue_classic_checkout_script(): void {
+		if ( $this->is_native() ) {
+			return;
+		}
+
+		$this->shortcode_checkout_protector->enqueue_shortcode_checkout_script();
+	}
+
+	/**
 	 * Enqueue the script that keeps the session ID in the Checkout block's extension data.
 	 *
 	 * @internal
@@ -167,6 +207,10 @@ class KustomCompat {
 	 * @return void
 	 */
 	public function enqueue_blocks_checkout_script(): void {
+		if ( $this->is_native() ) {
+			return;
+		}
+
 		// These endpoints render their classic views instead of the Checkout block.
 		if ( is_wc_endpoint_url( 'order-pay' ) || is_wc_endpoint_url( 'order-received' ) ) {
 			return;
@@ -211,7 +255,7 @@ class KustomCompat {
 	public function send_session_id_only_once( mixed $order, mixed $request ): void {
 		$this->pending_session_id = null;
 
-		if ( ! $request instanceof \WP_REST_Request ) {
+		if ( ! $request instanceof \WP_REST_Request || $this->is_native() ) {
 			return;
 		}
 

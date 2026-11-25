@@ -146,69 +146,13 @@ class DecisionHandler {
 	 * @return FraudDecision The final applied decision after any filter overrides.
 	 */
 	public function apply_decision( VerifyResult $result, array $session_data, ?Rule $matched_rule ): FraudDecision {
-		$decision    = $result->decision;
-		$session     = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
-		$log_context = array(
-			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
-			'event_source' => $session_data['source'] ?? 'unknown',
-		);
-
-		// The payload the public hooks receive (the rule_applied action and
-		// the automated_decision filter) extends the session data with the
-		// intentional `verify_result` subset (no session ID) documented on
-		// the filter below.
-		$hook_session_data                  = $session_data;
-		$hook_session_data['verify_result'] = array(
-			'risk_score'     => $result->risk_score,
-			'payment_method' => (string) ( $session_data['payment']['gateway'] ?? '' ),
-		);
-
 		if ( ! is_null( $matched_rule ) ) {
-			FraudProtectionController::log(
-				'info',
-				sprintf( 'Merchant rule %d decided the session: "%s" (received decision was "%s").', $matched_rule->id, $matched_rule->action->value, $decision->value ),
-				array_merge(
-					$log_context,
-					array(
-						'matched_rule_id'   => $matched_rule->id,
-						'final_decision'    => $matched_rule->action->value,
-						'decision_received' => $decision->value,
-					)
-				)
-			);
-			$this->event_recorder->record_decision( $result, $matched_rule->action, $session_data, $matched_rule );
-
-			try {
-				/**
-				 * Fires when a merchant rule has decided the session outcome.
-				 *
-				 * @since 0.1.6
-				 *
-				 * @param int                  $rule_id           The id of the rule that decided the session.
-				 * @param FraudDecision        $applied_decision  The enforced decision (the rule's action).
-				 * @param FraudDecision        $received_decision The automated decision received from the API, superseded by the rule.
-				 * @param array<string, mixed> $session_data      The session data that was analyzed, including the same `verify_result` subset the `woocommerce_fraud_protection_automated_decision` filter receives (see its docblock; the risk score is informational only).
-				 */
-				do_action( 'woocommerce_fraud_protection_rule_applied', $matched_rule->id, $matched_rule->action, $decision, $hook_session_data );
-			} catch ( \Throwable $e ) {
-				FraudProtectionController::log(
-					'warning',
-					'A callback hooked to `woocommerce_fraud_protection_rule_applied` threw an exception.',
-					array_merge(
-						$log_context,
-						array(
-							'hook'              => 'woocommerce_fraud_protection_rule_applied',
-							'exception'         => $e,
-							'exception_class'   => $e::class,
-							'exception_message' => $e->getMessage(),
-						)
-					),
-					true
-				);
-			}
-
-			return $matched_rule->action;
+			return $this->apply_matched_rule( $result, $session_data, $matched_rule );
 		}
+
+		$decision          = $result->decision;
+		$log_context       = $this->get_log_context( $session_data );
+		$hook_session_data = $this->get_hook_session_data( $result, $session_data );
 
 		// The result may carry FraudDecision::Challenge, which is not actionable and not yet
 		// supported. Fail open on any non-actionable decision so only actionable decisions are
@@ -341,5 +285,120 @@ class DecisionHandler {
 		$this->event_recorder->record_decision( $result, $decision, $session_data );
 
 		return $decision;
+	}
+
+	/**
+	 * Apply the merchant rules to a decision supplied for an earlier verification of the same attempt.
+	 *
+	 * A matching rule decides the outcome as it does in {@see apply_decision()}, with the supplied
+	 * decision as the one received, and is recorded in the sessions log.
+	 *
+	 * @param FraudDecision        $supplied_decision The supplied decision.
+	 * @param string               $session_id        The response-backed session ID of the earlier verification, or an empty string.
+	 * @param array<string, mixed> $session_data      The collected session data for the current request.
+	 * @return ?FraudDecision The matching rule's action, or null when no rule matches.
+	 */
+	public function apply_rules_to_supplied_decision( FraudDecision $supplied_decision, string $session_id, array $session_data ): ?FraudDecision {
+		$matched_rule = $this->rule_evaluator->evaluate_for_session( $session_data );
+		if ( is_null( $matched_rule ) ) {
+			return null;
+		}
+
+		return $this->apply_matched_rule( VerifyResult::create( $supplied_decision, $session_id ), $session_data, $matched_rule );
+	}
+
+	/**
+	 * Apply the merchant rule that decides the outcome, record it and announce it.
+	 *
+	 * @param VerifyResult         $result       The verify result, carrying the received decision.
+	 * @param array<string, mixed> $session_data The collected session data for this verification.
+	 * @param Rule                 $matched_rule The rule that decides the outcome.
+	 * @return FraudDecision The rule's action.
+	 */
+	private function apply_matched_rule( VerifyResult $result, array $session_data, Rule $matched_rule ): FraudDecision {
+		$decision          = $result->decision;
+		$log_context       = $this->get_log_context( $session_data );
+		$hook_session_data = $this->get_hook_session_data( $result, $session_data );
+
+		FraudProtectionController::log(
+			'info',
+			sprintf( 'Merchant rule %d decided the session: "%s" (received decision was "%s").', $matched_rule->id, $matched_rule->action->value, $decision->value ),
+			array_merge(
+				$log_context,
+				array(
+					'matched_rule_id'   => $matched_rule->id,
+					'final_decision'    => $matched_rule->action->value,
+					'decision_received' => $decision->value,
+				)
+			)
+		);
+		$this->event_recorder->record_decision( $result, $matched_rule->action, $session_data, $matched_rule );
+
+		try {
+			/**
+			 * Fires when a merchant rule has decided the session outcome.
+			 *
+			 * @since 0.1.6
+			 * @since 0.4.0 Also fires when a rule supersedes a decision supplied through `woocommerce_fraud_protection_skip_session_verify`.
+			 *
+			 * @param int                  $rule_id           The id of the rule that decided the session.
+			 * @param FraudDecision        $applied_decision  The enforced decision (the rule's action).
+			 * @param FraudDecision        $received_decision The automated decision received from the API, or the decision supplied for an earlier verification of the attempt, superseded by the rule.
+			 * @param array<string, mixed> $session_data      The session data that was analyzed, including the same `verify_result` subset the `woocommerce_fraud_protection_automated_decision` filter receives (see its docblock; the risk score is informational only).
+			 */
+			do_action( 'woocommerce_fraud_protection_rule_applied', $matched_rule->id, $matched_rule->action, $decision, $hook_session_data );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'A callback hooked to `woocommerce_fraud_protection_rule_applied` threw an exception.',
+				array_merge(
+					$log_context,
+					array(
+						'hook'              => 'woocommerce_fraud_protection_rule_applied',
+						'exception'         => $e,
+						'exception_class'   => $e::class,
+						'exception_message' => $e->getMessage(),
+					)
+				),
+				true
+			);
+		}
+
+		return $matched_rule->action;
+	}
+
+	/**
+	 * Get the log context of a verification.
+	 *
+	 * @param array<string, mixed> $session_data The collected session data.
+	 * @return array{identity_id: mixed, event_source: mixed}
+	 */
+	private function get_log_context( array $session_data ): array {
+		$session = is_array( $session_data['session'] ?? null ) ? $session_data['session'] : array();
+
+		return array(
+			'identity_id'  => $session['wc_identity_id'] ?? 'unknown',
+			'event_source' => $session_data['source'] ?? 'unknown',
+		);
+	}
+
+	/**
+	 * Get the payload the public hooks receive.
+	 *
+	 * The rule_applied action and the automated_decision filter receive the session data
+	 * extended with the intentional `verify_result` subset (no session ID) documented on
+	 * the filter in {@see apply_decision()}.
+	 *
+	 * @param VerifyResult         $result       The verify result.
+	 * @param array<string, mixed> $session_data The collected session data.
+	 * @return array<string, mixed>
+	 */
+	private function get_hook_session_data( VerifyResult $result, array $session_data ): array {
+		$session_data['verify_result'] = array(
+			'risk_score'     => $result->risk_score,
+			'payment_method' => (string) ( $session_data['payment']['gateway'] ?? '' ),
+		);
+
+		return $session_data;
 	}
 }

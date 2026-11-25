@@ -7,6 +7,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\CLI;
 
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExtensionNativeSupport;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Database\SchemaManager;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PluginInitializer;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionEventPruner;
@@ -23,6 +25,11 @@ defined( 'ABSPATH' ) || exit;
  * Registers Fraud Protection diagnostic and maintenance commands.
  */
 class FraudProtectionCommands {
+
+	/**
+	 * Fields of each row listed by `wc fraud-protection native-integrations list`.
+	 */
+	private const NATIVE_INTEGRATION_FIELDS = array( 'type', 'id', 'integration' );
 
 	/**
 	 * Schema manager instance.
@@ -81,6 +88,20 @@ class FraudProtectionCommands {
 	private PaymentAttemptsCommands $payment_attempts_commands;
 
 	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
+	 * Native extension support lookup.
+	 *
+	 * @var ExtensionNativeSupport
+	 */
+	private ExtensionNativeSupport $extension_native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
@@ -93,6 +114,8 @@ class FraudProtectionCommands {
 	 * @param AutomaticProtectionSettingUpdater $automatic_protection_updater Automatic-protection setting updater.
 	 * @param CustomRulesCommands               $custom_rules_commands        Custom rules commands.
 	 * @param PaymentAttemptsCommands           $payment_attempts_commands    Payment attempts commands.
+	 * @param GatewayNativeSupport              $native_support               Native gateway support lookup.
+	 * @param ExtensionNativeSupport            $extension_native_support     Native extension support lookup.
 	 */
 	final public function init(
 		SchemaManager $schema_manager,
@@ -102,7 +125,9 @@ class FraudProtectionCommands {
 		AutomaticProtectionSetting $automatic_protection,
 		AutomaticProtectionSettingUpdater $automatic_protection_updater,
 		CustomRulesCommands $custom_rules_commands,
-		PaymentAttemptsCommands $payment_attempts_commands
+		PaymentAttemptsCommands $payment_attempts_commands,
+		GatewayNativeSupport $native_support,
+		ExtensionNativeSupport $extension_native_support
 	): void {
 		$this->schema_manager                = $schema_manager;
 		$this->session_event_pruner          = $session_event_pruner;
@@ -112,6 +137,8 @@ class FraudProtectionCommands {
 		$this->automatic_protection_updater  = $automatic_protection_updater;
 		$this->custom_rules_commands         = $custom_rules_commands;
 		$this->payment_attempts_commands     = $payment_attempts_commands;
+		$this->native_support                = $native_support;
+		$this->extension_native_support      = $extension_native_support;
 	}
 
 	/**
@@ -151,6 +178,37 @@ class FraudProtectionCommands {
 			'wc fraud-protection status',
 			array( $this, 'status' ),
 			array( 'shortdesc' => __( 'Show Fraud Protection status.', 'woocommerce-fraud-protection' ) )
+		);
+		$this->legacy_proxy->call_static(
+			WP_CLI::class,
+			'add_command',
+			'wc fraud-protection native-integrations list',
+			array( $this, 'native_integrations_list' ),
+			array(
+				'shortdesc' => __( 'List the native Fraud Protection integrations that payment gateways and other extensions declare.', 'woocommerce-fraud-protection' ),
+				'synopsis'  => array(
+					array(
+						'type'        => 'assoc',
+						'name'        => 'id',
+						'description' => __( 'Gateway ID or plugin slug. Lists only the integrations it declares, one per line, and ignores --fields and --format.', 'woocommerce-fraud-protection' ),
+						'optional'    => true,
+					),
+					array(
+						'type'        => 'assoc',
+						'name'        => 'fields',
+						'description' => __( 'Limit the output to specific fields: type, id, integration.', 'woocommerce-fraud-protection' ),
+						'optional'    => true,
+					),
+					array(
+						'type'        => 'assoc',
+						'name'        => 'format',
+						'description' => __( 'Render the output in a particular format.', 'woocommerce-fraud-protection' ),
+						'optional'    => true,
+						'default'     => 'table',
+						'options'     => array( 'table', 'csv', 'json', 'yaml', 'count' ),
+					),
+				),
+			)
 		);
 		$this->legacy_proxy->call_static(
 			WP_CLI::class,
@@ -264,6 +322,49 @@ class FraudProtectionCommands {
 		$this->write_line( __( 'Database default collation', 'woocommerce-fraud-protection' ), self::value_or_unavailable( $database_defaults['collation'] ?? null ) );
 		$next_pruning_action = $this->session_event_pruner->get_next_scheduled_action();
 		$this->write_line( __( 'Next session pruning action', 'woocommerce-fraud-protection' ), true === $next_pruning_action ? __( 'In progress', 'woocommerce-fraud-protection' ) : $this->format_timestamp( $next_pruning_action, __( 'Not scheduled', 'woocommerce-fraud-protection' ) ) );
+	}
+
+	/**
+	 * List the native integrations, one row per declared integration: gateways by ID, then extensions by plugin slug.
+	 *
+	 * With the `id` option, list only the integrations declared under that gateway ID or plugin slug, one per line.
+	 *
+	 * @internal
+	 *
+	 * @param string[]              $args       Positional command arguments.
+	 * @param array<string, string> $assoc_args Associative command arguments.
+	 */
+	public function native_integrations_list( array $args, array $assoc_args ): void {
+		unset( $args );
+
+		$declarations_by_type = array(
+			'gateway'   => $this->native_support->get_declarations(),
+			'extension' => $this->extension_native_support->get_declarations(),
+		);
+
+		$rows = array();
+		foreach ( $declarations_by_type as $type => $declarations ) {
+			foreach ( $declarations as $id => $integrations ) {
+				foreach ( $integrations as $integration ) {
+					$rows[] = array(
+						'type'        => $type,
+						'id'          => (string) $id,
+						'integration' => $integration,
+					);
+				}
+			}
+		}
+
+		if ( isset( $assoc_args['id'] ) ) {
+			$id            = $assoc_args['id'];
+			$matching_rows = array_filter( $rows, fn( array $row ): bool => $row['id'] === $id );
+			foreach ( array_unique( array_column( $matching_rows, 'integration' ) ) as $integration ) {
+				$this->legacy_proxy->call_static( WP_CLI::class, 'line', $integration );
+			}
+			return;
+		}
+
+		$this->legacy_proxy->call_function( 'WP_CLI\Utils\format_items', $assoc_args['format'] ?? 'table', $rows, $assoc_args['fields'] ?? self::NATIVE_INTEGRATION_FIELDS );
 	}
 
 	/**

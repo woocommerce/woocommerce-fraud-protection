@@ -8,12 +8,15 @@ declare( strict_types = 1 );
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\StripeSetupIntentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
 
@@ -80,7 +83,8 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		$this->sut->init(
 			$this->session_verifier,
 			$this->blocked_session_message,
-			new SessionIdNormalizer()
+			new SessionIdNormalizer(),
+			new GatewayNativeSupport()
 		);
 		$this->sut->register();
 
@@ -226,6 +230,55 @@ class StripeSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( 10, has_filter( self::CAPTCHA_FILTER, array( $this->sut, 'verify_and_block_setup_intent' ) ) );
 		$this->assertSame( 10, has_filter( self::SKIP_VERIFY_FILTER, array( $this->sut, 'supply_decision_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_add_payment_method_script' ) ) );
+	}
+
+	/**
+	 * @testdox Every hook stands aside when the main Stripe gateway declares native add-payment-method support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_add_payment_method(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'stripe', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
+		$this->set_setup_intent_post( array( SessionVerifier::SESSION_ID_FIELD => 'sess-stripe' ) );
+		$this->session_verifier->expects( $this->never() )->method( 'verify_session' );
+		wp_enqueue_script( 'wc-fraud-protection-add-payment-method', 'https://example.com/add-payment-method.js', array(), '1', true );
+		$this->set_available_gateway_ids( array( 'stripe' ) );
+
+		$outcome  = $this->run_setup_intent_filter();
+		$supplied = $this->supply_for_add_payment_method( 'sess-stripe' );
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_add_payment_method_form_bottom' );
+
+		$this->assertFalse( $outcome['blocked'] );
+		$this->assertTrue( $outcome['result'], 'The filter value must be returned unchanged' );
+		$this->assertFalse( $supplied );
+		$this->assertFalse( wp_script_is( 'wc-fraud-protection-stripe-add-payment-method', 'enqueued' ) );
+	}
+
+	/**
+	 * @testdox A declaration on one Stripe payment method gateway covers only that payment method.
+	 */
+	public function test_payment_method_gateway_declaration_covers_only_its_requests(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'stripe_sepa_debit', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
+		$this->session_verifier
+			->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( $this->anything(), StripeSetupIntentCompat::SOURCE, 0, $this->callback( fn( $data ) => 'stripe' === $data['payment_method'] ) )
+			->willReturn( FraudDecision::Allow );
+
+		$this->set_setup_intent_post( array( 'wc-stripe-payment-type' => 'sepa_debit' ) );
+		$this->run_setup_intent_filter();
+		$this->set_setup_intent_post();
+		$this->run_setup_intent_filter();
+	}
+
+	/**
+	 * @testdox Declaring only native checkout support keeps setup intent verification on.
+	 */
+	public function test_checkout_declaration_keeps_setup_intent_verification(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'stripe', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$this->set_setup_intent_post();
+		$this->session_verifier->expects( $this->once() )->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+
+		$this->run_setup_intent_filter();
 	}
 
 	/**

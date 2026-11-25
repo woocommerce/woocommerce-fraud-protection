@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -20,14 +21,15 @@ defined( 'ABSPATH' ) || exit;
  * Handles multiple Stripe gateway IDs (stripe, stripe_sepa, stripe_ideal, etc.)
  * and uses the Stripe API to retrieve payment method details. On an
  * add-payment-method form post, the details are those of the payment method
- * that the posted setup intent holds.
+ * that the posted setup intent holds. Stands aside once the gateway declares
+ * `fraud_protection_payment_data`.
  */
 class StripePaymentDataCompat {
 
 	use StripeSetupIntentReaderTrait;
 
 	/**
-	 * Stripe gateway ID prefixes.
+	 * Stripe gateway ID prefix, which is also the main gateway ID.
 	 *
 	 * @var string
 	 */
@@ -46,6 +48,24 @@ class StripePaymentDataCompat {
 	 * @var string
 	 */
 	private const ADD_PAYMENT_METHOD_FORM_FILTER = 'woocommerce_add_payment_method_form_is_valid';
+
+	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param GatewayNativeSupport $native_support Native gateway support lookup.
+	 */
+	final public function init( GatewayNativeSupport $native_support ): void {
+		$this->native_support = $native_support;
+	}
 
 	/**
 	 * Wallet names accepted from Stripe request and provider data.
@@ -82,6 +102,10 @@ class StripePaymentDataCompat {
 	 */
 	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
 		if ( ! $this->is_stripe_gateway( $resolved->get_gateway() ) ) {
+			return $resolved;
+		}
+
+		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $resolved->get_gateway(), self::GATEWAY_PREFIX ) ) {
 			return $resolved;
 		}
 

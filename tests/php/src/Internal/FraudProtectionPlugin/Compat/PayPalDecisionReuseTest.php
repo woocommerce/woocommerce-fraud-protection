@@ -7,13 +7,16 @@ declare( strict_types = 1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
+use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\FakePayPalOrder;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\PayPalSubscriptionsStub;
 use Automattic\WooCommerce\FraudProtection\Tests\Support\ThrowingPayPalOrder;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\PayPalDecisionReuse;
 
 /**
@@ -36,7 +39,70 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		}
 		$normalizer           = new SessionIdNormalizer();
 		$this->decision_reuse = new PayPalDecisionReuse();
-		$this->decision_reuse->init( $normalizer );
+		$this->decision_reuse->init( $normalizer, new GatewayNativeSupport() );
+	}
+
+	/**
+	 * @testdox The supplied-decision filter stands aside, leaving the record untouched, when the PayPal gateway declares native checkout support.
+	 */
+	public function test_stands_aside_when_gateway_declares_native_checkout(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$this->decision_reuse->record_verification( PayPalDecisionReuse::ORDER_CREATION_SOURCE, 'scored-session', FraudDecision::Block, true );
+
+		$result = $this->decision_reuse->supply_decision_for_paypal_express(
+			false,
+			'blocks_checkout',
+			array( 'payment_method' => 'ppcp-credit-card-gateway' ),
+			'other-session'
+		);
+
+		$this->assertFalse( $result );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record, 'A non-matching record is retired by the compat layer; a native gateway owns it instead' );
+		$this->assertFalse( $record['used'] );
+	}
+
+	/**
+	 * @testdox A setup-token decision is still reused while only native checkout support is declared, because PayPalCompat still verified that request.
+	 */
+	public function test_reuses_setup_token_decision_with_checkout_only_declaration(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$request = $this->create_protected_paypal_request_record( 'setup' );
+
+		$result = $this->decision_reuse->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $result );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+	}
+
+	/**
+	 * @testdox A setup-token decision is still reused when only another PayPal gateway declares the feature that the main gateway lacks, as PayPalCompat still verified the request.
+	 */
+	public function test_reuses_setup_token_decision_when_only_another_paypal_gateway_completes_the_declarations(): void {
+		$this->register_payment_gateways(
+			new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ),
+			new FakeNativeGateway( 'ppcp-credit-card-gateway', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) )
+		);
+		$request                   = $this->create_protected_paypal_request_record( 'setup' );
+		$request['payment_method'] = 'ppcp-credit-card-gateway';
+
+		$result = $this->decision_reuse->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $result );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+	}
+
+	/**
+	 * @testdox A setup-token decision is left alone once native checkout and add-payment-method support are both declared.
+	 */
+	public function test_stands_aside_for_setup_token_decision_when_both_features_are_declared(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
+		$request = $this->create_protected_paypal_request_record( 'setup' );
+
+		$this->assertFalse( $this->decision_reuse->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' ) );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertFalse( $record['used'] );
 	}
 
 	/**
@@ -408,16 +474,16 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The record answers at this callback's priority, over an earlier consumer's decision.
+	 * @testdox The record answers at this callback's priority, over an earlier consumer's Allow.
 	 *
 	 * This callback may answer at its own priority; consumers that need the final
 	 * decision can register later.
 	 */
 	public function test_supply_answers_from_its_record_over_an_earlier_decision(): void {
-		$this->set_verification_record( session_id: 'some-session-id', order_id: 'PP-123' );
+		$this->set_verification_record( session_id: 'some-session-id', decision: FraudDecision::Block, order_id: 'PP-123' );
 		WC()->session->set( 'ppcp', array( 'order' => new FakePayPalOrder( 'PP-123' ) ) );
 
-		$supplied_decision = new SuppliedDecision( FraudDecision::Block );
+		$supplied_decision = new SuppliedDecision( FraudDecision::Allow );
 
 		$returned = $this->decision_reuse->supply_decision_for_paypal_express(
 			$supplied_decision,
@@ -427,7 +493,33 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 		);
 
 		$this->assertInstanceOf( SuppliedDecision::class, $returned );
-		$this->assertSame( FraudDecision::Allow, $returned->decision );
+		$this->assertSame( FraudDecision::Block, $returned->decision );
+	}
+
+	/**
+	 * @testdox A recorded Allow never replaces an earlier consumer's Block, and the record is used up.
+	 *
+	 * @dataProvider recorded_allow_provider
+	 *
+	 * @param string   $record_type Kind of recorded request.
+	 * @param string   $source      Source of the final request.
+	 * @param string[] $features    Features the main PayPal gateway declares.
+	 */
+	public function test_recorded_allow_keeps_an_earlier_block( string $record_type, string $source, array $features ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', $features ) );
+		$request = $this->create_protected_paypal_request_record( $record_type );
+		$earlier = new SuppliedDecision( FraudDecision::Block );
+
+		$this->assertSame( $earlier, $this->decision_reuse->supply_decision_for_paypal_express( $earlier, $source, $request, 'response-session' ) );
+		$this->assertFalse( $this->decision_reuse->supply_decision_for_paypal_express( false, $source, $request, 'response-session' ), 'The record was used up' );
+	}
+
+	/** @return array<string, array{string, string, string[]}> */
+	public function recorded_allow_provider(): array {
+		return array(
+			'order, no declaration'             => array( 'create', 'blocks_checkout', array() ),
+			'setup token, native checkout only' => array( 'setup', 'blocks_checkout', array( FraudProtectionFeature::CHECKOUT ) ),
+		);
 	}
 
 	/** @testdox A final record read failure preserves the incoming decision and retires stored state. */

@@ -21,15 +21,24 @@
 	}
 
 	const originalFetch = window.fetch;
+	// The server lists the endpoints whose requests it still verifies for PayPal
+	// Payments. The others belong to PayPal's own Fraud Protection integration,
+	// which sends its own session ID, so they are left untouched.
+	const paypalConfig = window.wcFraudProtectionPayPal;
 	const protectedPayPalEndpoints = [
 		'ppc-create-order',
 		'ppc-create-setup-token',
 		'ppc-vault-create-order',
-	];
+	].filter(
+		( endpoint ) =>
+			! paypalConfig ||
+			! Array.isArray( paypalConfig.endpoints ) ||
+			paypalConfig.endpoints.includes( endpoint )
+	);
 	const handOverEndpoints = [
 		'ppc-create-setup-token',
 		'ppc-vault-create-order',
-	];
+	].filter( ( endpoint ) => protectedPayPalEndpoints.includes( endpoint ) );
 	const PAYPAL_GATEWAY_PREFIX = 'ppcp-';
 	const PAYMENT_STORE_KEY = 'wc/store/payment';
 	const CHECKOUT_STORE_KEY = 'wc/store/checkout';

@@ -60,7 +60,7 @@ Do not repeat the feature gate inside components. Keep it at the start of `Fraud
 
 ## Using the Container to Get Instances
 
-`wc_get_container()->get( ClassName::class )` returns the same instance every time (singleton). Use it for stateful services; the public services (`SessionVerifier`, `FraudProtectionReporter`, `BlackboxScriptHandler`) are always resolved this way, as the "Public API" section of `README.md` documents.
+`wc_get_container()->get( ClassName::class )` returns the same instance every time (singleton). Use it for stateful services; the public services (`SessionVerifier`, `FraudProtectionReporter`, `BlackboxScriptHandler`) are always resolved this way, as `docs/api-reference.md` and their class docblocks document.
 
 ```php
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;

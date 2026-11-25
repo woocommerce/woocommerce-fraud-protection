@@ -76,6 +76,13 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	private $session_id_normalizer;
 
 	/**
+	 * Session data that the rule evaluator of use_real_decision_handler() received.
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	private ?array $rule_evaluator_input = null;
+
+	/**
 	 * Prepared context returned by the decision handler mock.
 	 *
 	 * @var array{context: array<string, string>, matched_rule: ?Rule}
@@ -1206,6 +1213,140 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() applies a merchant rule that matches the current request instead of a supplied decision, without calling the API.
+	 *
+	 * The earlier verification can run before the shopper enters the billing email
+	 * that a rule matches, such as a payment request sent from the cart.
+	 */
+	public function test_verify_session_applies_a_matching_rule_instead_of_a_supplied_decision(): void {
+		$order = \WC_Helper_Order::create_order();
+		$rule  = Rule::from_row(
+			array(
+				'id'         => 7,
+				'action'     => FraudDecision::Block->value,
+				'status'     => 'active',
+				'position'   => 1,
+				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'created_at' => '2026-09-09 00:00:00',
+			)
+		);
+		$this->use_real_decision_handler( $rule );
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			fn() => new SuppliedDecision( FraudDecision::Allow, 'response-session-id' )
+		);
+
+		$this->data_collector
+			->expects( $this->once() )
+			->method( 'get_collected_data' )
+			->with( $order->get_id() )
+			->willReturn( array( 'customer' => array( 'billing_email' => 'someone@example.com' ) ) );
+		$this->api_client->expects( $this->never() )->method( 'verify' );
+
+		$result = $this->sut->verify_session( 'test-session', 'blocks_checkout', $order->get_id(), array( 'payment_method' => 'my_gateway' ) );
+
+		$this->assertSame( FraudDecision::Block, $result );
+		$this->assertSame(
+			array(
+				'customer' => array( 'billing_email' => 'someone@example.com' ),
+				'source'   => 'blocks_checkout',
+				'payment'  => array( 'gateway' => 'my_gateway' ),
+			),
+			$this->rule_evaluator_input
+		);
+		$this->assertSame( 'response-session-id', wc_get_order( $order->get_id() )->get_meta( SessionVerifier::ORDER_BLACKBOX_SESSION_ID_KEY ), 'The supplied session ID is still stored on the order' );
+		$this->assertLogged( 'info', 'Merchant rule 7 decided the session: "block" (received decision was "allow").' );
+	}
+
+	/**
+	 * @testdox verify_session() records a rule that replaces a supplied decision without a response-backed session ID with no session ID, not the submitted one.
+	 */
+	public function test_verify_session_records_no_session_id_for_a_rule_over_a_supplied_decision_without_one(): void {
+		$rule           = Rule::from_row(
+			array(
+				'id'         => 7,
+				'action'     => FraudDecision::Block->value,
+				'status'     => 'active',
+				'position'   => 1,
+				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'created_at' => '2026-09-09 00:00:00',
+			)
+		);
+		$event_recorder = $this->createMock( SessionEventRecorder::class );
+		$event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( VerifyResult::create( FraudDecision::Allow, '' ), FraudDecision::Block, $this->anything(), $rule );
+		$this->use_real_decision_handler( $rule, $event_recorder );
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			fn() => new SuppliedDecision( FraudDecision::Allow )
+		);
+		$this->data_collector->method( 'get_collected_data' )->willReturn( array() );
+
+		$this->assertSame( FraudDecision::Block, $this->sut->verify_session( 'submitted-session', 'add_payment_method' ) );
+	}
+
+	/**
+	 * @testdox verify_session() keeps a supplied decision when no merchant rule matches.
+	 */
+	public function test_verify_session_keeps_a_supplied_decision_without_a_matching_rule(): void {
+		$this->use_real_decision_handler( null );
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			fn() => new SuppliedDecision( FraudDecision::Block )
+		);
+		$this->data_collector->method( 'get_collected_data' )->willReturn( array() );
+		$this->api_client->expects( $this->never() )->method( 'verify' );
+
+		$this->assertSame( FraudDecision::Block, $this->sut->verify_session( 'test-session', 'blocks_checkout' ) );
+	}
+
+	/**
+	 * @testdox verify_session() applies a supplied decision created without merchant rules, such as a point-of-sale tender, even when a rule matches.
+	 */
+	public function test_verify_session_applies_a_supplied_decision_without_merchant_rules(): void {
+		$this->use_real_decision_handler(
+			Rule::from_row(
+				array(
+					'id'         => 7,
+					'action'     => FraudDecision::Block->value,
+					'status'     => 'active',
+					'position'   => 1,
+					'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+					'created_at' => '2026-09-09 00:00:00',
+				)
+			)
+		);
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			fn() => new SuppliedDecision( FraudDecision::Allow, null, false )
+		);
+		$this->data_collector->expects( $this->never() )->method( 'get_collected_data' );
+		$this->api_client->expects( $this->never() )->method( 'verify' );
+
+		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'test-session', 'pay_for_order' ) );
+		$this->assertNull( $this->rule_evaluator_input, 'The rules are not evaluated' );
+	}
+
+	/**
+	 * @testdox verify_session() keeps a supplied decision and logs a forwarded warning when the merchant rules cannot be applied.
+	 *
+	 * A Block, so that keeping the supplied decision differs from failing open.
+	 */
+	public function test_verify_session_keeps_a_supplied_decision_when_rules_cannot_be_applied(): void {
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			fn() => new SuppliedDecision( FraudDecision::Block )
+		);
+		$this->data_collector->method( 'get_collected_data' )->willThrowException( new \RuntimeException( 'Broken collector' ) );
+		$this->api_client->expects( $this->never() )->method( 'verify' );
+
+		$this->assertSame( FraudDecision::Block, $this->sut->verify_session( 'test-session', 'blocks_checkout' ) );
+		$this->assertLogged( 'warning', 'Applying merchant rules to a supplied decision failed; keeping the supplied decision', null, true );
+	}
+
+	/**
 	 * @testdox verify_session() verifies normally when the filter passes its default through.
 	 *
 	 * The standard WordPress shape for a consumer with nothing to say: return the
@@ -1479,5 +1620,31 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'another-id', 'blocks_checkout' ) );
 		$this->assertSame( '', $this->sut->last_verified_session_id() );
+	}
+
+	/**
+	 * Verify with a real decision handler whose rule evaluator returns the given rule.
+	 *
+	 * @param ?Rule                 $matched_rule   The rule the evaluator matches, or null for none.
+	 * @param ?SessionEventRecorder $event_recorder The recorder of the decisions, or null for a stub.
+	 */
+	private function use_real_decision_handler( ?Rule $matched_rule, ?SessionEventRecorder $event_recorder = null ): void {
+		$rule_evaluator = $this->createMock( RuleEvaluator::class );
+		$rule_evaluator->method( 'evaluate_for_session' )->willReturnCallback(
+			function ( array $session_data ) use ( $matched_rule ) {
+				$this->rule_evaluator_input = $session_data;
+				return $matched_rule;
+			}
+		);
+
+		$decision_handler = new DecisionHandler();
+		$decision_handler->init( $event_recorder ?? $this->createMock( SessionEventRecorder::class ), $rule_evaluator, $this->createMock( AutomaticProtectionSetting::class ) );
+		$this->sut->init(
+			$this->data_collector,
+			$this->api_client,
+			$decision_handler,
+			$this->payment_data_resolver,
+			$this->session_id_normalizer
+		);
 	}
 }

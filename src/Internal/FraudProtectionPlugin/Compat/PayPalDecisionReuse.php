@@ -16,6 +16,8 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Preserves one PayPal request decision for its matching final request.
+ *
+ * Stands aside once the PayPal gateway declares `fraud_protection_checkout`.
  */
 class PayPalDecisionReuse {
 
@@ -42,14 +44,23 @@ class PayPalDecisionReuse {
 	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param SessionIdNormalizer $session_id_normalizer Session ID normalizer.
+	 * @param SessionIdNormalizer  $session_id_normalizer Session ID normalizer.
+	 * @param GatewayNativeSupport $native_support        Native gateway support lookup.
 	 */
-	final public function init( SessionIdNormalizer $session_id_normalizer ): void {
+	final public function init( SessionIdNormalizer $session_id_normalizer, GatewayNativeSupport $native_support ): void {
 		$this->session_id_normalizer = $session_id_normalizer;
+		$this->native_support        = $native_support;
 	}
 
 	/**
@@ -161,7 +172,9 @@ class PayPalDecisionReuse {
 	 * Answers requests this class already scored with the decision that scoring
 	 * produced, so one payment attempt is not scored twice; everything else is
 	 * deferred and verified normally. Standard filter arbitration: a consumer
-	 * that wants the last word registers with a later priority.
+	 * that wants the last word registers with a later priority. The one
+	 * exception is a Block that an earlier callback supplied, which a recorded
+	 * Allow never replaces: the record is used up and the Block kept.
 	 *
 	 * @internal
 	 *
@@ -189,6 +202,13 @@ class PayPalDecisionReuse {
 			if ( null === $record ) {
 				return $supplied_decision;
 			}
+
+			// PayPal Payments reuses its own decisions for the requests it verifies itself. The
+			// record comes from a request that PayPalCompat still verified, so it is reused here
+			// unless its origin is covered too, as when the declarations changed since.
+			if ( $this->is_native_origin( $record['origin'] ) ) {
+				return $supplied_decision;
+			}
 			if ( $record['used'] ) {
 				$this->retire_verification_record();
 				return $supplied_decision;
@@ -205,6 +225,11 @@ class PayPalDecisionReuse {
 
 			$record['used'] = true;
 			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
+
+			// Reusing a decision must not turn an earlier Block in the attempt into an allow.
+			if ( $supplied_decision instanceof SuppliedDecision && FraudDecision::Block === $supplied_decision->decision ) {
+				return $supplied_decision;
+			}
 
 			return new SuppliedDecision( $record['decision'], $record['session_id'] );
 		} catch ( \Throwable $e ) {
@@ -226,6 +251,25 @@ class PayPalDecisionReuse {
 
 			return $supplied_decision;
 		}
+	}
+
+	/**
+	 * Check whether PayPal Payments handles the requests of an origin itself.
+	 *
+	 * The same check as PayPalCompat's, on the main PayPal gateway only: the declarations of
+	 * the gateway selected at the final request don't decide who verified the recorded request.
+	 *
+	 * @param string $origin Verification source of the recorded request.
+	 * @return bool
+	 */
+	private function is_native_origin( string $origin ): bool {
+		foreach ( PayPalCompat::get_features_for_origin( $origin ) as $feature ) {
+			if ( ! $this->native_support->declared( $feature, PayPalCompat::MAIN_GATEWAY_ID ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

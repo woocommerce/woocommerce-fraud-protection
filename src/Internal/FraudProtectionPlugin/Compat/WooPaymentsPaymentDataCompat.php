@@ -7,6 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
+use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
@@ -25,6 +26,7 @@ defined( 'ABSPATH' ) || exit;
  * merchant identifier are resolved because pm_ IDs are platform-scoped and unresolvable.
  * On an add-payment-method form post, the details are those of the payment
  * method that the posted setup intent holds.
+ * Stands aside once the gateway declares `fraud_protection_payment_data`.
  */
 class WooPaymentsPaymentDataCompat {
 
@@ -50,6 +52,24 @@ class WooPaymentsPaymentDataCompat {
 	 * @var string
 	 */
 	private const ADD_PAYMENT_METHOD_FORM_FILTER = 'woocommerce_add_payment_method_form_is_valid';
+
+	/**
+	 * Native gateway support lookup.
+	 *
+	 * @var GatewayNativeSupport
+	 */
+	private GatewayNativeSupport $native_support;
+
+	/**
+	 * Initialize with dependencies.
+	 *
+	 * @internal
+	 *
+	 * @param GatewayNativeSupport $native_support Native gateway support lookup.
+	 */
+	final public function init( GatewayNativeSupport $native_support ): void {
+		$this->native_support = $native_support;
+	}
 
 	/**
 	 * Wallet names accepted from WooPayments request and provider data.
@@ -100,6 +120,10 @@ class WooPaymentsPaymentDataCompat {
 	 */
 	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
 		if ( ! $this->is_woopayments_gateway( $resolved->get_gateway() ) ) {
+			return $resolved;
+		}
+
+		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $resolved->get_gateway(), self::GATEWAY_ID ) ) {
 			return $resolved;
 		}
 
