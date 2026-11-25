@@ -94,7 +94,7 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$GLOBALS['wc_container']->reset_replacement( GatewayPaymentData::class );
 		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->payment_data, 'apply_resolver' ), 10 );
 		remove_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->request_verifier, 'supply_reused_decision' ), 10 );
-		remove_action( 'wp_enqueue_scripts', array( $this->integration, 'register_scripts' ) );
+		remove_action( 'init', array( $this->integration, 'register_scripts' ) );
 		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_provider_button' ), 30 );
 		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_express_button' ), 40 );
 		remove_action( 'woocommerce_checkout_before_order_review', array( $this->integration, 'render_provider_order_field' ) );
@@ -226,7 +226,7 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->add_product_to_cart();
 
 		try {
-			// Called directly: firing wp_enqueue_scripts would also enqueue every other registered frontend script.
+			// Called directly: firing init would also run every other init callback.
 			$this->integration->register_scripts();
 
 			$shared = $available ? array( 'wc-fraud-protection-blackbox-init' ) : array();
@@ -429,6 +429,14 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 			$button_scripts ? $button_handles : array(),
 			array_values( array_intersect( wp_scripts()->query( 'fp-example-blocks', 'registered' )->deps, $button_handles ) )
 		);
+	}
+
+	/**
+	 * @testdox The button scripts are registered on init, before a block theme renders the Cart and Checkout blocks, which collect the block script's dependencies before wp_enqueue_scripts fires.
+	 */
+	public function test_button_scripts_are_registered_before_the_blocks_render(): void {
+		$this->assertSame( 10, has_action( 'init', array( $this->integration, 'register_scripts' ) ) );
+		$this->assertFalse( has_action( 'wp_enqueue_scripts', array( $this->integration, 'register_scripts' ) ) );
 	}
 
 	/**

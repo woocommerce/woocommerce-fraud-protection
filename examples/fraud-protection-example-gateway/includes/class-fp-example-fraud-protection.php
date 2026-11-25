@@ -102,7 +102,7 @@ class FP_Example_Fraud_Protection {
 			WC_Gateway_FP_Example::ID,
 			static fn( array $payment_data ) => $payment_data[ self::PROVIDER_ORDER_FIELD ] ?? ''
 		);
-		add_action( 'wp_enqueue_scripts', array( $this, 'register_scripts' ) );
+		add_action( 'init', array( $this, 'register_scripts' ) );
 		add_action( 'woocommerce_proceed_to_checkout', array( $this, 'render_provider_button' ), 30 );
 		add_action( 'woocommerce_proceed_to_checkout', array( $this, 'render_express_button' ), 40 );
 		add_action( 'woocommerce_checkout_before_order_review', array( $this, 'render_provider_order_field' ) );
@@ -144,6 +144,10 @@ class FP_Example_Fraud_Protection {
 	 * Each is enqueued only where its button renders: on the classic cart by
 	 * {@see render_provider_button()} and {@see render_express_button()}, and in the express
 	 * payment area of the Cart and Checkout blocks by {@see FP_Example_Blocks_Support}.
+	 *
+	 * Runs on `init`, not `wp_enqueue_scripts`: the block script depends on these scripts only
+	 * when they are registered, and a block theme renders the Cart and Checkout blocks, which
+	 * collect the block script's dependencies, before `wp_enqueue_scripts` fires.
 	 */
 	public function register_scripts(): void {
 		wp_register_script( self::PROVIDER_SCRIPT, plugins_url( 'assets/provider-checkout.js', FP_EXAMPLE_GATEWAY_FILE ), array(), '0.1.0', true );
