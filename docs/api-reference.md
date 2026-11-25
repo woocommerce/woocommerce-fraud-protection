@@ -144,7 +144,7 @@ Call it once while your plugin loads. Before the plugin verifies a later submiss
 - the cart items and quantities have not changed since `reuse_decision_for()` was called (a changed total alone does not count);
 - the submission's source differs from the source of the request that produced the decision.
 
-A decision is reused at most once. A reader that throws, or returns anything but a matching string, leads to a normal verification. A later call with the same `$gateway_id` replaces the reader.
+A decision is reused at most once. Merchant rules are still checked against the submission that reuses it: a rule that matches the submission replaces the reused decision, as for any [supplied decision](#woocommerce_fraud_protection_skip_session_verify). A reader that throws, or returns anything but a matching string, leads to a normal verification. A later call with the same `$gateway_id` replaces the reader.
 
 `$gateway_id` is a gateway ID or a [gateway ID pattern](#gateway-id-patterns). The gateways that one pattern matches share one reusable decision, so a request verified for one of them can be completed by a submission with another.
 
