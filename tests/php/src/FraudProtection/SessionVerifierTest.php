@@ -1331,16 +1331,18 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 
 	/**
 	 * @testdox verify_session() keeps a supplied decision and logs a forwarded warning when the merchant rules cannot be applied.
+	 *
+	 * A Block, so that keeping the supplied decision differs from failing open.
 	 */
 	public function test_verify_session_keeps_a_supplied_decision_when_rules_cannot_be_applied(): void {
 		add_filter(
 			'woocommerce_fraud_protection_skip_session_verify',
-			fn() => new SuppliedDecision( FraudDecision::Allow )
+			fn() => new SuppliedDecision( FraudDecision::Block )
 		);
 		$this->data_collector->method( 'get_collected_data' )->willThrowException( new \RuntimeException( 'Broken collector' ) );
 		$this->api_client->expects( $this->never() )->method( 'verify' );
 
-		$this->assertSame( FraudDecision::Allow, $this->sut->verify_session( 'test-session', 'blocks_checkout' ) );
+		$this->assertSame( FraudDecision::Block, $this->sut->verify_session( 'test-session', 'blocks_checkout' ) );
 		$this->assertLogged( 'warning', 'Applying merchant rules to a supplied decision failed; keeping the supplied decision', null, true );
 	}
 
