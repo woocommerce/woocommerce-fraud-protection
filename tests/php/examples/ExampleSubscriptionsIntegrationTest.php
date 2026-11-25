@@ -197,7 +197,10 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The signed-in owner's submission with a valid nonce is verified and changes the payment method.
+	 * @testdox The signed-in owner's submission with a valid nonce is verified and changes the payment method, even when a filter hides the order's customer.
+	 *
+	 * The filter makes the order look like a guest order, which the `pay_for_order` capability
+	 * still allows; only the stored owner tells that the user owns it.
 	 */
 	public function test_owner_submission_changes_the_payment_method(): void {
 		$this->intercept_redirect();
@@ -209,12 +212,14 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 			'_fp_example_nonce' => wp_create_nonce( 'fp_example_change_payment' ),
 		);
 
+		add_filter( 'woocommerce_order_get_customer_id', '__return_zero' );
 		try {
 			$this->flow->handle_submission();
 			$this->fail( 'The flow should redirect' );
 		} catch ( ExampleRedirectInterceptedException $e ) {
 			unset( $e );
 		} finally {
+			remove_filter( 'woocommerce_order_get_customer_id', '__return_zero' );
 			unset( $_GET[ \FP_Example_Change_Payment::QUERY_VAR ] );
 		}
 
@@ -222,14 +227,14 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox A submission with a valid nonce cannot change the payment method of an order that the signed-in user does not own.  /**
-	 * @testdox A submission with a valid nonce cannot change the payment method of an order that the signed-in user does not own.
+	 * @testdox A submission with a valid nonce cannot change the payment method of an order that the signed-in user does not own, even when a filter shows the user as its customer.
 	 *
 	 * @dataProvider foreign_order_provider
 	 *
-	 * @param bool $guest_order Whether the order is a guest order, rather than another customer's.
+	 * @param bool $guest_order    Whether the order is a guest order, rather than another customer's.
+	 * @param bool $shown_as_users Whether a filter shows the signed-in user as the order's customer.
 	 */
-	public function test_submission_cannot_change_an_order_the_user_does_not_own( bool $guest_order ): void {
+	public function test_submission_cannot_change_an_order_the_user_does_not_own( bool $guest_order, bool $shown_as_users ): void {
 		$owner = $guest_order ? 0 : $this->factory()->user->create( array( 'role' => 'customer' ) );
 		$order = \WC_Helper_Order::create_order( $owner );
 		$order->set_payment_method( 'bacs' );
@@ -243,9 +248,14 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 			'_fp_example_nonce' => wp_create_nonce( 'fp_example_change_payment' ),
 		);
 
+		$show_as_users = static fn(): int => get_current_user_id();
+		if ( $shown_as_users ) {
+			add_filter( 'woocommerce_order_get_customer_id', $show_as_users );
+		}
 		try {
 			$this->flow->handle_submission();
 		} finally {
+			remove_filter( 'woocommerce_order_get_customer_id', $show_as_users );
 			unset( $_GET[ \FP_Example_Change_Payment::QUERY_VAR ] );
 		}
 
@@ -256,12 +266,13 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Orders that the signed-in customer does not own.
 	 *
-	 * @return array<string, array{bool}>
+	 * @return array<string, array{bool, bool}>
 	 */
 	public function foreign_order_provider(): array {
 		return array(
-			'guest order'              => array( true ),
-			"another customer's order" => array( false ),
+			'guest order'                                  => array( true, false ),
+			"another customer's order"                     => array( false, false ),
+			"another customer's order shown as the user's" => array( false, true ),
 		);
 	}
 
