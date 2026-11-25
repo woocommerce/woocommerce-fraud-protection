@@ -197,6 +197,32 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The signed-in owner's submission with a valid nonce is verified and changes the payment method.
+	 */
+	public function test_owner_submission_changes_the_payment_method(): void {
+		$this->intercept_redirect();
+		$this->session_verifier->expects( $this->once() )->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+
+		$_GET[ \FP_Example_Change_Payment::QUERY_VAR ] = (string) $this->order->get_id();
+		$_POST = array(
+			'payment_method'    => 'cod',
+			'_fp_example_nonce' => wp_create_nonce( 'fp_example_change_payment' ),
+		);
+
+		try {
+			$this->flow->handle_submission();
+			$this->fail( 'The flow should redirect' );
+		} catch ( ExampleRedirectInterceptedException $e ) {
+			unset( $e );
+		} finally {
+			unset( $_GET[ \FP_Example_Change_Payment::QUERY_VAR ] );
+		}
+
+		$this->assertSame( 'cod', wc_get_order( $this->order->get_id() )->get_payment_method() );
+	}
+
+	/**
+	 * @testdox A submission with a valid nonce cannot change the payment method of an order that the signed-in user does not own.  /**
 	 * @testdox A submission with a valid nonce cannot change the payment method of an order that the signed-in user does not own.
 	 *
 	 * @dataProvider foreign_order_provider

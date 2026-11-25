@@ -163,12 +163,12 @@ class FP_Example_Change_Payment {
 		}
 
 		// Only the signed-in customer who owns the order, as on the form: the capability alone
-		// also allows any user to pay a guest order.
+		// also allows any user to pay a guest order. The stored owner, not the filtered one.
 		$order = wc_get_order( absint( $_GET[ self::QUERY_VAR ] ) );
 		if (
 			! is_user_logged_in()
 			|| ! $order instanceof WC_Order
-			|| get_current_user_id() !== $order->get_customer_id()
+			|| get_current_user_id() !== $order->get_customer_id( 'edit' )
 			|| ! current_user_can( 'pay_for_order', $order->get_id() ) // phpcs:ignore WordPress.WP.Capabilities.Unknown -- WooCommerce order capability.
 		) {
 			return;
