@@ -36,7 +36,7 @@ class WC_Gateway_FP_Example extends WC_Payment_Gateway {
 		// Fraud Protection features are declared like any other gateway feature, with the
 		// literal strings: the declaration must also work when Fraud Protection is not
 		// installed. Declare a feature only once the integration implements it, because
-		// each one switches off the matching built-in compatibility layer for this gateway.
+		// Fraud Protection then stops any handling of that part that is specific to this gateway.
 		$this->supports = array(
 			'products',
 			'fraud_protection_payment_data',

@@ -16,6 +16,8 @@ use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
+use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
@@ -91,15 +93,20 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this->payment_data, 'apply_resolver' ), 10 );
 		remove_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this->request_verifier, 'supply_reused_decision' ), 10 );
 		remove_action( 'wp_enqueue_scripts', array( $this->integration, 'register_scripts' ) );
-		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_express_button' ), 30 );
-		remove_action( 'woocommerce_checkout_before_order_review', array( $this->integration, 'render_express_reference' ) );
-		remove_action( 'wc_ajax_' . \FP_Example_Fraud_Protection::AJAX_ACTION, array( $this->integration, 'handle_express_pay' ) );
+		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_provider_button' ), 30 );
+		remove_action( 'woocommerce_proceed_to_checkout', array( $this->integration, 'render_express_button' ), 40 );
+		remove_action( 'woocommerce_checkout_before_order_review', array( $this->integration, 'render_provider_order_field' ) );
+		remove_action( 'wc_ajax_' . \FP_Example_Fraud_Protection::PROVIDER_ORDER_ACTION, array( $this->integration, 'handle_create_provider_order' ) );
 		remove_filter( 'wp_doing_ajax', '__return_true' );
 		remove_all_filters( 'wp_die_ajax_handler' );
 		WC()->session->set( '_wc_fraud_protection_reusable_decisions', null );
 		WC()->cart->empty_cart();
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
-		unset( $_GET[ \FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD ] );
+		unset( $_GET[ \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD ] );
+		foreach ( array( \FP_Example_Fraud_Protection::PROVIDER_SCRIPT, \FP_Example_Fraud_Protection::EXPRESS_SCRIPT ) as $handle ) {
+			wp_dequeue_script( $handle );
+			wp_deregister_script( $handle );
+		}
 		$this->reset_fraud_protection_scripts();
 
 		parent::tearDown();
@@ -148,70 +155,90 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The express request is verified with the submitted session ID, and the checkout that posts its reference reuses the decision once.
+	 * @testdox The gateway's payment-data callback keeps the data that a saved card's token resolved, and adds the mode and the merchant account.
 	 */
-	public function test_express_request_is_verified_and_its_decision_reused_once(): void {
+	public function test_payment_data_keeps_saved_card_data(): void {
+		$resolved = new PaymentMethodData(
+			\WC_Gateway_FP_Example::ID,
+			'card',
+			true,
+			PaymentInstrumentData::from_array(
+				array(
+					'brand' => 'visa',
+					'last4' => '1111',
+				)
+			)
+		);
+
+		$result = $this->integration->resolve_payment_data( array(), $resolved )->to_array();
+
+		$this->assertTrue( $result['is_saved_payment_method'] );
+		$this->assertSame( 'visa', $result['instrument']['brand'] );
+		$this->assertSame( '1111', $result['instrument']['last4'] );
+		$this->assertSame( PaymentMode::Test->value, $result['transaction_mode'] );
+		$this->assertSame( 'acct_example', $result['merchant_identifier'] );
+	}
+
+	/**
+	 * @testdox The provider order request is verified with the submitted session ID, and the checkout that posts the provider order's ID reuses the decision once.
+	 */
+	public function test_provider_order_request_is_verified_and_its_decision_reused_once(): void {
 		$this->add_product_to_cart();
 		$this->prepare_ajax_request( 'browser-session' );
 		$this->session_verifier->expects( $this->once() )
 			->method( 'verify_session' )
-			->with( 'browser-session', \FP_Example_Fraud_Protection::EXPRESS_SOURCE, 0, $this->callback( fn( array $data ): bool => \WC_Gateway_FP_Example::ID === $data['payment_method'] && 'apple_pay' === $data['payment_data']['fp_example_wallet'] ) )
+			->with( 'browser-session', \FP_Example_Fraud_Protection::PROVIDER_ORDER_SOURCE, 0, $this->callback( fn( array $data ): bool => \WC_Gateway_FP_Example::ID === $data['payment_method'] ) )
 			->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'resolved-session' );
 
-		$response = $this->dispatch_express_request();
+		$response = $this->dispatch_provider_order_request();
 
 		$this->assertTrue( $response['success'] );
 		$reference = $this->get_reference( $response );
-		$this->assertNotSame( '', $reference, 'The redirect carries the payment reference' );
+		$this->assertNotSame( '', $reference, 'The redirect carries the provider order ID' );
 		$this->assertStringStartsWith( wc_get_checkout_url(), $response['data']['redirect'] );
 
-		// The browser started a new session after the express request, so the checkout submits another session ID.
+		// The browser started a new session after the provider order request, so the checkout submits another session ID.
 		$supplied = $this->apply_skip_filter( $reference );
-		$this->assertInstanceOf( SuppliedDecision::class, $supplied, 'The checkout that posts the reference reuses the decision' );
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied, 'The checkout that posts the provider order ID reuses the decision' );
 		$this->assertSame( FraudDecision::Allow, $supplied->decision );
 		$this->assertSame( 'resolved-session', $supplied->session_id_for_order, 'The order gets the session ID the verification resolved' );
 		$this->assertFalse( $this->apply_skip_filter( $reference ), 'The decision is consumed on first use' );
 	}
 
 	/**
-	 * @testdox The express button script is registered with the shared scripts as a dependency when they are available, and they load only once the button renders.
+	 * @testdox The button scripts are registered with the shared scripts as a dependency when they are available, and they load only once the buttons render.
 	 *
 	 * @dataProvider shared_scripts_provider
 	 *
 	 * @param bool $available Whether the store can load the shared scripts.
 	 */
-	public function test_express_button_script_depends_on_the_shared_scripts( bool $available ): void {
+	public function test_button_scripts_depend_on_the_shared_scripts( bool $available ): void {
 		if ( $available ) {
 			$this->mock_jetpack_blog_id( 42 );
 		} else {
 			add_filter( 'pre_option_jetpack_options', '__return_empty_array' );
 		}
-		$gateway          = new \WC_Gateway_FP_Example();
-		$gateway->enabled = 'yes';
-		$this->register_payment_gateways( $gateway );
+		$this->enable_gateway();
 		$this->add_product_to_cart();
 
 		try {
 			// Called directly: firing wp_enqueue_scripts would also enqueue every other registered frontend script.
 			$this->integration->register_scripts();
 
-			$expected = $available ? array( 'wp-hooks', 'wc-fraud-protection-blackbox-init' ) : array( 'wp-hooks' );
-			$this->assertSame( $expected, wp_scripts()->query( 'fp-example-express', 'registered' )->deps );
+			$shared = $available ? array( 'wc-fraud-protection-blackbox-init' ) : array();
+			$this->assertSame( $shared, wp_scripts()->query( \FP_Example_Fraud_Protection::PROVIDER_SCRIPT, 'registered' )->deps );
+			$this->assertSame( array_merge( array( 'wp-hooks' ), $shared ), wp_scripts()->query( \FP_Example_Fraud_Protection::EXPRESS_SCRIPT, 'registered' )->deps );
 			$this->assertFalse( wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'Registering loads nothing' );
 
-			ob_start();
-			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-			do_action( 'woocommerce_proceed_to_checkout' );
-			$output = (string) ob_get_clean();
+			$output = $this->render_cart_buttons();
 
+			$this->assertStringContainsString( 'fp-example-provider-button', $output );
 			$this->assertStringContainsString( 'fp-example-express-button', $output );
-			$this->assertSame( $available, wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'The shared scripts load with the button script' );
+			$this->assertSame( $available, wp_script_is( 'wc-fraud-protection-blackbox-init', 'enqueued' ), 'The shared scripts load with the button scripts' );
 		} finally {
 			remove_filter( 'pre_option_jetpack_options', '__return_empty_array' );
 			remove_filter( 'print_scripts_array', array( wc_get_container()->get( BlackboxScriptHandler::class ), 'leave_out_shared_scripts_on_excluded_pages' ) );
-			wp_dequeue_script( 'fp-example-express' );
-			wp_deregister_script( 'fp-example-express' );
 		}
 	}
 
@@ -228,61 +255,78 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The checkout form carries the express reference from the redirect URL.
+	 * @testdox The express button places its order with a Store API checkout request, which it sends with a Store API nonce.
 	 */
-	public function test_checkout_form_carries_the_express_reference(): void {
-		$_GET[ \FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD ] = 'abc-123';
+	public function test_express_button_sends_a_store_api_checkout(): void {
+		$this->enable_gateway();
+		$this->integration->register_scripts();
+
+		$this->render_cart_buttons();
+
+		$data = (string) wp_scripts()->get_data( \FP_Example_Fraud_Protection::EXPRESS_SCRIPT, 'data' );
+		$this->assertMatchesRegularExpression( '/^var fpExampleExpress = (.*);$/s', $data );
+		$config = json_decode( (string) preg_replace( '/^var fpExampleExpress = (.*);$/s', '$1', $data ), true );
+		$this->assertSame( rest_url( 'wc/store/v1/checkout' ), $config['checkoutUrl'] );
+		$this->assertSame( 1, wp_verify_nonce( $config['nonce'], 'wc_store_api' ), 'The Store API accepts the nonce' );
+		$this->assertNotEmpty( $config['address']['email'], 'The stand-in payment sheet returns a billing address' );
+	}
+
+	/**
+	 * @testdox The checkout form carries the provider order ID from the redirect URL.
+	 */
+	public function test_checkout_form_carries_the_provider_order_id(): void {
+		$_GET[ \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD ] = 'abc-123';
 
 		ob_start();
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_before_order_review' );
 		$output = (string) ob_get_clean();
 
-		$this->assertSame( '<input type="hidden" name="fp_example_express_reference" value="abc-123" />', $output );
+		$this->assertSame( '<input type="hidden" name="fp_example_provider_order_id" value="abc-123" />', $output );
 
-		unset( $_GET[ \FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD ] );
+		unset( $_GET[ \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD ] );
 		ob_start();
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		do_action( 'woocommerce_checkout_before_order_review' );
-		$this->assertSame( '', (string) ob_get_clean(), 'A regular checkout has no reference' );
+		$this->assertSame( '', (string) ob_get_clean(), 'A regular checkout has no provider order ID' );
 	}
 
 	/**
-	 * @testdox The posted reference reaches the payment data the plugin builds for a classic checkout.
+	 * @testdox The posted provider order ID reaches the payment data the plugin builds for a classic checkout.
 	 */
 	public function test_posted_reference_reaches_the_request_data(): void {
 		$_POST = array(
 			'payment_method' => \WC_Gateway_FP_Example::ID,
-			\FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD => 'abc-123',
+			\FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD => 'abc-123',
 		);
 
 		$request_data = ( new ClassicFormRequestData() )->build_request_data( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 
-		$this->assertSame( 'abc-123', $request_data['payment_data'][ \FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD ] );
+		$this->assertSame( 'abc-123', $request_data['payment_data'][ \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD ] );
 	}
 
 	/**
-	 * @testdox A blocked express request is answered with a 403 and the blocked message.
+	 * @testdox A blocked provider order request is answered with a 403 and the blocked message.
 	 */
-	public function test_blocked_express_request_is_stopped(): void {
+	public function test_blocked_provider_order_request_is_stopped(): void {
 		$this->add_product_to_cart();
 		$this->prepare_ajax_request( 'browser-session' );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 
-		$response = $this->dispatch_express_request();
+		$response = $this->dispatch_provider_order_request();
 
 		$this->assertFalse( $response['success'] );
 		$this->assertStringContainsString( 'unable to process this request', $response['data']['message'] );
-		$this->assertArrayNotHasKey( 'redirect', $response['data'], 'A block creates no payment reference' );
+		$this->assertArrayNotHasKey( 'redirect', $response['data'], 'A block creates no provider order' );
 		$this->assertNull( WC()->session->get( '_wc_fraud_protection_reusable_decisions' ), 'A block keeps nothing for reuse' );
 	}
 
 	/**
-	 * @testdox A remembered decision is not reused for a checkout without the reference, with another reference, or with another cart.
+	 * @testdox A remembered decision is not reused for a checkout without the provider order ID, with another one, or with another cart.
 	 *
 	 * @dataProvider mismatch_provider
 	 *
-	 * @param ?string $reference   The reference the final checkout posts; null for the one the express request created.
+	 * @param ?string $reference   The provider order ID the final checkout posts; null for the one the request created.
 	 * @param bool    $change_cart Whether the cart changes before the final checkout.
 	 */
 	public function test_remembered_decision_is_not_reused_for_another_attempt( ?string $reference, bool $change_cart ): void {
@@ -290,7 +334,7 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->prepare_ajax_request( 'browser-session' );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'resolved-session' );
-		$created = $this->get_reference( $this->dispatch_express_request() );
+		$created = $this->get_reference( $this->dispatch_provider_order_request() );
 
 		if ( $change_cart ) {
 			$this->add_product_to_cart();
@@ -306,9 +350,9 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	 */
 	public function mismatch_provider(): array {
 		return array(
-			'another reference' => array( 'another-reference', false ),
-			'no reference'      => array( '', false ),
-			'changed cart'      => array( null, true ),
+			'another provider order' => array( 'another-order', false ),
+			'no provider order'      => array( '', false ),
+			'changed cart'           => array( null, true ),
 		);
 	}
 
@@ -321,15 +365,36 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Set up the POST body and the AJAX context of an express request.
+	 * Make the example gateway available to the shopper.
+	 */
+	private function enable_gateway(): void {
+		$gateway          = new \WC_Gateway_FP_Example();
+		$gateway->enabled = 'yes';
+		$this->register_payment_gateways( $gateway );
+	}
+
+	/**
+	 * Render the buttons that the cart page shows before its checkout button.
+	 *
+	 * @return string The rendered output.
+	 */
+	private function render_cart_buttons(): string {
+		ob_start();
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
+		do_action( 'woocommerce_proceed_to_checkout' );
+
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Set up the POST body and the AJAX context of a provider order request.
 	 *
 	 * @param string $session_id The session ID the browser adds.
 	 */
 	private function prepare_ajax_request( string $session_id ): void {
-		$nonce                = wp_create_nonce( 'fp_example_express' );
+		$nonce                = wp_create_nonce( 'fp_example_create_provider_order' );
 		$_POST                = array(
 			'security'                        => $nonce,
-			'fp_example_wallet'               => 'apple_pay',
 			SessionVerifier::SESSION_ID_FIELD => $session_id,
 		);
 		$_REQUEST['security'] = $nonce;
@@ -348,15 +413,15 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Dispatch the express request through its WooCommerce AJAX hook and decode the JSON answer.
+	 * Dispatch the provider order request through its WooCommerce AJAX hook and decode the JSON answer.
 	 *
 	 * @return array{success: bool, data: array<string, mixed>}
 	 */
-	private function dispatch_express_request(): array {
+	private function dispatch_provider_order_request(): array {
 		ob_start();
 		try {
 			// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-			do_action( 'wc_ajax_' . \FP_Example_Fraud_Protection::AJAX_ACTION );
+			do_action( 'wc_ajax_' . \FP_Example_Fraud_Protection::PROVIDER_ORDER_ACTION );
 			$this->fail( 'The request should end with wp_die()' );
 		} catch ( \WPDieException $e ) {
 			unset( $e );
@@ -371,28 +436,28 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Read the payment reference from an express response's redirect URL.
+	 * Read the provider order ID from a provider order response's redirect URL.
 	 *
-	 * @param array{success: bool, data: array<string, mixed>} $response The express response.
+	 * @param array{success: bool, data: array<string, mixed>} $response The provider order response.
 	 * @return string
 	 */
 	private function get_reference( array $response ): string {
 		$query = array();
 		wp_parse_str( (string) wp_parse_url( (string) ( $response['data']['redirect'] ?? '' ), PHP_URL_QUERY ), $query );
 
-		return (string) ( $query[ \FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD ] ?? '' );
+		return (string) ( $query[ \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD ] ?? '' );
 	}
 
 	/**
 	 * Run the plugin's skip filter for a final checkout with the example gateway.
 	 *
-	 * The checkout submits a new session ID, as the browser does after the express request.
+	 * The checkout submits a new session ID, as the browser does after the provider order request.
 	 *
-	 * @param string $reference The express reference the checkout posts; empty for none.
+	 * @param string $reference The provider order ID the checkout posts; empty for none.
 	 * @return mixed
 	 */
 	private function apply_skip_filter( string $reference ) {
-		$payment_data = '' === $reference ? array() : array( \FP_Example_Fraud_Protection::EXPRESS_REFERENCE_FIELD => $reference );
+		$payment_data = '' === $reference ? array() : array( \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD => $reference );
 
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		return apply_filters(

@@ -1,15 +1,26 @@
 /** @jest-environment jsdom */ // eslint-disable-line jsdoc/check-tag-names
 
 /**
- * Tests for the example gateway's express button script: the prepared session
- * ID is added synchronously to the request data the gateway builds.
+ * Tests for the example gateway's "Express pay" button script: the order is
+ * placed with a Store API checkout request, and the prepared session ID is
+ * added synchronously to the extension data the gateway builds.
  */
 
-const SESSION_ID_FIELD = 'wc_fraud_protection_session_id';
+const NAMESPACE = 'woocommerce/fraud-protection';
+const ADDRESS = {
+	first_name: 'Sam',
+	last_name: 'Example',
+	address_1: '60 29th Street',
+	city: 'San Francisco',
+	state: 'CA',
+	postcode: '94110',
+	country: 'US',
+	email: 'sam@example.com',
+};
 
 let filters;
 let mockPrepareSessionId;
-let mockTakePreparedSessionId;
+let mockAddSessionIdToExtensions;
 let mockFetch;
 
 beforeEach( () => {
@@ -21,10 +32,14 @@ beforeEach( () => {
 
 	filters = {};
 	mockPrepareSessionId = jest.fn();
-	mockTakePreparedSessionId = jest.fn( () => 'prepared-session-id' );
+	mockAddSessionIdToExtensions = jest.fn( ( extensions ) =>
+		Object.assign( {}, extensions, {
+			[ NAMESPACE ]: { blackbox_session_id: 'prepared-session-id' },
+		} )
+	);
 	mockFetch = jest.fn( () =>
 		Promise.resolve( {
-			json: () => Promise.resolve( { success: false, data: {} } ),
+			json: () => Promise.resolve( { message: 'Error' } ),
 		} )
 	);
 	window.fetch = mockFetch;
@@ -53,16 +68,16 @@ function setupAndLoad( { fraudProtection = true } = {} ) {
 		},
 	};
 	window.fpExampleExpress = {
-		url: 'https://example.test/?wc-ajax=fp_example_express_pay',
-		nonce: 'nonce-123',
+		checkoutUrl: 'https://example.test/wp-json/wc/store/v1/checkout',
+		nonce: 'store-api-nonce',
+		address: ADDRESS,
 	};
 	if ( fraudProtection ) {
 		window.wcFraudProtection = {
-			config: { sessionIdField: SESSION_ID_FIELD },
-			acquireSessionId: jest.fn(),
-			reset: jest.fn(),
+			config: { sessionIdField: 'wc_fraud_protection_session_id' },
 			prepareSessionId: mockPrepareSessionId,
-			takePreparedSessionId: mockTakePreparedSessionId,
+			takePreparedSessionId: jest.fn(),
+			addSessionIdToExtensions: mockAddSessionIdToExtensions,
 		};
 	}
 
@@ -71,9 +86,12 @@ function setupAndLoad( { fraudProtection = true } = {} ) {
 	} );
 }
 
-function sentBody() {
+function clickAndGetRequest() {
+	document.querySelector( '.fp-example-express-button' ).click();
+
 	expect( mockFetch ).toHaveBeenCalledTimes( 1 );
-	return Object.fromEntries( mockFetch.mock.calls[ 0 ][ 1 ].body.entries() );
+	const [ url, options ] = mockFetch.mock.calls[ 0 ];
+	return { url, options, body: JSON.parse( options.body ) };
 }
 
 describe( 'example gateway express button', () => {
@@ -81,42 +99,68 @@ describe( 'example gateway express button', () => {
 		setupAndLoad();
 
 		expect( mockPrepareSessionId ).toHaveBeenCalledTimes( 1 );
-		expect( mockTakePreparedSessionId ).not.toHaveBeenCalled();
+		expect( mockAddSessionIdToExtensions ).not.toHaveBeenCalled();
 	} );
 
-	it( 'adds the prepared session ID to the request when the button is clicked', () => {
+	it( 'places the order with a Store API checkout request', () => {
 		setupAndLoad();
 
-		document.querySelector( '.fp-example-express-button' ).click();
+		const { url, options, body } = clickAndGetRequest();
 
-		expect( mockTakePreparedSessionId ).toHaveBeenCalledTimes( 1 );
-		expect( sentBody() ).toEqual( {
-			security: 'nonce-123',
-			fp_example_wallet: 'apple_pay',
-			[ SESSION_ID_FIELD ]: 'prepared-session-id',
+		expect( url ).toBe(
+			'https://example.test/wp-json/wc/store/v1/checkout'
+		);
+		expect( options.method ).toBe( 'POST' );
+		expect( options.headers ).toEqual( {
+			'Content-Type': 'application/json',
+			Nonce: 'store-api-nonce',
 		} );
+		expect( body.payment_method ).toBe( 'fp_example' );
+		expect( body.payment_data ).toEqual( [
+			{ key: 'fp_example_wallet', value: 'apple_pay' },
+		] );
+		expect( body.billing_address ).toEqual( ADDRESS );
+		expect( body.shipping_address.email ).toBeUndefined();
 	} );
 
-	it( 'sends the request without a session ID when none is ready', () => {
-		mockTakePreparedSessionId.mockReturnValue( '' );
+	it( 'adds the prepared session ID to the extension data of every request', () => {
 		setupAndLoad();
 
-		document.querySelector( '.fp-example-express-button' ).click();
+		const { body } = clickAndGetRequest();
 
-		expect( sentBody() ).toEqual( {
-			security: 'nonce-123',
-			fp_example_wallet: 'apple_pay',
+		expect( mockAddSessionIdToExtensions ).toHaveBeenCalledTimes( 1 );
+		expect( mockAddSessionIdToExtensions ).toHaveBeenCalledWith( {} );
+		expect( body.extensions ).toEqual( {
+			[ NAMESPACE ]: { blackbox_session_id: 'prepared-session-id' },
 		} );
 	} );
 
 	it( 'works without Fraud Protection on the page', () => {
 		setupAndLoad( { fraudProtection: false } );
 
-		document.querySelector( '.fp-example-express-button' ).click();
+		const { body } = clickAndGetRequest();
 
-		expect( sentBody() ).toEqual( {
-			security: 'nonce-123',
-			fp_example_wallet: 'apple_pay',
+		expect( body.extensions ).toEqual( {} );
+	} );
+
+	it( 'shows the error message of a refused checkout', async () => {
+		mockFetch.mockResolvedValue( {
+			json: () =>
+				Promise.resolve( {
+					code: 'blocked',
+					message: 'We are unable to process this request online.',
+				} ),
 		} );
+		setupAndLoad();
+
+		clickAndGetRequest();
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+		expect( window.alert ).toHaveBeenCalledWith(
+			'We are unable to process this request online.'
+		);
+		expect(
+			document.querySelector( '.fp-example-express-button' ).disabled
+		).toBe( false );
 	} );
 } );
