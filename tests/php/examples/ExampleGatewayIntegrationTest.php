@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Examples;
 
 require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway/includes/class-wc-gateway-fp-example.php';
 require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway/includes/class-fp-example-fraud-protection.php';
+require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway/includes/class-fp-example-gateway-plugin.php';
 
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
 use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
@@ -25,6 +26,7 @@ use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 
 /**
@@ -103,7 +105,8 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		WC()->cart->empty_cart();
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		unset( $_GET[ \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD ] );
-		foreach ( array( \FP_Example_Fraud_Protection::PROVIDER_SCRIPT, \FP_Example_Fraud_Protection::EXPRESS_SCRIPT ) as $handle ) {
+		delete_option( 'woocommerce_fp_example_settings' );
+		foreach ( array( \FP_Example_Fraud_Protection::PROVIDER_SCRIPT, \FP_Example_Fraud_Protection::EXPRESS_SCRIPT, 'fp-example-blocks' ) as $handle ) {
 			wp_dequeue_script( $handle );
 			wp_deregister_script( $handle );
 		}
@@ -365,6 +368,70 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The Checkout block submission that posts the provider order ID reuses the decision of the provider order request.
+	 */
+	public function test_checkout_block_submission_reuses_the_provider_order_decision(): void {
+		$this->add_product_to_cart();
+		$this->prepare_ajax_request( 'browser-session' );
+		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
+		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'resolved-session' );
+		$reference = $this->get_reference( $this->dispatch_provider_order_request() );
+
+		$supplied = $this->apply_skip_filter( $reference, 'blocks_checkout' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
+		$this->assertSame( 'resolved-session', $supplied->session_id_for_order );
+	}
+
+	/**
+	 * @testdox The gateway registers a payment method for the Cart and Checkout blocks, offered while the gateway is enabled.
+	 */
+	public function test_gateway_registers_a_block_payment_method(): void {
+		$registry = new PaymentMethodRegistry();
+
+		\FP_Example_Gateway_Plugin::register_blocks_support( $registry );
+
+		$this->assertTrue( $registry->is_registered( \WC_Gateway_FP_Example::ID ) );
+		$payment_method = $registry->get_registered( \WC_Gateway_FP_Example::ID );
+
+		update_option( 'woocommerce_fp_example_settings', array( 'enabled' => 'yes' ) );
+		$payment_method->initialize();
+		$this->assertTrue( $payment_method->is_active() );
+
+		update_option( 'woocommerce_fp_example_settings', array( 'enabled' => 'no' ) );
+		$payment_method->initialize();
+		$this->assertFalse( $payment_method->is_active() );
+
+		$data = $payment_method->get_payment_method_data();
+		$this->assertSame( \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD, $data['providerOrderField'], 'The block script posts the provider order ID under the field the reference reader reads' );
+		$this->assertSame( 'Express pay (example)', $data['labels']['express'] );
+	}
+
+	/**
+	 * @testdox The block script loads after the button scripts when the Fraud Protection integration registered them, and without them otherwise.
+	 *
+	 * @dataProvider shared_scripts_provider
+	 *
+	 * @param bool $button_scripts Whether the Fraud Protection integration registered the button scripts.
+	 */
+	public function test_block_script_loads_after_the_button_scripts( bool $button_scripts ): void {
+		if ( $button_scripts ) {
+			$this->integration->register_scripts();
+		}
+		$registry = new PaymentMethodRegistry();
+		\FP_Example_Gateway_Plugin::register_blocks_support( $registry );
+
+		$handles = $registry->get_registered( \WC_Gateway_FP_Example::ID )->get_payment_method_script_handles();
+
+		$this->assertSame( array( 'fp-example-blocks' ), $handles );
+		$button_handles = array( \FP_Example_Fraud_Protection::PROVIDER_SCRIPT, \FP_Example_Fraud_Protection::EXPRESS_SCRIPT );
+		$this->assertSame(
+			$button_scripts ? $button_handles : array(),
+			array_values( array_intersect( wp_scripts()->query( 'fp-example-blocks', 'registered' )->deps, $button_handles ) )
+		);
+	}
+
+	/**
 	 * Make the example gateway available to the shopper.
 	 */
 	private function enable_gateway(): void {
@@ -454,16 +521,17 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	 * The checkout submits a new session ID, as the browser does after the provider order request.
 	 *
 	 * @param string $reference The provider order ID the checkout posts; empty for none.
+	 * @param string $source    The source of the checkout's verification.
 	 * @return mixed
 	 */
-	private function apply_skip_filter( string $reference ) {
+	private function apply_skip_filter( string $reference, string $source = 'shortcode_checkout' ) {
 		$payment_data = '' === $reference ? array() : array( \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD => $reference );
 
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		return apply_filters(
 			'woocommerce_fraud_protection_skip_session_verify',
 			false,
-			'shortcode_checkout',
+			$source,
 			array(
 				'payment_method' => \WC_Gateway_FP_Example::ID,
 				'payment_data'   => $payment_data,

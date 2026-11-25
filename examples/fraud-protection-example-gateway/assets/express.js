@@ -110,11 +110,13 @@
 		);
 	}
 
-	document
-		.querySelectorAll( '.fp-example-express-button' )
-		.forEach( function ( button ) {
-			button.addEventListener( 'click', function () {
-				pay( button );
-			} );
-		} );
+	// Listen on the document: the Cart and Checkout blocks render the button after this script runs.
+	document.addEventListener( 'click', function ( event ) {
+		const button =
+			event.target instanceof window.Element &&
+			event.target.closest( '.fp-example-express-button' );
+		if ( button && ! button.disabled ) {
+			pay( button );
+		}
+	} );
 } )();

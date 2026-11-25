@@ -29,7 +29,19 @@ final class FP_Example_Gateway_Plugin {
 		require_once __DIR__ . '/class-fp-example-fraud-protection.php';
 
 		add_filter( 'woocommerce_payment_gateways', array( __CLASS__, 'register_gateway' ) );
+		add_action( 'woocommerce_blocks_payment_method_type_registration', array( __CLASS__, 'register_blocks_support' ) );
 		( new FP_Example_Fraud_Protection() )->register();
+	}
+
+	/**
+	 * Make the gateway available in the Cart and Checkout blocks.
+	 *
+	 * @param Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $registry The blocks' payment method registry.
+	 */
+	public static function register_blocks_support( $registry ): void {
+		require_once __DIR__ . '/class-fp-example-blocks-support.php';
+
+		$registry->register( new FP_Example_Blocks_Support() );
 	}
 
 	/**

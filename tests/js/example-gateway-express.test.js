@@ -22,8 +22,18 @@ let filters;
 let mockPrepareSessionId;
 let mockAddSessionIdToExtensions;
 let mockFetch;
+let documentListeners;
 
 beforeEach( () => {
+	// The script listens for clicks on the document; remove what each test adds.
+	documentListeners = [];
+	const addEventListener = document.addEventListener.bind( document );
+	jest.spyOn( document, 'addEventListener' ).mockImplementation(
+		( ...args ) => {
+			documentListeners.push( args );
+			addEventListener( ...args );
+		}
+	);
 	delete window.wcFraudProtection;
 	delete window.wp;
 	delete window.fpExampleExpress;
@@ -47,6 +57,10 @@ beforeEach( () => {
 } );
 
 afterEach( () => {
+	documentListeners.forEach( ( args ) =>
+		document.removeEventListener( ...args )
+	);
+	jest.restoreAllMocks();
 	document.body.innerHTML = '';
 	delete window.fetch;
 	delete window.alert;

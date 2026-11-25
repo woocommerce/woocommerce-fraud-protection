@@ -139,11 +139,33 @@ class FP_Example_Fraud_Protection {
 	}
 
 	/**
-	 * Register the button scripts on every page; each is enqueued only where its button renders.
+	 * Register the button scripts on every page.
+	 *
+	 * Each is enqueued only where its button renders: on the classic cart by
+	 * {@see render_provider_button()} and {@see render_express_button()}, and in the express
+	 * payment area of the Cart and Checkout blocks by {@see FP_Example_Blocks_Support}.
 	 */
 	public function register_scripts(): void {
 		wp_register_script( self::PROVIDER_SCRIPT, plugins_url( 'assets/provider-checkout.js', FP_EXAMPLE_GATEWAY_FILE ), array(), '0.1.0', true );
+		wp_localize_script(
+			self::PROVIDER_SCRIPT,
+			'fpExampleProviderCheckout',
+			array(
+				'url'   => WC_AJAX::get_endpoint( self::PROVIDER_ORDER_ACTION ),
+				'nonce' => wp_create_nonce( self::PROVIDER_ORDER_NONCE ),
+			)
+		);
+
 		wp_register_script( self::EXPRESS_SCRIPT, plugins_url( 'assets/express.js', FP_EXAMPLE_GATEWAY_FILE ), array( 'wp-hooks' ), '0.1.0', true );
+		wp_localize_script(
+			self::EXPRESS_SCRIPT,
+			'fpExampleExpress',
+			array(
+				'checkoutUrl' => rest_url( 'wc/store/v1/checkout' ),
+				'nonce'       => wp_create_nonce( 'wc_store_api' ),
+				'address'     => self::EXPRESS_SHEET_ADDRESS,
+			)
+		);
 
 		// Make each button script depend on the shared Fraud Protection scripts. Registering loads
 		// nothing: WordPress prints them only on pages where a button script is enqueued. When
@@ -155,7 +177,7 @@ class FP_Example_Fraud_Protection {
 	}
 
 	/**
-	 * Render the "Pay with provider" button on the cart page and load its script.
+	 * Render the "Pay with provider" button on the classic cart page and load its script.
 	 */
 	public function render_provider_button(): void {
 		if ( ! $this->is_gateway_available() ) {
@@ -163,20 +185,12 @@ class FP_Example_Fraud_Protection {
 		}
 
 		wp_enqueue_script( self::PROVIDER_SCRIPT );
-		wp_localize_script(
-			self::PROVIDER_SCRIPT,
-			'fpExampleProviderCheckout',
-			array(
-				'url'   => WC_AJAX::get_endpoint( self::PROVIDER_ORDER_ACTION ),
-				'nonce' => wp_create_nonce( self::PROVIDER_ORDER_NONCE ),
-			)
-		);
 
 		echo '<button type="button" class="button fp-example-provider-button">' . esc_html__( 'Pay with provider (example)', 'fp-example-gateway' ) . '</button>';
 	}
 
 	/**
-	 * Render the "Express pay" button on the cart page and load its script.
+	 * Render the "Express pay" button on the classic cart page and load its script.
 	 */
 	public function render_express_button(): void {
 		if ( ! $this->is_gateway_available() ) {
@@ -184,15 +198,6 @@ class FP_Example_Fraud_Protection {
 		}
 
 		wp_enqueue_script( self::EXPRESS_SCRIPT );
-		wp_localize_script(
-			self::EXPRESS_SCRIPT,
-			'fpExampleExpress',
-			array(
-				'checkoutUrl' => rest_url( 'wc/store/v1/checkout' ),
-				'nonce'       => wp_create_nonce( 'wc_store_api' ),
-				'address'     => self::EXPRESS_SHEET_ADDRESS,
-			)
-		);
 
 		echo '<button type="button" class="button fp-example-express-button">' . esc_html__( 'Express pay (example)', 'fp-example-gateway' ) . '</button>';
 	}
@@ -225,8 +230,9 @@ class FP_Example_Fraud_Protection {
 	}
 
 	/**
-	 * Carry the provider order's ID into the checkout form.
+	 * Carry the provider order's ID into the classic checkout form.
 	 *
+	 * On the Checkout block, assets/blocks.js adds it to the payment data instead.
 	 * The "Pay with provider" button redirects to the checkout with the ID in the URL, and the
 	 * form posts it back, as a real gateway posts the ID of the order it created at its provider.
 	 * The hook renders inside the form but outside the part WooCommerce refreshes over AJAX.
