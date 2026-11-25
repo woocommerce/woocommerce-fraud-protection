@@ -34,6 +34,12 @@ defined( 'ABSPATH' ) || exit;
  *    Fraud Protection stops its own handling of the form instead of verifying the same
  *    request a second time.
  *
+ * The stand-in plays Subscriptions only on a store without the real change-payment flow,
+ * which WooCommerce Subscriptions and WooPayments provide. Next to it, the declaration would
+ * also stop Fraud Protection's handling of the real form, which this example doesn't
+ * protect, so the stand-in then neither declares nor fires the Subscriptions action, and
+ * only verifies its own form.
+ *
  * The form renders through the `[fp_example_change_payment]` shortcode.
  */
 class FP_Example_Change_Payment {
@@ -52,6 +58,11 @@ class FP_Example_Change_Payment {
 	 * Plugin slug the integration is declared under: the slug of the plugin this stand-in plays.
 	 */
 	private const EXTENSION_SLUG = 'woocommerce-subscriptions';
+
+	/**
+	 * Class of the real change-payment flow, in WooCommerce Subscriptions and in WooPayments.
+	 */
+	private const REAL_FLOW_CLASS = 'WC_Subscriptions_Change_Payment_Gateway';
 
 	/**
 	 * Nonce action and field of the form.
@@ -75,11 +86,16 @@ class FP_Example_Change_Payment {
 	 *
 	 * An extension declares its integrations under its own plugin slug, because Fraud Protection
 	 * reads each extension's declarations under that extension's slug. This stand-in plays
-	 * WooCommerce Subscriptions, so it uses that plugin's slug.
+	 * WooCommerce Subscriptions, so it uses that plugin's slug, but only while the real flow is
+	 * absent: the declaration would also cover the real form.
 	 *
 	 * @param NativeIntegrationRegistry $registry The registry that Fraud Protection passes to the action.
 	 */
 	public function declare_native_integration( NativeIntegrationRegistry $registry ): void {
+		if ( ! $this->plays_subscriptions() ) {
+			return;
+		}
+
 		$registry->register( self::EXTENSION_SLUG, 'change_payment_method' );
 	}
 
@@ -165,12 +181,14 @@ class FP_Example_Change_Payment {
 			exit;
 		}
 
-		/**
-		 * Fires before the payment method changes, as WooCommerce Subscriptions does for other extensions.
-		 *
-		 * @param WC_Order $order The order being changed.
-		 */
-		do_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode', $order );
+		if ( $this->plays_subscriptions() ) {
+			/**
+			 * Fires before the payment method changes, as WooCommerce Subscriptions does for other extensions.
+			 *
+			 * @param WC_Order $order The order being changed.
+			 */
+			do_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode', $order );
+		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Verified in handle_submission().
 		$order->set_payment_method( sanitize_text_field( wp_unslash( $_POST['payment_method'] ?? '' ) ) );
@@ -210,6 +228,15 @@ class FP_Example_Change_Payment {
 		wc_add_notice( ( new BlockedSessionMessage() )->get_html( MessageContext::Generic ), 'error' );
 
 		return false;
+	}
+
+	/**
+	 * Check whether the stand-in plays WooCommerce Subscriptions: only without the real flow.
+	 *
+	 * @return bool
+	 */
+	protected function plays_subscriptions(): bool {
+		return ! class_exists( self::REAL_FLOW_CLASS );
 	}
 
 	/**

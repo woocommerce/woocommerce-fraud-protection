@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Examples;
 require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-subscriptions/includes/class-fp-example-change-payment.php';
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\NativeIntegrationRegistry;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
@@ -151,6 +152,48 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( $this->order->get_view_order_url(), $redirect );
 		$this->assertSame( 'bacs', wc_get_order( $this->order->get_id() )->get_payment_method() );
 		$this->assertSame( 1, wc_notice_count( 'error' ) );
+	}
+
+	/**
+	 * @testdox Next to the real change-payment flow, the stand-in neither declares under the Subscriptions slug nor fires the Subscriptions action, and verifies its own form once.
+	 */
+	public function test_stand_in_steps_aside_next_to_the_real_flow(): void {
+		$flow     = new class() extends \FP_Example_Change_Payment {
+			/**
+			 * Act as if WooCommerce Subscriptions or WooPayments provided the real flow.
+			 *
+			 * @return bool
+			 */
+			protected function plays_subscriptions(): bool {
+				return false;
+			}
+		};
+		$registry = new NativeIntegrationRegistry();
+		$fired    = did_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode' );
+
+		$flow->declare_native_integration( $registry );
+
+		$this->assertSame( array(), $registry->get_registered(), 'The declaration would also cover the real form' );
+
+		$this->intercept_redirect();
+		$_POST = array(
+			'payment_method'                  => 'cod',
+			SessionVerifier::SESSION_ID_FIELD => 'browser-session',
+		);
+		$this->session_verifier->expects( $this->once() )
+			->method( 'verify_session' )
+			->with( 'browser-session', \FP_Example_Change_Payment::SOURCE, $this->order->get_id(), $this->anything() )
+			->willReturn( FraudDecision::Allow );
+
+		try {
+			$flow->change_payment_method( $this->order );
+			$this->fail( 'The flow should redirect' );
+		} catch ( ExampleRedirectInterceptedException $e ) {
+			unset( $e );
+		}
+
+		$this->assertSame( $fired, did_action( 'woocommerce_subscription_change_payment_method_via_pay_shortcode' ) );
+		$this->assertSame( 'cod', wc_get_order( $this->order->get_id() )->get_payment_method() );
 	}
 
 	/**
