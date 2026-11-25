@@ -162,8 +162,15 @@ class FP_Example_Change_Payment {
 			return;
 		}
 
+		// Only the signed-in customer who owns the order, as on the form: the capability alone
+		// also allows any user to pay a guest order.
 		$order = wc_get_order( absint( $_GET[ self::QUERY_VAR ] ) );
-		if ( ! $order instanceof WC_Order || ! current_user_can( 'pay_for_order', $order->get_id() ) ) { // phpcs:ignore WordPress.WP.Capabilities.Unknown -- WooCommerce order capability.
+		if (
+			! is_user_logged_in()
+			|| ! $order instanceof WC_Order
+			|| get_current_user_id() !== $order->get_customer_id()
+			|| ! current_user_can( 'pay_for_order', $order->get_id() ) // phpcs:ignore WordPress.WP.Capabilities.Unknown -- WooCommerce order capability.
+		) {
 			return;
 		}
 

@@ -197,6 +197,49 @@ class ExampleSubscriptionsIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A submission with a valid nonce cannot change the payment method of an order that the signed-in user does not own.
+	 *
+	 * @dataProvider foreign_order_provider
+	 *
+	 * @param bool $guest_order Whether the order is a guest order, rather than another customer's.
+	 */
+	public function test_submission_cannot_change_an_order_the_user_does_not_own( bool $guest_order ): void {
+		$owner = $guest_order ? 0 : $this->factory()->user->create( array( 'role' => 'customer' ) );
+		$order = \WC_Helper_Order::create_order( $owner );
+		$order->set_payment_method( 'bacs' );
+		$order->save();
+		$this->intercept_redirect();
+		$this->session_verifier->expects( $this->never() )->method( 'verify_session' );
+
+		$_GET[ \FP_Example_Change_Payment::QUERY_VAR ] = (string) $order->get_id();
+		$_POST = array(
+			'payment_method'    => 'cod',
+			'_fp_example_nonce' => wp_create_nonce( 'fp_example_change_payment' ),
+		);
+
+		try {
+			$this->flow->handle_submission();
+		} finally {
+			unset( $_GET[ \FP_Example_Change_Payment::QUERY_VAR ] );
+		}
+
+		$this->assertSame( 'bacs', wc_get_order( $order->get_id() )->get_payment_method() );
+		\WC_Helper_Order::delete_order( $order->get_id() );
+	}
+
+	/**
+	 * Orders that the signed-in customer does not own.
+	 *
+	 * @return array<string, array{bool}>
+	 */
+	public function foreign_order_provider(): array {
+		return array(
+			'guest order'              => array( true ),
+			"another customer's order" => array( false ),
+		);
+	}
+
+	/**
 	 * Run the flow's change-payment handler and return the redirect it attempts.
 	 *
 	 * @return string
