@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
@@ -19,14 +19,16 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Resolves WooPayments payment data into structured PaymentMethodData.
  *
- * Handles the main gateway ('woocommerce_payments') and APM gateways
- * ('woocommerce_payments_*'). When WooPay is disabled, resolves full
+ * Registers through {@see GatewayPaymentData} as WooPayments itself would, for the main
+ * gateway ('woocommerce_payments') and every APM gateway ('woocommerce_payments_*').
+ * When WooPay is disabled, resolves full
  * payment details (card data, bank data, payment type) via the
  * WooPayments API. When WooPay is enabled, only transaction mode and the
  * merchant identifier are resolved because pm_ IDs are platform-scoped and unresolvable.
  * On an add-payment-method form post, the details are those of the payment
- * method that the posted setup intent holds.
- * Stands aside once the gateway declares `fraud_protection_payment_data`.
+ * method that the posted setup intent holds. GatewayPaymentData stands it
+ * aside once WooPayments registers its own resolver, or the attempt's gateway
+ * or the main gateway declares `fraud_protection_payment_data`.
  */
 class WooPaymentsPaymentDataCompat {
 
@@ -38,6 +40,13 @@ class WooPaymentsPaymentDataCompat {
 	 * @var string
 	 */
 	private const GATEWAY_ID = 'woocommerce_payments';
+
+	/**
+	 * Patterns of the WooPayments gateway IDs: the main gateway and one gateway per APM, such as `woocommerce_payments_bancontact`.
+	 *
+	 * @var string[]
+	 */
+	private const GATEWAY_ID_PATTERNS = array( self::GATEWAY_ID, self::GATEWAY_ID . '_*' );
 
 	/**
 	 * Add-payment-method form field with the setup intent ID.
@@ -54,21 +63,21 @@ class WooPaymentsPaymentDataCompat {
 	private const ADD_PAYMENT_METHOD_FORM_FILTER = 'woocommerce_add_payment_method_form_is_valid';
 
 	/**
-	 * Native gateway support lookup.
+	 * Gateway payment data service.
 	 *
-	 * @var GatewayNativeSupport
+	 * @var GatewayPaymentData
 	 */
-	private GatewayNativeSupport $native_support;
+	private GatewayPaymentData $gateway_payment_data;
 
 	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param GatewayNativeSupport $native_support Native gateway support lookup.
+	 * @param GatewayPaymentData $gateway_payment_data Gateway payment data service.
 	 */
-	final public function init( GatewayNativeSupport $native_support ): void {
-		$this->native_support = $native_support;
+	final public function init( GatewayPaymentData $gateway_payment_data ): void {
+		$this->gateway_payment_data = $gateway_payment_data;
 	}
 
 	/**
@@ -101,32 +110,26 @@ class WooPaymentsPaymentDataCompat {
 	);
 
 	/**
-	 * Register the filter callback.
+	 * Register the resolver for the WooPayments gateways.
 	 *
 	 * @return void
 	 */
 	public function register(): void {
-		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 2 );
+		foreach ( self::GATEWAY_ID_PATTERNS as $pattern ) {
+			$this->gateway_payment_data->register_compatibility_resolver( $pattern, array( $this, 'resolve' ), self::GATEWAY_ID );
+		}
 	}
 
 	/**
-	 * Resolve WooPayments payment data.
+	 * Resolve the payment data of an attempt paid with a WooPayments gateway.
 	 *
 	 * @internal
 	 *
-	 * @param PaymentMethodData $resolved               Previously resolved data.
 	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.
-	 * @return PaymentMethodData Resolved data, or pass-through.
+	 * @param PaymentMethodData $resolved                Previously resolved data.
+	 * @return PaymentMethodData Resolved data.
 	 */
-	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
-		if ( ! $this->is_woopayments_gateway( $resolved->get_gateway() ) ) {
-			return $resolved;
-		}
-
-		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $resolved->get_gateway(), self::GATEWAY_ID ) ) {
-			return $resolved;
-		}
-
+	public function resolve( array $checkout_payment_fields, PaymentMethodData $resolved ): PaymentMethodData {
 		$request_wallet = $this->normalize_wallet( $checkout_payment_fields['express_payment_type'] ?? null );
 
 		if ( ! class_exists( '\WC_Payments' ) ) {

@@ -7,7 +7,7 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMode;
@@ -18,10 +18,11 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Resolves Stripe gateway payment data into structured PaymentMethodData.
  *
- * Handles multiple Stripe gateway IDs (stripe, stripe_sepa, stripe_ideal, etc.)
- * and uses the Stripe API to retrieve payment method details. On an
- * add-payment-method form post, the details are those of the payment method
- * that the posted setup intent holds. Stands aside once the gateway declares
+ * Registers through {@see GatewayPaymentData} as the Stripe plugin itself would, for the main
+ * gateway and every `stripe_*` payment method gateway, and uses the Stripe API to retrieve
+ * payment method details. On an add-payment-method form post, the details are those of the
+ * payment method that the posted setup intent holds. GatewayPaymentData stands it aside once
+ * Stripe registers its own resolver, or the attempt's gateway or the main gateway declares
  * `fraud_protection_payment_data`.
  */
 class StripePaymentDataCompat {
@@ -29,11 +30,18 @@ class StripePaymentDataCompat {
 	use StripeSetupIntentReaderTrait;
 
 	/**
-	 * Stripe gateway ID prefix, which is also the main gateway ID.
+	 * Main Stripe gateway ID, whose declaration covers the whole family.
 	 *
 	 * @var string
 	 */
-	private const GATEWAY_PREFIX = 'stripe';
+	private const MAIN_GATEWAY_ID = 'stripe';
+
+	/**
+	 * Patterns of the Stripe gateway IDs: the main gateway and one gateway per payment method, such as `stripe_sepa_debit`.
+	 *
+	 * @var string[]
+	 */
+	private const GATEWAY_ID_PATTERNS = array( self::MAIN_GATEWAY_ID, self::MAIN_GATEWAY_ID . '_*' );
 
 	/**
 	 * Add-payment-method form field with the setup intent ID.
@@ -50,21 +58,21 @@ class StripePaymentDataCompat {
 	private const ADD_PAYMENT_METHOD_FORM_FILTER = 'woocommerce_add_payment_method_form_is_valid';
 
 	/**
-	 * Native gateway support lookup.
+	 * Gateway payment data service.
 	 *
-	 * @var GatewayNativeSupport
+	 * @var GatewayPaymentData
 	 */
-	private GatewayNativeSupport $native_support;
+	private GatewayPaymentData $gateway_payment_data;
 
 	/**
 	 * Initialize with dependencies.
 	 *
 	 * @internal
 	 *
-	 * @param GatewayNativeSupport $native_support Native gateway support lookup.
+	 * @param GatewayPaymentData $gateway_payment_data Gateway payment data service.
 	 */
-	final public function init( GatewayNativeSupport $native_support ): void {
-		$this->native_support = $native_support;
+	final public function init( GatewayPaymentData $gateway_payment_data ): void {
+		$this->gateway_payment_data = $gateway_payment_data;
 	}
 
 	/**
@@ -83,32 +91,26 @@ class StripePaymentDataCompat {
 	);
 
 	/**
-	 * Register the filter callback.
+	 * Register the resolver for the Stripe gateways.
 	 *
 	 * @return void
 	 */
 	public function register(): void {
-		add_filter( 'woocommerce_fraud_protection_resolved_payment_data', array( $this, 'resolve' ), 10, 2 );
+		foreach ( self::GATEWAY_ID_PATTERNS as $pattern ) {
+			$this->gateway_payment_data->register_compatibility_resolver( $pattern, array( $this, 'resolve' ), self::MAIN_GATEWAY_ID );
+		}
 	}
 
 	/**
-	 * Resolve Stripe payment data.
+	 * Resolve the payment data of an attempt paid with a Stripe gateway.
 	 *
 	 * @internal
 	 *
-	 * @param PaymentMethodData $resolved               Previously resolved data.
 	 * @param array             $checkout_payment_fields Flat key-value map of checkout payment fields.
-	 * @return PaymentMethodData Resolved data, or pass-through.
+	 * @param PaymentMethodData $resolved                Previously resolved data.
+	 * @return PaymentMethodData Resolved data.
 	 */
-	public function resolve( PaymentMethodData $resolved, array $checkout_payment_fields ): PaymentMethodData {
-		if ( ! $this->is_stripe_gateway( $resolved->get_gateway() ) ) {
-			return $resolved;
-		}
-
-		if ( $this->native_support->declared( FraudProtectionFeature::PAYMENT_DATA, $resolved->get_gateway(), self::GATEWAY_PREFIX ) ) {
-			return $resolved;
-		}
-
+	public function resolve( array $checkout_payment_fields, PaymentMethodData $resolved ): PaymentMethodData {
 		$transaction_mode    = $this->resolve_transaction_mode();
 		$merchant_identifier = $this->resolve_merchant_identifier();
 		$request_wallet      = $this->normalize_wallet( $checkout_payment_fields['express_payment_type'] ?? null );
@@ -283,18 +285,5 @@ class StripePaymentDataCompat {
 		} catch ( \Throwable $e ) {
 			return PaymentMode::Unknown;
 		}
-	}
-
-	/**
-	 * Check if the payment method is a Stripe gateway.
-	 *
-	 * Matches 'stripe' and 'stripe_*' (e.g. stripe_sepa, stripe_ideal).
-	 *
-	 * @param string $payment_method The gateway ID.
-	 * @return bool
-	 */
-	private function is_stripe_gateway( string $payment_method ): bool {
-		return self::GATEWAY_PREFIX === $payment_method
-			|| str_starts_with( $payment_method, self::GATEWAY_PREFIX . '_' );
 	}
 }
