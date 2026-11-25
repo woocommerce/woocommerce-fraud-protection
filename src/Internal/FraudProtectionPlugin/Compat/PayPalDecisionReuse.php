@@ -206,7 +206,7 @@ class PayPalDecisionReuse {
 			// PayPal Payments reuses its own decisions for the requests it verifies itself. The
 			// record comes from a request that PayPalCompat still verified, so it is reused here
 			// unless its origin is covered too, as when the declarations changed since.
-			if ( $this->is_native_origin( $record['origin'], $payment_method ) ) {
+			if ( $this->is_native_origin( $record['origin'] ) ) {
 				return $supplied_decision;
 			}
 			if ( $record['used'] ) {
@@ -254,15 +254,17 @@ class PayPalDecisionReuse {
 	}
 
 	/**
-	 * Check whether PayPal Payments handles the requests of an origin itself, as PayPalCompat checks it.
+	 * Check whether PayPal Payments handles the requests of an origin itself.
 	 *
-	 * @param string $origin         Verification source of the recorded request.
-	 * @param string $payment_method The PayPal gateway of the final request.
+	 * The same check as PayPalCompat's, on the main PayPal gateway only: the declarations of
+	 * the gateway selected at the final request don't decide who verified the recorded request.
+	 *
+	 * @param string $origin Verification source of the recorded request.
 	 * @return bool
 	 */
-	private function is_native_origin( string $origin, string $payment_method ): bool {
+	private function is_native_origin( string $origin ): bool {
 		foreach ( PayPalCompat::get_features_for_origin( $origin ) as $feature ) {
-			if ( ! $this->native_support->declared( $feature, $payment_method, PayPalCompat::MAIN_GATEWAY_ID ) ) {
+			if ( ! $this->native_support->declared( $feature, PayPalCompat::MAIN_GATEWAY_ID ) ) {
 				return false;
 			}
 		}

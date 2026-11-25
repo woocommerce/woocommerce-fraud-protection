@@ -76,6 +76,23 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A setup-token decision is still reused when only another PayPal gateway declares the feature that the main gateway lacks, as PayPalCompat still verified the request.
+	 */
+	public function test_reuses_setup_token_decision_when_only_another_paypal_gateway_completes_the_declarations(): void {
+		$this->register_payment_gateways(
+			new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ),
+			new FakeNativeGateway( 'ppcp-credit-card-gateway', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) )
+		);
+		$request                   = $this->create_protected_paypal_request_record( 'setup' );
+		$request['payment_method'] = 'ppcp-credit-card-gateway';
+
+		$result = $this->decision_reuse->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $result );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+	}
+
+	/**
 	 * @testdox A setup-token decision is left alone once native checkout and add-payment-method support are both declared.
 	 */
 	public function test_stands_aside_for_setup_token_decision_when_both_features_are_declared(): void {
