@@ -12,6 +12,7 @@ require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway
 require_once dirname( __DIR__, 3 ) . '/examples/fraud-protection-example-gateway/includes/class-fp-example-gateway-plugin.php';
 
 use Automattic\WooCommerce\FraudProtection\BlackboxScriptHandler;
+use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
@@ -26,6 +27,7 @@ use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\PaymentDataResolver;
+use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Protectors\BlocksCheckoutProtector;
 use Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry;
 use Automattic\WooCommerce\Proxies\LegacyProxy;
 
@@ -368,7 +370,7 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The Checkout block submission that posts the provider order ID reuses the decision of the provider order request.
+	 * @testdox The Checkout block submission that posts the provider order ID in its Store API payment data reuses the decision of the provider order request.
 	 */
 	public function test_checkout_block_submission_reuses_the_provider_order_decision(): void {
 		$this->add_product_to_cart();
@@ -377,10 +379,45 @@ class ExampleGatewayIntegrationTest extends FraudProtectionUnitTestCase {
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'resolved-session' );
 		$reference = $this->get_reference( $this->dispatch_provider_order_request() );
 
-		$supplied = $this->apply_skip_filter( $reference, 'blocks_checkout' );
+		// The Store API checkout request that the Checkout block sends, with the fields that assets/blocks.js posts.
+		$request = new \WP_REST_Request( 'POST', '/wc/store/v1/checkout' );
+		$request->set_param( 'payment_method', \WC_Gateway_FP_Example::ID );
+		$request->set_param(
+			'payment_data',
+			array(
+				array(
+					'key'   => 'fp_example_card_brand',
+					'value' => 'visa',
+				),
+				array(
+					'key'   => \FP_Example_Fraud_Protection::PROVIDER_ORDER_FIELD,
+					'value' => $reference,
+				),
+			)
+		);
+		$request->set_param( 'extensions', array( 'woocommerce/fraud-protection' => array( 'blackbox_session_id' => 'checkout-session' ) ) );
+
+		// The plugin's Checkout block protector verifies it: the skip filter receives the request data it builds.
+		$supplied          = null;
+		$checkout_verifier = $this->createMock( SessionVerifier::class );
+		$checkout_verifier->expects( $this->once() )->method( 'verify_session' )->willReturnCallback(
+			function ( $session_id, string $source, int $order_id, array $request_data ) use ( &$supplied ): FraudDecision {
+				unset( $order_id );
+				// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook as SessionVerifier does.
+				$supplied = apply_filters( 'woocommerce_fraud_protection_skip_session_verify', false, $source, $request_data, (string) $session_id );
+				return FraudDecision::Allow;
+			}
+		);
+		$protector = new BlocksCheckoutProtector();
+		$protector->init( $checkout_verifier, new BlockedSessionMessage(), $this->make_blackbox_script_handler() );
+		$order = \WC_Helper_Order::create_order();
+
+		$protector->extract_request_data( $order, $request );
+		$protector->verify_and_block( $order );
 
 		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
 		$this->assertSame( 'resolved-session', $supplied->session_id_for_order );
+		\WC_Helper_Order::delete_order( $order->get_id() );
 	}
 
 	/**
