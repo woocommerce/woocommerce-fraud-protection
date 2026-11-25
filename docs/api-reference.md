@@ -1,6 +1,6 @@
 # Fraud Protection public API reference
 
-This is the reference for every public part of WooCommerce Fraud Protection: the PHP classes, the hooks, the browser API and script handles, and the request fields the plugin reads. To find out which of these your extension needs, start with the [integration guide](integration-guide.md); it also holds the examples for the common integration tasks, which this reference links to instead of repeating.
+This is the reference for every public part of WooCommerce Fraud Protection: the PHP classes, the hooks, the browser API and script handles, and the request fields the plugin reads. To find out which of these your extension needs, start with the [integration guide](integration-guide.md); it also holds the examples for the common integration tasks, which this reference links to instead of repeating. Its [glossary](integration-guide.md#glossary) defines the terms both documents use, such as session ID, payment attempt and verification.
 
 ## Contents
 
@@ -114,7 +114,7 @@ The session ID that the last `verify_session()` call resolved and stored, or an 
 
 ### GatewayRequestVerifier
 
-Verifies a request that a payment gateway handles itself, such as a create-order or setup-intent call, and reuses its decision for the WooCommerce submission that completes the same attempt, so the attempt is scored once. It wraps `SessionVerifier` and the `woocommerce_fraud_protection_skip_session_verify` filter, and keeps the decision record for you. Since 0.4.0.
+Verifies a request that a payment gateway handles itself, such as a create-order or setup-intent call, and reuses its decision for the WooCommerce submission that completes the same attempt, so the attempt is verified once. It wraps `SessionVerifier` and the `woocommerce_fraud_protection_skip_session_verify` filter, and keeps the decision record for you. Since 0.4.0.
 
 #### verify_request()
 
@@ -200,7 +200,7 @@ Loads the shared browser scripts on a payment surface.
 public function request_scripts(): bool
 ```
 
-Enqueues the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script, which sets up `window.wcFraudProtection`. Call it from the hook that renders your payment surface, and enqueue your own script with `wc-fraud-protection-blackbox-init` as a dependency only when it returns `true`. For a script you register anyway, [`register_scripts_for()`](#register_scripts_for) is simpler. Calling it again in the same request returns `true` without enqueuing anything twice.
+Enqueues the [Blackbox SDK](integration-guide.md#blackbox-sdk) and the `wc-fraud-protection-blackbox-init` script, which sets up `window.wcFraudProtection`. Call it from the hook that renders your payment surface, and enqueue your own script with `wc-fraud-protection-blackbox-init` as a dependency only when it returns `true`. For a script you register anyway, [`register_scripts_for()`](#register_scripts_for) is simpler. Calling it again in the same request returns `true` without enqueuing anything twice.
 
 It returns `false` when the store has no Jetpack blog ID, and in requests that do not render a payment surface: admin pages, REST requests, post previews by an editor, the Customizer preview and the order-received page.
 
@@ -210,7 +210,7 @@ It returns `false` when the store has no Jetpack blog ID, and in requests that d
 public function register_scripts_for( string $handle ): bool
 ```
 
-Registers the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script without enqueuing them, and adds `wc-fraud-protection-blackbox-init` to the dependencies of your script `$handle`. WordPress then prints the shared scripts only on the pages where `$handle` is enqueued, before it, so `window.wcFraudProtection` is set up before your script runs. Call it right after you register your script, wherever you register it; it also works for a script that is already enqueued and not yet printed. Pass only a script that you enqueue on your payment surfaces, since the shared scripts load on every page where it is enqueued.
+Registers the Blackbox SDK and the `wc-fraud-protection-blackbox-init` script without enqueuing them, and adds `wc-fraud-protection-blackbox-init` to the dependencies of your script `$handle`. WordPress then prints the [shared scripts](integration-guide.md#shared-scripts) only on the pages where `$handle` is enqueued, before it, so `window.wcFraudProtection` is set up before your script runs. Call it right after you register your script, wherever you register it; it also works for a script that is already enqueued and not yet printed. Pass only a script that you enqueue on your payment surfaces, since the shared scripts load on every page where it is enqueued.
 
 It returns `false` and changes nothing when the store has no Jetpack blog ID, and on admin pages. It also returns `false`, logging a warning, when `$handle` is not registered or was already printed. On the other pages that do not render a payment surface, listed under `request_scripts()`, the shared scripts are left out when the scripts are printed, and your script prints without them. Calling it again adds no second dependency. The [integration guide](integration-guide.md#1-load-the-browser-scripts) shows the call. Since 0.4.0.
 
