@@ -363,10 +363,11 @@ class GatewayRequestVerifierTest extends FraudProtectionUnitTestCase {
 	 */
 	public function test_reusable_decision_is_not_supplied_after_a_cart_change(): void {
 		$this->verify( FraudDecision::Allow )->reuse_decision_for( 'order-123' );
-		WC()->cart->add_to_cart( \WC_Helper_Product::create_simple_product()->get_id() );
+		$added_item_key = WC()->cart->add_to_cart( \WC_Helper_Product::create_simple_product()->get_id() );
 
 		$this->assertFalse( $this->supply( 'order-123' ) );
-		WC()->cart->empty_cart();
+		// Back to the cart items the decision was kept with, which would match again.
+		WC()->cart->remove_cart_item( $added_item_key );
 		$this->assertFalse( $this->supply( 'order-123' ), 'The decision was used up' );
 	}
 

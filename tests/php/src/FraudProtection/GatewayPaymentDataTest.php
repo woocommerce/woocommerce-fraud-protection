@@ -87,15 +87,19 @@ class GatewayPaymentDataTest extends FraudProtectionUnitTestCase {
 	 * @testdox Attempts paid with another gateway never reach the resolver.
 	 */
 	public function test_other_gateways_are_left_alone(): void {
+		// A flag rather than a failing assertion: the resolver call is fail-open, so it would catch the failure.
+		$called = false;
 		$this->sut->register_resolver(
 			self::GATEWAY_ID,
-			function () {
-				$this->fail( 'The resolver must not run for another gateway' );
+			function () use ( &$called ) {
+				$called = true;
+				return self::card( 'visa' );
 			}
 		);
 
 		$resolved = ( new PaymentDataResolver() )->resolve( 'other_gateway', array( 'brand' => 'visa' ) );
 
+		$this->assertFalse( $called, 'The resolver must not run for another gateway' );
 		$this->assertSame( 'other_gateway', $resolved->get_gateway() );
 		$this->assertNull( $resolved->to_array()['payment_type'] );
 	}
