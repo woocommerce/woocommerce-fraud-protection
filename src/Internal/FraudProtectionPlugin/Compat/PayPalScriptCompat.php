@@ -37,6 +37,20 @@ class PayPalScriptCompat {
 	private const SDK_V6_VAULT_HANDLE              = 'ppcp-vault-component';
 
 	/**
+	 * Handle of the PayPal fetch interceptor.
+	 */
+	private const INTERCEPTOR_HANDLE = 'wc-fraud-protection-paypal-express';
+
+	/**
+	 * PayPal Payments endpoints that the interceptor can handle, keyed by the verification source of their requests.
+	 */
+	private const ENDPOINTS_BY_ORIGIN = array(
+		PayPalDecisionReuse::ORDER_CREATION_SOURCE       => 'ppc-create-order',
+		PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE => 'ppc-create-setup-token',
+		PayPalDecisionReuse::VAULT_ORDER_CREATION_SOURCE => 'ppc-vault-create-order',
+	);
+
+	/**
 	 * First PayPal Payments version that uses the styling option at runtime.
 	 */
 	private const PAYPAL_STYLING_SETTINGS_VERSION = '4.0.0';
@@ -124,20 +138,36 @@ class PayPalScriptCompat {
 	/**
 	 * Request the shared scripts and enqueue the PayPal fetch interceptor.
 	 *
+	 * The interceptor handles only the endpoints whose requests PayPalCompat still verifies,
+	 * so on a page where PayPal Payments verifies some requests itself, such as order creation
+	 * with only native checkout support declared, the session ID it sends is left untouched.
+	 *
 	 * @return void
 	 */
 	private function enqueue_interceptor(): void {
-		if ( ! $this->blackbox_script_handler->request_scripts() ) {
+		if ( wp_script_is( self::INTERCEPTOR_HANDLE, 'enqueued' ) ) {
+			return;
+		}
+
+		$endpoints = array();
+		foreach ( self::ENDPOINTS_BY_ORIGIN as $origin => $endpoint ) {
+			if ( ! $this->is_native( PayPalCompat::get_features_for_origin( $origin ) ) ) {
+				$endpoints[] = $endpoint;
+			}
+		}
+
+		if ( array() === $endpoints || ! $this->blackbox_script_handler->request_scripts() ) {
 			return;
 		}
 
 		wp_enqueue_script(
-			'wc-fraud-protection-paypal-express',
+			self::INTERCEPTOR_HANDLE,
 			plugins_url( 'assets/js/paypal-express.js', WC_FRAUD_PROTECTION_PLUGIN_FILE ),
 			array( 'wc-fraud-protection-blackbox-init' ),
 			WC_FRAUD_PROTECTION_VERSION,
 			array( 'in_footer' => true )
 		);
+		wp_localize_script( self::INTERCEPTOR_HANDLE, 'wcFraudProtectionPayPal', array( 'endpoints' => $endpoints ) );
 	}
 
 	/**
@@ -181,7 +211,7 @@ class PayPalScriptCompat {
 
 		$this->enqueue_paypal_script();
 
-		if ( ! wp_script_is( 'wc-fraud-protection-paypal-express', 'enqueued' ) ) {
+		if ( ! wp_script_is( self::INTERCEPTOR_HANDLE, 'enqueued' ) ) {
 			return;
 		}
 

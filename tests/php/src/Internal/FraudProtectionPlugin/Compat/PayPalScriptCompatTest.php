@@ -780,6 +780,36 @@ class PayPalScriptCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The interceptor handles only the PayPal endpoints whose requests are not verified natively, so a native request keeps its session ID.
+	 *
+	 * @dataProvider intercepted_endpoints_provider
+	 *
+	 * @param string[] $features  Features the main PayPal gateway declares.
+	 * @param string[] $endpoints Endpoints the interceptor handles.
+	 */
+	public function test_interceptor_handles_only_endpoints_without_native_verification( array $features, array $endpoints ): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', $features ) );
+		$this->register_sdk_v6_handle( 'ppcp-vault-component' );
+		$sut = $this->make_sut_expecting_script_request( true );
+
+		$sut->enqueue_paypal_script_for_sdk_v6();
+
+		$this->assertSame(
+			'var wcFraudProtectionPayPal = ' . wp_json_encode( array( 'endpoints' => $endpoints ) ) . ';',
+			wp_scripts()->get_data( 'wc-fraud-protection-paypal-express', 'data' )
+		);
+	}
+
+	/** @return array<string, array{string[], string[]}> */
+	public function intercepted_endpoints_provider(): array {
+		return array(
+			'no declaration'          => array( array(), array( 'ppc-create-order', 'ppc-create-setup-token', 'ppc-vault-create-order' ) ),
+			'checkout only'           => array( array( FraudProtectionFeature::CHECKOUT ), array( 'ppc-create-setup-token' ) ),
+			'add payment method only' => array( array( FraudProtectionFeature::ADD_PAYMENT_METHOD ), array( 'ppc-create-order', 'ppc-create-setup-token', 'ppc-vault-create-order' ) ),
+		);
+	}
+
+	/**
 	 * Build a PayPal compatibility layer with a controlled script handler.
 	 *
 	 * @param BlackboxScriptHandler $handler Test value.
