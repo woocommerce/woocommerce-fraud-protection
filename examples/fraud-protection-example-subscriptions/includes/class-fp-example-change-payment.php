@@ -30,9 +30,9 @@ defined( 'ABSPATH' ) || exit;
  * 2. Verify the submitted form with {@see ClassicFormRequestData} and
  *    {@see SessionVerifier} before changing anything, and stop on a Block decision.
  * 3. Declare the `change_payment_method` integration under the extension's plugin slug
- *    from the `woocommerce_fraud_protection_register_native_integrations` action, so the plugin's
- *    built-in compatibility layer stands aside instead of verifying the same request a
- *    second time.
+ *    from the `woocommerce_fraud_protection_register_native_integrations` action, so
+ *    Fraud Protection stops its own handling of the form instead of verifying the same
+ *    request a second time.
  *
  * The form renders through the `[fp_example_change_payment]` shortcode.
  */
@@ -73,9 +73,9 @@ class FP_Example_Change_Payment {
 	/**
 	 * Tell Fraud Protection that this flow verifies its own submissions.
 	 *
-	 * An extension declares its integrations under its own plugin slug. This stand-in plays
-	 * WooCommerce Subscriptions, so it uses that plugin's slug, which is the one the built-in
-	 * compatibility layer for the change-payment-method form checks.
+	 * An extension declares its integrations under its own plugin slug, because Fraud Protection
+	 * reads each extension's declarations under that extension's slug. This stand-in plays
+	 * WooCommerce Subscriptions, so it uses that plugin's slug.
 	 *
 	 * @param NativeIntegrationRegistry $registry The registry that Fraud Protection passes to the action.
 	 */
@@ -108,7 +108,7 @@ class FP_Example_Change_Payment {
 
 		// Fraud Protection: the pay-form protector holds the submit of the `#order_review` form
 		// until it has added the session ID; verify() reads it back on the server.
-		if ( class_exists( BlackboxScriptHandler::class ) ) {
+		if ( $this->can_use_fraud_protection() ) {
 			wc_get_container()->get( BlackboxScriptHandler::class )->request_pay_for_order_script();
 		}
 
@@ -188,7 +188,7 @@ class FP_Example_Change_Payment {
 	 * @return bool False when the change must stop.
 	 */
 	private function verify( WC_Order $order ): bool {
-		if ( ! class_exists( SessionVerifier::class ) ) {
+		if ( ! $this->can_use_fraud_protection() ) {
 			return true;
 		}
 
@@ -210,5 +210,17 @@ class FP_Example_Change_Payment {
 		wc_add_notice( ( new BlockedSessionMessage() )->get_html( MessageContext::Generic ), 'error' );
 
 		return false;
+	}
+
+	/**
+	 * Check whether Fraud Protection provides the classes this flow uses.
+	 *
+	 * Fraud Protection is optional. ClassicFormRequestData and
+	 * BlackboxScriptHandler::request_pay_for_order_script() need Fraud Protection 0.4.0 or later.
+	 *
+	 * @return bool
+	 */
+	private function can_use_fraud_protection(): bool {
+		return class_exists( ClassicFormRequestData::class );
 	}
 }
