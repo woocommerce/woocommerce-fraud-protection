@@ -49,6 +49,28 @@ class BlackboxScriptHandler {
 	private const MISSING_BLOG_ID_LOG_TRANSIENT = 'wc_fraud_protection_missing_blog_id_log';
 
 	/**
+	 * Tag IDs of the shared scripts, including the inline configuration the init script reads.
+	 */
+	private const SHARED_SCRIPT_TAG_IDS = array(
+		'wc-fraud-protection-blackbox-js',
+		'wc-fraud-protection-blackbox-init-js',
+		'wc-fraud-protection-blackbox-init-js-extra',
+	);
+
+	/**
+	 * Attributes that opt the shared scripts out of caching plugins' script optimization.
+	 *
+	 * A minifier that copies the SDK keys the copy on its URL, which never changes, so the site
+	 * keeps serving an outdated SDK. Delayed execution holds the scripts back until the shopper's
+	 * first interaction.
+	 */
+	private const OPTIMIZATION_OPT_OUT_ATTRIBUTES = array(
+		'nowprocket'     => true, // WP Rocket: Delay JavaScript execution.
+		'data-no-minify' => '1', // WP Rocket: Minify JavaScript.
+		'nitro-exclude'  => true, // NitroPack.
+	);
+
+	/**
 	 * Session identity manager.
 	 *
 	 * @var SessionIdentityManager
@@ -259,6 +281,25 @@ class BlackboxScriptHandler {
 				),
 			)
 		);
+
+		add_filter( 'wp_script_attributes', array( $this, 'add_optimization_opt_outs' ) );
+		add_filter( 'wp_inline_script_attributes', array( $this, 'add_optimization_opt_outs' ) );
+	}
+
+	/**
+	 * Add the caching-plugin opt-outs to the shared script tags.
+	 *
+	 * @internal
+	 *
+	 * @param mixed $attributes Attributes of a script tag.
+	 * @return mixed The attributes, with the opt-outs on the shared script tags.
+	 */
+	public function add_optimization_opt_outs( mixed $attributes ): mixed {
+		if ( ! is_array( $attributes ) || ! in_array( $attributes['id'] ?? null, self::SHARED_SCRIPT_TAG_IDS, true ) ) {
+			return $attributes;
+		}
+
+		return array_merge( $attributes, self::OPTIMIZATION_OPT_OUT_ATTRIBUTES );
 	}
 
 	/**

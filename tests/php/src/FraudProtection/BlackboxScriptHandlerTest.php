@@ -76,6 +76,8 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->jetpack_option_filters = array();
 		delete_transient( 'wc_fraud_protection_missing_blog_id_log' );
 		remove_filter( 'print_scripts_array', array( $this->sut, 'leave_out_shared_scripts_on_excluded_pages' ) );
+		remove_filter( 'wp_script_attributes', array( $this->sut, 'add_optimization_opt_outs' ) );
+		remove_filter( 'wp_inline_script_attributes', array( $this->sut, 'add_optimization_opt_outs' ) );
 		wp_dequeue_script( self::GATEWAY_SCRIPT );
 		wp_deregister_script( self::GATEWAY_SCRIPT );
 		wp_scripts()->done = array_values( array_diff( wp_scripts()->done, array( self::GATEWAY_SCRIPT ) ) );
@@ -182,6 +184,37 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->assertNotFalse( $init_position );
 		$this->assertNotFalse( $gateway_position );
 		$this->assertLessThan( $gateway_position, $init_position );
+	}
+
+	/**
+	 * @testdox The shared script tags opt out of caching plugins' script optimization, and other tags are left alone.
+	 */
+	public function test_shared_script_tags_opt_out_of_script_optimization(): void {
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+		wp_enqueue_script( self::GATEWAY_SCRIPT );
+
+		$processor = new \WP_HTML_Tag_Processor( $this->print_gateway_script() );
+		$opt_outs  = array();
+		while ( $processor->next_tag( 'SCRIPT' ) ) {
+			$opt_outs[ (string) $processor->get_attribute( 'id' ) ] = array(
+				$processor->get_attribute( 'nowprocket' ),
+				$processor->get_attribute( 'data-no-minify' ),
+				$processor->get_attribute( 'nitro-exclude' ),
+			);
+		}
+
+		$opted_out = array( true, '1', true );
+		$this->assertSame(
+			array(
+				'wc-fraud-protection-blackbox-js'            => $opted_out,
+				'wc-fraud-protection-blackbox-init-js-extra' => $opted_out,
+				'wc-fraud-protection-blackbox-init-js'       => $opted_out,
+				self::GATEWAY_SCRIPT . '-js'                 => array( null, null, null ),
+			),
+			$opt_outs
+		);
 	}
 
 	/**
