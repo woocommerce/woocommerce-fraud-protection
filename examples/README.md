@@ -42,3 +42,19 @@ Add the examples to a gitignored `.wp-env.override.json` next to the repository'
 ```
 
 Then run `npm run env:start`, enable the example gateway under WooCommerce > Settings > Payments, and check that `wp wc fraud-protection native-integrations list` lists both examples. The seeded store uses the block cart and checkout, where the example gateway and its two buttons appear as they are. To try the classic flows, set pages with the `[woocommerce_cart]` and `[woocommerce_checkout]` shortcodes as the cart and checkout pages. Without a Jetpack connection the plugin loads no browser scripts and can't reach Blackbox, so requests carry no session ID and verification fails open; only merchant rules can block them.
+
+## Installing them on another store
+
+To try the examples on a store outside wp-env, package them as plugin zips:
+
+```bash
+npm run build:examples
+```
+
+The command creates `fraud-protection-example-gateway.zip` and `fraud-protection-example-subscriptions.zip` in the repository root. Upload them under Plugins > Add New Plugin > Upload Plugin, or install them with WP-CLI:
+
+```bash
+wp plugin install fraud-protection-example-gateway.zip --activate
+```
+
+The examples need WooCommerce and Fraud Protection 0.4.0 or later. With an earlier Fraud Protection version, they work without any Fraud Protection integration. Then set up the store as described above.

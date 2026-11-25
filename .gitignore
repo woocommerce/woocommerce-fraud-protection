@@ -63,6 +63,7 @@ tmp/
 coverage/
 woocommerce-fraud-protection.zip
 woocommerce-fraud-protection-qit.zip
+fraud-protection-example-*.zip
 release-notes.txt
 build/
 /languages/
