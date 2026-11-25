@@ -63,6 +63,32 @@ class PayPalDecisionReuseTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox A setup-token decision is still reused while only native checkout support is declared, because PayPalCompat still verified that request.
+	 */
+	public function test_reuses_setup_token_decision_with_checkout_only_declaration(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT ) ) );
+		$request = $this->create_protected_paypal_request_record( 'setup' );
+
+		$result = $this->decision_reuse->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' );
+
+		$this->assertInstanceOf( SuppliedDecision::class, $result );
+		$this->assertSame( FraudDecision::Allow, $result->decision );
+	}
+
+	/**
+	 * @testdox A setup-token decision is left alone once native checkout and add-payment-method support are both declared.
+	 */
+	public function test_stands_aside_for_setup_token_decision_when_both_features_are_declared(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'ppcp-gateway', array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
+		$request = $this->create_protected_paypal_request_record( 'setup' );
+
+		$this->assertFalse( $this->decision_reuse->supply_decision_for_paypal_express( false, 'blocks_checkout', $request, 'response-session' ) );
+		$record = WC()->session->get( '_fraud_protection_paypal_verification' );
+		$this->assertIsArray( $record );
+		$this->assertFalse( $record['used'] );
+	}
+
+	/**
 	 * Tear down test fixtures.
 	 */
 	public function tearDown(): void {

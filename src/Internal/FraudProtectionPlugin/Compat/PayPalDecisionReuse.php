@@ -7,7 +7,6 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
-use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
 use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
@@ -195,14 +194,17 @@ class PayPalDecisionReuse {
 			return $supplied_decision;
 		}
 
-		if ( $this->native_support->declared( FraudProtectionFeature::CHECKOUT, $payment_method, PayPalCompat::MAIN_GATEWAY_ID ) ) {
-			return $supplied_decision;
-		}
-
 		$resolved_session_id = '';
 		try {
 			$record = $this->get_verified_session_record();
 			if ( null === $record ) {
+				return $supplied_decision;
+			}
+
+			// PayPal Payments reuses its own decisions for the requests it verifies itself. The
+			// record comes from a request that PayPalCompat still verified, so it is reused here
+			// unless its origin is covered too, as when the declarations changed since.
+			if ( $this->is_native_origin( $record['origin'], $payment_method ) ) {
 				return $supplied_decision;
 			}
 			if ( $record['used'] ) {
@@ -242,6 +244,23 @@ class PayPalDecisionReuse {
 
 			return $supplied_decision;
 		}
+	}
+
+	/**
+	 * Check whether PayPal Payments handles the requests of an origin itself, as PayPalCompat checks it.
+	 *
+	 * @param string $origin         Verification source of the recorded request.
+	 * @param string $payment_method The PayPal gateway of the final request.
+	 * @return bool
+	 */
+	private function is_native_origin( string $origin, string $payment_method ): bool {
+		foreach ( PayPalCompat::get_features_for_origin( $origin ) as $feature ) {
+			if ( ! $this->native_support->declared( $feature, $payment_method, PayPalCompat::MAIN_GATEWAY_ID ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

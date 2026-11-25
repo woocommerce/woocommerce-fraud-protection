@@ -107,21 +107,29 @@ class PayPalCompat {
 	}
 
 	/**
-	 * Check whether PayPal Payments verifies its own requests of the given origin.
+	 * Get the features that must all be declared for PayPal Payments to handle requests of an origin itself.
 	 *
 	 * Order and vault-order requests belong to a purchase. Setup tokens are created both at
 	 * checkout and when a payment method is saved, and the request does not reliably tell
 	 * which, so this layer stands aside for them only when both features are declared.
 	 *
 	 * @param string $origin Verification source of the request.
+	 * @return string[] The {@see FraudProtectionFeature} values.
+	 */
+	public static function get_features_for_origin( string $origin ): array {
+		return PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $origin
+			? array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD )
+			: array( FraudProtectionFeature::CHECKOUT );
+	}
+
+	/**
+	 * Check whether PayPal Payments verifies its own requests of the given origin.
+	 *
+	 * @param string $origin Verification source of the request.
 	 * @return bool
 	 */
 	private function is_native( string $origin ): bool {
-		$features = PayPalDecisionReuse::SETUP_TOKEN_CREATION_SOURCE === $origin
-			? array( FraudProtectionFeature::CHECKOUT, FraudProtectionFeature::ADD_PAYMENT_METHOD )
-			: array( FraudProtectionFeature::CHECKOUT );
-
-		foreach ( $features as $feature ) {
+		foreach ( self::get_features_for_origin( $origin ) as $feature ) {
 			if ( ! $this->native_support->declared( $feature, self::MAIN_GATEWAY_ID ) ) {
 				return false;
 			}
