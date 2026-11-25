@@ -237,7 +237,8 @@ class SessionVerifier {
 				$has_session_id_for_order = null !== $supplied->session_id_for_order && '' !== $supplied->session_id_for_order;
 				$decision                 = ! $supplied->apply_merchant_rules ? $supplied->decision : $this->apply_merchant_rules_to_supplied_decision(
 					$supplied->decision,
-					$has_session_id_for_order ? $supplied->session_id_for_order : $normalized_session_id,
+					// Only a response-backed ID identifies the earlier verification; the submitted one may not.
+					$has_session_id_for_order ? $supplied->session_id_for_order : '',
 					$source,
 					$order_id,
 					$request_data
@@ -396,7 +397,7 @@ class SessionVerifier {
 	 * Errors keep the supplied decision.
 	 *
 	 * @param FraudDecision $supplied_decision The supplied decision.
-	 * @param string        $session_id        The session ID the supplied decision belongs to.
+	 * @param string        $session_id        The response-backed session ID of the earlier verification, or an empty string.
 	 * @param string        $source            The bounded verification source.
 	 * @param int           $order_id          The WooCommerce order ID (0 for pre-order flows).
 	 * @param array         $request_data      Request data with payment_method and payment_data.

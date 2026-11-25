@@ -1259,6 +1259,35 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox verify_session() records a rule that replaces a supplied decision without a response-backed session ID with no session ID, not the submitted one.
+	 */
+	public function test_verify_session_records_no_session_id_for_a_rule_over_a_supplied_decision_without_one(): void {
+		$rule           = Rule::from_row(
+			array(
+				'id'         => 7,
+				'action'     => FraudDecision::Block->value,
+				'status'     => 'active',
+				'position'   => 1,
+				'conditions' => '{"field":"email","operator":"equals","value":"someone@example.com"}',
+				'created_at' => '2026-09-09 00:00:00',
+			)
+		);
+		$event_recorder = $this->createMock( SessionEventRecorder::class );
+		$event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( VerifyResult::create( FraudDecision::Allow, '' ), FraudDecision::Block, $this->anything(), $rule );
+		$this->use_real_decision_handler( $rule, $event_recorder );
+		add_filter(
+			'woocommerce_fraud_protection_skip_session_verify',
+			fn() => new SuppliedDecision( FraudDecision::Allow )
+		);
+		$this->data_collector->method( 'get_collected_data' )->willReturn( array() );
+
+		$this->assertSame( FraudDecision::Block, $this->sut->verify_session( 'submitted-session', 'add_payment_method' ) );
+	}
+
+	/**
 	 * @testdox verify_session() keeps a supplied decision when no merchant rule matches.
 	 */
 	public function test_verify_session_keeps_a_supplied_decision_without_a_matching_rule(): void {
@@ -1594,9 +1623,10 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Verify with a real decision handler whose rule evaluator returns the given rule.
 	 *
-	 * @param ?Rule $matched_rule The rule the evaluator matches, or null for none.
+	 * @param ?Rule                 $matched_rule   The rule the evaluator matches, or null for none.
+	 * @param ?SessionEventRecorder $event_recorder The recorder of the decisions, or null for a stub.
 	 */
-	private function use_real_decision_handler( ?Rule $matched_rule ): void {
+	private function use_real_decision_handler( ?Rule $matched_rule, ?SessionEventRecorder $event_recorder = null ): void {
 		$rule_evaluator = $this->createMock( RuleEvaluator::class );
 		$rule_evaluator->method( 'evaluate_for_session' )->willReturnCallback(
 			function ( array $session_data ) use ( $matched_rule ) {
@@ -1606,7 +1636,7 @@ class SessionVerifierTest extends FraudProtectionUnitTestCase {
 		);
 
 		$decision_handler = new DecisionHandler();
-		$decision_handler->init( $this->createMock( SessionEventRecorder::class ), $rule_evaluator, $this->createMock( AutomaticProtectionSetting::class ) );
+		$decision_handler->init( $event_recorder ?? $this->createMock( SessionEventRecorder::class ), $rule_evaluator, $this->createMock( AutomaticProtectionSetting::class ) );
 		$this->sut->init(
 			$this->data_collector,
 			$this->api_client,

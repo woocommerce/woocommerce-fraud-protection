@@ -294,7 +294,7 @@ class DecisionHandler {
 	 * decision as the one received, and is recorded in the sessions log.
 	 *
 	 * @param FraudDecision        $supplied_decision The supplied decision.
-	 * @param string               $session_id        The session ID the supplied decision belongs to.
+	 * @param string               $session_id        The response-backed session ID of the earlier verification, or an empty string.
 	 * @param array<string, mixed> $session_data      The collected session data for the current request.
 	 * @return ?FraudDecision The matching rule's action, or null when no rule matches.
 	 */
