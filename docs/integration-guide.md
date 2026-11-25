@@ -166,7 +166,7 @@ wc_get_container()->get( GatewayRequestVerifier::class )->register_reference_rea
 );
 ```
 
-The next submission paid with your gateway that carries the reference, with the same cart items, reuses the decision instead of being verified, once. Any other submission is verified normally. The [API reference](api-reference.md#gatewayrequestverifier) has the exact rules, and the lower-level [`SessionVerifier`](api-reference.md#sessionverifier) and [`woocommerce_fraud_protection_skip_session_verify`](api-reference.md#woocommerce_fraud_protection_skip_session_verify) for flows it does not cover.
+The next submission paid with your gateway that carries the reference, with the same cart items, reuses the decision instead of being verified, once. Merchant rules are still checked against that submission, so a rule that matches its billing email replaces the reused decision even when your request came before the shopper entered it. Any other submission is verified normally. The [API reference](api-reference.md#gatewayrequestverifier) has the exact rules, and the lower-level [`SessionVerifier`](api-reference.md#sessionverifier) and [`woocommerce_fraud_protection_skip_session_verify`](api-reference.md#woocommerce_fraud_protection_skip_session_verify) for flows it does not cover.
 
 ## Integrations
 

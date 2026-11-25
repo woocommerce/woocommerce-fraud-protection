@@ -847,4 +847,56 @@ class DecisionHandlerTest extends FraudProtectionUnitTestCase {
 		$this->assertSame( FraudDecision::Block, $result, 'The rule decision must survive a throwing listener' );
 		$this->assertLogged( 'warning', 'A callback hooked to `woocommerce_fraud_protection_rule_applied` threw an exception.' );
 	}
+
+	/**
+	 * @testdox A rule that matches the current request replaces a supplied decision, which is recorded and announced as the received decision.
+	 */
+	public function test_matching_rule_replaces_a_supplied_decision(): void {
+		$rule         = $this->a_matching_rule( FraudDecision::Block );
+		$session_data = array(
+			'source'  => 'blocks_checkout',
+			'payment' => array( 'gateway' => 'my_gateway' ),
+		);
+		$this->rule_evaluator->expects( $this->once() )->method( 'evaluate_for_session' )->with( $session_data )->willReturn( $rule );
+		$this->event_recorder
+			->expects( $this->once() )
+			->method( 'record_decision' )
+			->with( VerifyResult::create( FraudDecision::Allow, 'earlier-session' ), FraudDecision::Block, $session_data, $rule );
+
+		$action_args = null;
+		add_action(
+			'woocommerce_fraud_protection_rule_applied',
+			function ( ...$args ) use ( &$action_args ) {
+				$action_args = $args;
+			},
+			10,
+			4
+		);
+
+		$result = $this->sut->apply_rules_to_supplied_decision( FraudDecision::Allow, 'earlier-session', $session_data );
+
+		$this->assertSame( FraudDecision::Block, $result );
+		$this->assertSame( array( 7, FraudDecision::Block, FraudDecision::Allow ), array_slice( $action_args, 0, 3 ) );
+		$this->assertSame( 'my_gateway', $action_args[3]['verify_result']['payment_method'] );
+		$this->assertLogged( 'info', 'Merchant rule 7 decided the session: "block" (received decision was "allow").' );
+	}
+
+	/**
+	 * @testdox Without a matching rule, a supplied decision is left to the caller and nothing is recorded or announced.
+	 */
+	public function test_supplied_decision_is_left_alone_without_a_matching_rule(): void {
+		$this->rule_evaluator->method( 'evaluate_for_session' )->willReturn( null );
+		$this->event_recorder->expects( $this->never() )->method( 'record_decision' );
+
+		$action_fired = false;
+		add_action(
+			'woocommerce_fraud_protection_rule_applied',
+			function () use ( &$action_fired ) {
+				$action_fired = true;
+			}
+		);
+
+		$this->assertNull( $this->sut->apply_rules_to_supplied_decision( FraudDecision::Block, 'earlier-session', array( 'source' => 'blocks_checkout' ) ) );
+		$this->assertFalse( $action_fired );
+	}
 }

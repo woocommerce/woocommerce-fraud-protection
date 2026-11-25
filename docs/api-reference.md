@@ -91,7 +91,7 @@ public function verify_session( mixed $session_id, string $source, int $order_id
 | `$order_id` | The order the attempt belongs to, or `0` when no order exists yet. With an order, the plugin stores the verification's session ID on it. |
 | `$request_data` | `payment_method`: the gateway ID. `payment_data`: a flat map of the gateway-specific fields, passed to `woocommerce_fraud_protection_resolved_payment_data` callbacks. The whole array is also passed to `woocommerce_fraud_protection_skip_session_verify` callbacks; `ClassicFormRequestData::build_request_data()` adds `billing_address` and `shipping_address` for classic forms. |
 
-The method returns `FraudDecision::Allow` or `FraudDecision::Block` and never throws: any error during verification returns `FraudDecision::Allow`. A decision supplied through `woocommerce_fraud_protection_skip_session_verify` is returned without verifying. Merchant rules, the `woocommerce_fraud_protection_automated_decision` filter and the automatic-protection setting are already applied to the returned decision.
+The method returns `FraudDecision::Allow` or `FraudDecision::Block` and never throws: any error during verification returns `FraudDecision::Allow`. A decision supplied through `woocommerce_fraud_protection_skip_session_verify` is returned without verifying, unless a merchant rule matches the current request; the rule's action is then returned instead. Merchant rules, the `woocommerce_fraud_protection_automated_decision` filter and the automatic-protection setting are already applied to the returned decision.
 
 The plugin's own verifications pass these sources, which `woocommerce_fraud_protection_skip_session_verify` callbacks can match:
 
@@ -355,10 +355,10 @@ Declares that the extension with the plugin slug `$extension` implements `$integ
 An earlier decision that a [`woocommerce_fraud_protection_skip_session_verify`](#woocommerce_fraud_protection_skip_session_verify) callback returns. Since 0.1.9.
 
 ```php
-new SuppliedDecision( FraudDecision $decision, ?string $session_id_for_order = null )
+new SuppliedDecision( FraudDecision $decision, ?string $session_id_for_order = null, bool $apply_merchant_rules = true )
 ```
 
-`$decision` is the decision the earlier verification returned; only `FraudDecision::Allow` and `FraudDecision::Block` are applied. `$session_id_for_order` is the session ID that verification resolved (`SessionVerifier::last_verified_session_id()`), which the plugin stores on the order being verified, or `null` when it has none. Never use a session ID submitted by the browser. Both properties are public and read-only.
+`$decision` is the decision the earlier verification returned; only `FraudDecision::Allow` and `FraudDecision::Block` are applied. `$session_id_for_order` is the session ID that verification resolved (`SessionVerifier::last_verified_session_id()`), which the plugin stores on the order being verified, or `null` when it has none. Never use a session ID submitted by the browser. `$apply_merchant_rules` (since 0.4.0) lets a merchant rule that matches the current request replace the decision; pass `false` only when no shopper is involved, such as a payment that authenticated staff record at a point-of-sale till. All properties are public and read-only.
 
 ### VerifiedRequest
 
@@ -518,7 +518,7 @@ apply_filters( 'woocommerce_fraud_protection_skip_session_verify', SuppliedDecis
 | `$request_data` | The `$request_data` of the `verify_session()` call. |
 | `$session_id` | The normalized session ID submitted with the request being verified. |
 
-Return a [`SuppliedDecision`](#supplieddecision) to skip verification; the decision is enforced as if the verification had returned it. Return the incoming value when you have nothing to supply. A later callback can replace your result. Any other value, a `SuppliedDecision` whose decision is not in `FraudDecision::ACTIONABLE`, or a callback that throws, verifies normally.
+Return a [`SuppliedDecision`](#supplieddecision) to skip verification; the decision is enforced as if the verification had returned it. Merchant rules still apply: the earlier verification may have run before the attempt's final details, such as the billing email, existed, so a rule that matches the current request replaces the supplied decision (since 0.4.0), unless the `SuppliedDecision` was created with `$apply_merchant_rules` set to `false`. Return the incoming value when you have nothing to supply. A later callback can replace your result. Any other value, a `SuppliedDecision` whose decision is not in `FraudDecision::ACTIONABLE`, or a callback that throws, verifies normally.
 
 Supply a decision only to the attempt that received it: key your record by evidence your server produced in the earlier request, and use it once. [`GatewayRequestVerifier`](#gatewayrequestverifier) does this for a gateway's own requests; use the filter directly only for flows it does not cover. Since 0.1.0; returns a `SuppliedDecision` since 0.1.9.
 
@@ -560,13 +560,13 @@ add_filter(
 
 ### woocommerce_fraud_protection_rule_applied
 
-Action. Fires when a merchant rule decided a verification, superseding the automated decision. Since 0.1.6.
+Action. Fires when a merchant rule decided a verification, superseding the automated decision or a decision supplied through `woocommerce_fraud_protection_skip_session_verify`. Since 0.1.6; fires for supplied decisions since 0.4.0.
 
 ```php
 do_action( 'woocommerce_fraud_protection_rule_applied', int $rule_id, FraudDecision $applied_decision, FraudDecision $received_decision, array $session_data );
 ```
 
-`$applied_decision` is the rule's action, which is enforced; `$received_decision` is the automated decision it replaced; `$session_data` has the same shape as in `woocommerce_fraud_protection_automated_decision`. A callback that throws is logged and does not change the decision.
+`$applied_decision` is the rule's action, which is enforced; `$received_decision` is the automated or supplied decision it replaced; `$session_data` has the same shape as in `woocommerce_fraud_protection_automated_decision`. A callback that throws is logged and does not change the decision.
 
 ```php
 add_action(

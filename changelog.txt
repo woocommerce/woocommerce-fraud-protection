@@ -1,6 +1,7 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.4.0
+* Fixed - A matching custom rule now applies to a payment attempt that reuses the decision of an earlier request in the same attempt, such as a PayPal order created from the cart before the billing email was entered. Payments that a cashier records in WooCommerce POS are not affected.
 * Dev - Payment gateways can declare a native Fraud Protection integration by adding `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, or `fraud_protection_express_checkout` to their supported features, and the new `wp wc fraud-protection native-integrations list` command lists the declaring gateways.
 * Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug with the new `NativeIntegrationRegistry`, from the new `woocommerce_fraud_protection_register_native_integrations` action, and `wp wc fraud-protection native-integrations list` lists the declarations.
 * Dev - Payment gateways can make one of their own scripts depend on the shared browser scripts when they register it, with the new `BlackboxScriptHandler::register_scripts_for()`, so the shared scripts load only on pages where that script is enqueued.
@@ -9,6 +10,7 @@ YYYY-xx-xx - version 0.4.0
 * Dev - Payment gateways can describe the payment instrument of their own attempts with the new `GatewayPaymentData` class, which runs their resolver only for their attempts and keeps the existing data when it fails. Resolvers and `GatewayRequestVerifier` reference readers can be registered for a gateway ID or for every gateway ID with a given prefix.
 * Dev - The `window.wcFraudProtection.prepareSessionId()` and `takePreparedSessionId()` browser methods are now part of the public API, for payment surfaces that must add the session ID synchronously.
 * Dev - The new `window.wcFraudProtection.takeSessionId()` browser method resolves to a session ID for one payment attempt and starts a fresh session for the next one, so payment surfaces no longer call `reset()` themselves, and `addSessionIdToExtensions()` adds a prepared session ID to the extension data of a Store API request, such as an express button's.
+* Dev - A `SuppliedDecision` created with the new `$apply_merchant_rules` argument set to `false` keeps its decision when a custom rule matches, for payments that involve no shopper, such as those recorded by staff at a point-of-sale till.
 * Dev - The `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, was removed.
 
 2026-11-23 - version 0.3.3

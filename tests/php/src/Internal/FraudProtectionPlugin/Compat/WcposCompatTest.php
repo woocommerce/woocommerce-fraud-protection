@@ -107,7 +107,7 @@ class WcposCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox Supplies an allow for a WCPOS tender in a WCPOS request with a cashier token.
+	 * @testdox Supplies an allow for a WCPOS tender in a WCPOS request with a cashier token, which merchant rules leave alone.
 	 */
 	public function test_supplies_allow_for_pos_tender(): void {
 		$result = $this->apply_filter( false, 'pay_for_order', array( 'payment_method' => 'pos_cash' ) );
@@ -115,6 +115,7 @@ class WcposCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertInstanceOf( SuppliedDecision::class, $result );
 		$this->assertSame( FraudDecision::Allow, $result->decision );
 		$this->assertNull( $result->session_id_for_order );
+		$this->assertFalse( $result->apply_merchant_rules, 'The cashier decides about a payment taken at the till' );
 	}
 
 	/**

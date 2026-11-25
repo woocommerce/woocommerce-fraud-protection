@@ -205,11 +205,15 @@ class SessionVerifier {
 			 * Filters whether to skip verification by supplying the fraud decision.
 			 *
 			 * Returning a {@see SuppliedDecision} with an actionable decision applies
-			 * it and its optional order session ID. Any other return verifies normally.
+			 * it and its optional order session ID, unless a merchant rule matches the
+			 * current request: the rule's action then applies instead, except for a
+			 * decision created with `$apply_merchant_rules` set to false. Any other
+			 * return verifies normally.
 			 *
 			 * @since 0.1.0
 			 * @since 0.1.6 Skipping requires returning the decision to apply; a truthy return no longer skips.
 			 * @since 0.1.9 The filter value carries the decision and optional response-backed order session ID.
+			 * @since 0.4.0 A matching merchant rule takes priority over the supplied decision.
 			 *
 			 * @param SuppliedDecision|false $supplied_decision The earlier result to apply. Default false.
 			 * @param string                 $source            Source identifier (e.g. 'blocks_checkout').
@@ -230,15 +234,24 @@ class SessionVerifier {
 					)
 				);
 
-				if ( null !== $supplied->session_id_for_order && '' !== $supplied->session_id_for_order && $order_id > 0 ) {
+				$has_session_id_for_order = null !== $supplied->session_id_for_order && '' !== $supplied->session_id_for_order;
+				$decision                 = ! $supplied->apply_merchant_rules ? $supplied->decision : $this->apply_merchant_rules_to_supplied_decision(
+					$supplied->decision,
+					$has_session_id_for_order ? $supplied->session_id_for_order : $normalized_session_id,
+					$source,
+					$order_id,
+					$request_data
+				);
+
+				if ( $has_session_id_for_order && $order_id > 0 ) {
 					try {
 						$this->store_session_id_in_order( $supplied->session_id_for_order, $order_id );
 					} catch ( \Throwable ) {
-						return $supplied->decision;
+						return $decision;
 					}
 				}
 
-				return $supplied->decision;
+				return $decision;
 			}
 
 			// For the miscall warning below; the declared filter type is a
@@ -371,6 +384,49 @@ class SessionVerifier {
 		}
 
 		return $decision;
+	}
+
+	/**
+	 * Apply the merchant rules to a supplied decision.
+	 *
+	 * The earlier verification that produced the decision may have run before the attempt's
+	 * final details existed, such as a payment request sent from the cart before the shopper
+	 * entered a billing email. A rule that matches the current details takes priority, as it
+	 * does over a new decision, and is recorded with the supplied decision as the one received.
+	 * Errors keep the supplied decision.
+	 *
+	 * @param FraudDecision $supplied_decision The supplied decision.
+	 * @param string        $session_id        The session ID the supplied decision belongs to.
+	 * @param string        $source            The bounded verification source.
+	 * @param int           $order_id          The WooCommerce order ID (0 for pre-order flows).
+	 * @param array         $request_data      Request data with payment_method and payment_data.
+	 * @return FraudDecision The matching rule's action, or the supplied decision.
+	 */
+	private function apply_merchant_rules_to_supplied_decision( FraudDecision $supplied_decision, string $session_id, string $source, int $order_id, array $request_data ): FraudDecision {
+		try {
+			$payload            = $this->data_collector->get_collected_data( $order_id );
+			$payload['source']  = $source;
+			$payload['payment'] = array( 'gateway' => is_string( $request_data['payment_method'] ?? null ) ? $request_data['payment_method'] : '' );
+
+			return $this->decision_handler->apply_rules_to_supplied_decision( $supplied_decision, $session_id, $payload ) ?? $supplied_decision;
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Applying merchant rules to a supplied decision failed; keeping the supplied decision',
+				array(
+					'event_source'      => $source,
+					'session_id'        => $session_id,
+					'order_id'          => $order_id,
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+				),
+				true
+			);
+
+			return $supplied_decision;
+		}
 	}
 
 	/**
