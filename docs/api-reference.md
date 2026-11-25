@@ -49,7 +49,7 @@ The public API consists of:
 - the hooks listed under [Hooks](#hooks);
 - the `window.wcFraudProtection` methods and `config.sessionIdField`, the script handles, and the request fields listed under [Browser API](#browser-api).
 
-Released public API stays compatible across plugin versions. Everything in `src/Internal/` (`Automattic\WooCommerce\Internal`) is for the plugin's exclusive use and can change in any release, as can the entries of `window.wcFraudProtection.config` other than `sessionIdField`.
+Released public API stays compatible across plugin versions. Deprecated parts stay available too: the `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, is kept only so that code that still references it keeps working. Everything in `src/Internal/` (`Automattic\WooCommerce\Internal`) is for the plugin's exclusive use and can change in any release, as can the entries of `window.wcFraudProtection.config` other than `sessionIdField`.
 
 Fraud Protection is optional for the extensions that integrate with it. Guard each use with `class_exists()`, and use the literal feature and integration strings rather than the plugin's constants in code that must run without it.
 

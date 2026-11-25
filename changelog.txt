@@ -11,7 +11,6 @@ YYYY-xx-xx - version 0.4.0
 * Dev - The `window.wcFraudProtection.prepareSessionId()` and `takePreparedSessionId()` browser methods are now part of the public API, for payment surfaces that must add the session ID synchronously.
 * Dev - The new `window.wcFraudProtection.takeSessionId()` browser method resolves to a session ID for one payment attempt and starts a fresh session for the next one, so payment surfaces no longer call `reset()` themselves, and `addSessionIdToExtensions()` adds a prepared session ID to the extension data of a Store API request, such as an express button's.
 * Dev - A `SuppliedDecision` created with the new `$apply_merchant_rules` argument set to `false` keeps its decision when a custom rule matches, for payments that involve no shopper, such as those recorded by staff at a point-of-sale till.
-* Dev - The `LearningModeContext` class, deprecated since 0.2.2 when the learning-mode filter stopped running, was removed.
 
 2026-11-23 - version 0.3.3
 * Added - New `wp wc fraud-protection payment-attempts list` and `get` commands show recorded payment attempts, and new `wp wc fraud-protection custom-rules` commands list, show, create, update, and delete custom rules. They are available when the merchant-facing features are enabled.
