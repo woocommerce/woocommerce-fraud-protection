@@ -9,6 +9,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
 use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
 use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
@@ -19,6 +20,7 @@ use Automattic\WooCommerce\FraudProtection\Tests\Support\FakeNativeGateway;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsSetupIntentCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Sessions\SessionIdError;
+use Automattic\WooCommerce\Proxies\LegacyProxy;
 use WCPay\Core\Server\Request\Get_Setup_Intention;
 
 require_once __DIR__ . '/../../../../stubs/wc-payments-get-setup-intention.php';
@@ -36,7 +38,7 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 
 	private const SKIP_VERIFY_FILTER = 'woocommerce_fraud_protection_skip_session_verify';
 
-	private const RECORD_KEY = '_fraud_protection_woopayments_setup_intent_verification';
+	private const REUSABLE_DECISIONS_KEY = '_wc_fraud_protection_reusable_decisions';
 
 	private const SETUP_INTENT_ID = 'seti_123';
 
@@ -46,6 +48,13 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	 * @var WooPaymentsSetupIntentCompat
 	 */
 	private WooPaymentsSetupIntentCompat $sut;
+
+	/**
+	 * The gateway request verifier that the compatibility layer uses.
+	 *
+	 * @var GatewayRequestVerifier
+	 */
+	private GatewayRequestVerifier $gateway_request_verifier;
 
 	/**
 	 * Mock session verifier.
@@ -69,10 +78,21 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	private ?\Closure $available_gateways_filter = null;
 
 	/**
+	 * Hooks of the plugin's shared instances removed for the test, to restore afterwards.
+	 *
+	 * @var array<array{string, callable, int, int}>
+	 */
+	private array $removed_shared_hooks = array();
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
+
+		// The plugin's own instances, registered when it loaded, would verify and supply decisions alongside the ones under test.
+		$this->remove_shared_hook( self::SETUP_INTENT_REQUEST_FILTER, array( wc_get_container()->get( WooPaymentsSetupIntentCompat::class ), 'verify_and_block_setup_intent' ), 1 );
+		$this->remove_shared_hook( self::SKIP_VERIFY_FILTER, array( wc_get_container()->get( GatewayRequestVerifier::class ), 'supply_reused_decision' ), 3 );
 
 		$this->session_verifier        = $this->createMock( SessionVerifier::class );
 		$this->blocked_session_message = $this->createMock( BlockedSessionMessage::class );
@@ -80,13 +100,12 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 			->method( 'get_plaintext' )
 			->willReturn( 'We are unable to process this request online.' );
 
+		$this->gateway_request_verifier = new GatewayRequestVerifier();
+		$this->gateway_request_verifier->init( $this->session_verifier, new SessionIdNormalizer(), wc_get_container()->get( LegacyProxy::class ), new GatewayNativeSupport() );
+		$this->gateway_request_verifier->register();
+
 		$this->sut = new WooPaymentsSetupIntentCompat();
-		$this->sut->init(
-			$this->session_verifier,
-			$this->blocked_session_message,
-			new SessionIdNormalizer(),
-			new GatewayNativeSupport()
-		);
+		$this->sut->init( $this->gateway_request_verifier, $this->blocked_session_message, new GatewayNativeSupport() );
 		$this->sut->register();
 
 		wp_set_current_user( self::factory()->user->create() );
@@ -101,8 +120,12 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	public function tearDown(): void {
 		$_POST = array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		remove_filter( self::SETUP_INTENT_REQUEST_FILTER, array( $this->sut, 'verify_and_block_setup_intent' ) );
-		remove_filter( self::SKIP_VERIFY_FILTER, array( $this->sut, 'supply_decision_for_add_payment_method' ) );
+		remove_filter( self::SKIP_VERIFY_FILTER, array( $this->gateway_request_verifier, 'supply_reused_decision' ) );
 		remove_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_add_payment_method_script' ), 20 );
+		foreach ( $this->removed_shared_hooks as list( $hook, $callback, $priority, $accepted_args ) ) {
+			add_filter( $hook, $callback, $priority, $accepted_args );
+		}
+		$this->removed_shared_hooks = array();
 		if ( $this->available_gateways_filter ) {
 			remove_filter( 'woocommerce_available_payment_gateways', $this->available_gateways_filter );
 			$this->available_gateways_filter = null;
@@ -111,13 +134,30 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 
 		$session = $this->get_original_woocommerce_session();
 		if ( $session ) {
-			$session->set( self::RECORD_KEY, null );
+			$session->set( self::REUSABLE_DECISIONS_KEY, null );
 		}
 
 		wp_set_current_user( 0 );
 		Get_Setup_Intention::reset();
 
 		parent::tearDown();
+	}
+
+	/**
+	 * Remove a hook of one of the plugin's shared instances until the test ends.
+	 *
+	 * @param string   $hook          The hook name.
+	 * @param callable $callback      The callback.
+	 * @param int      $accepted_args The number of arguments the callback accepts.
+	 */
+	private function remove_shared_hook( string $hook, callable $callback, int $accepted_args ): void {
+		$priority = has_filter( $hook, $callback );
+		if ( false === $priority ) {
+			return;
+		}
+
+		remove_filter( $hook, $callback, $priority );
+		$this->removed_shared_hooks[] = array( $hook, $callback, $priority, $accepted_args );
 	}
 
 	/**
@@ -188,26 +228,26 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * Run the skip-verify filter as the add-payment-method form post does.
+	 * Run the skip-verify filter as a later form post does.
 	 *
-	 * @param string $session_id      Submitted session ID.
 	 * @param string $payment_method  Submitted gateway ID.
 	 * @param string $setup_intent_id Submitted WooPayments setup intent ID; empty to submit none.
+	 * @param string $source          Verification source of the form post.
 	 * @return SuppliedDecision|false
 	 */
-	private function supply_for_add_payment_method( string $session_id, string $payment_method = 'woocommerce_payments', string $setup_intent_id = self::SETUP_INTENT_ID ) {
+	private function supply_for_add_payment_method( string $payment_method = 'woocommerce_payments', string $setup_intent_id = self::SETUP_INTENT_ID, string $source = 'add_payment_method' ) {
 		$payment_data = '' === $setup_intent_id ? array() : array( 'wcpay-setup-intent' => $setup_intent_id );
 
 		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
 		return apply_filters(
 			self::SKIP_VERIFY_FILTER,
 			false,
-			'add_payment_method',
+			$source,
 			array(
 				'payment_method' => $payment_method,
 				'payment_data'   => $payment_data,
 			),
-			$session_id
+			'sess-form'
 		);
 	}
 
@@ -224,11 +264,10 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox register() hooks setup intent verification, decision reuse, and the add-payment-method script.
+	 * @testdox register() hooks setup intent verification and the add-payment-method script.
 	 */
 	public function test_register_hooks(): void {
 		$this->assertSame( 10, has_filter( self::SETUP_INTENT_REQUEST_FILTER, array( $this->sut, 'verify_and_block_setup_intent' ) ) );
-		$this->assertSame( 10, has_filter( self::SKIP_VERIFY_FILTER, array( $this->sut, 'supply_decision_for_add_payment_method' ) ) );
 		$this->assertSame( 20, has_action( 'woocommerce_add_payment_method_form_bottom', array( $this->sut, 'enqueue_add_payment_method_script' ) ) );
 	}
 
@@ -258,7 +297,8 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		$this->verify_setup_intent( FraudDecision::Allow );
 		$this->register_payment_gateways( new FakeNativeGateway( 'woocommerce_payments', array( FraudProtectionFeature::ADD_PAYMENT_METHOD ) ) );
 
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ) );
+		$this->assertFalse( $this->supply_for_add_payment_method() );
+		$this->assertSame( array(), Get_Setup_Intention::get_sent(), 'The setup intent is not read' );
 	}
 
 	/**
@@ -310,13 +350,13 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The payment method that WooPayments confirms is verified and recorded, not the posted wcpay-payment-method.
+	 * @testdox The payment method that WooPayments confirms is verified and kept as the reference, not the posted wcpay-payment-method.
 	 * @dataProvider confirmed_payment_method_sources
 	 *
 	 * @param object $request  The filtered WooPayments request.
 	 * @param string $expected The payment method ID that must be verified.
 	 */
-	public function test_verifies_and_records_confirmed_payment_method( object $request, string $expected ): void {
+	public function test_verifies_and_keeps_confirmed_payment_method( object $request, string $expected ): void {
 		$this->set_setup_intent_post(
 			array(
 				SessionVerifier::SESSION_ID_FIELD => 'sess-wcpay',
@@ -344,8 +384,8 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 		$this->assertTrue( $outcome['request_unchanged'], 'The WooPayments request must be returned unchanged' );
 
 		Get_Setup_Intention::set_mock_setup_intent( self::SETUP_INTENT_ID, $expected );
-		$supplied = $this->supply_for_add_payment_method( 'sess-wcpay' );
-		$this->assertInstanceOf( SuppliedDecision::class, $supplied, 'The ALLOW must be kept for a setup intent that holds the verified payment method' );
+		$supplied = $this->supply_for_add_payment_method();
+		$this->assertInstanceOf( SuppliedDecision::class, $supplied, 'The decision must be reused for a setup intent that holds the verified payment method' );
 		$this->assertSame( FraudDecision::Allow, $supplied->decision );
 	}
 
@@ -466,7 +506,7 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox The add-payment-method form post of the same attempt reuses the setup intent decision once.
+	 * @testdox The add-payment-method form post whose setup intent holds the verified payment method reuses the decision once.
 	 * @dataProvider actionable_decisions
 	 *
 	 * @param FraudDecision $decision The setup intent decision.
@@ -474,11 +514,13 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	public function test_form_post_reuses_decision_once( FraudDecision $decision ): void {
 		$this->verify_setup_intent( $decision );
 
-		$supplied = $this->supply_for_add_payment_method( 'sess-wcpay' );
+		$supplied = $this->supply_for_add_payment_method();
 
 		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
 		$this->assertSame( $decision, $supplied->decision );
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ), 'The decision must be used only once' );
+		$this->assertSame( 'sess-wcpay', $supplied->session_id_for_order );
+		$this->assertSame( array( self::SETUP_INTENT_ID ), Get_Setup_Intention::get_sent() );
+		$this->assertFalse( $this->supply_for_add_payment_method(), 'The decision must be used only once' );
 	}
 
 	/**
@@ -494,209 +536,92 @@ class WooPaymentsSetupIntentCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
-	 * @testdox An ALLOW is reused unless the posted setup intent is read and holds another payment method.
-	 * @dataProvider setup_intents_without_another_payment_method
+	 * @testdox The form post verifies normally, and the decision stays for the form post it belongs to, when the setup intent does not show the verified payment method.
+	 * @dataProvider setup_intents_without_the_verified_payment_method
 	 *
-	 * @param string $setup_intent_id Posted setup intent ID; empty to post none.
-	 * @param mixed  $setup_intent    WooPayments response for the setup intent; a string or null is the payment method ID it holds.
+	 * @param FraudDecision $decision        The setup intent decision.
+	 * @param string        $setup_intent_id Posted setup intent ID; empty to post none.
+	 * @param mixed         $setup_intent    WooPayments response for the setup intent; a string or null is the payment method ID it holds.
 	 */
-	public function test_allow_reused_without_another_payment_method( string $setup_intent_id, $setup_intent ): void {
+	public function test_not_reused_without_the_verified_payment_method( FraudDecision $decision, string $setup_intent_id, $setup_intent ): void {
 		if ( null === $setup_intent || is_string( $setup_intent ) ) {
 			Get_Setup_Intention::set_mock_setup_intent( self::SETUP_INTENT_ID, $setup_intent );
 		} else {
 			Get_Setup_Intention::set_mock_response( self::SETUP_INTENT_ID, $setup_intent );
 		}
-		$this->verify_setup_intent( FraudDecision::Allow );
+		$this->verify_setup_intent( $decision );
 
-		$supplied = $this->supply_for_add_payment_method( 'sess-wcpay', 'woocommerce_payments', $setup_intent_id );
+		$this->assertFalse( $this->supply_for_add_payment_method( 'woocommerce_payments', $setup_intent_id ) );
 
-		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
-		$this->assertSame( FraudDecision::Allow, $supplied->decision );
+		Get_Setup_Intention::set_mock_setup_intent( self::SETUP_INTENT_ID, 'pm_123' );
+		$this->assertInstanceOf( SuppliedDecision::class, $this->supply_for_add_payment_method() );
 	}
 
 	/**
-	 * Setup intents, or responses without one, that do not show another payment method.
+	 * Setup intents, or responses without one, that do not show the verified payment method.
 	 *
-	 * @return array<string, array{string, mixed}>
+	 * @return array<string, array{FraudDecision, string, mixed}>
 	 */
-	public function setup_intents_without_another_payment_method(): array {
+	public function setup_intents_without_the_verified_payment_method(): array {
 		return array(
-			'verified payment method' => array( self::SETUP_INTENT_ID, 'pm_123' ),
-			'no payment method'       => array( self::SETUP_INTENT_ID, null ),
-			'unexpected response'     => array( self::SETUP_INTENT_ID, array( 'payment_method' => 'pm_other' ) ),
-			'no setup intent posted'  => array( '', 'pm_other' ),
+			'another payment method'        => array( FraudDecision::Allow, self::SETUP_INTENT_ID, 'pm_other' ),
+			'another payment method, BLOCK' => array( FraudDecision::Block, self::SETUP_INTENT_ID, 'pm_other' ),
+			'no payment method'             => array( FraudDecision::Allow, self::SETUP_INTENT_ID, null ),
+			'unexpected response'           => array( FraudDecision::Allow, self::SETUP_INTENT_ID, array( 'payment_method' => 'pm_123' ) ),
+			'no setup intent posted'        => array( FraudDecision::Allow, '', 'pm_123' ),
 		);
 	}
 
 	/**
-	 * @testdox An ALLOW is reused, and the failure is logged, when reading the setup intent throws.
+	 * @testdox The form post verifies normally, and the failure is logged locally, when reading the setup intent throws.
 	 */
-	public function test_allow_reused_when_reading_setup_intent_throws(): void {
+	public function test_not_reused_when_reading_setup_intent_throws(): void {
 		Get_Setup_Intention::set_mock_response( self::SETUP_INTENT_ID, new \RuntimeException( 'WooPayments unavailable' ) );
 		$this->verify_setup_intent( FraudDecision::Allow );
 
-		$supplied = $this->supply_for_add_payment_method( 'sess-wcpay' );
-
-		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
-		$this->assertSame( FraudDecision::Allow, $supplied->decision );
+		$this->assertFalse( $this->supply_for_add_payment_method() );
 		$this->assertLogged(
 			'warning',
-			'Reading the WooPayments setup intent failed; keeping the setup intent decision',
+			'Reading the WooPayments setup intent failed; add-payment-method request will verify',
 			array(
 				'event_source'    => 'add_payment_method',
 				'exception_class' => \RuntimeException::class,
-			)
-		);
-	}
-
-	/**
-	 * @testdox An ALLOW is not reused, and the form post verifies, when the setup intent holds another payment method.
-	 */
-	public function test_allow_not_reused_for_another_payment_method(): void {
-		Get_Setup_Intention::set_mock_setup_intent( self::SETUP_INTENT_ID, 'pm_other' );
-		$this->verify_setup_intent( FraudDecision::Allow );
-
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ) );
-		$this->assertSame( array( self::SETUP_INTENT_ID ), Get_Setup_Intention::get_sent() );
-		$this->assertLogged(
-			'info',
-			'WooPayments setup intent holds another payment method than the verified one',
-			array( 'event_source' => 'add_payment_method' )
-		);
-
-		Get_Setup_Intention::set_mock_setup_intent( self::SETUP_INTENT_ID, 'pm_123' );
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ), 'The decision must be retired' );
-	}
-
-	/**
-	 * @testdox A BLOCK is reused without checking the setup intent.
-	 */
-	public function test_block_reused_without_setup_intent_check(): void {
-		Get_Setup_Intention::set_mock_setup_intent( self::SETUP_INTENT_ID, 'pm_other' );
-		$this->verify_setup_intent( FraudDecision::Block );
-
-		$supplied = $this->supply_for_add_payment_method( 'sess-wcpay' );
-
-		$this->assertInstanceOf( SuppliedDecision::class, $supplied );
-		$this->assertSame( FraudDecision::Block, $supplied->decision );
-		$this->assertSame( array(), Get_Setup_Intention::get_sent() );
-	}
-
-	/**
-	 * @testdox A form post with another session ID verifies normally and retires the decision.
-	 */
-	public function test_form_post_with_other_session_id_verifies(): void {
-		$this->verify_setup_intent( FraudDecision::Allow );
-
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-other' ) );
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ), 'A mismatched post must retire the decision' );
-	}
-
-	/**
-	 * @testdox A form post by another user verifies normally.
-	 */
-	public function test_form_post_by_other_user_verifies(): void {
-		$this->verify_setup_intent( FraudDecision::Allow );
-
-		wp_set_current_user( self::factory()->user->create() );
-
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ) );
-	}
-
-	/**
-	 * @testdox No decision is kept when the setup intent request had no session ID.
-	 */
-	public function test_no_reuse_without_submitted_session_id(): void {
-		$this->set_setup_intent_post();
-		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Allow );
-		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'sess-from-service' );
-		$this->run_setup_intent_filter();
-
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-from-service' ) );
-	}
-
-	/**
-	 * @testdox The decision is not supplied to other sources or to other gateways.
-	 */
-	public function test_decision_not_supplied_to_other_sources_or_gateways(): void {
-		$this->verify_setup_intent( FraudDecision::Allow );
-
-		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment -- Test invokes the hook.
-		$other_source = apply_filters(
-			self::SKIP_VERIFY_FILTER,
-			false,
-			'shortcode_checkout',
-			array( 'payment_method' => 'woocommerce_payments' ),
-			'sess-wcpay'
-		);
-
-		$this->assertFalse( $other_source );
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay', 'stripe' ) );
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay', 'woocommerce_payments_sepa_debit' ) );
-		$this->assertInstanceOf( SuppliedDecision::class, $this->supply_for_add_payment_method( 'sess-wcpay' ), 'Non-matching requests must not consume the decision' );
-	}
-
-	/**
-	 * @testdox A BLOCK that an earlier consumer supplied is kept over a recorded ALLOW, and the record is retired.
-	 */
-	public function test_keeps_earlier_block_and_retires_record(): void {
-		$this->verify_setup_intent( FraudDecision::Allow );
-		$earlier_block    = new SuppliedDecision( FraudDecision::Block );
-		$earlier_consumer = static function () use ( $earlier_block ) {
-			return $earlier_block;
-		};
-		add_filter( self::SKIP_VERIFY_FILTER, $earlier_consumer, 5 );
-
-		try {
-			$supplied = $this->supply_for_add_payment_method( 'sess-wcpay' );
-		} finally {
-			remove_filter( self::SKIP_VERIFY_FILTER, $earlier_consumer, 5 );
-		}
-
-		$this->assertSame( $earlier_block, $supplied );
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ), 'The decision must be retired' );
-	}
-
-	/**
-	 * @testdox A non-decision value that an earlier consumer returned is passed on unchanged, and the record is retired.
-	 *
-	 * The callback is called directly: other consumers on the filter only accept a SuppliedDecision or false.
-	 */
-	public function test_passes_on_earlier_non_decision_and_retires_record(): void {
-		$this->verify_setup_intent( FraudDecision::Allow );
-
-		$supplied = $this->sut->supply_decision_for_add_payment_method(
-			'skip',
-			'add_payment_method',
-			array(
-				'payment_method' => 'woocommerce_payments',
-				'payment_data'   => array( 'wcpay-setup-intent' => self::SETUP_INTENT_ID ),
 			),
-			'sess-wcpay'
+			false
 		);
-
-		$this->assertSame( 'skip', $supplied );
-		$this->assertFalse( $this->supply_for_add_payment_method( 'sess-wcpay' ), 'The decision must be retired' );
 	}
 
 	/**
-	 * @testdox A failure to record the decision still enforces the block and is logged.
+	 * @testdox The decision reaches only WooPayments add-payment-method form posts.
 	 */
-	public function test_record_failure_still_blocks(): void {
+	public function test_decision_reaches_only_woopayments_add_payment_method_form_posts(): void {
+		$this->verify_setup_intent( FraudDecision::Allow );
+
+		$this->assertFalse( $this->supply_for_add_payment_method( 'woocommerce_payments', self::SETUP_INTENT_ID, 'shortcode_checkout' ) );
+		$this->assertFalse( $this->supply_for_add_payment_method( 'stripe' ) );
+		$this->assertFalse( $this->supply_for_add_payment_method( 'woocommerce_payments_sepa_debit' ) );
+		$this->assertSame( array(), Get_Setup_Intention::get_sent(), 'The setup intent is read only for WooPayments add-payment-method form posts' );
+		$this->assertInstanceOf( SuppliedDecision::class, $this->supply_for_add_payment_method(), 'Non-matching requests must not consume the decision' );
+	}
+
+	/**
+	 * @testdox A failure to keep the decision still enforces the block and is logged.
+	 */
+	public function test_failure_to_keep_the_decision_still_blocks(): void {
 		$this->set_setup_intent_post( array( SessionVerifier::SESSION_ID_FIELD => 'sess-wcpay' ) );
 		$this->session_verifier->method( 'verify_session' )->willReturn( FraudDecision::Block );
 		$this->session_verifier->method( 'last_verified_session_id' )->willReturn( 'sess-wcpay' );
 
 		$session = $this->createMock( \WC_Session::class );
-		$session->method( 'set' )->willThrowException( new \RuntimeException( 'session unavailable' ) );
+		$session->method( 'get' )->willThrowException( new \RuntimeException( 'session unavailable' ) );
 		WC()->session = $session;
 
 		$outcome = $this->run_setup_intent_filter();
 
-		$this->assertTrue( $outcome['blocked'], 'The block must still be enforced when recording the decision fails' );
+		$this->assertTrue( $outcome['blocked'], 'The block must still be enforced when keeping the decision fails' );
 		$this->assertLogged(
 			'warning',
-			'Recording the WooPayments setup intent verification failed',
+			'Keeping a request decision failed',
 			array(
 				'event_source'    => WooPaymentsSetupIntentCompat::SOURCE,
 				'exception_class' => \RuntimeException::class,

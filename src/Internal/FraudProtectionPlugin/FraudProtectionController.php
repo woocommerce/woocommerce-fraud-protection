@@ -169,6 +169,9 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 	private function register_compat_layers(): void {
 		$container = wc_get_container();
 
+		// The gateway services run the resolvers and reference readers of the compatibility layers that
+		// register through them, so they hook the released filters where those layers' own callbacks did.
+		$container->get( GatewayPaymentData::class )->register();
 		$container->get( StripePaymentDataCompat::class )->register();
 		$container->get( SquarePaymentDataCompat::class )->register();
 		$container->get( PayPalPaymentDataCompat::class )->register();
@@ -178,6 +181,7 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$container->get( PayPalScriptCompat::class )->register();
 		$container->get( ExpressCheckoutScriptCompat::class )->register();
 		$container->get( KustomCompat::class )->register();
+		$container->get( GatewayRequestVerifier::class )->register();
 		$container->get( StripeSetupIntentCompat::class )->register();
 		$container->get( WooPaymentsSetupIntentCompat::class )->register();
 		$container->get( SubscriptionsChangePaymentCompat::class )->register();
@@ -243,8 +247,6 @@ class FraudProtectionController /* implements RegisterHooksInterface */ {
 		$this->schema_manager->register();
 		$this->session_event_pruner->register();
 		$this->session_verifier->register();
-		wc_get_container()->get( GatewayRequestVerifier::class )->register();
-		wc_get_container()->get( GatewayPaymentData::class )->register();
 		$this->blocks_checkout_protector->register();
 		$this->shortcode_checkout_protector->register();
 		$this->add_payment_method_protector->register();

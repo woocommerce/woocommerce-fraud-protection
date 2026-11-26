@@ -10,6 +10,7 @@ namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin\Compat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\GatewayNativeSupport;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\WooPaymentsPaymentDataCompat;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\CheckResult;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentInstrumentData;
 use Automattic\WooCommerce\FraudProtection\Schemas\PaymentMethodData;
@@ -343,13 +344,24 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	private WooPaymentsPaymentDataCompat $sut;
 
 	/**
+	 * The gateway payment data service that the compatibility layer registers with.
+	 *
+	 * @var GatewayPaymentData
+	 */
+	private GatewayPaymentData $gateway_payment_data;
+
+	/**
 	 * Set up test fixtures.
 	 */
 	public function setUp(): void {
 		parent::setUp();
 
+		$this->gateway_payment_data = new GatewayPaymentData();
+		$this->gateway_payment_data->init( new GatewayNativeSupport() );
+
 		$this->sut = new WooPaymentsPaymentDataCompat();
-		$this->sut->init( new GatewayNativeSupport() );
+		$this->sut->init( $this->gateway_payment_data );
+		$this->sut->register();
 	}
 
 	/**
@@ -374,9 +386,32 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		\WC_Payments::set_live( false );
 		$resolved = new PaymentMethodData( 'woocommerce_payments_sepa_debit' );
 
-		$result = $this->sut->resolve( $resolved, array( 'wcpay-payment-method' => 'pm_123' ) );
+		$result = $this->resolve( $resolved, array( 'wcpay-payment-method' => 'pm_123' ) );
 
 		$this->assertSame( $resolved, $result, 'The gateway resolves its own payment data' );
+	}
+
+	/**
+	 * @testdox A declaration on one WooPayments APM gateway covers only that payment method.
+	 */
+	public function test_apm_gateway_declaration_covers_only_its_attempts(): void {
+		$this->register_payment_gateways( new FakeNativeGateway( 'woocommerce_payments_sepa_debit', array( FraudProtectionFeature::PAYMENT_DATA ) ) );
+		\WC_Payments::set_live( false );
+		$resolved = new PaymentMethodData( 'woocommerce_payments_sepa_debit' );
+
+		$this->assertSame( $resolved, $this->resolve( $resolved, array() ), 'The declaring gateway resolves its own payment data' );
+		$this->assertSame( 'test', $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array()['transaction_mode'], 'The main gateway is not covered' );
+	}
+
+	/**
+	 * @testdox Stands aside for the gateways that WooPayments' own resolver covers.
+	 */
+	public function test_stands_aside_for_woopayments_resolver(): void {
+		$this->gateway_payment_data->register_resolver( 'woocommerce_payments_*', static fn( array $fields, PaymentMethodData $resolved ) => new PaymentMethodData( $resolved->get_gateway(), 'from_woopayments' ) );
+		\WC_Payments::set_live( false );
+
+		$this->assertSame( 'from_woopayments', $this->resolve( new PaymentMethodData( 'woocommerce_payments_sepa_debit' ), array() )->to_array()['payment_type'] );
+		$this->assertSame( 'test', $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array()['transaction_mode'], 'The main gateway is not covered' );
 	}
 
 	/**
@@ -385,7 +420,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_returns_resolved_for_non_woopayments(): void {
 		$resolved = new PaymentMethodData( 'stripe', 'card' );
 
-		$result = $this->sut->resolve( $resolved, array() );
+		$result = $this->resolve( $resolved, array() );
 
 		$this->assertSame( $resolved, $result );
 	}
@@ -396,7 +431,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_includes_test_mode(): void {
 		\WC_Payments::set_live( false );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array()
 		);
@@ -410,7 +445,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_includes_live_mode(): void {
 		\WC_Payments::set_live( true );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array()
 		);
@@ -424,7 +459,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_includes_account_identifier(): void {
 		WC_Payments_Account_Service_Stub::set_stripe_account_id( ' acct_123 ' );
 
-		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+		$array = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
@@ -438,7 +473,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_does_not_refresh_null_account_result_outside_ajax(): void {
 		WC_Payments_Account_Service_Stub::set_account_data( array( 'account_id' => 'acct_123' ) );
 
-		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+		$array = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
 		$this->assertNull( $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
@@ -453,7 +488,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		WC_Payments_Account_Service_Stub::set_account_data( array( 'account_id' => ' acct_123 ' ) );
 		add_filter( 'wp_doing_ajax', '__return_true' );
 
-		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+		$array = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
 		$this->assertSame( 'acct_123', $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
@@ -467,7 +502,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_omits_account_identifier_when_lookup_throws(): void {
 		WC_Payments_Account_Service_Stub::set_throws( true );
 
-		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+		$array = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
 		$this->assertNull( $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
@@ -487,7 +522,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		WC_Payments_Account_Service_Stub::set_refresh_throws( $throws );
 		add_filter( 'wp_doing_ajax', '__return_true' );
 
-		$array = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
+		$array = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), array() )->to_array();
 
 		$this->assertNull( $array['merchant_identifier'] );
 		$this->assertSame( 'account', $array['merchant_identifier_type'] );
@@ -512,7 +547,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		\WC_Payments::set_live( false );
 		WC_Payments_Account_Service_Stub::set_stripe_account_id( 'acct_123' );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments_bancontact' ),
 			array()
 		);
@@ -529,7 +564,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_does_not_match_unrelated_gateway(): void {
 		$resolved = new PaymentMethodData( 'woocommerce_paymentsx' );
 
-		$result = $this->sut->resolve( $resolved, array() );
+		$result = $this->resolve( $resolved, array() );
 
 		$this->assertSame( $resolved, $result );
 	}
@@ -540,7 +575,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_transaction_mode_unknown_when_mode_unavailable(): void {
 		\WC_Payments::set_mode_available( false );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array()
 		);
@@ -556,7 +591,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$resolved = new PaymentMethodData( 'woocommerce_payments', 'card', true );
 
-		$result = $this->sut->resolve( $resolved, array() );
+		$result = $this->resolve( $resolved, array() );
 
 		$this->assertNotSame( $resolved, $result );
 		$array = $result->to_array();
@@ -576,7 +611,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->mock_api_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_card_123' )
 		);
@@ -625,7 +660,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_partial_123' )
 		);
@@ -649,7 +684,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->mock_api_response( $response );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_apple_123' )
 		);
@@ -667,7 +702,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_normalizes_express_request_wallet( $value, string $expected ): void {
 		\WC_Payments_Features::set_woopay_enabled( true );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'express_payment_type' => $value )
 		);
@@ -700,7 +735,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_ignores_unsupported_express_request_wallet( $value ): void {
 		\WC_Payments_Features::set_woopay_enabled( true );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'express_payment_type' => $value )
 		);
@@ -734,7 +769,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_wallet_123' )
 		);
@@ -765,7 +800,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$response['card']['wallet'] = array( 'type' => 'future_wallet' );
 		$this->mock_api_response( $response );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wcpay-payment-method' => 'pm_wallet_123',
@@ -785,7 +820,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			'wcpay-payment-method' => 'pm_platform_scoped',
 		);
 
-		$trusted = $this->sut->resolve(
+		$trusted = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			$request
 		);
@@ -793,7 +828,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		remove_filter( 'wcpay_is_woopay_store_api_request', '__return_true' );
 		add_filter( 'wcpay_is_woopay_store_api_request', static fn() => '1' );
 
-		$untrusted = $this->sut->resolve(
+		$untrusted = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			$request
 		);
@@ -808,7 +843,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		\WC_Payments_Features::set_woopay_enabled( true );
 		$this->set_server_variables( array( 'HTTP_USER_AGENT' => 'WooPay' ) );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'is_woopay' => '1' )
 		);
@@ -841,17 +876,17 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		);
 
 		WooPay_Session_Stub::configure( true );
-		$trusted = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+		$trusted = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		WooPay_Session_Stub::configure( false );
-		$rejected = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+		$rejected = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		WooPay_Session_Stub::configure( '1' );
 		$request['express_payment_type'] = 'google_pay';
-		$non_boolean                     = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+		$non_boolean                     = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		WooPay_Session_Stub::configure( false, true );
-		$failed = $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
+		$failed = $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), $request );
 
 		$this->assertSame( 'woopay', $trusted->to_array()['instrument']['wallet'] );
 		$this->assertSame( 'apple_pay', $rejected->to_array()['instrument']['wallet'] );
@@ -879,7 +914,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_sepa_123' )
 		);
@@ -909,7 +944,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_becs_123' )
 		);
@@ -934,7 +969,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_link_123' )
 		);
@@ -957,7 +992,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_123' )
 		);
@@ -973,7 +1008,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_detects_saved_payment_method(): void {
 		$this->mock_api_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wcpay-payment-method'                  => 'pm_saved_123',
@@ -990,7 +1025,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_not_saved_when_token_is_new(): void {
 		$this->mock_api_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wcpay-payment-method'                  => 'pm_new_123',
@@ -1022,7 +1057,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			->willReturn( $this->create_card_response() );
 		\WC_Payments::set_api_client( $api_mock );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wc-woocommerce_payments-payment-token' => (string) $token->get_id(),
@@ -1052,7 +1087,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$token->set_user_id( 99999 ); // Different user.
 		$token->save();
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wc-woocommerce_payments-payment-token' => (string) $token->get_id(),
@@ -1078,7 +1113,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		$token->set_user_id( get_current_user_id() );
 		$token->save();
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wc-woocommerce_payments-payment-token' => (string) $token->get_id(),
@@ -1094,7 +1129,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_falls_back_when_saved_token_not_found(): void {
 		\WC_Payments::set_live( false );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wc-woocommerce_payments-payment-token' => '99999',
@@ -1118,7 +1153,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->mock_api_response( $this->create_card_response() );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_123' )
 		);
@@ -1140,7 +1175,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$resolved = new PaymentMethodData( 'woocommerce_payments', 'card', true );
 
-		$result = $this->sut->resolve( $resolved, array( 'wcpay-payment-method' => 'pm_123' ) );
+		$result = $this->resolve( $resolved, array( 'wcpay-payment-method' => 'pm_123' ) );
 
 		$this->assertNotSame( $resolved, $result );
 		$array = $result->to_array();
@@ -1157,7 +1192,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	public function test_returns_mode_only_when_pm_id_missing(): void {
 		\WC_Payments::set_live( false );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'express_payment_type' => 'google_pay' )
 		);
@@ -1176,7 +1211,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		\WC_Payments::set_api_client( null );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wcpay-payment-method' => 'pm_123',
@@ -1198,7 +1233,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->mock_api_throws( new \RuntimeException( 'Connection failed' ) );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wcpay-payment-method' => 'pm_123',
@@ -1220,7 +1255,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			array( 'id' => 'pm_123' )
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array(
 				'wcpay-payment-method' => 'pm_123',
@@ -1249,7 +1284,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 		);
 		$resolved   = new PaymentMethodData( 'woocommerce_payments', 'card', true, $instrument );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			$resolved,
 			array( 'wcpay-payment-method' => 'pm_123' )
 		);
@@ -1280,7 +1315,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method-sepa' => 'pm_sepa_alt_123' )
 		);
@@ -1305,7 +1340,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->mock_api_response( $response );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_card_123' )
 		);
@@ -1325,7 +1360,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 
 		$this->mock_api_response( $response );
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_card_123' )
 		);
@@ -1353,7 +1388,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_us_routing' )
 		);
@@ -1375,7 +1410,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 			)
 		);
 
-		$result = $this->sut->resolve(
+		$result = $this->resolve(
 			new PaymentMethodData( 'woocommerce_payments' ),
 			array( 'wcpay-payment-method' => 'pm_ideal_bic' )
 		);
@@ -1504,6 +1539,17 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * Resolve payment data through the gateway payment data service, as the resolved-payment-data filter does.
+	 *
+	 * @param PaymentMethodData $resolved       Previously resolved data.
+	 * @param array             $payment_fields Payment fields of the attempt.
+	 * @return PaymentMethodData
+	 */
+	private function resolve( PaymentMethodData $resolved, array $payment_fields ): PaymentMethodData {
+		return $this->gateway_payment_data->apply_resolver( $resolved, $payment_fields );
+	}
+
+	/**
 	 * Resolve WooPayments payment data while a hook runs, as the request that applies it does.
 	 *
 	 * @param ?string $hook                    The hook to resolve in, or null to resolve outside any hook.
@@ -1511,7 +1557,7 @@ class WooPaymentsPaymentDataCompatTest extends FraudProtectionUnitTestCase {
 	 * @return PaymentMethodData
 	 */
 	private function resolve_during_hook( ?string $hook, array $checkout_payment_fields ): PaymentMethodData {
-		$resolve = fn() => $this->sut->resolve( new PaymentMethodData( 'woocommerce_payments' ), $checkout_payment_fields );
+		$resolve = fn() => $this->resolve( new PaymentMethodData( 'woocommerce_payments' ), $checkout_payment_fields );
 		if ( null === $hook ) {
 			return $resolve();
 		}

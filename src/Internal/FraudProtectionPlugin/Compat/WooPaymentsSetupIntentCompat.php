@@ -8,13 +8,10 @@ declare( strict_types=1 );
 namespace Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat;
 
 use Automattic\WooCommerce\FraudProtection\BlockedSessionMessage;
+use Automattic\WooCommerce\FraudProtection\ClassicFormRequestData;
 use Automattic\WooCommerce\FraudProtection\FraudProtectionFeature;
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\MessageContext;
-use Automattic\WooCommerce\FraudProtection\Schemas\FraudDecision;
-use Automattic\WooCommerce\FraudProtection\SessionIdNormalizer;
-use Automattic\WooCommerce\FraudProtection\SessionVerifier;
-use Automattic\WooCommerce\FraudProtection\SuppliedDecision;
-use Automattic\WooCommerce\Internal\FraudProtectionPlugin\ClassicFormDataExtractionTrait;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\FraudProtectionController;
 
 defined( 'ABSPATH' ) || exit;
@@ -25,24 +22,23 @@ defined( 'ABSPATH' ) || exit;
  * On My Account > Add payment method, WooPayments creates and confirms the
  * setup intent through its `create_setup_intent` AJAX action before the form
  * is posted, so the card is already validated by the time
- * AddPaymentMethodProtector runs. This compat layer verifies the session in
- * that AJAX request, after the WooPayments nonce, fraud-prevention and
- * rate-limit checks and before the setup intent is created, and blocks it on
- * BLOCK decisions.
+ * AddPaymentMethodProtector runs. This compat layer verifies that AJAX request
+ * through {@see GatewayRequestVerifier}, as WooPayments itself would, after the
+ * WooPayments nonce, fraud-prevention and rate-limit checks and before the
+ * setup intent is created, and blocks it on BLOCK decisions.
  *
- * The decision is kept for the form post of the same attempt, so that
- * AddPaymentMethodProtector applies it instead of verifying the session again.
- * An ALLOW is not applied when the posted setup intent holds another payment
- * method than the verified one, because the setup intent ID in the form can
- * be changed in the browser after the setup intent request.
+ * The decision is kept for the form post of the same attempt, with the payment
+ * method that the setup intent request confirms as the reference. The form
+ * post reuses it only when the setup intent it posts holds that payment
+ * method, because the setup intent ID in the form can be changed in the
+ * browser after the setup intent request.
  *
  * Stands aside once the gateway declares `fraud_protection_add_payment_method`.
  *
- * Fail-open: SessionVerifier handles all internal errors and returns ALLOW.
+ * Fail-open: GatewayRequestVerifier handles all internal errors and returns ALLOW.
  */
 class WooPaymentsSetupIntentCompat {
 
-	use ClassicFormDataExtractionTrait;
 	use WooPaymentsSetupIntentReaderTrait;
 
 	/** Setup-intent verification source. SessionVerifier caps sources at 32 characters. */
@@ -56,9 +52,6 @@ class WooPaymentsSetupIntentCompat {
 
 	/** WordPress action that runs the WooPayments setup intent AJAX request. */
 	private const SETUP_INTENT_AJAX_ACTION = 'wp_ajax_create_setup_intent';
-
-	/** WooCommerce session record key. */
-	private const VERIFICATION_RECORD_KEY = '_fraud_protection_woopayments_setup_intent_verification';
 
 	/** The add-payment-method protector script, which adds the session ID to the form. */
 	private const ADD_PAYMENT_METHOD_SCRIPT_HANDLE = 'wc-fraud-protection-add-payment-method';
@@ -80,11 +73,11 @@ class WooPaymentsSetupIntentCompat {
 	private const SETUP_INTENT_FIELD = 'wcpay-setup-intent';
 
 	/**
-	 * Session verifier instance.
+	 * Gateway request verifier.
 	 *
-	 * @var SessionVerifier
+	 * @var GatewayRequestVerifier
 	 */
-	private SessionVerifier $session_verifier;
+	private GatewayRequestVerifier $gateway_request_verifier;
 
 	/**
 	 * Blocked-session message generator.
@@ -92,13 +85,6 @@ class WooPaymentsSetupIntentCompat {
 	 * @var BlockedSessionMessage
 	 */
 	private BlockedSessionMessage $blocked_session_message;
-
-	/**
-	 * Session ID normalizer.
-	 *
-	 * @var SessionIdNormalizer
-	 */
-	private SessionIdNormalizer $session_id_normalizer;
 
 	/**
 	 * Native gateway support lookup.
@@ -112,21 +98,18 @@ class WooPaymentsSetupIntentCompat {
 	 *
 	 * @internal
 	 *
-	 * @param SessionVerifier       $session_verifier        The session verifier instance.
-	 * @param BlockedSessionMessage $blocked_session_message The blocked-session message generator.
-	 * @param SessionIdNormalizer   $session_id_normalizer   The session ID normalizer.
-	 * @param GatewayNativeSupport  $native_support          Native gateway support lookup.
+	 * @param GatewayRequestVerifier $gateway_request_verifier The gateway request verifier.
+	 * @param BlockedSessionMessage  $blocked_session_message  The blocked-session message generator.
+	 * @param GatewayNativeSupport   $native_support           Native gateway support lookup.
 	 */
 	final public function init(
-		SessionVerifier $session_verifier,
+		GatewayRequestVerifier $gateway_request_verifier,
 		BlockedSessionMessage $blocked_session_message,
-		SessionIdNormalizer $session_id_normalizer,
 		GatewayNativeSupport $native_support
 	): void {
-		$this->session_verifier        = $session_verifier;
-		$this->blocked_session_message = $blocked_session_message;
-		$this->session_id_normalizer   = $session_id_normalizer;
-		$this->native_support          = $native_support;
+		$this->gateway_request_verifier = $gateway_request_verifier;
+		$this->blocked_session_message  = $blocked_session_message;
+		$this->native_support           = $native_support;
 	}
 
 	/**
@@ -145,8 +128,13 @@ class WooPaymentsSetupIntentCompat {
 	 */
 	public function register(): void {
 		add_filter( 'wcpay_create_and_confirm_setup_intention_request', array( $this, 'verify_and_block_setup_intent' ) );
-		add_filter( 'woocommerce_fraud_protection_skip_session_verify', array( $this, 'supply_decision_for_add_payment_method' ), 10, 4 );
 		add_action( 'woocommerce_add_payment_method_form_bottom', array( $this, 'enqueue_add_payment_method_script' ), 20, 0 );
+
+		$this->gateway_request_verifier->register_compatibility_reference_reader(
+			self::GATEWAY_ID,
+			array( FraudProtectionFeature::ADD_PAYMENT_METHOD ),
+			array( $this, 'read_setup_intent_payment_method' )
+		);
 	}
 
 	/**
@@ -159,8 +147,8 @@ class WooPaymentsSetupIntentCompat {
 	 * add-payment-method AJAX request is handled. The payment method that the
 	 * request confirms is verified, which can differ from the posted
 	 * `wcpay-payment-method` field. On BLOCK it responds with the WooPayments
-	 * error shape and terminates via wp_send_json_error(), so the record is
-	 * written first.
+	 * error shape and terminates via wp_send_json_error(), so the decision is
+	 * kept first.
 	 *
 	 * @internal
 	 *
@@ -172,19 +160,12 @@ class WooPaymentsSetupIntentCompat {
 			return $request;
 		}
 
-		$submitted_session_id = $this->get_submitted_session_id();
-		$payment_method_id    = $this->get_confirmed_payment_method_id( $request );
+		$payment_method_id = $this->get_confirmed_payment_method_id( $request );
 
-		$decision = $this->session_verifier->verify_session(
-			$submitted_session_id,
-			self::SOURCE,
-			0,
-			$this->build_setup_intent_request_data( $payment_method_id )
-		);
+		$verified_request = $this->gateway_request_verifier->verify_request( self::SOURCE, self::GATEWAY_ID, $this->get_setup_intent_payment_data( $payment_method_id ) );
+		$verified_request->reuse_decision_for( $payment_method_id );
 
-		$this->record_verification( $submitted_session_id, $decision, $payment_method_id );
-
-		if ( FraudDecision::Block === $decision ) {
+		if ( $verified_request->is_blocked() ) {
 			wp_send_json_error(
 				array(
 					'error' => array(
@@ -198,73 +179,43 @@ class WooPaymentsSetupIntentCompat {
 	}
 
 	/**
-	 * Apply the setup intent decision to the add-payment-method form post of the same attempt.
+	 * Read the payment method of the setup intent that an add-payment-method form post saves.
 	 *
-	 * The record is single-use: it is retired on every add-payment-method
-	 * verification for the WooPayments gateway, whether or not it matches.
-	 * A value that an earlier consumer returned is kept unchanged, so that an
-	 * earlier BLOCK cannot become an ALLOW. An ALLOW is not applied when the
-	 * posted setup intent holds another payment method than the verified one;
-	 * the request then verifies normally.
+	 * WooPayments saves the payment method of the setup intent that the form posts, which the
+	 * browser can change after the setup intent request. The setup intent is read from
+	 * WooPayments, so the form post reuses the decision only when the payment method
+	 * WooPayments will save is the one that was verified. When the setup intent cannot be
+	 * read, the form post is verified normally.
 	 *
 	 * @internal
 	 *
-	 * @param mixed  $supplied_decision The filter's default (false), or what an earlier consumer returned.
-	 * @param string $source            Source identifier.
-	 * @param array  $request_data      Request data with payment_method, payment_data, etc.
-	 * @param string $session_id        The Blackbox session ID being verified.
-	 * @return mixed The supplied result, or the value passed in to defer.
+	 * @param array  $payment_data Payment data of the form post.
+	 * @param array  $request_data Request data of the form post.
+	 * @param string $source       Verification source of the form post.
+	 * @return string The payment method ID, or an empty string.
 	 */
-	public function supply_decision_for_add_payment_method( mixed $supplied_decision, string $source, array $request_data, string $session_id ): mixed {
-		if ( self::ADD_PAYMENT_METHOD_SOURCE !== $source ) {
-			return $supplied_decision;
-		}
+	public function read_setup_intent_payment_method( array $payment_data, array $request_data, string $source ): string {
+		unset( $request_data );
 
-		if ( self::GATEWAY_ID !== ( $request_data['payment_method'] ?? null ) || $this->is_native() ) {
-			return $supplied_decision;
+		$setup_intent_id = $payment_data[ self::SETUP_INTENT_FIELD ] ?? null;
+		if ( self::ADD_PAYMENT_METHOD_SOURCE !== $source || ! is_string( $setup_intent_id ) ) {
+			return '';
 		}
 
 		try {
-			if ( false !== $supplied_decision ) {
-				$this->retire_verification_record();
-				return $supplied_decision;
-			}
-
-			$record = $this->get_verification_record();
-			$this->retire_verification_record();
-
-			if ( null === $record || '' === $session_id || $record['session_id'] !== $session_id || get_current_user_id() !== $record['user_id'] ) {
-				return $supplied_decision;
-			}
-
-			if (
-				FraudDecision::Allow === $record['decision']
-				&& $this->setup_intent_has_other_payment_method( $request_data, $record['payment_method_id'] )
-			) {
-				FraudProtectionController::log(
-					'info',
-					'WooPayments setup intent holds another payment method than the verified one; add-payment-method request will verify',
-					array( 'event_source' => $source )
-				);
-
-				return $supplied_decision;
-			}
-
-			return new SuppliedDecision( $record['decision'] );
+			return $this->get_setup_intent_payment_method_id( $setup_intent_id ) ?? '';
 		} catch ( \Throwable $e ) {
-			$this->retire_verification_record();
 			FraudProtectionController::log(
 				'warning',
-				'Reading the WooPayments setup intent verification record failed; add-payment-method request will verify',
+				'Reading the WooPayments setup intent failed; add-payment-method request will verify',
 				array(
 					'event_source'      => $source,
 					'exception_class'   => $e::class,
 					'exception_message' => $e->getMessage(),
-				),
-				true
+				)
 			);
 
-			return $supplied_decision;
+			return '';
 		}
 	}
 
@@ -306,44 +257,6 @@ class WooPaymentsSetupIntentCompat {
 	}
 
 	/**
-	 * Check whether the posted setup intent holds a payment method other than the verified one.
-	 *
-	 * WooPayments saves the payment method of the setup intent that the form
-	 * posts, which the browser can change after the setup intent request.
-	 * Only a setup intent that was read and holds another payment method
-	 * counts: when it cannot be read, WooPayments cannot save its payment
-	 * method either, or the failure is not under the shopper's control.
-	 *
-	 * @param array  $request_data      Request data of the add-payment-method form post.
-	 * @param string $payment_method_id The payment method ID that was verified.
-	 * @return bool True when the setup intent holds another payment method.
-	 */
-	private function setup_intent_has_other_payment_method( array $request_data, string $payment_method_id ): bool {
-		$setup_intent_id = $request_data['payment_data'][ self::SETUP_INTENT_FIELD ] ?? null;
-		if ( ! is_string( $setup_intent_id ) ) {
-			return false;
-		}
-
-		try {
-			$saved_payment_method = $this->get_setup_intent_payment_method_id( $setup_intent_id );
-		} catch ( \Throwable $e ) {
-			FraudProtectionController::log(
-				'warning',
-				'Reading the WooPayments setup intent failed; keeping the setup intent decision',
-				array(
-					'event_source'      => self::ADD_PAYMENT_METHOD_SOURCE,
-					'exception_class'   => $e::class,
-					'exception_message' => $e->getMessage(),
-				)
-			);
-
-			return false;
-		}
-
-		return null !== $saved_payment_method && $payment_method_id !== $saved_payment_method;
-	}
-
-	/**
 	 * Get the payment method ID that the WooPayments setup intent request confirms.
 	 *
 	 * Read from the filtered request, which holds the value WooPayments sends.
@@ -379,137 +292,23 @@ class WooPaymentsSetupIntentCompat {
 	}
 
 	/**
-	 * Build the verification request data from the WooPayments AJAX request.
+	 * Get the payment data of the WooPayments AJAX request.
 	 *
-	 * The request does not carry the gateway ID. WooPayments only sends it from
-	 * the card gateway, so that gateway ID is used. The payment method that the
-	 * request confirms replaces the posted `wcpay-payment-method` field, so
-	 * that its details are resolved.
+	 * The payment method that the request confirms replaces the posted
+	 * `wcpay-payment-method` field, so that its details are resolved.
 	 *
 	 * @param string $payment_method_id The payment method ID that the request confirms; empty when unknown.
-	 * @return array Request data.
+	 * @return array Flat key-value map of the request's payment fields.
 	 */
-	private function build_setup_intent_request_data( string $payment_method_id ): array {
+	private function get_setup_intent_payment_data( string $payment_method_id ): array {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooPayments before this filter runs.
-		$request_data = $this->build_request_data( $_POST );
-
-		$request_data['payment_method'] = self::GATEWAY_ID;
-
-		foreach ( self::NON_PAYMENT_FIELDS as $field ) {
-			unset( $request_data['payment_data'][ $field ] );
-		}
+		$payment_data = ( new ClassicFormRequestData() )->build_request_data( $_POST )['payment_data'];
+		$payment_data = array_diff_key( $payment_data, array_flip( self::NON_PAYMENT_FIELDS ) );
 
 		if ( '' !== $payment_method_id ) {
-			$request_data['payment_data'][ self::PAYMENT_METHOD_FIELD ] = $payment_method_id;
+			$payment_data[ self::PAYMENT_METHOD_FIELD ] = $payment_method_id;
 		}
 
-		return $request_data;
-	}
-
-	/**
-	 * Store the decision for the form post of the same attempt.
-	 *
-	 * Any earlier record is replaced. Nothing is stored when the request had no
-	 * session ID, because the form post would not have one to match.
-	 * The verified payment method ID is kept so that an ALLOW is not applied
-	 * to a setup intent that holds another payment method.
-	 *
-	 * @param mixed         $submitted_session_id The session ID submitted with the AJAX request.
-	 * @param FraudDecision $decision             The applied decision.
-	 * @param string        $payment_method_id    The verified payment method ID; empty when unknown.
-	 * @return void
-	 */
-	private function record_verification( $submitted_session_id, FraudDecision $decision, string $payment_method_id ): void {
-		try {
-			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-				return;
-			}
-
-			$session_id = $this->session_verifier->last_verified_session_id();
-			$record     = null;
-			if (
-				'' !== $this->session_id_normalizer->normalize_stored( $submitted_session_id )
-				&& '' !== $session_id
-				&& in_array( $decision, FraudDecision::ACTIONABLE, true )
-			) {
-				$record = array(
-					'session_id'        => $session_id,
-					'decision'          => $decision,
-					'user_id'           => get_current_user_id(),
-					'payment_method_id' => $payment_method_id,
-				);
-			}
-
-			WC()->session->set( self::VERIFICATION_RECORD_KEY, $record );
-		} catch ( \Throwable $e ) {
-			$this->retire_verification_record();
-			FraudProtectionController::log(
-				'warning',
-				'Recording the WooPayments setup intent verification failed; add-payment-method request will verify',
-				array(
-					'event_source'      => self::SOURCE,
-					'exception_class'   => $e::class,
-					'exception_message' => $e->getMessage(),
-				),
-				true
-			);
-		}
-	}
-
-	/**
-	 * Read the current verification record from the WC session.
-	 *
-	 * @return ?array{session_id: string, decision: FraudDecision, user_id: int, payment_method_id: string} The record, or null.
-	 */
-	private function get_verification_record(): ?array {
-		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-			return null;
-		}
-
-		$stored = WC()->session->get( self::VERIFICATION_RECORD_KEY );
-		if ( ! is_array( $stored ) ) {
-			return null;
-		}
-
-		$session_id = $this->session_id_normalizer->normalize_stored( $stored['session_id'] ?? null );
-		$decision   = $stored['decision'] ?? null;
-		$user_id    = $stored['user_id'] ?? null;
-
-		$payment_method_id = $stored['payment_method_id'] ?? null;
-		if ( ! is_string( $payment_method_id ) ) {
-			$payment_method_id = '';
-		}
-
-		if (
-			'' === $session_id
-			|| ! $decision instanceof FraudDecision
-			|| ! in_array( $decision, FraudDecision::ACTIONABLE, true )
-			|| ! is_int( $user_id )
-			|| $user_id <= 0
-		) {
-			return null;
-		}
-
-		return array(
-			'session_id'        => $session_id,
-			'decision'          => $decision,
-			'user_id'           => $user_id,
-			'payment_method_id' => $payment_method_id,
-		);
-	}
-
-	/**
-	 * Retire the current verification record without affecting the request.
-	 *
-	 * @return void
-	 */
-	private function retire_verification_record(): void {
-		try {
-			if ( function_exists( 'WC' ) && WC()->session ) {
-				WC()->session->set( self::VERIFICATION_RECORD_KEY, null );
-			}
-		} catch ( \Throwable $e ) {
-			unset( $e );
-		}
+		return $payment_data;
 	}
 }
