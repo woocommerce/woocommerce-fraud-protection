@@ -62,7 +62,7 @@ Rules:
 - Do not add global functions. The pre-autoloader entry points are the only exception.
 - Stateful public services are resolved through the WooCommerce container. Follow each public DTO's existing constructor or factory contract.
 - Application components receive dependencies through a `final public init()` method and register hooks through `register()`. Constructors must not have required parameters. `FraudProtectionController` owns application component registration. Process-specific entry points, such as WP-CLI commands, register from `PluginInitializer` when they must remain outside the feature gate.
-- The bootstrap resolves the controller on `woocommerce_loaded`. First-party components register from `handle_init()` on WordPress `init`; gateway compatibility classes register from the controller at `woocommerce_loaded`.
+- The bootstrap resolves the controller on `woocommerce_loaded`. First-party components register from `handle_init()` on WordPress `init`; gateway compatibility classes register from the controller at `woocommerce_loaded`, together with `GatewayPaymentData` and `GatewayRequestVerifier`, which hook the released filters for the layers that register through them.
 - Keep the feature gate at the start of `FraudProtectionController::register()`. Components must not repeat it.
 - Follow the timing and structure of the nearest existing component. Hook timing and priorities are intentional.
 - Mark public hook callbacks and `init()` methods with `@internal`. Do not add a class-level `@internal` tag to classes in the internal namespace.

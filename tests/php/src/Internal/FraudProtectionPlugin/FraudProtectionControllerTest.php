@@ -4,6 +4,8 @@ declare( strict_types=1 );
 
 namespace Automattic\WooCommerce\Tests\Internal\FraudProtectionPlugin;
 
+use Automattic\WooCommerce\FraudProtection\GatewayPaymentData;
+use Automattic\WooCommerce\FraudProtection\GatewayRequestVerifier;
 use Automattic\WooCommerce\FraudProtection\Tests\FraudProtectionUnitTestCase;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\ExpressCheckoutScriptCompat;
 use Automattic\WooCommerce\Internal\FraudProtectionPlugin\Compat\KustomCompat;
@@ -221,6 +223,22 @@ class FraudProtectionControllerTest extends FraudProtectionUnitTestCase {
 			),
 			'WCPOS decision filter should be registered via the controller'
 		);
+	}
+
+	/**
+	 * @testdox The gateway services hook the released filters at woocommerce_loaded, where the compatibility layers that register through them used to hook those filters themselves.
+	 */
+	public function test_gateway_services_hook_filters_with_compat_layers(): void {
+		$container                = wc_get_container();
+		$payment_data_callback    = array( $container->get( GatewayPaymentData::class ), 'apply_resolver' );
+		$reused_decision_callback = array( $container->get( GatewayRequestVerifier::class ), 'supply_reused_decision' );
+		remove_filter( 'woocommerce_fraud_protection_resolved_payment_data', $payment_data_callback );
+		remove_filter( 'woocommerce_fraud_protection_skip_session_verify', $reused_decision_callback );
+
+		$this->sut->register();
+
+		$this->assertSame( 10, has_filter( 'woocommerce_fraud_protection_resolved_payment_data', $payment_data_callback ) );
+		$this->assertSame( 10, has_filter( 'woocommerce_fraud_protection_skip_session_verify', $reused_decision_callback ) );
 	}
 
 	/**
