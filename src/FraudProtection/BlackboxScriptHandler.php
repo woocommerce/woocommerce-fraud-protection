@@ -317,7 +317,17 @@ class BlackboxScriptHandler {
 			return $attributes;
 		}
 
-		return array_merge( $attributes, $this->get_added_script_attributes( $tag_id ) );
+		$added_attributes = $this->get_added_script_attributes( $tag_id );
+
+		// Attribute names are case-insensitive, and WordPress keeps the first spelling it finds.
+		$added_names = array_map( 'strtolower', array_keys( $added_attributes ) );
+		foreach ( array_keys( $attributes ) as $name ) {
+			if ( is_string( $name ) && in_array( strtolower( $name ), $added_names, true ) ) {
+				unset( $attributes[ $name ] );
+			}
+		}
+
+		return array_merge( $attributes, $added_attributes );
 	}
 
 	/**

@@ -299,6 +299,49 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	}
 
 	/**
+	 * @testdox The woocommerce_fraud_protection_script_attributes filter replaces or removes an existing attribute spelled with different letter case.
+	 */
+	public function test_script_attributes_filter_matches_existing_attributes_case_insensitively(): void {
+		add_filter(
+			'woocommerce_fraud_protection_script_attributes',
+			function ( $added_attributes, $tag_id ) {
+				$added_attributes['type'] = 'wc-fraud-protection-blackbox-js' === $tag_id ? 'text/plain' : false;
+				return $added_attributes;
+			},
+			10,
+			2
+		);
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+
+		// Attributes as another plugin's attribute filter could spell them.
+		$output  = wp_get_script_tag(
+			array(
+				'src'  => 'https://blackbox-api.wp.com/v1/dist/v.js',
+				'id'   => 'wc-fraud-protection-blackbox-js',
+				'TYPE' => 'text/javascript',
+			)
+		);
+		$output .= wp_get_inline_script_tag(
+			'var wcFraudProtection = {};',
+			array(
+				'id'   => 'wc-fraud-protection-blackbox-init-js-extra',
+				'Type' => 'text/javascript',
+			)
+		);
+
+		$this->assertSame(
+			array(
+				'wc-fraud-protection-blackbox-js' => array( 'text/plain' ),
+				'wc-fraud-protection-blackbox-init-js-extra' => array( null ),
+			),
+			$this->get_script_tag_attributes( $output, array( 'type' ) )
+		);
+		$this->assertSame( 1, substr_count( strtolower( $output ), 'type=' ) );
+	}
+
+	/**
 	 * @testdox The woocommerce_fraud_protection_script_attributes filter cannot set id or src on a shared script tag, and invalid entries are skipped.
 	 */
 	public function test_script_attributes_filter_cannot_set_id_or_src_and_skips_invalid_entries(): void {
