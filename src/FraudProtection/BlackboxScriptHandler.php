@@ -60,6 +60,8 @@ class BlackboxScriptHandler {
 	/**
 	 * Attributes that opt the shared scripts out of caching plugins' script optimization.
 	 *
+	 * The default value of the `woocommerce_fraud_protection_script_attributes` filter.
+	 *
 	 * A minifier that copies the SDK keys the copy on its URL, which never changes, so the site
 	 * keeps serving an outdated SDK. Delayed execution holds the scripts back until the shopper's
 	 * first interaction.
@@ -69,6 +71,14 @@ class BlackboxScriptHandler {
 		'data-no-minify' => '1', // WP Rocket: Minify JavaScript.
 		'nitro-exclude'  => true, // NitroPack.
 	);
+
+	/**
+	 * Attributes that the `woocommerce_fraud_protection_script_attributes` filter cannot set.
+	 *
+	 * The tag ID identifies a shared script tag, and a `src` on the inline configuration
+	 * tag would make browsers ignore the configuration.
+	 */
+	private const RESERVED_SCRIPT_ATTRIBUTES = array( 'id', 'src' );
 
 	/**
 	 * Session identity manager.
@@ -282,24 +292,114 @@ class BlackboxScriptHandler {
 			)
 		);
 
-		add_filter( 'wp_script_attributes', array( $this, 'add_optimization_opt_outs' ) );
-		add_filter( 'wp_inline_script_attributes', array( $this, 'add_optimization_opt_outs' ) );
+		add_filter( 'wp_script_attributes', array( $this, 'add_script_attributes' ) );
+		add_filter( 'wp_inline_script_attributes', array( $this, 'add_script_attributes' ) );
 	}
 
 	/**
-	 * Add the caching-plugin opt-outs to the shared script tags.
+	 * Add the caching-plugin opt-outs, or the attributes a site filters in instead, to the shared script tags.
+	 *
+	 * The added attributes replace the ones the tag already has, except `id` and `src`, which
+	 * are never set.
 	 *
 	 * @internal
 	 *
 	 * @param mixed $attributes Attributes of a script tag.
-	 * @return mixed The attributes, with the opt-outs on the shared script tags.
+	 * @return mixed The attributes, with the added attributes on the shared script tags.
 	 */
-	public function add_optimization_opt_outs( mixed $attributes ): mixed {
-		if ( ! is_array( $attributes ) || ! in_array( $attributes['id'] ?? null, self::SHARED_SCRIPT_TAG_IDS, true ) ) {
+	public function add_script_attributes( mixed $attributes ): mixed {
+		if ( ! is_array( $attributes ) ) {
 			return $attributes;
 		}
 
-		return array_merge( $attributes, self::OPTIMIZATION_OPT_OUT_ATTRIBUTES );
+		$tag_id = $attributes['id'] ?? null;
+		if ( ! is_string( $tag_id ) || ! in_array( $tag_id, self::SHARED_SCRIPT_TAG_IDS, true ) ) {
+			return $attributes;
+		}
+
+		return array_merge( $attributes, $this->get_added_script_attributes( $tag_id ) );
+	}
+
+	/**
+	 * Get the attributes to add to a shared script tag.
+	 *
+	 * @param string $tag_id ID of the shared script tag.
+	 * @return array<string, string|int|float|bool> The attributes, keyed by name.
+	 */
+	private function get_added_script_attributes( string $tag_id ): array {
+		try {
+			/**
+			 * Filters the attributes set on the tags of the shared scripts.
+			 *
+			 * By default, the attributes opt the scripts out of the script optimization of
+			 * WP Rocket and NitroPack. The returned attributes replace the ones the tag already
+			 * has, except `id` and `src`, which cannot be set.
+			 *
+			 * @since 0.4.0
+			 *
+			 * @param array<string, string|int|float|bool> $added_attributes The attributes to set, keyed by name. `true` sets an attribute without a value, and `false` removes it.
+			 * @param string                               $tag_id           ID of the script tag: `wc-fraud-protection-blackbox-js`, `wc-fraud-protection-blackbox-init-js`, or `wc-fraud-protection-blackbox-init-js-extra` for the inline configuration of the init script.
+			 */
+			$filtered = apply_filters( 'woocommerce_fraud_protection_script_attributes', self::OPTIMIZATION_OPT_OUT_ATTRIBUTES, $tag_id );
+		} catch ( \Throwable $e ) {
+			FraudProtectionController::log(
+				'warning',
+				'Filter `woocommerce_fraud_protection_script_attributes` threw',
+				array(
+					'filter'            => 'woocommerce_fraud_protection_script_attributes',
+					'exception_class'   => $e::class,
+					'exception_message' => $e->getMessage(),
+					'exception_file'    => $e->getFile(),
+					'exception_line'    => $e->getLine(),
+				),
+				true
+			);
+			return self::OPTIMIZATION_OPT_OUT_ATTRIBUTES;
+		}
+
+		if ( ! is_array( $filtered ) ) {
+			FraudProtectionController::log(
+				'warning',
+				'Filter `woocommerce_fraud_protection_script_attributes` returned an unexpected type',
+				array(
+					'filter'        => 'woocommerce_fraud_protection_script_attributes',
+					'argument_type' => get_debug_type( $filtered ),
+				)
+			);
+			return self::OPTIMIZATION_OPT_OUT_ATTRIBUTES;
+		}
+
+		$added_attributes = array();
+		foreach ( $filtered as $name => $value ) {
+			if (
+				is_string( $name )
+				&& $this->is_valid_attribute_name( $name )
+				&& ! in_array( strtolower( $name ), self::RESERVED_SCRIPT_ATTRIBUTES, true )
+				&& is_scalar( $value )
+			) {
+				$added_attributes[ $name ] = $value;
+			}
+		}
+
+		return $added_attributes;
+	}
+
+	/**
+	 * Check whether a string can be used as an HTML attribute name.
+	 *
+	 * Applies the rule of `WP_HTML_Tag_Processor::set_attribute()`, which builds the script
+	 * tags in current WordPress versions, so older versions get the same names; their tag
+	 * builder only escapes the name.
+	 *
+	 * @param string $name The attribute name.
+	 * @return bool
+	 */
+	private function is_valid_attribute_name( string $name ): bool {
+		$name_length = strlen( $name );
+
+		return 0 !== $name_length
+			&& strcspn( $name, '"\'>&</ =' ) === $name_length
+			&& strcspn( $name, implode( '', array_map( 'chr', range( 0, 31 ) ) ) ) === $name_length;
 	}
 
 	/**
