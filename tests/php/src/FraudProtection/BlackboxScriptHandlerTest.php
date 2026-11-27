@@ -191,20 +191,10 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	 * @testdox The shared script tags opt out of caching plugins' script optimization, and other tags are left alone.
 	 */
 	public function test_shared_script_tags_opt_out_of_script_optimization(): void {
-		$this->mock_jetpack_blog_id( 42 );
-		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
-		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
-		wp_enqueue_script( self::GATEWAY_SCRIPT );
-
-		$processor = new \WP_HTML_Tag_Processor( $this->print_gateway_script() );
-		$opt_outs  = array();
-		while ( $processor->next_tag( 'SCRIPT' ) ) {
-			$opt_outs[ (string) $processor->get_attribute( 'id' ) ] = array(
-				$processor->get_attribute( 'nowprocket' ),
-				$processor->get_attribute( 'data-no-minify' ),
-				$processor->get_attribute( 'nitro-exclude' ),
-			);
-		}
+		$opt_outs = $this->get_script_tag_attributes(
+			$this->print_shared_scripts_with_gateway_script(),
+			array( 'nowprocket', 'data-no-minify', 'nitro-exclude' )
+		);
 
 		$opted_out = array( true, '1', true );
 		$this->assertSame(
@@ -886,6 +876,9 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 	/**
 	 * Read attributes from the printed script tags.
 	 *
+	 * Older WordPress versions print a boolean attribute as `name="name"` on themes without HTML5
+	 * script support, so that form is read as `true`, like a bare `name`.
+	 *
 	 * @param string   $output The printed script tags.
 	 * @param string[] $names  Names of the attributes to read.
 	 * @return array<string, array<int, string|true|null>> The values of the attributes, in the order of `$names`, keyed by tag ID.
@@ -895,7 +888,10 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$attributes = array();
 		while ( $processor->next_tag( 'SCRIPT' ) ) {
 			$attributes[ (string) $processor->get_attribute( 'id' ) ] = array_map(
-				fn( string $name ) => $processor->get_attribute( $name ),
+				function ( string $name ) use ( $processor ) {
+					$value = $processor->get_attribute( $name );
+					return $name === $value ? true : $value;
+				},
 				$names
 			);
 		}
