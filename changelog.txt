@@ -1,6 +1,8 @@
 *** WooCommerce Fraud Protection Changelog ***
 
 YYYY-xx-xx - version 0.4.0
+* Fixed - WP Rocket and NitroPack no longer delay the fraud protection scripts or save their own copy of them, so sites with these plugins always load the current scripts.
+* Dev - The new `woocommerce_fraud_protection_script_attributes` filter sets the attributes on the tags of the fraud protection scripts, for example to exclude them from the script optimization of other caching plugins.
 * Fixed - A matching custom rule now applies to a payment attempt that reuses the decision of an earlier request in the same attempt, such as a PayPal order created from the cart before the billing email was entered. Payments that a cashier records in WooCommerce POS are not affected.
 * Dev - Payment gateways can declare a native Fraud Protection integration by adding `fraud_protection_payment_data`, `fraud_protection_checkout`, `fraud_protection_add_payment_method`, or `fraud_protection_express_checkout` to their supported features, and the new `wp wc fraud-protection native-integrations list` command lists the declaring gateways.
 * Dev - Extensions other than payment gateways can declare native integrations, such as `change_payment_method`, under their own plugin slug with the new `NativeIntegrationRegistry`, from the new `woocommerce_fraud_protection_register_native_integrations` action, and `wp wc fraud-protection native-integrations list` lists the declarations.

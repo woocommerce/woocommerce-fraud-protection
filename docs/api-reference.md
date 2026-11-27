@@ -34,6 +34,7 @@ This is the reference for every public part of WooCommerce Fraud Protection: the
     - [woocommerce_fraud_protection_register_native_integrations](#woocommerce_fraud_protection_register_native_integrations)
     - [woocommerce_fraud_protection_automated_decision](#woocommerce_fraud_protection_automated_decision)
     - [woocommerce_fraud_protection_rule_applied](#woocommerce_fraud_protection_rule_applied)
+    - [woocommerce_fraud_protection_script_attributes](#woocommerce_fraud_protection_script_attributes)
     - [woocommerce_payment_gateway_supports](#woocommerce_payment_gateway_supports)
 - [Browser API](#browser-api)
     - [window.wcFraudProtection](#windowwcfraudprotection)
@@ -578,6 +579,33 @@ add_action(
 	},
 	10,
 	2
+);
+```
+
+### woocommerce_fraud_protection_script_attributes
+
+Filter. Sets the attributes on the tags of the [shared scripts](integration-guide.md#shared-scripts), for example to exclude them from the script optimization of a caching or performance plugin. Since 0.4.0.
+
+```php
+apply_filters( 'woocommerce_fraud_protection_script_attributes', array $added_attributes, string $tag_id );
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `$added_attributes` | The attributes to add, keyed by name. By default, `nowprocket` and `data-no-minify="1"` exclude the scripts from WP Rocket's delayed execution and minification, and `nitro-exclude` excludes them from NitroPack's optimization. |
+| `$tag_id` | The `id` of the script tag: `wc-fraud-protection-blackbox-js` for the Blackbox SDK, `wc-fraud-protection-blackbox-init-js` for the init script, or `wc-fraud-protection-blackbox-init-js-extra` for the inline configuration that the init script reads. |
+
+Return an array of attribute names and scalar values. The returned attributes replace the ones the tag already has, such as a `type` that WordPress or another plugin set, whatever the letter case of the existing name. A `true` value sets the attribute without a value, and `false` removes it. Remove a default attribute from the array to stop adding it. `id` and `src` cannot be set, and entries whose name is not a valid attribute name or whose value is not scalar are skipped. Any other value, or a callback that throws, adds the default attributes.
+
+Do not let an optimization plugin combine, minify, defer or delay the shared scripts, and do not set a `type` that stops them from running: a copy can serve an outdated Blackbox SDK, and a delayed or disabled script can leave a payment request without a session ID. Such a request is still verified, with less data.
+
+```php
+add_filter(
+	'woocommerce_fraud_protection_script_attributes',
+	function ( $added_attributes ) {
+		$added_attributes['data-cfasync'] = 'false';
+		return $added_attributes;
+	}
 );
 ```
 

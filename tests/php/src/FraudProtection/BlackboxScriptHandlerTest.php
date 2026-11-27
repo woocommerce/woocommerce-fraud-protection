@@ -76,6 +76,9 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->jetpack_option_filters = array();
 		delete_transient( 'wc_fraud_protection_missing_blog_id_log' );
 		remove_filter( 'print_scripts_array', array( $this->sut, 'leave_out_shared_scripts_on_excluded_pages' ) );
+		remove_filter( 'wp_script_attributes', array( $this->sut, 'add_script_attributes' ) );
+		remove_filter( 'wp_inline_script_attributes', array( $this->sut, 'add_script_attributes' ) );
+		remove_all_filters( 'woocommerce_fraud_protection_script_attributes' );
 		wp_dequeue_script( self::GATEWAY_SCRIPT );
 		wp_deregister_script( self::GATEWAY_SCRIPT );
 		wp_scripts()->done = array_values( array_diff( wp_scripts()->done, array( self::GATEWAY_SCRIPT ) ) );
@@ -182,6 +185,240 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		$this->assertNotFalse( $init_position );
 		$this->assertNotFalse( $gateway_position );
 		$this->assertLessThan( $gateway_position, $init_position );
+	}
+
+	/**
+	 * @testdox The shared script tags opt out of caching plugins' script optimization, and other tags are left alone.
+	 */
+	public function test_shared_script_tags_opt_out_of_script_optimization(): void {
+		$opt_outs = $this->get_script_tag_attributes(
+			$this->print_shared_scripts_with_gateway_script(),
+			array( 'nowprocket', 'data-no-minify', 'nitro-exclude' )
+		);
+
+		$opted_out = array( true, '1', true );
+		$this->assertSame(
+			array(
+				'wc-fraud-protection-blackbox-js'      => $opted_out,
+				'wc-fraud-protection-blackbox-init-js-extra' => $opted_out,
+				'wc-fraud-protection-blackbox-init-js' => $opted_out,
+				self::GATEWAY_SCRIPT . '-js'           => array( null, null, null ),
+			),
+			$opt_outs
+		);
+	}
+
+	/**
+	 * @testdox The woocommerce_fraud_protection_script_attributes filter receives the opt-outs and the tag ID of each shared script tag, and sets the attributes that are added.
+	 */
+	public function test_script_attributes_filter_sets_the_added_attributes(): void {
+		$received = array();
+		add_filter(
+			'woocommerce_fraud_protection_script_attributes',
+			function ( $added_attributes, $tag_id ) use ( &$received ) {
+				$received[ $tag_id ] = $added_attributes;
+				unset( $added_attributes['nitro-exclude'] );
+				$added_attributes['data-cfasync'] = 'false';
+				return $added_attributes;
+			},
+			10,
+			2
+		);
+
+		$attributes = $this->get_script_tag_attributes(
+			$this->print_shared_scripts_with_gateway_script(),
+			array( 'nowprocket', 'data-no-minify', 'nitro-exclude', 'data-cfasync' )
+		);
+
+		$default = array(
+			'nowprocket'     => true,
+			'data-no-minify' => '1',
+			'nitro-exclude'  => true,
+		);
+		$this->assertSame(
+			array(
+				'wc-fraud-protection-blackbox-js'      => $default,
+				'wc-fraud-protection-blackbox-init-js-extra' => $default,
+				'wc-fraud-protection-blackbox-init-js' => $default,
+			),
+			$received
+		);
+
+		$filtered = array( true, '1', null, 'false' );
+		$this->assertSame(
+			array(
+				'wc-fraud-protection-blackbox-js'      => $filtered,
+				'wc-fraud-protection-blackbox-init-js-extra' => $filtered,
+				'wc-fraud-protection-blackbox-init-js' => $filtered,
+				self::GATEWAY_SCRIPT . '-js'           => array( null, null, null, null ),
+			),
+			$attributes
+		);
+	}
+
+	/**
+	 * @testdox The woocommerce_fraud_protection_script_attributes filter replaces or removes attributes that a shared script tag already has.
+	 */
+	public function test_script_attributes_filter_replaces_existing_attributes(): void {
+		add_filter(
+			'woocommerce_fraud_protection_script_attributes',
+			function ( $added_attributes, $tag_id ) {
+				$added_attributes['type'] = 'wc-fraud-protection-blackbox-js' === $tag_id ? 'text/plain' : false;
+				return $added_attributes;
+			},
+			10,
+			2
+		);
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+
+		// The attributes that older WordPress versions pass for themes without HTML5 script support.
+		$output  = wp_get_script_tag(
+			array(
+				'type' => 'text/javascript',
+				'src'  => 'https://blackbox-api.wp.com/v1/dist/v.js',
+				'id'   => 'wc-fraud-protection-blackbox-js',
+			)
+		);
+		$output .= wp_get_inline_script_tag(
+			'var wcFraudProtection = {};',
+			array(
+				'type' => 'text/javascript',
+				'id'   => 'wc-fraud-protection-blackbox-init-js-extra',
+			)
+		);
+
+		$this->assertSame(
+			array(
+				'wc-fraud-protection-blackbox-js' => array( 'text/plain', true ),
+				'wc-fraud-protection-blackbox-init-js-extra' => array( null, true ),
+			),
+			$this->get_script_tag_attributes( $output, array( 'type', 'nowprocket' ) )
+		);
+	}
+
+	/**
+	 * @testdox The woocommerce_fraud_protection_script_attributes filter replaces or removes an existing attribute spelled with different letter case.
+	 */
+	public function test_script_attributes_filter_matches_existing_attributes_case_insensitively(): void {
+		add_filter(
+			'woocommerce_fraud_protection_script_attributes',
+			function ( $added_attributes, $tag_id ) {
+				$added_attributes['type'] = 'wc-fraud-protection-blackbox-js' === $tag_id ? 'text/plain' : false;
+				return $added_attributes;
+			},
+			10,
+			2
+		);
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+
+		// Attributes as another plugin's attribute filter could spell them.
+		$output  = wp_get_script_tag(
+			array(
+				'src'  => 'https://blackbox-api.wp.com/v1/dist/v.js',
+				'id'   => 'wc-fraud-protection-blackbox-js',
+				'TYPE' => 'text/javascript',
+			)
+		);
+		$output .= wp_get_inline_script_tag(
+			'var wcFraudProtection = {};',
+			array(
+				'id'   => 'wc-fraud-protection-blackbox-init-js-extra',
+				'Type' => 'text/javascript',
+			)
+		);
+
+		$this->assertSame(
+			array(
+				'wc-fraud-protection-blackbox-js' => array( 'text/plain' ),
+				'wc-fraud-protection-blackbox-init-js-extra' => array( null ),
+			),
+			$this->get_script_tag_attributes( $output, array( 'type' ) )
+		);
+		$this->assertSame( 1, substr_count( strtolower( $output ), 'type=' ) );
+	}
+
+	/**
+	 * @testdox The woocommerce_fraud_protection_script_attributes filter cannot set id or src on a shared script tag, and invalid entries are skipped.
+	 */
+	public function test_script_attributes_filter_cannot_set_id_or_src_and_skips_invalid_entries(): void {
+		add_filter(
+			'woocommerce_fraud_protection_script_attributes',
+			fn() => array(
+				'id'             => 'replaced',
+				'SRC'            => 'https://example.test/replaced.js',
+				'bad name'       => '1',
+				'"><img'         => '1',
+				'onload=x'       => '1',
+				"data-x\n"       => '1',
+				''               => '1',
+				0                => 'nowprocket',
+				'nitro-exclude'  => array( 'not', 'scalar' ),
+				'data-no-minify' => '1',
+				'@load'          => 'kept',
+			)
+		);
+
+		$output = $this->print_shared_scripts_with_gateway_script();
+
+		$this->assertStringNotContainsString( 'replaced', $output );
+		$this->assertStringNotContainsString( '<img', $output );
+		$this->assertStringNotContainsString( 'onload', $output );
+		$this->assertStringNotContainsString( 'data-x', $output );
+		$this->assertStringContainsString( 'https://blackbox-api.wp.com/v1/dist/v.js', $output );
+
+		$attributes = $this->get_script_tag_attributes( $output, array( 'data-no-minify', 'nowprocket', 'nitro-exclude', '@load' ) );
+		$this->assertSame( array( '1', null, null, 'kept' ), $attributes['wc-fraud-protection-blackbox-js'] ?? null );
+		$this->assertSame( array( '1', null, null, 'kept' ), $attributes['wc-fraud-protection-blackbox-init-js'] ?? null );
+	}
+
+	/**
+	 * @testdox The shared script tags get the opt-outs when the woocommerce_fraud_protection_script_attributes filter fails with $_dataName.
+	 * @dataProvider invalid_script_attributes_filter_provider
+	 *
+	 * @param callable $callback     The filter callback.
+	 * @param string   $expected_log Substring of the expected warning.
+	 * @param bool     $forwarded    Whether the warning is forwarded to the platform log.
+	 */
+	public function test_script_attributes_filter_falls_back_to_the_opt_outs( callable $callback, string $expected_log, bool $forwarded ): void {
+		$this->spy_on_controller_logging();
+		add_filter( 'woocommerce_fraud_protection_script_attributes', $callback );
+
+		$attributes = $this->get_script_tag_attributes(
+			$this->print_shared_scripts_with_gateway_script(),
+			array( 'nowprocket', 'data-no-minify', 'nitro-exclude' )
+		);
+
+		$opted_out = array( true, '1', true );
+		$this->assertSame( $opted_out, $attributes['wc-fraud-protection-blackbox-js'] ?? null );
+		$this->assertSame( $opted_out, $attributes['wc-fraud-protection-blackbox-init-js'] ?? null );
+		$this->assertLogged(
+			'warning',
+			$expected_log,
+			array( 'filter' => 'woocommerce_fraud_protection_script_attributes' ),
+			$forwarded
+		);
+	}
+
+	/**
+	 * Data provider for test_script_attributes_filter_falls_back_to_the_opt_outs().
+	 *
+	 * @return array<string, array{callable, string, bool}>
+	 */
+	public function invalid_script_attributes_filter_provider(): array {
+		return array(
+			'a non-array value' => array( fn() => 'nowprocket', 'returned an unexpected type', false ),
+			'an exception'      => array(
+				function () {
+					throw new \RuntimeException( 'Filter failure' );
+				},
+				'threw',
+				true,
+			),
+		);
 	}
 
 	/**
@@ -663,6 +900,46 @@ class BlackboxScriptHandlerTest extends FraudProtectionUnitTestCase {
 		wp_scripts()->do_items( array( self::GATEWAY_SCRIPT ) );
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Register the gateway script with register_scripts_for(), enqueue it, and print it with the shared scripts.
+	 *
+	 * @return string The printed script tags.
+	 */
+	private function print_shared_scripts_with_gateway_script(): string {
+		$this->mock_jetpack_blog_id( 42 );
+		wp_register_script( self::GATEWAY_SCRIPT, 'https://example.test/checkout.js', array(), '1.0.0', true );
+		$this->assertTrue( $this->sut->register_scripts_for( self::GATEWAY_SCRIPT ) );
+		wp_enqueue_script( self::GATEWAY_SCRIPT );
+
+		return $this->print_gateway_script();
+	}
+
+	/**
+	 * Read attributes from the printed script tags.
+	 *
+	 * Older WordPress versions print a boolean attribute as `name="name"` on themes without HTML5
+	 * script support, so that form is read as `true`, like a bare `name`.
+	 *
+	 * @param string   $output The printed script tags.
+	 * @param string[] $names  Names of the attributes to read.
+	 * @return array<string, array<int, string|true|null>> The values of the attributes, in the order of `$names`, keyed by tag ID.
+	 */
+	private function get_script_tag_attributes( string $output, array $names ): array {
+		$processor  = new \WP_HTML_Tag_Processor( $output );
+		$attributes = array();
+		while ( $processor->next_tag( 'SCRIPT' ) ) {
+			$attributes[ (string) $processor->get_attribute( 'id' ) ] = array_map(
+				function ( string $name ) use ( $processor ) {
+					$value = $processor->get_attribute( $name );
+					return $name === $value ? true : $value;
+				},
+				$names
+			);
+		}
+
+		return $attributes;
 	}
 
 	/**
